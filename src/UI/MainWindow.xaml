@@ -111,8 +111,12 @@
                 <StackPanel Grid.Column="3" Orientation="Horizontal" VerticalAlignment="Bottom">
                     <ToggleButton Style="{StaticResource ToggleBtn}" 
                                   IsChecked="{Binding StopLossEnabled}" 
-                                  Content="{Binding StopLossEnabled, Converter={StaticResource BoolOnOff}, StringFormat=Стоп-лосс: {0}}" 
-                                  Margin="0,0,8,0"/>
+                                  Margin="0,0,8,0">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="Стоп-лосс: "/>
+                            <TextBlock Text="{Binding StopLossEnabled, Converter={StaticResource BoolOnOff}}"/>
+                        </StackPanel>
+                    </ToggleButton>
                     <TextBox Text="{Binding StopLossValue, UpdateSourceTrigger=PropertyChanged}" 
                              Width="70" TextAlignment="Center" Margin="0,0,4,0"
                              IsEnabled="{Binding StopLossEnabled}"/>

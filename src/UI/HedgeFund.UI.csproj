@@ -7,7 +7,15 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <RootNamespace>HedgeFund.UI</RootNamespace>
+    <AssemblyName>OpenMarketflow</AssemblyName>
     <ApplicationIcon></ApplicationIcon>
+    <StartupObject>HedgeFund.UI.App</StartupObject>
+    
+    <!-- Публикация как single-file exe -->
+    <PublishSingleFile>true</PublishSingleFile>
+    <SelfContained>true</SelfContained>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
   </PropertyGroup>
 
   <ItemGroup>
