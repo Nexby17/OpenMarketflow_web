@@ -473,7 +473,7 @@ public class MainViewModel : BaseViewModel
                         MonitoringVM.PnLToday = status.TodayPnL;
                         MonitoringVM.PnLTotal = status.TotalPnL;
                         MonitoringVM.OpenPositionsCount = status.OpenPositions;
-                        MonitoringVM.TodayTradesCount = status.TodayTrades;
+                        MonitoringVM.TradesToday = status.TodayTrades;
                     });
                 _hubClient.OnError += msg =>
                     System.Windows.Application.Current.Dispatcher.Invoke(() => AddLog($"❌ {msg}"));
