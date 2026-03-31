@@ -1,6 +1,6 @@
 using HedgeFund.Core.Models;
 
-namespace HedgeFund.Brokers;
+namespace HedgeFund.Core;
 
 /// <summary>
 /// Единый интерфейс для подключения к брокерам.

@@ -1,3 +1,4 @@
+using HedgeFund.Core;
 using HedgeFund.Core.Models;
 
 namespace HedgeFund.Brokers.Alfa;

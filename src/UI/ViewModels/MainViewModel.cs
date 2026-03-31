@@ -1,7 +1,6 @@
 using System.Collections.ObjectModel;
 using System.Windows.Input;
 using System.Windows.Threading;
-using HedgeFund.Brokers;
 using HedgeFund.Brokers.Finam;
 using HedgeFund.Core;
 using HedgeFund.Core.Averaging;
