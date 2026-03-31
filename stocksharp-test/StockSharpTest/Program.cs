@@ -1,12 +1,12 @@
 using System;
 using System.Linq;
+using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
 
 using StockSharp.Algo;
 using StockSharp.Finam;
 using StockSharp.Messages;
-using StockSharp.BusinessEntities;
 
 namespace StockSharpTest;
 
@@ -15,27 +15,108 @@ class Program
     static async Task Main(string[] args)
     {
         var token = Environment.GetEnvironmentVariable("FINAM_TOKEN");
+        
+        // Шаг 1: Изучаем API через reflection
+        Console.WriteLine("=== FinamMessageAdapter API ===");
+        var adapterType = typeof(FinamMessageAdapter);
+        
+        Console.WriteLine("\n📋 Properties:");
+        foreach (var prop in adapterType.GetProperties(BindingFlags.Public | BindingFlags.Instance)
+            .OrderBy(p => p.Name))
+        {
+            Console.WriteLine($"  {prop.PropertyType.Name} {prop.Name} {{ {(prop.CanRead ? "get; " : "")}{(prop.CanWrite ? "set; " : "")}}}");
+        }
+
+        Console.WriteLine("\n📋 Constructors:");
+        foreach (var ctor in adapterType.GetConstructors())
+        {
+            var parms = string.Join(", ", ctor.GetParameters().Select(p => $"{p.ParameterType.Name} {p.Name}"));
+            Console.WriteLine($"  FinamMessageAdapter({parms})");
+        }
+
+        // Шаг 2: Изучаем Connector API
+        Console.WriteLine("\n=== Connector subscription methods ===");
+        var connType = typeof(Connector);
+        foreach (var method in connType.GetMethods(BindingFlags.Public | BindingFlags.Instance)
+            .Where(m => m.Name.Contains("Subscribe") || m.Name.Contains("Lookup"))
+            .OrderBy(m => m.Name))
+        {
+            var parms = string.Join(", ", method.GetParameters().Select(p => $"{p.ParameterType.Name} {p.Name}"));
+            Console.WriteLine($"  {method.ReturnType.Name} {method.Name}({parms})");
+        }
+
+        Console.WriteLine("\n=== Connector events (Subscription*) ===");
+        foreach (var evt in connType.GetEvents(BindingFlags.Public | BindingFlags.Instance)
+            .Where(e => e.Name.Contains("Subscription") || e.Name.Contains("Security") || e.Name.Contains("Candle") || e.Name.Contains("Connect"))
+            .OrderBy(e => e.Name))
+        {
+            Console.WriteLine($"  event {evt.EventHandlerType?.Name} {evt.Name}");
+        }
+
         if (string.IsNullOrEmpty(token))
         {
-            Console.WriteLine("❌ FINAM_TOKEN не задан!");
+            Console.WriteLine("\n⚠️ FINAM_TOKEN не задан — пропускаем подключение");
+            Console.WriteLine("✅ API exploration завершён!");
             return;
         }
-        Console.WriteLine($"✅ Токен получен (длина: {token.Length})");
 
-        // Создаём коннектор
+        Console.WriteLine($"\n✅ Токен получен (длина: {token.Length})");
+
+        // Шаг 3: Пробуем подключиться
+        Console.WriteLine("\n=== Попытка подключения ===");
+        
         var connector = new Connector();
         
-        // Добавляем адаптер Finam
+        // Пробуем найти правильное свойство для токена
         connector.AddAdapter<FinamMessageAdapter>(a =>
         {
-            a.Token = token.ToSecureString();
+            // Ищем свойство для токена
+            var tokenProp = adapterType.GetProperties()
+                .FirstOrDefault(p => p.Name.Contains("Token", StringComparison.OrdinalIgnoreCase) 
+                    || p.Name.Contains("Key", StringComparison.OrdinalIgnoreCase)
+                    || p.Name.Contains("Secret", StringComparison.OrdinalIgnoreCase));
+            
+            if (tokenProp != null)
+            {
+                Console.WriteLine($"  Найдено свойство для токена: {tokenProp.Name} ({tokenProp.PropertyType.Name})");
+                try
+                {
+                    if (tokenProp.PropertyType == typeof(System.Security.SecureString))
+                    {
+                        var ss = new System.Security.SecureString();
+                        foreach (var c in token) ss.AppendChar(c);
+                        tokenProp.SetValue(a, ss);
+                    }
+                    else if (tokenProp.PropertyType == typeof(string))
+                    {
+                        tokenProp.SetValue(a, token);
+                    }
+                    else
+                    {
+                        Console.WriteLine($"  ⚠️ Неизвестный тип: {tokenProp.PropertyType.FullName}");
+                        // Попробуем через ToString конверсию
+                        Console.WriteLine($"  Пробуем установить как строку...");
+                    }
+                    Console.WriteLine($"  ✅ Токен установлен через {tokenProp.Name}");
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"  ❌ Ошибка установки: {ex.Message}");
+                }
+            }
+            else
+            {
+                Console.WriteLine("  ❌ Свойство для токена не найдено!");
+                Console.WriteLine("  Все свойства с set:");
+                foreach (var p in adapterType.GetProperties().Where(p => p.CanWrite))
+                {
+                    Console.WriteLine($"    {p.PropertyType.Name} {p.Name}");
+                }
+            }
         });
 
         var connected = new ManualResetEventSlim(false);
-        var securitiesReceived = new ManualResetEventSlim(false);
-        var securitiesList = new List<Security>();
 
-        // Обработчики событий
         connector.Connected += () =>
         {
             Console.WriteLine("✅ Подключён к Финам через StockSharp!");
@@ -45,7 +126,7 @@ class Program
         connector.ConnectionError += error =>
         {
             Console.WriteLine($"❌ Ошибка подключения: {error}");
-            connected.Set(); // чтобы не зависнуть
+            connected.Set();
         };
 
         connector.Error += error =>
@@ -53,72 +134,50 @@ class Program
             Console.WriteLine($"⚠️ Ошибка: {error.Message}");
         };
 
+        var securitiesList = new List<StockSharp.BusinessEntities.Security>();
         connector.SecurityReceived += (sub, security) =>
         {
             securitiesList.Add(security);
-            // Логируем первые 20 и потом каждый 100-й
-            if (securitiesList.Count <= 20 || securitiesList.Count % 100 == 0)
+            if (securitiesList.Count <= 10 || securitiesList.Count % 200 == 0)
             {
                 Console.WriteLine($"  📊 [{securitiesList.Count}] {security.Id} | {security.Code} | {security.Name} | Тип: {security.Type}");
             }
         };
 
-        connector.SubscriptionFailed += (sub, error, isSubscribe) =>
-        {
-            Console.WriteLine($"⚠️ Subscription failed: {error.Message} (subscribe={isSubscribe})");
-        };
-
         connector.SubscriptionOnline += sub =>
         {
             Console.WriteLine($"📡 Subscription online: {sub.DataType}");
-            if (sub.DataType == DataType.Securities)
-            {
-                securitiesReceived.Set();
-            }
         };
 
-        connector.SubscriptionStopped += sub =>
+        connector.SubscriptionFailed += (sub, error) =>
         {
-            Console.WriteLine($"🛑 Subscription stopped: {sub.DataType}");
+            Console.WriteLine($"⚠️ Subscription failed: {error.Message}");
         };
 
-        // Подключаемся
-        Console.WriteLine("🔌 Подключаемся к Финам...");
+        Console.WriteLine("🔌 Подключаемся...");
         connector.Connect();
 
         if (!connected.Wait(TimeSpan.FromSeconds(30)))
         {
-            Console.WriteLine("❌ Таймаут подключения (30 сек)");
-            return;
+            Console.WriteLine("❌ Таймаут подключения");
         }
 
         // Ждём инструменты
-        Console.WriteLine("\n📋 Загружаем инструменты...");
+        await Task.Delay(10000);
+        Console.WriteLine($"\n📋 Получено инструментов: {securitiesList.Count}");
         
-        // Подписываемся на получение инструментов
-        connector.SubscribeSecurities(new Security());
-        
-        // Ждём загрузки
-        securitiesReceived.Wait(TimeSpan.FromSeconds(60));
-        await Task.Delay(5000); // доп. время на получение
-        
-        Console.WriteLine($"\n✅ Получено инструментов: {securitiesList.Count}");
-
-        // Ищем интересующие инструменты
-        var targets = new[] { "SBER", "GAZP", "Si", "SiM5", "SiH6" };
-        Console.WriteLine("\n🔍 Поиск интересующих инструментов:");
+        // Ищем Si
+        var targets = new[] { "SBER", "GAZP", "Si" };
         foreach (var code in targets)
         {
             var found = securitiesList.Where(s => 
                 s.Code?.Contains(code, StringComparison.OrdinalIgnoreCase) == true)
-                .Take(5).ToList();
+                .Take(3).ToList();
             
             if (found.Any())
             {
                 foreach (var s in found)
-                {
-                    Console.WriteLine($"  ✅ {s.Id} | {s.Code} | {s.Name} | Тип: {s.Type} | Board: {s.Board?.Code}");
-                }
+                    Console.WriteLine($"  ✅ {s.Id} | {s.Code} | {s.Name} | Тип: {s.Type}");
             }
             else
             {
@@ -126,53 +185,9 @@ class Program
             }
         }
 
-        // Пробуем получить свечи Si (если нашли)
-        var si = securitiesList.FirstOrDefault(s => 
-            s.Code?.StartsWith("Si", StringComparison.OrdinalIgnoreCase) == true && 
-            s.Type == SecurityTypes.Future);
-        
-        if (si != null)
-        {
-            Console.WriteLine($"\n📈 Получаем дневные свечи для {si.Code} ({si.Id})...");
-            
-            var candlesReceived = new ManualResetEventSlim(false);
-            var candleCount = 0;
-
-            connector.CandleReceived += (sub, candle) =>
-            {
-                candleCount++;
-                if (candleCount <= 10)
-                {
-                    Console.WriteLine($"  🕯️ {candle.OpenTime:yyyy-MM-dd} O:{candle.OpenPrice} H:{candle.HighPrice} L:{candle.LowPrice} C:{candle.ClosePrice} V:{candle.TotalVolume}");
-                }
-            };
-
-            connector.SubscriptionOnline += sub =>
-            {
-                if (sub.DataType == DataType.CandleTimeFrame)
-                    candlesReceived.Set();
-            };
-
-            var from = DateTime.UtcNow.AddDays(-30);
-            var to = DateTime.UtcNow;
-
-            connector.SubscribeCandles(si, DataType.CandleTimeFrame, from, to);
-            
-            candlesReceived.Wait(TimeSpan.FromSeconds(30));
-            await Task.Delay(3000);
-            
-            Console.WriteLine($"  ✅ Получено свечей: {candleCount}");
-        }
-        else
-        {
-            Console.WriteLine("\n⚠️ Фьючерс Si не найден, пропускаем свечи");
-        }
-
-        // Отключаемся
         Console.WriteLine("\n🔌 Отключаемся...");
         connector.Disconnect();
         await Task.Delay(2000);
-
-        Console.WriteLine("\n✅ Тест завершён!");
+        Console.WriteLine("✅ Тест завершён!");
     }
 }
