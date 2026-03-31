@@ -11,7 +11,7 @@ namespace StockSharpTest;
 
 class Program
 {
-    static readonly HttpClient _http = new() { BaseAddress = new Uri("https://trade-api.finam.ru") };
+    static readonly HttpClient _http = new() { BaseAddress = new Uri("https://tradeapi.finam.ru") };
     static readonly JsonSerializerOptions _json = new()
     {
         PropertyNameCaseInsensitive = true,
