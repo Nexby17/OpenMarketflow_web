@@ -298,6 +298,38 @@ public class CancelOrderResponse
     public string OrderId { get; set; } = string.Empty;
 }
 
+// === Auth ===
+
+public class AuthRequest
+{
+    [JsonPropertyName("secret")]
+    public string Secret { get; set; } = string.Empty;
+}
+
+public class AuthResponse
+{
+    [JsonPropertyName("token")]
+    public string Token { get; set; } = string.Empty;
+}
+
+public class TokenDetailsRequest
+{
+    [JsonPropertyName("token")]
+    public string Token { get; set; } = string.Empty;
+}
+
+public class TokenDetailsResponse
+{
+    [JsonPropertyName("account_ids")]
+    public List<string> AccountIds { get; set; } = new();
+    
+    [JsonPropertyName("readonly")]
+    public bool Readonly { get; set; }
+    
+    [JsonPropertyName("exchanges")]
+    public List<string> Exchanges { get; set; } = new();
+}
+
 // === Shared types ===
 
 public class DecimalValue

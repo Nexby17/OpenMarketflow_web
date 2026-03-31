@@ -8,21 +8,26 @@ namespace HedgeFund.Brokers.Finam;
 /// <summary>
 /// HTTP-клиент для Finam Trade API v1 (новый API).
 /// Base URL: https://api.finam.ru
-/// Auth: Authorization: Bearer {token}
-/// Docs: https://tradeapi.finam.ru/docs/rest/
-/// Proto: https://github.com/FinamWeb/finam-trade-api
+/// Auth: двухэтапная — access_token → JWT (POST /v1/sessions)
+/// Все запросы с Authorization: Bearer {jwt}
+/// JWT живёт 15 минут, обновляется автоматически за минуту до истечения.
 /// </summary>
 public class FinamApiClient : IDisposable
 {
     private readonly HttpClient _http;
     private readonly JsonSerializerOptions _jsonOptions;
+    private readonly string _accessToken;
+    private string? _jwt;
+    private DateTime _jwtExpiresAt = DateTime.MinValue;
+    private readonly SemaphoreSlim _authLock = new(1, 1);
 
     public const string BaseUrl = "https://api.finam.ru";
+    private static readonly TimeSpan JwtLifetime = TimeSpan.FromMinutes(14); // обновляем за минуту до истечения (15 мин)
 
-    public FinamApiClient(string token)
+    public FinamApiClient(string accessToken)
     {
+        _accessToken = accessToken;
         _http = new HttpClient { BaseAddress = new Uri(BaseUrl) };
-        _http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
         _http.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
         _http.Timeout = TimeSpan.FromSeconds(30);
 
@@ -31,6 +36,63 @@ public class FinamApiClient : IDisposable
             PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower,
             DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
         };
+    }
+
+    // === Auth ===
+
+    /// <summary>
+    /// Получить JWT через POST /v1/sessions с access_token.
+    /// Кеширует JWT на 14 минут.
+    /// </summary>
+    public async Task<string> AuthenticateAsync()
+    {
+        await _authLock.WaitAsync();
+        try
+        {
+            var request = new AuthRequest { Secret = _accessToken };
+            var json = JsonSerializer.Serialize(request, _jsonOptions);
+            var content = new StringContent(json, System.Text.Encoding.UTF8, "application/json");
+
+            var response = await _http.PostAsync("/v1/sessions", content);
+            var responseContent = await response.Content.ReadAsStringAsync();
+
+            if (!response.IsSuccessStatusCode)
+                throw new FinamApiException(response.StatusCode, responseContent);
+
+            var authResponse = JsonSerializer.Deserialize<AuthResponse>(responseContent, _jsonOptions);
+            _jwt = authResponse?.Token ?? throw new FinamApiException(
+                System.Net.HttpStatusCode.InternalServerError, "Empty JWT in auth response");
+            _jwtExpiresAt = DateTime.UtcNow.Add(JwtLifetime);
+
+            _http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", _jwt);
+            return _jwt;
+        }
+        finally
+        {
+            _authLock.Release();
+        }
+    }
+
+    /// <summary>
+    /// Получить детали токена (account_ids, readonly, exchanges).
+    /// </summary>
+    public async Task<TokenDetailsResponse?> GetTokenDetailsAsync()
+    {
+        await EnsureAuthenticatedAsync();
+
+        var request = new TokenDetailsRequest { Token = _jwt! };
+        return await PostAsync<TokenDetailsResponse>("/v1/sessions/details", request);
+    }
+
+    /// <summary>
+    /// Автоматически обновить JWT если истёк или скоро истечёт.
+    /// </summary>
+    private async Task EnsureAuthenticatedAsync()
+    {
+        if (_jwt == null || DateTime.UtcNow >= _jwtExpiresAt)
+        {
+            await AuthenticateAsync();
+        }
     }
 
     // === Assets Service ===
@@ -93,6 +155,7 @@ public class FinamApiClient : IDisposable
 
     private async Task<T?> GetAsync<T>(string path) where T : class
     {
+        await EnsureAuthenticatedAsync();
         try
         {
             var response = await _http.GetAsync(path);
@@ -114,6 +177,7 @@ public class FinamApiClient : IDisposable
 
     private async Task<T?> PostAsync<T>(string path, object body) where T : class
     {
+        await EnsureAuthenticatedAsync();
         try
         {
             var json = JsonSerializer.Serialize(body, _jsonOptions);

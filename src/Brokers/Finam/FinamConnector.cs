@@ -23,7 +23,8 @@ public class FinamConnector : IBrokerConnector
     public event Action<bool>? OnConnectionChanged;
 
     /// <summary>
-    /// Подключение. login = JWT token, password = account_id (опционально).
+    /// Подключение. token = access_token (длинный, ~2683 символов).
+    /// Внутри: access_token → JWT → получение account_ids через TokenDetails.
     /// </summary>
     public async Task<bool> ConnectAsync(string token, string accountId = "")
     {
@@ -31,7 +32,10 @@ public class FinamConnector : IBrokerConnector
         {
             _client = new FinamApiClient(token);
 
-            // Проверяем подключение
+            // Шаг 1: Получаем JWT из access_token
+            await _client.AuthenticateAsync();
+
+            // Шаг 2: Проверяем подключение
             var clock = await _client.GetClockAsync();
             if (clock == null)
             {
@@ -39,18 +43,26 @@ public class FinamConnector : IBrokerConnector
                 return false;
             }
 
-            // Получаем счета
+            // Шаг 3: Получаем account_ids через TokenDetails
             if (string.IsNullOrEmpty(accountId))
             {
-                var accounts = await _client.GetAccountsAsync();
-                if (accounts?.Accounts.Count > 0)
+                var details = await _client.GetTokenDetailsAsync();
+                if (details?.AccountIds.Count > 0)
                 {
-                    _accountId = accounts.Accounts[0].AccountId;
+                    _accountId = details.AccountIds[0];
                 }
                 else
                 {
-                    OnError?.Invoke("Нет доступных торговых счетов. Используйте торговый токен.");
-                    // Продолжаем работу — для просмотровых токенов
+                    // Fallback: пробуем через /v1/accounts
+                    var accounts = await _client.GetAccountsAsync();
+                    if (accounts?.Accounts.Count > 0)
+                    {
+                        _accountId = accounts.Accounts[0].AccountId;
+                    }
+                    else
+                    {
+                        OnError?.Invoke("Нет доступных торговых счетов.");
+                    }
                 }
             }
             else
