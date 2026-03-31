@@ -20,6 +20,8 @@ public class MainViewModel : BaseViewModel
         // Дочерние VM
         MonitoringVM = new MonitoringViewModel();
         TradesVM = new TradesViewModel();
+        BacktestVM = new BacktestViewModel();
+        BacktestVM.ApplyToTradingRequested += OnApplyBacktestToTrading;
 
         // Команды
         StartCommand = new RelayCommand(Start, () => !IsRunning);
@@ -58,6 +60,7 @@ public class MainViewModel : BaseViewModel
 
     public MonitoringViewModel MonitoringVM { get; }
     public TradesViewModel TradesVM { get; }
+    public BacktestViewModel BacktestVM { get; }
 
     // === Свойства привязки ===
 
@@ -375,5 +378,37 @@ public class MainViewModel : BaseViewModel
     {
         var entry = $"[{DateTime.Now:HH:mm:ss}] {message}";
         LogEntries.Add(entry);
+    }
+
+    private void OnApplyBacktestToTrading(BacktestViewModel bt)
+    {
+        // Устанавливаем инструмент из бэктеста
+        if (!string.IsNullOrEmpty(bt.SelectedTicker))
+        {
+            if (!Instruments.Contains(bt.SelectedTicker))
+                Instruments.Add(bt.SelectedTicker);
+            SelectedInstrument = bt.SelectedTicker;
+        }
+
+        // Находим стратегию
+        var strategyMapping = new Dictionary<string, string>
+        {
+            ["Momentum Breakout"] = "Scalping (EMA Cross + RSI)",
+            ["Scalping (EMA Cross + RSI)"] = "Scalping (EMA Cross + RSI)",
+            ["Breakout (BB + ATR)"] = "Breakout (BB + ATR)"
+        };
+
+        if (strategyMapping.TryGetValue(bt.SelectedStrategyName, out var uiStrategy))
+            SelectedStrategy = uiStrategy;
+
+        // Устанавливаем стоп-лосс
+        if (bt.StopLoss > 0)
+        {
+            StopLossEnabled = true;
+            StopLossValue = bt.StopLoss;
+        }
+
+        AddLog($"Применены параметры из бэктеста: {bt.SelectedTicker}, " +
+               $"SL={bt.StopLoss}, TP={bt.TakeProfit}, Комиссия={bt.Commission}");
     }
 }
