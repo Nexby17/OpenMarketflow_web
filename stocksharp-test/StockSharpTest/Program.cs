@@ -20,11 +20,42 @@ class Program
         Console.WriteLine("=== FinamMessageAdapter API ===");
         var adapterType = typeof(FinamMessageAdapter);
         
-        Console.WriteLine("\n📋 Properties:");
+        Console.WriteLine("\n📋 Own Properties:");
         foreach (var prop in adapterType.GetProperties(BindingFlags.Public | BindingFlags.Instance)
             .OrderBy(p => p.Name))
         {
             Console.WriteLine($"  {prop.PropertyType.Name} {prop.Name} {{ {(prop.CanRead ? "get; " : "")}{(prop.CanWrite ? "set; " : "")}}}");
+        }
+        
+        // Все свойства включая наследуемые, ищем Token/Key/Secret
+        Console.WriteLine("\n📋 ALL properties (incl. inherited) with Token/Key/Secret/Password:");
+        foreach (var prop in adapterType.GetProperties(BindingFlags.Public | BindingFlags.Instance | BindingFlags.FlattenHierarchy)
+            .Where(p => p.Name.Contains("Token", StringComparison.OrdinalIgnoreCase) 
+                || p.Name.Contains("Key", StringComparison.OrdinalIgnoreCase)
+                || p.Name.Contains("Secret", StringComparison.OrdinalIgnoreCase)
+                || p.Name.Contains("Password", StringComparison.OrdinalIgnoreCase)
+                || p.Name.Contains("Login", StringComparison.OrdinalIgnoreCase)
+                || p.Name.Contains("Auth", StringComparison.OrdinalIgnoreCase)
+                || p.Name.Contains("Credential", StringComparison.OrdinalIgnoreCase))
+            .OrderBy(p => p.Name))
+        {
+            Console.WriteLine($"  {prop.DeclaringType?.Name}.{prop.Name} : {prop.PropertyType.Name} {(prop.CanWrite ? "[set]" : "[readonly]")}");
+        }
+        
+        Console.WriteLine("\n📋 ALL writable properties (inherited):");
+        foreach (var prop in adapterType.GetProperties(BindingFlags.Public | BindingFlags.Instance | BindingFlags.FlattenHierarchy)
+            .Where(p => p.CanWrite)
+            .OrderBy(p => p.Name))
+        {
+            Console.WriteLine($"  {prop.DeclaringType?.Name}.{prop.Name} : {prop.PropertyType.Name}");
+        }
+        
+        Console.WriteLine($"\n📋 Base type chain:");
+        var t = adapterType;
+        while (t != null)
+        {
+            Console.WriteLine($"  → {t.FullName}");
+            t = t.BaseType;
         }
 
         Console.WriteLine("\n📋 Constructors:");
