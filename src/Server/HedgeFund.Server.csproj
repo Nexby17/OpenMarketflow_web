@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>HedgeFund.Server</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Core\HedgeFund.Core.csproj" />
+    <ProjectReference Include="..\Brokers\HedgeFund.Brokers.csproj" />
+  </ItemGroup>
+
+</Project>

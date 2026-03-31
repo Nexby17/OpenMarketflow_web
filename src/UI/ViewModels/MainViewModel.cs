@@ -6,6 +6,7 @@ using HedgeFund.Core;
 using HedgeFund.Core.Averaging;
 using HedgeFund.Core.Models;
 using HedgeFund.Core.Strategies;
+using HedgeFund.UI.Services;
 
 namespace HedgeFund.UI.ViewModels;
 
@@ -410,5 +411,108 @@ public class MainViewModel : BaseViewModel
 
         AddLog($"Применены параметры из бэктеста: {bt.SelectedTicker}, " +
                $"SL={bt.StopLoss}, TP={bt.TakeProfit}, Комиссия={bt.Commission}");
+    }
+
+    // === СЕРВЕРНОЕ ПОДКЛЮЧЕНИЕ (SignalR) ===
+
+    private TradingHubClient? _hubClient;
+
+    private string _serverUrl = "http://localhost:5050/trading";
+    public string ServerUrl
+    {
+        get => _serverUrl;
+        set => SetField(ref _serverUrl, value);
+    }
+
+    private bool _isServerConnected;
+    public bool IsServerConnected
+    {
+        get => _isServerConnected;
+        set
+        {
+            if (SetField(ref _isServerConnected, value))
+            {
+                OnPropertyChanged(nameof(ServerConnectionColor));
+                OnPropertyChanged(nameof(ConnectServerButtonText));
+            }
+        }
+    }
+
+    public string ServerConnectionColor => IsServerConnected ? "#26A69A" : "#EF5350";
+    public string ConnectServerButtonText => IsServerConnected ? "Отключить" : "Подключить";
+
+    public ICommand ConnectServerCommand => new RelayCommand(async () => await ToggleServerConnectionAsync());
+    public ICommand EmergencyStopCommand => new RelayCommand(async () => await EmergencyStopAsync());
+    public ICommand PauseTradingCommand => new RelayCommand(async () => await PauseTradingAsync());
+
+    private async Task ToggleServerConnectionAsync()
+    {
+        if (IsServerConnected)
+        {
+            if (_hubClient != null)
+            {
+                await _hubClient.DisconnectAsync();
+                _hubClient = null;
+            }
+            IsServerConnected = false;
+            AddLog("🔌 Отключён от сервера");
+        }
+        else
+        {
+            try
+            {
+                _hubClient = new TradingHubClient();
+                _hubClient.OnLogMessage += (ts, level, msg) =>
+                    System.Windows.Application.Current.Dispatcher.Invoke(() => AddLog($"[{level}] {msg}"));
+                _hubClient.OnStatusUpdate += status =>
+                    System.Windows.Application.Current.Dispatcher.Invoke(() =>
+                    {
+                        Balance = status.Balance;
+                        MonitoringVM.Balance = status.Balance;
+                        MonitoringVM.Equity = status.Equity;
+                        MonitoringVM.PnLToday = status.TodayPnL;
+                        MonitoringVM.PnLTotal = status.TotalPnL;
+                        MonitoringVM.OpenPositionsCount = status.OpenPositions;
+                        MonitoringVM.TodayTradesCount = status.TodayTrades;
+                    });
+                _hubClient.OnError += msg =>
+                    System.Windows.Application.Current.Dispatcher.Invoke(() => AddLog($"❌ {msg}"));
+
+                await _hubClient.ConnectAsync(ServerUrl);
+                IsServerConnected = true;
+                AddLog($"✅ Подключён к серверу: {ServerUrl}");
+                await _hubClient.RequestStatusAsync();
+            }
+            catch (Exception ex)
+            {
+                AddLog($"❌ Ошибка подключения: {ex.Message}");
+                _hubClient = null;
+            }
+        }
+    }
+
+    private async Task EmergencyStopAsync()
+    {
+        AddLog("🔴 ЭКСТРЕННАЯ ОСТАНОВКА!");
+        if (_hubClient != null && IsServerConnected)
+        {
+            try { await _hubClient.EmergencyStopAsync(); }
+            catch (Exception ex) { AddLog($"❌ Ошибка: {ex.Message}"); }
+        }
+        // Также остановить локально
+        Stop();
+    }
+
+    private async Task PauseTradingAsync()
+    {
+        if (_hubClient != null && IsServerConnected)
+        {
+            try
+            {
+                await _hubClient.PauseTradingAsync();
+                AddLog("⏸️ Торговля приостановлена");
+            }
+            catch (Exception ex) { AddLog($"❌ Ошибка: {ex.Message}"); }
+        }
     }
 }
