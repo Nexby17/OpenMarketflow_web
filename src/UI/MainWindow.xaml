@@ -4,8 +4,8 @@
         xmlns:vm="clr-namespace:HedgeFund.UI.ViewModels"
         xmlns:conv="clr-namespace:HedgeFund.UI.Converters"
         Title="OpenMarketflow" 
-        Width="900" Height="700" 
-        MinWidth="750" MinHeight="550"
+        Width="1050" Height="780" 
+        MinWidth="850" MinHeight="600"
         WindowStartupLocation="CenterScreen">
 
     <Window.DataContext>
@@ -19,148 +19,376 @@
         <conv:InverseBoolConverter x:Key="InverseBool"/>
     </Window.Resources>
 
-    <Grid Margin="16">
+    <Grid>
+        <!-- Заголовок -->
         <Grid.RowDefinitions>
-            <RowDefinition Height="Auto"/>   <!-- Заголовок + статус -->
-            <RowDefinition Height="Auto"/>   <!-- Выбор брокера/инструмента -->
-            <RowDefinition Height="Auto"/>   <!-- Кнопки старт/стоп -->
-            <RowDefinition Height="Auto"/>   <!-- Усреднение -->
-            <RowDefinition Height="*"/>      <!-- Позиции -->
-            <RowDefinition Height="*"/>      <!-- Лог -->
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
         </Grid.RowDefinitions>
 
-        <!-- ROW 0: Заголовок -->
-        <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="0,0,0,12">
+        <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="16,12,16,4">
             <TextBlock Text="⚡ OpenMarketflow" FontSize="20" FontWeight="Bold" 
                        Foreground="{StaticResource AccentBrush}" VerticalAlignment="Center"/>
             <TextBlock Text="{Binding StatusText}" FontSize="13" VerticalAlignment="Center" Margin="20,0,0,0"
                        Foreground="{Binding StatusColor, Converter={StaticResource StringBrush}}"/>
         </StackPanel>
 
-        <!-- ROW 1: Выбор брокера / инструмента / стратегии -->
-        <Grid Grid.Row="1" Margin="0,0,0,10">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="*"/>
-                <ColumnDefinition Width="*"/>
-                <ColumnDefinition Width="*"/>
-            </Grid.ColumnDefinitions>
+        <!-- TabControl -->
+        <TabControl Grid.Row="1" Margin="12,4,12,12">
 
-            <StackPanel Grid.Column="0" Margin="0,0,8,0">
-                <Label Content="Брокер"/>
-                <ComboBox ItemsSource="{Binding Brokers}" SelectedItem="{Binding SelectedBroker}" IsEnabled="{Binding IsRunning, Converter={StaticResource InverseBool}}"/>
-            </StackPanel>
+            <!-- ==================== ВКЛАДКА: ТОРГОВЛЯ ==================== -->
+            <TabItem Header="📊 Торговля">
+                <Grid Margin="12">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>   <!-- Токен -->
+                        <RowDefinition Height="Auto"/>   <!-- Выбор брокера/инструмента -->
+                        <RowDefinition Height="Auto"/>   <!-- Кнопки старт/стоп -->
+                        <RowDefinition Height="Auto"/>   <!-- Усреднение -->
+                        <RowDefinition Height="*"/>      <!-- Позиции -->
+                        <RowDefinition Height="*"/>      <!-- Лог -->
+                    </Grid.RowDefinitions>
 
-            <StackPanel Grid.Column="1" Margin="4,0,4,0">
-                <Label Content="Инструмент"/>
-                <ComboBox ItemsSource="{Binding Instruments}" SelectedItem="{Binding SelectedInstrument}"/>
-            </StackPanel>
+                    <!-- ROW 0: Токен API -->
+                    <Grid Grid.Row="0" Margin="0,0,0,10">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <Label Grid.Column="0" Content="Токен API:" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                        <PasswordBox Grid.Column="1" x:Name="TokenBox" VerticalAlignment="Center"/>
+                        <Button Grid.Column="2" Content="📋 Из ENV" Style="{StaticResource SecondaryButton}" 
+                                Command="{Binding LoadTokenCommand}" Margin="8,0,0,0" VerticalAlignment="Center"/>
+                    </Grid>
 
-            <StackPanel Grid.Column="2" Margin="8,0,0,0">
-                <Label Content="Стратегия"/>
-                <ComboBox ItemsSource="{Binding Strategies}" SelectedItem="{Binding SelectedStrategy}"/>
-            </StackPanel>
-        </Grid>
+                    <!-- ROW 1: Выбор брокера / инструмента / стратегии -->
+                    <Grid Grid.Row="1" Margin="0,0,0,10">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
 
-        <!-- ROW 2: Кнопки управления -->
-        <StackPanel Grid.Row="2" Orientation="Horizontal" Margin="0,0,0,8">
-            <Button Content="▶  СТАРТ" Style="{StaticResource PrimaryButton}" 
-                    Command="{Binding StartCommand}" Width="120"/>
-            <Button Content="⏹  СТОП" Style="{StaticResource DangerButton}" 
-                    Command="{Binding StopCommand}" Width="120" Margin="8,0,0,0"/>
-            <TextBlock VerticalAlignment="Center" Margin="24,0,0,0" FontSize="13">
-                <Run Text="Баланс: " Foreground="{StaticResource TextSecondaryBrush}"/>
-                <Run Text="{Binding Balance, StringFormat=N0}" Foreground="{StaticResource TextBrush}" FontWeight="SemiBold"/>
-                <Run Text=" ₽" Foreground="{StaticResource TextSecondaryBrush}"/>
-            </TextBlock>
-        </StackPanel>
-
-        <!-- ROW 3: Управление усреднением -->
-        <GroupBox Grid.Row="3" Header="Управление усреднением">
-            <Grid>
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="Auto"/>
-                    <ColumnDefinition Width="Auto"/>
-                    <ColumnDefinition Width="Auto"/>
-                    <ColumnDefinition Width="*"/>
-                </Grid.ColumnDefinitions>
-
-                <!-- Режим: Фикс / Мартингейл -->
-                <StackPanel Grid.Column="0" Margin="0,0,20,0">
-                    <Label Content="Режим"/>
-                    <ToggleButton Style="{StaticResource ToggleBtn}" 
-                                  IsChecked="{Binding IsMartingale}"
-                                  Content="{Binding AveragingModeText}" 
-                                  Width="130"/>
-                </StackPanel>
-
-                <!-- Базовый лот -->
-                <StackPanel Grid.Column="1" Margin="0,0,20,0">
-                    <Label Content="Базовый лот"/>
-                    <TextBox Text="{Binding BaseLotSize, UpdateSourceTrigger=PropertyChanged}" 
-                             Width="60" TextAlignment="Center"/>
-                </StackPanel>
-
-                <!-- Лимит усреднений -->
-                <StackPanel Grid.Column="2" Margin="0,0,20,0">
-                    <Label Content="Макс. усреднений (0=∞)"/>
-                    <TextBox Text="{Binding MaxAveraging, UpdateSourceTrigger=PropertyChanged}" 
-                             Width="60" TextAlignment="Center"/>
-                </StackPanel>
-
-                <!-- Стоп-лосс -->
-                <StackPanel Grid.Column="3" Orientation="Horizontal" VerticalAlignment="Bottom">
-                    <ToggleButton Style="{StaticResource ToggleBtn}" 
-                                  IsChecked="{Binding StopLossEnabled}" 
-                                  Margin="0,0,8,0">
-                        <StackPanel Orientation="Horizontal">
-                            <TextBlock Text="Стоп-лосс: "/>
-                            <TextBlock Text="{Binding StopLossEnabled, Converter={StaticResource BoolOnOff}}"/>
+                        <StackPanel Grid.Column="0" Margin="0,0,8,0">
+                            <Label Content="Брокер"/>
+                            <ComboBox ItemsSource="{Binding Brokers}" SelectedItem="{Binding SelectedBroker}" IsEnabled="{Binding IsRunning, Converter={StaticResource InverseBool}}"/>
                         </StackPanel>
-                    </ToggleButton>
-                    <TextBox Text="{Binding StopLossValue, UpdateSourceTrigger=PropertyChanged}" 
-                             Width="70" TextAlignment="Center" Margin="0,0,4,0"
-                             IsEnabled="{Binding StopLossEnabled}"/>
-                    <ComboBox ItemsSource="{Binding StopLossModes}" 
-                              SelectedItem="{Binding SelectedStopLossMode}" 
-                              Width="80"
-                              IsEnabled="{Binding StopLossEnabled}"/>
-                </StackPanel>
-            </Grid>
-        </GroupBox>
 
-        <!-- ROW 4: Таблица позиций -->
-        <GroupBox Grid.Row="4" Header="Открытые позиции" Margin="0,8,0,0">
-            <DataGrid ItemsSource="{Binding Positions}" VerticalScrollBarVisibility="Auto">
-                <DataGrid.Columns>
-                    <DataGridTextColumn Header="Тикер" Binding="{Binding Ticker}" Width="80"/>
-                    <DataGridTextColumn Header="Направление" Binding="{Binding Direction}" Width="90"/>
-                    <DataGridTextColumn Header="Средняя цена" Binding="{Binding AveragePrice, StringFormat=F2}" Width="100"/>
-                    <DataGridTextColumn Header="Объём" Binding="{Binding TotalVolume}" Width="65"/>
-                    <DataGridTextColumn Header="PnL" Binding="{Binding PnL, StringFormat=F2}" Width="90">
-                        <DataGridTextColumn.ElementStyle>
-                            <Style TargetType="TextBlock">
-                                <Setter Property="Foreground" Value="{Binding PnLColor, Converter={StaticResource StringBrush}}"/>
-                                <Setter Property="FontWeight" Value="SemiBold"/>
-                            </Style>
-                        </DataGridTextColumn.ElementStyle>
-                    </DataGridTextColumn>
-                    <DataGridTextColumn Header="Усреднений" Binding="{Binding AveragingCount}" Width="85"/>
-                </DataGrid.Columns>
-            </DataGrid>
-        </GroupBox>
+                        <StackPanel Grid.Column="1" Margin="4,0,4,0">
+                            <Label Content="Инструмент"/>
+                            <ComboBox ItemsSource="{Binding Instruments}" SelectedItem="{Binding SelectedInstrument}"/>
+                        </StackPanel>
 
-        <!-- ROW 5: Лог событий -->
-        <GroupBox Grid.Row="5" Header="Лог событий" Margin="0,8,0,0">
-            <ListBox Style="{StaticResource LogList}" 
-                     ItemsSource="{Binding LogEntries}"
-                     x:Name="LogListBox"
-                     VirtualizingPanel.ScrollUnit="Pixel">
-                <ListBox.ItemTemplate>
-                    <DataTemplate>
-                        <TextBlock Text="{Binding}" TextWrapping="NoWrap"/>
-                    </DataTemplate>
-                </ListBox.ItemTemplate>
-            </ListBox>
-        </GroupBox>
+                        <StackPanel Grid.Column="2" Margin="8,0,0,0">
+                            <Label Content="Стратегия"/>
+                            <ComboBox ItemsSource="{Binding Strategies}" SelectedItem="{Binding SelectedStrategy}"/>
+                        </StackPanel>
+                    </Grid>
+
+                    <!-- ROW 2: Кнопки управления -->
+                    <StackPanel Grid.Row="2" Orientation="Horizontal" Margin="0,0,0,8">
+                        <Button Content="▶  СТАРТ" Style="{StaticResource PrimaryButton}" 
+                                Command="{Binding StartCommand}" Width="120"/>
+                        <Button Content="⏹  СТОП" Style="{StaticResource DangerButton}" 
+                                Command="{Binding StopCommand}" Width="120" Margin="8,0,0,0"/>
+                        <TextBlock VerticalAlignment="Center" Margin="24,0,0,0" FontSize="13">
+                            <Run Text="Баланс: " Foreground="{StaticResource TextSecondaryBrush}"/>
+                            <Run Text="{Binding Balance, StringFormat=N0}" Foreground="{StaticResource TextBrush}" FontWeight="SemiBold"/>
+                            <Run Text=" ₽" Foreground="{StaticResource TextSecondaryBrush}"/>
+                        </TextBlock>
+                    </StackPanel>
+
+                    <!-- ROW 3: Управление усреднением -->
+                    <GroupBox Grid.Row="3" Header="Управление усреднением">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+
+                            <StackPanel Grid.Column="0" Margin="0,0,20,0">
+                                <Label Content="Режим"/>
+                                <ToggleButton Style="{StaticResource ToggleBtn}" 
+                                              IsChecked="{Binding IsMartingale}"
+                                              Content="{Binding AveragingModeText}" 
+                                              Width="130"/>
+                            </StackPanel>
+
+                            <StackPanel Grid.Column="1" Margin="0,0,20,0">
+                                <Label Content="Базовый лот"/>
+                                <TextBox Text="{Binding BaseLotSize, UpdateSourceTrigger=PropertyChanged}" 
+                                         Width="60" TextAlignment="Center"/>
+                            </StackPanel>
+
+                            <StackPanel Grid.Column="2" Margin="0,0,20,0">
+                                <Label Content="Макс. усреднений (0=∞)"/>
+                                <TextBox Text="{Binding MaxAveraging, UpdateSourceTrigger=PropertyChanged}" 
+                                         Width="60" TextAlignment="Center"/>
+                            </StackPanel>
+
+                            <StackPanel Grid.Column="3" Orientation="Horizontal" VerticalAlignment="Bottom">
+                                <ToggleButton Style="{StaticResource ToggleBtn}" 
+                                              IsChecked="{Binding StopLossEnabled}" 
+                                              Margin="0,0,8,0">
+                                    <StackPanel Orientation="Horizontal">
+                                        <TextBlock Text="Стоп-лосс: "/>
+                                        <TextBlock Text="{Binding StopLossEnabled, Converter={StaticResource BoolOnOff}}"/>
+                                    </StackPanel>
+                                </ToggleButton>
+                                <TextBox Text="{Binding StopLossValue, UpdateSourceTrigger=PropertyChanged}" 
+                                         Width="70" TextAlignment="Center" Margin="0,0,4,0"
+                                         IsEnabled="{Binding StopLossEnabled}"/>
+                                <ComboBox ItemsSource="{Binding StopLossModes}" 
+                                          SelectedItem="{Binding SelectedStopLossMode}" 
+                                          Width="80"
+                                          IsEnabled="{Binding StopLossEnabled}"/>
+                            </StackPanel>
+                        </Grid>
+                    </GroupBox>
+
+                    <!-- ROW 4: Таблица позиций -->
+                    <GroupBox Grid.Row="4" Header="Открытые позиции" Margin="0,8,0,0">
+                        <DataGrid ItemsSource="{Binding Positions}" VerticalScrollBarVisibility="Auto">
+                            <DataGrid.Columns>
+                                <DataGridTextColumn Header="Тикер" Binding="{Binding Ticker}" Width="80"/>
+                                <DataGridTextColumn Header="Направление" Binding="{Binding Direction}" Width="90"/>
+                                <DataGridTextColumn Header="Средняя цена" Binding="{Binding AveragePrice, StringFormat=F2}" Width="100"/>
+                                <DataGridTextColumn Header="Объём" Binding="{Binding TotalVolume}" Width="65"/>
+                                <DataGridTextColumn Header="PnL" Binding="{Binding PnL, StringFormat=F2}" Width="90">
+                                    <DataGridTextColumn.ElementStyle>
+                                        <Style TargetType="TextBlock">
+                                            <Setter Property="Foreground" Value="{Binding PnLColor, Converter={StaticResource StringBrush}}"/>
+                                            <Setter Property="FontWeight" Value="SemiBold"/>
+                                        </Style>
+                                    </DataGridTextColumn.ElementStyle>
+                                </DataGridTextColumn>
+                                <DataGridTextColumn Header="Усреднений" Binding="{Binding AveragingCount}" Width="85"/>
+                            </DataGrid.Columns>
+                        </DataGrid>
+                    </GroupBox>
+
+                    <!-- ROW 5: Лог событий -->
+                    <GroupBox Grid.Row="5" Header="Лог событий" Margin="0,8,0,0">
+                        <ListBox Style="{StaticResource LogList}" 
+                                 ItemsSource="{Binding LogEntries}"
+                                 x:Name="LogListBox"
+                                 VirtualizingPanel.ScrollUnit="Pixel">
+                            <ListBox.ItemTemplate>
+                                <DataTemplate>
+                                    <TextBlock Text="{Binding}" TextWrapping="NoWrap"/>
+                                </DataTemplate>
+                            </ListBox.ItemTemplate>
+                        </ListBox>
+                    </GroupBox>
+                </Grid>
+            </TabItem>
+
+            <!-- ==================== ВКЛАДКА: МОНИТОРИНГ ==================== -->
+            <TabItem Header="📈 Мониторинг" DataContext="{Binding MonitoringVM}">
+                <Grid Margin="12">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>   <!-- Карточки метрик -->
+                        <RowDefinition Height="Auto"/>   <!-- Equity curve -->
+                        <RowDefinition Height="*"/>      <!-- Позиции -->
+                    </Grid.RowDefinitions>
+
+                    <!-- Блок статистики: карточки -->
+                    <Grid Grid.Row="0" Margin="0,0,0,8">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                        </Grid.RowDefinitions>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+
+                        <!-- Ряд 1 -->
+                        <Border Grid.Row="0" Grid.Column="0" Style="{StaticResource MetricCard}">
+                            <StackPanel>
+                                <TextBlock Text="Баланс" FontSize="11" Foreground="{StaticResource TextSecondaryBrush}"/>
+                                <TextBlock Text="{Binding Balance, StringFormat=N0}" FontSize="20" FontWeight="Bold" Foreground="{StaticResource TextBrush}"/>
+                            </StackPanel>
+                        </Border>
+                        <Border Grid.Row="0" Grid.Column="1" Style="{StaticResource MetricCard}">
+                            <StackPanel>
+                                <TextBlock Text="Equity" FontSize="11" Foreground="{StaticResource TextSecondaryBrush}"/>
+                                <TextBlock Text="{Binding Equity, StringFormat=N0}" FontSize="20" FontWeight="Bold" Foreground="{StaticResource AccentBrush}"/>
+                            </StackPanel>
+                        </Border>
+                        <Border Grid.Row="0" Grid.Column="2" Style="{StaticResource MetricCard}">
+                            <StackPanel>
+                                <TextBlock Text="PnL сегодня" FontSize="11" Foreground="{StaticResource TextSecondaryBrush}"/>
+                                <TextBlock Text="{Binding PnLToday, StringFormat=+#,0;-#,0;0}" FontSize="20" FontWeight="Bold" 
+                                           Foreground="{Binding PnLTodayColor, Converter={StaticResource StringBrush}}"/>
+                            </StackPanel>
+                        </Border>
+                        <Border Grid.Row="0" Grid.Column="3" Style="{StaticResource MetricCard}">
+                            <StackPanel>
+                                <TextBlock Text="PnL всего" FontSize="11" Foreground="{StaticResource TextSecondaryBrush}"/>
+                                <TextBlock Text="{Binding PnLTotal, StringFormat=+#,0;-#,0;0}" FontSize="20" FontWeight="Bold" 
+                                           Foreground="{Binding PnLTotalColor, Converter={StaticResource StringBrush}}"/>
+                            </StackPanel>
+                        </Border>
+                        <Border Grid.Row="0" Grid.Column="4" Style="{StaticResource MetricCard}">
+                            <StackPanel>
+                                <TextBlock Text="Win Rate" FontSize="11" Foreground="{StaticResource TextSecondaryBrush}"/>
+                                <TextBlock Text="{Binding WinRate, StringFormat=F1}" FontSize="20" FontWeight="Bold" Foreground="{StaticResource GreenBrush}"/>
+                                <TextBlock Text="%" FontSize="11" Foreground="{StaticResource TextSecondaryBrush}"/>
+                            </StackPanel>
+                        </Border>
+
+                        <!-- Ряд 2 -->
+                        <Border Grid.Row="1" Grid.Column="0" Style="{StaticResource MetricCard}">
+                            <StackPanel>
+                                <TextBlock Text="Profit Factor" FontSize="11" Foreground="{StaticResource TextSecondaryBrush}"/>
+                                <TextBlock Text="{Binding ProfitFactor, StringFormat=F2}" FontSize="20" FontWeight="Bold" Foreground="{StaticResource TextBrush}"/>
+                            </StackPanel>
+                        </Border>
+                        <Border Grid.Row="1" Grid.Column="1" Style="{StaticResource MetricCard}">
+                            <StackPanel>
+                                <TextBlock Text="Sharpe Ratio" FontSize="11" Foreground="{StaticResource TextSecondaryBrush}"/>
+                                <TextBlock Text="{Binding SharpeRatio, StringFormat=F2}" FontSize="20" FontWeight="Bold" Foreground="{StaticResource TextBrush}"/>
+                            </StackPanel>
+                        </Border>
+                        <Border Grid.Row="1" Grid.Column="2" Style="{StaticResource MetricCard}">
+                            <StackPanel>
+                                <TextBlock Text="Открыто позиций" FontSize="11" Foreground="{StaticResource TextSecondaryBrush}"/>
+                                <TextBlock Text="{Binding OpenPositionsCount}" FontSize="20" FontWeight="Bold" Foreground="{StaticResource YellowBrush}"/>
+                            </StackPanel>
+                        </Border>
+                        <Border Grid.Row="1" Grid.Column="3" Style="{StaticResource MetricCard}">
+                            <StackPanel>
+                                <TextBlock Text="Сделок сегодня" FontSize="11" Foreground="{StaticResource TextSecondaryBrush}"/>
+                                <TextBlock Text="{Binding TradesToday}" FontSize="20" FontWeight="Bold" Foreground="{StaticResource TextBrush}"/>
+                            </StackPanel>
+                        </Border>
+                    </Grid>
+
+                    <!-- Equity Curve -->
+                    <GroupBox Grid.Row="1" Header="Кривая доходности (Equity)" Margin="0,0,0,8">
+                        <Border Background="{StaticResource SurfaceBrush}" CornerRadius="4" Padding="8">
+                            <Canvas Height="220" ClipToBounds="True">
+                                <!-- Пунктирная линия начального баланса -->
+                                <Line X1="0" X2="780" 
+                                      Y1="{Binding InitialBalanceY}" Y2="{Binding InitialBalanceY}"
+                                      Stroke="{StaticResource TextSecondaryBrush}" 
+                                      StrokeDashArray="4 2" StrokeThickness="1" Opacity="0.5"/>
+                                <!-- Equity polyline -->
+                                <Polyline Points="{Binding EquityPointsGeometry}" 
+                                          Stroke="{StaticResource GreenBrush}" 
+                                          StrokeThickness="2" 
+                                          Fill="Transparent"/>
+                            </Canvas>
+                        </Border>
+                    </GroupBox>
+
+                    <!-- Текущие позиции -->
+                    <GroupBox Grid.Row="2" Header="Открытые позиции (реалтайм)">
+                        <DataGrid ItemsSource="{Binding OpenPositions}" VerticalScrollBarVisibility="Auto">
+                            <DataGrid.Columns>
+                                <DataGridTextColumn Header="Тикер" Binding="{Binding Ticker}" Width="90"/>
+                                <DataGridTextColumn Header="Направление" Binding="{Binding Direction}" Width="100"/>
+                                <DataGridTextColumn Header="Средняя цена" Binding="{Binding AveragePrice, StringFormat=F2}" Width="110"/>
+                                <DataGridTextColumn Header="Объём" Binding="{Binding TotalVolume}" Width="70"/>
+                                <DataGridTextColumn Header="PnL" Binding="{Binding PnL, StringFormat=F2}" Width="100">
+                                    <DataGridTextColumn.ElementStyle>
+                                        <Style TargetType="TextBlock">
+                                            <Setter Property="Foreground" Value="{Binding PnLColor, Converter={StaticResource StringBrush}}"/>
+                                            <Setter Property="FontWeight" Value="SemiBold"/>
+                                        </Style>
+                                    </DataGridTextColumn.ElementStyle>
+                                </DataGridTextColumn>
+                                <DataGridTextColumn Header="Усреднений" Binding="{Binding AveragingCount}" Width="90"/>
+                            </DataGrid.Columns>
+                        </DataGrid>
+                    </GroupBox>
+                </Grid>
+            </TabItem>
+
+            <!-- ==================== ВКЛАДКА: СДЕЛКИ ==================== -->
+            <TabItem Header="📋 Сделки" DataContext="{Binding TradesVM}">
+                <Grid Margin="12">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>   <!-- Фильтры -->
+                        <RowDefinition Height="*"/>      <!-- Таблица сделок -->
+                        <RowDefinition Height="Auto"/>   <!-- Суммарная статистика -->
+                    </Grid.RowDefinitions>
+
+                    <!-- Фильтры -->
+                    <Border Grid.Row="0" Background="{StaticResource SurfaceBrush}" CornerRadius="6" Padding="12" Margin="0,0,0,8">
+                        <StackPanel Orientation="Horizontal">
+                            <Label Content="С:" VerticalAlignment="Center" Margin="0,0,4,0"/>
+                            <DatePicker SelectedDate="{Binding FilterFrom}" Width="130" VerticalAlignment="Center"/>
+
+                            <Label Content="По:" VerticalAlignment="Center" Margin="16,0,4,0"/>
+                            <DatePicker SelectedDate="{Binding FilterTo}" Width="130" VerticalAlignment="Center"/>
+
+                            <Label Content="Тикер:" VerticalAlignment="Center" Margin="16,0,4,0"/>
+                            <TextBox Text="{Binding FilterTicker, UpdateSourceTrigger=PropertyChanged}" 
+                                     Width="100" VerticalAlignment="Center"/>
+
+                            <Button Content="🔄 Сброс" Style="{StaticResource SecondaryButton}" 
+                                    Command="{Binding ResetFilterCommand}" Margin="16,0,0,0" VerticalAlignment="Center"/>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Таблица сделок -->
+                    <DataGrid Grid.Row="1" ItemsSource="{Binding FilteredTrades}" VerticalScrollBarVisibility="Auto">
+                        <DataGrid.Columns>
+                            <DataGridTextColumn Header="Вход" Binding="{Binding EntryTime, StringFormat=dd.MM.yy HH:mm}" Width="120"/>
+                            <DataGridTextColumn Header="Выход" Binding="{Binding ExitTime, StringFormat=dd.MM.yy HH:mm}" Width="120"/>
+                            <DataGridTextColumn Header="Тикер" Binding="{Binding Ticker}" Width="75"/>
+                            <DataGridTextColumn Header="Направление" Binding="{Binding Direction}" Width="95"/>
+                            <DataGridTextColumn Header="Вход" Binding="{Binding EntryPrice, StringFormat=F2}" Width="85"/>
+                            <DataGridTextColumn Header="Выход" Binding="{Binding ExitPrice, StringFormat=F2}" Width="85"/>
+                            <DataGridTextColumn Header="Объём" Binding="{Binding Volume}" Width="60"/>
+                            <DataGridTextColumn Header="PnL" Binding="{Binding PnL, StringFormat=F2}" Width="90">
+                                <DataGridTextColumn.ElementStyle>
+                                    <Style TargetType="TextBlock">
+                                        <Setter Property="Foreground" Value="{Binding PnLColor, Converter={StaticResource StringBrush}}"/>
+                                        <Setter Property="FontWeight" Value="SemiBold"/>
+                                    </Style>
+                                </DataGridTextColumn.ElementStyle>
+                            </DataGridTextColumn>
+                            <DataGridTextColumn Header="Стратегия" Binding="{Binding Strategy}" Width="120"/>
+                            <DataGridTextColumn Header="Комментарий" Binding="{Binding Comment}" Width="*"/>
+                        </DataGrid.Columns>
+                    </DataGrid>
+
+                    <!-- Суммарная статистика -->
+                    <Border Grid.Row="2" Background="{StaticResource SurfaceBrush}" CornerRadius="6" Padding="16,10" Margin="0,8,0,0">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Foreground="{StaticResource TextSecondaryBrush}" VerticalAlignment="Center" FontSize="13">
+                                <Run Text="Всего сделок: "/>
+                            </TextBlock>
+                            <TextBlock Text="{Binding TotalTradesCount}" FontWeight="Bold" FontSize="14" 
+                                       Foreground="{StaticResource TextBrush}" Margin="0,0,24,0" VerticalAlignment="Center"/>
+
+                            <TextBlock Text="Total PnL: " Foreground="{StaticResource TextSecondaryBrush}" 
+                                       VerticalAlignment="Center" FontSize="13"/>
+                            <TextBlock Text="{Binding TotalPnL, StringFormat=F2}" FontWeight="Bold" FontSize="14" 
+                                       Foreground="{Binding TotalPnLColor, Converter={StaticResource StringBrush}}" 
+                                       Margin="0,0,4,0" VerticalAlignment="Center"/>
+                            <TextBlock Text=" ₽" Foreground="{StaticResource TextSecondaryBrush}" 
+                                       VerticalAlignment="Center" Margin="0,0,24,0"/>
+
+                            <TextBlock Text="Win Rate: " Foreground="{StaticResource TextSecondaryBrush}" 
+                                       VerticalAlignment="Center" FontSize="13"/>
+                            <TextBlock Text="{Binding WinRate, StringFormat=F1}" FontWeight="Bold" FontSize="14" 
+                                       Foreground="{StaticResource GreenBrush}" VerticalAlignment="Center"/>
+                            <TextBlock Text="%" Foreground="{StaticResource TextSecondaryBrush}" 
+                                       VerticalAlignment="Center"/>
+                        </StackPanel>
+                    </Border>
+                </Grid>
+            </TabItem>
+
+        </TabControl>
     </Grid>
 </Window>

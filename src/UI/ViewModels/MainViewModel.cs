@@ -1,6 +1,8 @@
 using System.Collections.ObjectModel;
 using System.Windows.Input;
 using System.Windows.Threading;
+using HedgeFund.Brokers;
+using HedgeFund.Brokers.Finam;
 using HedgeFund.Core;
 using HedgeFund.Core.Averaging;
 using HedgeFund.Core.Models;
@@ -11,22 +13,28 @@ namespace HedgeFund.UI.ViewModels;
 public class MainViewModel : BaseViewModel
 {
     private TradingEngine? _engine;
+    private IBrokerConnector? _connector;
     private readonly DispatcherTimer _uiTimer;
 
     public MainViewModel()
     {
+        // Дочерние VM
+        MonitoringVM = new MonitoringViewModel();
+        TradesVM = new TradesViewModel();
+
         // Команды
         StartCommand = new RelayCommand(Start, () => !IsRunning);
         StopCommand = new RelayCommand(Stop, () => IsRunning);
         ToggleMartingaleCommand = new RelayCommand(ToggleMartingale);
         ToggleStopLossCommand = new RelayCommand(ToggleStopLoss);
+        LoadTokenCommand = new RelayCommand(LoadTokenFromEnv);
 
         // Таймер обновления UI (200мс)
         _uiTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(200) };
         _uiTimer.Tick += (_, _) => RefreshUI();
 
         // Значения по умолчанию
-        Brokers = new ObservableCollection<string> { "Альфа-Инвестиции", "Финам (Transaq)" };
+        Brokers = new ObservableCollection<string> { "Альфа-Инвестиции", "Финам (Trade API)" };
         SelectedBroker = Brokers[0];
 
         Instruments = new ObservableCollection<string> { "SBER", "GAZP", "Si", "BR", "GOLD", "SPYF" };
@@ -37,7 +45,20 @@ public class MainViewModel : BaseViewModel
 
         StopLossModes = new ObservableCollection<string> { "Пункты", "%" };
         SelectedStopLossMode = StopLossModes[0];
+
+        // Попробовать загрузить токен из env
+        var envToken = Environment.GetEnvironmentVariable("FINAM_TOKEN");
+        if (!string.IsNullOrEmpty(envToken))
+        {
+            ApiToken = envToken;
+            AddLog("Токен загружен из переменной окружения FINAM_TOKEN.");
+        }
     }
+
+    // === Дочерние ViewModel ===
+
+    public MonitoringViewModel MonitoringVM { get; }
+    public TradesViewModel TradesVM { get; }
 
     // === Свойства привязки ===
 
@@ -58,6 +79,14 @@ public class MainViewModel : BaseViewModel
 
     public string StatusText => IsRunning ? "● РАБОТАЕТ" : "○ ОСТАНОВЛЕН";
     public string StatusColor => IsRunning ? "#22C55E" : "#EF4444";
+
+    // --- Токен API ---
+    private string _apiToken = string.Empty;
+    public string ApiToken
+    {
+        get => _apiToken;
+        set => SetField(ref _apiToken, value);
+    }
 
     // --- Выбор брокера/инструмента/стратегии ---
     public ObservableCollection<string> Brokers { get; }
@@ -174,10 +203,11 @@ public class MainViewModel : BaseViewModel
     public ICommand StopCommand { get; }
     public ICommand ToggleMartingaleCommand { get; }
     public ICommand ToggleStopLossCommand { get; }
+    public ICommand LoadTokenCommand { get; }
 
     // === Логика ===
 
-    private void Start()
+    private async void Start()
     {
         if (IsRunning) return;
 
@@ -193,16 +223,87 @@ public class MainViewModel : BaseViewModel
             UsePercentStopLoss = SelectedStopLossMode == "%"
         };
 
-        // TODO: создать реальный коннектор на основе SelectedBroker
-        // Пока используем заглушку
         AddLog("Робот запущен. Брокер: " + SelectedBroker + ", Инструмент: " + SelectedInstrument);
         AddLog("Стратегия: " + SelectedStrategy);
         AddLog($"Усреднение: {AveragingModeText}, лимит: {MaxAveragingText}");
         if (StopLossEnabled)
             AddLog($"Стоп-лосс: {StopLossValue} {SelectedStopLossMode}");
 
+        // Подключение к Финам если выбран
+        if (SelectedBroker == "Финам (Trade API)")
+        {
+            await ConnectFinamAsync();
+        }
+
         IsRunning = true;
         _uiTimer.Start();
+        MonitoringVM.StartRefresh();
+    }
+
+    private async Task ConnectFinamAsync()
+    {
+        if (string.IsNullOrWhiteSpace(ApiToken))
+        {
+            AddLog("⚠ Токен Финам не указан. Введите токен или установите FINAM_TOKEN.");
+            return;
+        }
+
+        try
+        {
+            AddLog("Подключение к Финам Trade API...");
+            var finam = new FinamConnector();
+
+            finam.OnTrade += OnTradeReceived;
+            finam.OnOrderUpdate += OnOrderReceived;
+            finam.OnError += msg => AddLog($"⚠ Финам: {msg}");
+            finam.OnConnectionChanged += connected =>
+            {
+                AddLog(connected ? "✓ Подключён к Финам" : "✗ Отключён от Финам");
+            };
+
+            var success = await finam.ConnectAsync(ApiToken);
+            if (success)
+            {
+                _connector = finam;
+                AddLog("✓ Финам: подключение успешно.");
+
+                // Получаем начальный баланс
+                var balance = await finam.GetBalanceAsync();
+                Balance = balance;
+                MonitoringVM.Balance = balance;
+                MonitoringVM.Equity = balance;
+                MonitoringVM.InitialBalance = balance;
+                MonitoringVM.AddEquityPoint(balance);
+            }
+            else
+            {
+                AddLog("✗ Не удалось подключиться к Финам.");
+            }
+        }
+        catch (Exception ex)
+        {
+            AddLog($"✗ Ошибка подключения Финам: {ex.Message}");
+        }
+    }
+
+    private void OnTradeReceived(Trade trade)
+    {
+        App.Current?.Dispatcher.Invoke(() =>
+        {
+            AddLog($"Сделка: {trade.Ticker} {trade.Direction} {trade.Volume}@{trade.Price:F2}");
+
+            // Обновляем equity curve
+            MonitoringVM.TradesToday++;
+            MonitoringVM.AddEquityPoint(MonitoringVM.Equity);
+        });
+    }
+
+    private void OnOrderReceived(Order order)
+    {
+        App.Current?.Dispatcher.Invoke(() =>
+        {
+            AddLog($"Ордер: {order.Ticker} {order.Direction} статус={order.Status}");
+        });
     }
 
     private void Stop()
@@ -210,8 +311,13 @@ public class MainViewModel : BaseViewModel
         if (!IsRunning) return;
 
         _engine?.Stop();
+        _connector?.DisconnectAsync();
+        _connector?.Dispose();
+        _connector = null;
+
         IsRunning = false;
         _uiTimer.Stop();
+        MonitoringVM.StopRefresh();
         AddLog("Робот остановлен.");
     }
 
@@ -225,6 +331,20 @@ public class MainViewModel : BaseViewModel
     {
         StopLossEnabled = !StopLossEnabled;
         AddLog($"Стоп-лосс: {(StopLossEnabled ? "ВКЛ" : "ВЫКЛ")}");
+    }
+
+    private void LoadTokenFromEnv()
+    {
+        var token = Environment.GetEnvironmentVariable("FINAM_TOKEN");
+        if (!string.IsNullOrEmpty(token))
+        {
+            ApiToken = token;
+            AddLog("Токен загружен из переменной окружения FINAM_TOKEN.");
+        }
+        else
+        {
+            AddLog("⚠ Переменная FINAM_TOKEN не установлена.");
+        }
     }
 
     private void UpdateStopLoss()
@@ -242,6 +362,14 @@ public class MainViewModel : BaseViewModel
             while (LogEntries.Count < _engine.EventLog.Count)
                 LogEntries.Add(_engine.EventLog[LogEntries.Count]);
         }
+
+        // Синхронизация позиций с мониторингом
+        MonitoringVM.OpenPositionsCount = Positions.Count;
+
+        // Обновляем позиции в мониторинге
+        MonitoringVM.OpenPositions.Clear();
+        foreach (var p in Positions)
+            MonitoringVM.OpenPositions.Add(p);
     }
 
     public void AddLog(string message)
