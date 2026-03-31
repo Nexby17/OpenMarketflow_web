@@ -224,14 +224,14 @@
                         <Border Grid.Row="0" Grid.Column="2" Style="{StaticResource MetricCard}">
                             <StackPanel>
                                 <TextBlock Text="PnL сегодня" FontSize="11" Foreground="{StaticResource TextSecondaryBrush}"/>
-                                <TextBlock Text="{Binding PnLToday, StringFormat=+#,0;-#,0;0}" FontSize="20" FontWeight="Bold" 
+                                <TextBlock Text="{Binding PnLToday, StringFormat={}{0:+#,0;-#,0;0}}" FontSize="20" FontWeight="Bold" 
                                            Foreground="{Binding PnLTodayColor, Converter={StaticResource StringBrush}}"/>
                             </StackPanel>
                         </Border>
                         <Border Grid.Row="0" Grid.Column="3" Style="{StaticResource MetricCard}">
                             <StackPanel>
                                 <TextBlock Text="PnL всего" FontSize="11" Foreground="{StaticResource TextSecondaryBrush}"/>
-                                <TextBlock Text="{Binding PnLTotal, StringFormat=+#,0;-#,0;0}" FontSize="20" FontWeight="Bold" 
+                                <TextBlock Text="{Binding PnLTotal, StringFormat={}{0:+#,0;-#,0;0}}" FontSize="20" FontWeight="Bold" 
                                            Foreground="{Binding PnLTotalColor, Converter={StaticResource StringBrush}}"/>
                             </StackPanel>
                         </Border>
