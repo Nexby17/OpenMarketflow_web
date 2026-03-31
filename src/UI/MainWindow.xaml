@@ -6,7 +6,8 @@
         Title="OpenMarketflow" 
         Width="1050" Height="780" 
         MinWidth="850" MinHeight="600"
-        WindowStartupLocation="CenterScreen">
+        WindowStartupLocation="CenterScreen"
+        Background="{StaticResource BackgroundBrush}">
 
     <Window.DataContext>
         <vm:MainViewModel/>
@@ -91,10 +92,10 @@
                                 Command="{Binding StartCommand}" Width="120"/>
                         <Button Content="⏹  СТОП" Style="{StaticResource DangerButton}" 
                                 Command="{Binding StopCommand}" Width="120" Margin="8,0,0,0"/>
-                        <TextBlock VerticalAlignment="Center" Margin="24,0,0,0" FontSize="13">
+                        <TextBlock VerticalAlignment="Center" Margin="24,0,0,0" FontSize="16">
                             <Run Text="Баланс: " Foreground="{StaticResource TextSecondaryBrush}"/>
-                            <Run Text="{Binding Balance, StringFormat=N0}" Foreground="{StaticResource TextBrush}" FontWeight="SemiBold"/>
-                            <Run Text=" ₽" Foreground="{StaticResource TextSecondaryBrush}"/>
+                            <Run Text="{Binding Balance, StringFormat=N0}" Foreground="{StaticResource PrimaryBrush}" FontWeight="Bold" FontSize="18"/>
+                            <Run Text=" ₽" Foreground="{StaticResource PrimaryBrush}" FontSize="16"/>
                         </TextBlock>
                     </StackPanel>
 
