@@ -149,9 +149,9 @@ class Program
             Console.WriteLine($"📡 Subscription online: {sub.DataType}");
         };
 
-        connector.SubscriptionFailed += (sub, error) =>
+        connector.SubscriptionFailed += (sub, error, isSubscribe) =>
         {
-            Console.WriteLine($"⚠️ Subscription failed: {error.Message}");
+            Console.WriteLine($"⚠️ Subscription failed: {error.Message} (subscribe={isSubscribe})");
         };
 
         Console.WriteLine("🔌 Подключаемся...");
