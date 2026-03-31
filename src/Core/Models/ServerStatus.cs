@@ -1,4 +1,4 @@
-namespace HedgeFund.Server.Models;
+namespace HedgeFund.Core.Models;
 
 /// <summary>Текущий статус торгового сервера</summary>
 public class ServerStatus

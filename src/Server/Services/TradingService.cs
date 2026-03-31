@@ -3,7 +3,7 @@ using HedgeFund.Core;
 using HedgeFund.Core.Models;
 using HedgeFund.Brokers.Finam;
 using HedgeFund.Server.Hubs;
-using HedgeFund.Server.Models;
+using HedgeFund.Core.Models;
 
 namespace HedgeFund.Server.Services;
 

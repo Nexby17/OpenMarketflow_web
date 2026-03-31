@@ -25,7 +25,6 @@
   <ItemGroup>
     <ProjectReference Include="..\Core\HedgeFund.Core.csproj" />
     <ProjectReference Include="..\Brokers\HedgeFund.Brokers.csproj" />
-    <ProjectReference Include="..\Server\HedgeFund.Server.csproj" />
   </ItemGroup>
 
 </Project>

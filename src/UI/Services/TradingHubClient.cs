@@ -1,5 +1,5 @@
 using Microsoft.AspNetCore.SignalR.Client;
-using HedgeFund.Server.Models;
+using HedgeFund.Core.Models;
 
 namespace HedgeFund.UI.Services;
 

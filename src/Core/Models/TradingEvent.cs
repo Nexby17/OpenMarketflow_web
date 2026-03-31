@@ -1,4 +1,4 @@
-namespace HedgeFund.Server.Models;
+namespace HedgeFund.Core.Models;
 
 /// <summary>Событие исполнения сделки</summary>
 public class TradeEvent

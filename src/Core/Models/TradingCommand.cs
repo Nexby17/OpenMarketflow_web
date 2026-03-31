@@ -1,4 +1,4 @@
-namespace HedgeFund.Server.Models;
+namespace HedgeFund.Core.Models;
 
 /// <summary>Тип команды от клиента к серверу</summary>
 public enum CommandType
