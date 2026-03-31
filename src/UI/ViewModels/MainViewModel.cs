@@ -442,6 +442,7 @@ public class MainViewModel : BaseViewModel
     public string ConnectServerButtonText => IsServerConnected ? "Отключить" : "Подключить";
 
     public ICommand ConnectServerCommand => new RelayCommand(async () => await ToggleServerConnectionAsync());
+    public ICommand SendTokenToServerCommand => new RelayCommand(async () => await SendTokenToServerAsync());
     public ICommand EmergencyStopCommand => new RelayCommand(async () => await EmergencyStopAsync());
     public ICommand PauseTradingCommand => new RelayCommand(async () => await PauseTradingAsync());
 
@@ -501,6 +502,26 @@ public class MainViewModel : BaseViewModel
         }
         // Также остановить локально
         Stop();
+    }
+
+    private async Task SendTokenToServerAsync()
+    {
+        if (string.IsNullOrWhiteSpace(ApiToken))
+        {
+            AddLog("⚠️ Введите токен Финам");
+            return;
+        }
+        if (_hubClient == null || !IsServerConnected)
+        {
+            AddLog("⚠️ Сначала подключитесь к серверу");
+            return;
+        }
+        try
+        {
+            await _hubClient.ConnectBrokerAsync(ApiToken);
+            AddLog("📤 Токен отправлен на сервер");
+        }
+        catch (Exception ex) { AddLog($"❌ Ошибка: {ex.Message}"); }
     }
 
     private async Task PauseTradingAsync()

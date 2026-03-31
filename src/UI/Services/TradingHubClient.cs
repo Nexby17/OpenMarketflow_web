@@ -149,6 +149,13 @@ public class TradingHubClient : IAsyncDisposable
     }
 
     /// <summary>Запросить текущий статус</summary>
+    /// <summary>Передать токен Финам серверу для подключения к брокеру</summary>
+    public async Task ConnectBrokerAsync(string token)
+    {
+        if (_connection?.State == HubConnectionState.Connected)
+            await _connection.InvokeAsync("ConnectBroker", token);
+    }
+
     public async Task RequestStatusAsync()
     {
         EnsureConnected();

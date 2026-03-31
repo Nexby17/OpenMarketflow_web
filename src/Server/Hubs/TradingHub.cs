@@ -136,6 +136,25 @@ public class TradingHub : Hub
             $"Параметры {strategyName} обновлены");
     }
 
+    /// <summary>Передать токен Финам и подключиться к брокеру</summary>
+    public async Task ConnectBroker(string token)
+    {
+        _logger.LogInformation("Получен токен Финам от клиента {ConnectionId} (длина: {Len})", Context.ConnectionId, token.Length);
+        
+        await Clients.All.SendAsync("OnLogMessage", DateTime.UtcNow.ToString("o"), "INFO", "🔌 Подключаюсь к Финам...");
+        
+        var success = await _tradingService.ConnectBrokerAsync(token);
+        if (success)
+        {
+            await Clients.All.SendAsync("OnLogMessage", DateTime.UtcNow.ToString("o"), "INFO", "✅ Подключено к Финам!");
+        }
+        else
+        {
+            await Clients.All.SendAsync("OnLogMessage", DateTime.UtcNow.ToString("o"), "ERROR", "❌ Не удалось подключиться к Финам");
+        }
+        await Clients.All.SendAsync("OnStatusUpdate", _tradingService.GetStatus());
+    }
+
     /// <summary>Запросить текущий статус</summary>
     public async Task RequestStatus()
     {
