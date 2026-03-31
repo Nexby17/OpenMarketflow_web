@@ -5,8 +5,4 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
   </PropertyGroup>
-  <ItemGroup>
-    <PackageReference Include="StockSharp.Finam" Version="*" />
-    <PackageReference Include="StockSharp.Algo" Version="*" />
-  </ItemGroup>
 </Project>

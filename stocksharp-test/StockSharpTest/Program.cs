@@ -1,224 +1,347 @@
 using System;
 using System.Linq;
-using System.Reflection;
-using System.Threading;
+using System.Net.Http;
+using System.Net.Http.Headers;
+using System.Text;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 using System.Threading.Tasks;
-
-using StockSharp.Algo;
-using StockSharp.Finam;
-using StockSharp.Messages;
 
 namespace StockSharpTest;
 
 class Program
 {
+    static readonly HttpClient _http = new() { BaseAddress = new Uri("https://trade-api.finam.ru") };
+    static readonly JsonSerializerOptions _json = new()
+    {
+        PropertyNameCaseInsensitive = true,
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
+    };
+
     static async Task Main(string[] args)
     {
-        var token = Environment.GetEnvironmentVariable("FINAM_TOKEN");
-        
-        // Шаг 1: Изучаем API через reflection
-        Console.WriteLine("=== FinamMessageAdapter API ===");
-        var adapterType = typeof(FinamMessageAdapter);
-        
-        Console.WriteLine("\n📋 Own Properties:");
-        foreach (var prop in adapterType.GetProperties(BindingFlags.Public | BindingFlags.Instance)
-            .OrderBy(p => p.Name))
-        {
-            Console.WriteLine($"  {prop.PropertyType.Name} {prop.Name} {{ {(prop.CanRead ? "get; " : "")}{(prop.CanWrite ? "set; " : "")}}}");
-        }
-        
-        // Все свойства включая наследуемые, ищем Token/Key/Secret
-        Console.WriteLine("\n📋 ALL properties (incl. inherited) with Token/Key/Secret/Password:");
-        foreach (var prop in adapterType.GetProperties(BindingFlags.Public | BindingFlags.Instance | BindingFlags.FlattenHierarchy)
-            .Where(p => p.Name.Contains("Token", StringComparison.OrdinalIgnoreCase) 
-                || p.Name.Contains("Key", StringComparison.OrdinalIgnoreCase)
-                || p.Name.Contains("Secret", StringComparison.OrdinalIgnoreCase)
-                || p.Name.Contains("Password", StringComparison.OrdinalIgnoreCase)
-                || p.Name.Contains("Login", StringComparison.OrdinalIgnoreCase)
-                || p.Name.Contains("Auth", StringComparison.OrdinalIgnoreCase)
-                || p.Name.Contains("Credential", StringComparison.OrdinalIgnoreCase))
-            .OrderBy(p => p.Name))
-        {
-            Console.WriteLine($"  {prop.DeclaringType?.Name}.{prop.Name} : {prop.PropertyType.Name} {(prop.CanWrite ? "[set]" : "[readonly]")}");
-        }
-        
-        Console.WriteLine("\n📋 ALL writable properties (inherited):");
-        foreach (var prop in adapterType.GetProperties(BindingFlags.Public | BindingFlags.Instance | BindingFlags.FlattenHierarchy)
-            .Where(p => p.CanWrite)
-            .OrderBy(p => p.Name))
-        {
-            Console.WriteLine($"  {prop.DeclaringType?.Name}.{prop.Name} : {prop.PropertyType.Name}");
-        }
-        
-        Console.WriteLine($"\n📋 Base type chain:");
-        var t = adapterType;
-        while (t != null)
-        {
-            Console.WriteLine($"  → {t.FullName}");
-            t = t.BaseType;
-        }
+        Console.WriteLine("=== Finam Trade API Test ===\n");
 
-        Console.WriteLine("\n📋 Constructors:");
-        foreach (var ctor in adapterType.GetConstructors())
+        var accessToken = Environment.GetEnvironmentVariable("FINAM_TOKEN");
+        if (string.IsNullOrEmpty(accessToken))
         {
-            var parms = string.Join(", ", ctor.GetParameters().Select(p => $"{p.ParameterType.Name} {p.Name}"));
-            Console.WriteLine($"  FinamMessageAdapter({parms})");
+            Console.WriteLine("❌ FINAM_TOKEN не задан!");
+            return;
         }
+        Console.WriteLine($"✅ Access token получен (длина: {accessToken.Length})");
 
-        // Шаг 2: Изучаем Connector API
-        Console.WriteLine("\n=== Connector subscription methods ===");
-        var connType = typeof(Connector);
-        foreach (var method in connType.GetMethods(BindingFlags.Public | BindingFlags.Instance)
-            .Where(m => m.Name.Contains("Subscribe") || m.Name.Contains("Lookup"))
-            .OrderBy(m => m.Name))
+        // ═══════════════════════════════════════════════
+        // Шаг 1: Получить JWT через POST /v1/sessions
+        // ═══════════════════════════════════════════════
+        Console.WriteLine("\n--- Шаг 1: Авторизация (JWT) ---");
+        string? jwt = null;
+        try
         {
-            var parms = string.Join(", ", method.GetParameters().Select(p => $"{p.ParameterType.Name} {p.Name}"));
-            Console.WriteLine($"  {method.ReturnType.Name} {method.Name}({parms})");
+            var authBody = JsonSerializer.Serialize(new { secret = accessToken }, _json);
+            var authResp = await _http.PostAsync("/v1/sessions",
+                new StringContent(authBody, Encoding.UTF8, "application/json"));
+            var authJson = await authResp.Content.ReadAsStringAsync();
+
+            Console.WriteLine($"  HTTP {(int)authResp.StatusCode} {authResp.StatusCode}");
+
+            if (!authResp.IsSuccessStatusCode)
+            {
+                Console.WriteLine($"  ❌ Auth failed: {authJson[..Math.Min(500, authJson.Length)]}");
+                return;
+            }
+
+            using var doc = JsonDocument.Parse(authJson);
+            jwt = doc.RootElement.TryGetProperty("token", out var t) ? t.GetString()
+                : doc.RootElement.TryGetProperty("accessToken", out var at) ? at.GetString()
+                : doc.RootElement.TryGetProperty("jwt", out var j) ? j.GetString()
+                : null;
+
+            if (string.IsNullOrEmpty(jwt))
+            {
+                // Может быть вложено в data или результат — выведем весь ответ
+                Console.WriteLine($"  ⚠️ JWT не найден в ответе. Полный ответ:");
+                Console.WriteLine($"  {authJson[..Math.Min(800, authJson.Length)]}");
+                
+                // Попробуем перебрать все свойства
+                foreach (var prop in doc.RootElement.EnumerateObject())
+                {
+                    Console.WriteLine($"  Ключ: {prop.Name} = {prop.Value.ToString()[..Math.Min(100, prop.Value.ToString().Length)]}...");
+                    if (prop.Value.ValueKind == JsonValueKind.String && prop.Value.GetString()!.Length > 50)
+                    {
+                        jwt = prop.Value.GetString();
+                        Console.WriteLine($"  → Используем {prop.Name} как JWT (длина: {jwt!.Length})");
+                        break;
+                    }
+                }
+            }
+
+            if (string.IsNullOrEmpty(jwt))
+            {
+                Console.WriteLine("  ❌ Не удалось получить JWT!");
+                return;
+            }
+
+            Console.WriteLine($"  ✅ JWT получен (длина: {jwt.Length})");
         }
-
-        Console.WriteLine("\n=== Connector events (Subscription*) ===");
-        foreach (var evt in connType.GetEvents(BindingFlags.Public | BindingFlags.Instance)
-            .Where(e => e.Name.Contains("Subscription") || e.Name.Contains("Security") || e.Name.Contains("Candle") || e.Name.Contains("Connect"))
-            .OrderBy(e => e.Name))
+        catch (Exception ex)
         {
-            Console.WriteLine($"  event {evt.EventHandlerType?.Name} {evt.Name}");
-        }
-
-        if (string.IsNullOrEmpty(token))
-        {
-            Console.WriteLine("\n⚠️ FINAM_TOKEN не задан — пропускаем подключение");
-            Console.WriteLine("✅ API exploration завершён!");
+            Console.WriteLine($"  ❌ Ошибка авторизации: {ex.Message}");
             return;
         }
 
-        Console.WriteLine($"\n✅ Токен получен (длина: {token.Length})");
+        _http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", jwt);
 
-        // Шаг 3: Пробуем подключиться
-        Console.WriteLine("\n=== Попытка подключения ===");
-        
-        var connector = new Connector();
-        
-        // Пробуем найти правильное свойство для токена
-        connector.AddAdapter<FinamMessageAdapter>(a =>
+        // ═══════════════════════════════════════════════
+        // Шаг 2: Информация о сессии
+        // ═══════════════════════════════════════════════
+        Console.WriteLine("\n--- Шаг 2: Информация о сессии ---");
+        try
         {
-            // Ищем свойство для токена
-            var tokenProp = adapterType.GetProperties()
-                .FirstOrDefault(p => p.Name.Contains("Token", StringComparison.OrdinalIgnoreCase) 
-                    || p.Name.Contains("Key", StringComparison.OrdinalIgnoreCase)
-                    || p.Name.Contains("Secret", StringComparison.OrdinalIgnoreCase));
-            
-            if (tokenProp != null)
+            var sessResp = await _http.PostAsync("/v1/sessions/details",
+                new StringContent("{}", Encoding.UTF8, "application/json"));
+            var sessJson = await sessResp.Content.ReadAsStringAsync();
+            Console.WriteLine($"  HTTP {(int)sessResp.StatusCode}: {sessJson[..Math.Min(500, sessJson.Length)]}");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"  ⚠️ {ex.Message}");
+        }
+
+        // ═══════════════════════════════════════════════
+        // Шаг 3: Время сервера
+        // ═══════════════════════════════════════════════
+        Console.WriteLine("\n--- Шаг 3: Время сервера ---");
+        try
+        {
+            var clockResp = await _http.GetAsync("/v1/assets/clock");
+            var clockJson = await clockResp.Content.ReadAsStringAsync();
+            Console.WriteLine($"  HTTP {(int)clockResp.StatusCode}: {clockJson[..Math.Min(300, clockJson.Length)]}");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"  ⚠️ {ex.Message}");
+        }
+
+        // ═══════════════════════════════════════════════
+        // Шаг 4: Список бирж
+        // ═══════════════════════════════════════════════
+        Console.WriteLine("\n--- Шаг 4: Доступные биржи ---");
+        try
+        {
+            var exchResp = await _http.GetAsync("/v1/exchanges");
+            var exchJson = await exchResp.Content.ReadAsStringAsync();
+            Console.WriteLine($"  HTTP {(int)exchResp.StatusCode}: {exchJson[..Math.Min(500, exchJson.Length)]}");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"  ⚠️ {ex.Message}");
+        }
+
+        // ═══════════════════════════════════════════════
+        // Шаг 5: Поиск инструментов (SBER, GAZP, Si)
+        // ═══════════════════════════════════════════════
+        Console.WriteLine("\n--- Шаг 5: Поиск инструментов ---");
+        var symbols = new[] { "SBER", "GAZP", "SiM5", "Si-6.25" };
+        foreach (var sym in symbols)
+        {
+            try
             {
-                Console.WriteLine($"  Найдено свойство для токена: {tokenProp.Name} ({tokenProp.PropertyType.Name})");
-                try
+                var resp = await _http.GetAsync($"/v1/assets/{sym}");
+                var json = await resp.Content.ReadAsStringAsync();
+                if (resp.IsSuccessStatusCode)
+                    Console.WriteLine($"  ✅ {sym}: {json[..Math.Min(400, json.Length)]}");
+                else
+                    Console.WriteLine($"  ❌ {sym}: HTTP {(int)resp.StatusCode} - {json[..Math.Min(200, json.Length)]}");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"  ❌ {sym}: {ex.Message}");
+            }
+        }
+
+        // Попробуем получить полный список
+        Console.WriteLine("\n  Получаем полный список инструментов...");
+        try
+        {
+            var allResp = await _http.GetAsync("/v1/assets");
+            var allJson = await allResp.Content.ReadAsStringAsync();
+            Console.WriteLine($"  HTTP {(int)allResp.StatusCode}, размер ответа: {allJson.Length} символов");
+
+            if (allResp.IsSuccessStatusCode)
+            {
+                using var doc = JsonDocument.Parse(allJson);
+                var root = doc.RootElement;
+
+                // Ищем массив инструментов
+                JsonElement assets = default;
+                if (root.TryGetProperty("assets", out assets) || root.TryGetProperty("instruments", out assets) || root.TryGetProperty("data", out assets))
                 {
-                    if (tokenProp.PropertyType == typeof(System.Security.SecureString))
+                    Console.WriteLine($"  📊 Всего инструментов: {assets.GetArrayLength()}");
+
+                    // Ищем SBER, GAZP, Si
+                    int shown = 0;
+                    foreach (var item in assets.EnumerateArray())
                     {
-                        var ss = new System.Security.SecureString();
-                        foreach (var c in token) ss.AppendChar(c);
-                        tokenProp.SetValue(a, ss);
+                        var itemStr = item.ToString();
+                        var code = item.TryGetProperty("symbol", out var s) ? s.GetString()
+                                 : item.TryGetProperty("code", out var c) ? c.GetString()
+                                 : item.TryGetProperty("ticker", out var tc) ? tc.GetString()
+                                 : "";
+
+                        if (code != null && (code.Contains("SBER") || code.Contains("GAZP") || code.Contains("Si")))
+                        {
+                            Console.WriteLine($"  🔍 {itemStr[..Math.Min(300, itemStr.Length)]}");
+                            shown++;
+                            if (shown >= 10) break;
+                        }
                     }
-                    else if (tokenProp.PropertyType == typeof(string))
+                    if (shown == 0)
                     {
-                        tokenProp.SetValue(a, token);
+                        Console.WriteLine("  ⚠️ SBER/GAZP/Si не найдены. Первые 5 инструментов:");
+                        int i = 0;
+                        foreach (var item in assets.EnumerateArray())
+                        {
+                            Console.WriteLine($"  [{i}] {item.ToString()[..Math.Min(300, item.ToString().Length)]}");
+                            if (++i >= 5) break;
+                        }
+                    }
+                }
+                else
+                {
+                    // Выведем структуру ответа
+                    Console.WriteLine("  Структура ответа:");
+                    foreach (var prop in root.EnumerateObject())
+                    {
+                        Console.WriteLine($"  - {prop.Name}: {prop.Value.ValueKind} ({prop.Value.ToString()[..Math.Min(100, prop.Value.ToString().Length)]})");
+                    }
+                }
+            }
+            else
+            {
+                Console.WriteLine($"  ❌ {allJson[..Math.Min(300, allJson.Length)]}");
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"  ❌ {ex.Message}");
+        }
+
+        // ═══════════════════════════════════════════════
+        // Шаг 6: Свечи Si (дневные, последний месяц)
+        // ═══════════════════════════════════════════════
+        Console.WriteLine("\n--- Шаг 6: Дневные свечи ---");
+        var candleSymbols = new[] { "SBER", "GAZP", "SiM5", "Si-6.25" };
+        foreach (var sym in candleSymbols)
+        {
+            try
+            {
+                var startTime = DateTime.UtcNow.AddDays(-30).ToString("yyyy-MM-ddTHH:mm:ssZ");
+                var endTime = DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ssZ");
+                var url = $"/v1/instruments/{sym}/bars?timeframe=TIME_FRAME_D&interval.startTime={startTime}&interval.endTime={endTime}";
+                var resp = await _http.GetAsync(url);
+                var json = await resp.Content.ReadAsStringAsync();
+
+                if (resp.IsSuccessStatusCode && json.Length > 10)
+                {
+                    Console.WriteLine($"  ✅ {sym} дневные свечи (ответ: {json.Length} символов):");
+
+                    using var doc = JsonDocument.Parse(json);
+                    var root = doc.RootElement;
+
+                    JsonElement bars = default;
+                    if (root.TryGetProperty("bars", out bars) || root.TryGetProperty("candles", out bars) || root.TryGetProperty("data", out bars))
+                    {
+                        Console.WriteLine($"     Количество свечей: {bars.GetArrayLength()}");
+                        int i = 0;
+                        foreach (var bar in bars.EnumerateArray())
+                        {
+                            Console.WriteLine($"     {bar}");
+                            if (++i >= 5) { Console.WriteLine("     ..."); break; }
+                        }
                     }
                     else
                     {
-                        Console.WriteLine($"  ⚠️ Неизвестный тип: {tokenProp.PropertyType.FullName}");
-                        // Попробуем через ToString конверсию
-                        Console.WriteLine($"  Пробуем установить как строку...");
+                        Console.WriteLine($"     {json[..Math.Min(500, json.Length)]}");
                     }
-                    Console.WriteLine($"  ✅ Токен установлен через {tokenProp.Name}");
+                    break; // Нашли рабочий символ
                 }
-                catch (Exception ex)
+                else
                 {
-                    Console.WriteLine($"  ❌ Ошибка установки: {ex.Message}");
+                    Console.WriteLine($"  ❌ {sym}: HTTP {(int)resp.StatusCode} - {json[..Math.Min(200, json.Length)]}");
                 }
             }
-            else
+            catch (Exception ex)
             {
-                Console.WriteLine("  ❌ Свойство для токена не найдено!");
-                Console.WriteLine("  Все свойства с set:");
-                foreach (var p in adapterType.GetProperties().Where(p => p.CanWrite))
-                {
-                    Console.WriteLine($"    {p.PropertyType.Name} {p.Name}");
-                }
-            }
-        });
-
-        var connected = new ManualResetEventSlim(false);
-
-        connector.Connected += () =>
-        {
-            Console.WriteLine("✅ Подключён к Финам через StockSharp!");
-            connected.Set();
-        };
-
-        connector.ConnectionError += error =>
-        {
-            Console.WriteLine($"❌ Ошибка подключения: {error}");
-            connected.Set();
-        };
-
-        connector.Error += error =>
-        {
-            Console.WriteLine($"⚠️ Ошибка: {error.Message}");
-        };
-
-        var securitiesList = new List<StockSharp.BusinessEntities.Security>();
-        connector.SecurityReceived += (sub, security) =>
-        {
-            securitiesList.Add(security);
-            if (securitiesList.Count <= 10 || securitiesList.Count % 200 == 0)
-            {
-                Console.WriteLine($"  📊 [{securitiesList.Count}] {security.Id} | {security.Code} | {security.Name} | Тип: {security.Type}");
-            }
-        };
-
-        connector.SubscriptionOnline += sub =>
-        {
-            Console.WriteLine($"📡 Subscription online: {sub.DataType}");
-        };
-
-        connector.SubscriptionFailed += (sub, error, isSubscribe) =>
-        {
-            Console.WriteLine($"⚠️ Subscription failed: {error.Message} (subscribe={isSubscribe})");
-        };
-
-        Console.WriteLine("🔌 Подключаемся...");
-        connector.Connect();
-
-        if (!connected.Wait(TimeSpan.FromSeconds(30)))
-        {
-            Console.WriteLine("❌ Таймаут подключения");
-        }
-
-        // Ждём инструменты
-        await Task.Delay(10000);
-        Console.WriteLine($"\n📋 Получено инструментов: {securitiesList.Count}");
-        
-        // Ищем Si
-        var targets = new[] { "SBER", "GAZP", "Si" };
-        foreach (var code in targets)
-        {
-            var found = securitiesList.Where(s => 
-                s.Code?.Contains(code, StringComparison.OrdinalIgnoreCase) == true)
-                .Take(3).ToList();
-            
-            if (found.Any())
-            {
-                foreach (var s in found)
-                    Console.WriteLine($"  ✅ {s.Id} | {s.Code} | {s.Name} | Тип: {s.Type}");
-            }
-            else
-            {
-                Console.WriteLine($"  ❌ {code} — не найден");
+                Console.WriteLine($"  ❌ {sym}: {ex.Message}");
             }
         }
 
-        Console.WriteLine("\n🔌 Отключаемся...");
-        connector.Disconnect();
-        await Task.Delay(2000);
-        Console.WriteLine("✅ Тест завершён!");
+        // ═══════════════════════════════════════════════
+        // Шаг 7: Стакан (orderbook)
+        // ═══════════════════════════════════════════════
+        Console.WriteLine("\n--- Шаг 7: Стакан (orderbook) ---");
+        var obSymbols = new[] { "SBER", "GAZP", "SiM5", "Si-6.25" };
+        foreach (var sym in obSymbols)
+        {
+            try
+            {
+                var resp = await _http.GetAsync($"/v1/instruments/{sym}/orderbook");
+                var json = await resp.Content.ReadAsStringAsync();
+
+                if (resp.IsSuccessStatusCode && json.Length > 10)
+                {
+                    Console.WriteLine($"  ✅ {sym} стакан (ответ: {json.Length} символов):");
+                    Console.WriteLine($"     {json[..Math.Min(800, json.Length)]}");
+                    break;
+                }
+                else
+                {
+                    Console.WriteLine($"  ❌ {sym}: HTTP {(int)resp.StatusCode} - {json[..Math.Min(200, json.Length)]}");
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"  ❌ {sym}: {ex.Message}");
+            }
+        }
+
+        // ═══════════════════════════════════════════════
+        // Шаг 8: Последние котировки
+        // ═══════════════════════════════════════════════
+        Console.WriteLine("\n--- Шаг 8: Последние котировки ---");
+        foreach (var sym in new[] { "SBER", "GAZP" })
+        {
+            try
+            {
+                var resp = await _http.GetAsync($"/v1/instruments/{sym}/quotes/latest");
+                var json = await resp.Content.ReadAsStringAsync();
+                Console.WriteLine($"  {sym}: HTTP {(int)resp.StatusCode} - {json[..Math.Min(400, json.Length)]}");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"  ❌ {sym}: {ex.Message}");
+            }
+        }
+
+        // ═══════════════════════════════════════════════
+        // Шаг 9: Последние сделки
+        // ═══════════════════════════════════════════════
+        Console.WriteLine("\n--- Шаг 9: Последние сделки ---");
+        foreach (var sym in new[] { "SBER", "GAZP" })
+        {
+            try
+            {
+                var resp = await _http.GetAsync($"/v1/instruments/{sym}/trades/latest");
+                var json = await resp.Content.ReadAsStringAsync();
+                Console.WriteLine($"  {sym}: HTTP {(int)resp.StatusCode} - {json[..Math.Min(400, json.Length)]}");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"  ❌ {sym}: {ex.Message}");
+            }
+        }
+
+        Console.WriteLine("\n=== ✅ Тест завершён! ===");
     }
 }
