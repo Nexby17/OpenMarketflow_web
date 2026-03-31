@@ -288,12 +288,85 @@
         <Setter Property="FontSize" Value="13"/>
     </Style>
 
+    <!-- DatePickerTextBox -->
+    <Style TargetType="DatePickerTextBox">
+        <Setter Property="Background" Value="{StaticResource CardBrush}"/>
+        <Setter Property="Foreground" Value="{StaticResource TextBrush}"/>
+        <Setter Property="BorderThickness" Value="0"/>
+        <Setter Property="Padding" Value="4,2"/>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="DatePickerTextBox">
+                    <Border Background="{StaticResource CardBrush}" CornerRadius="3" Padding="4,2">
+                        <Grid>
+                            <TextBlock x:Name="PART_Watermark" Text="дд.мм.гггг" 
+                                       Foreground="{StaticResource TextSecondaryBrush}" 
+                                       Visibility="Collapsed" VerticalAlignment="Center"/>
+                            <ScrollViewer x:Name="PART_ContentHost" VerticalAlignment="Center"/>
+                        </Grid>
+                    </Border>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
     <!-- DatePicker -->
     <Style TargetType="DatePicker">
         <Setter Property="Background" Value="{StaticResource CardBrush}"/>
         <Setter Property="Foreground" Value="{StaticResource TextBrush}"/>
         <Setter Property="BorderBrush" Value="{StaticResource BorderBrush}"/>
         <Setter Property="FontSize" Value="13"/>
+        <Setter Property="CalendarStyle">
+            <Setter.Value>
+                <Style TargetType="Calendar">
+                    <Setter Property="Background" Value="{StaticResource CardBrush}"/>
+                    <Setter Property="Foreground" Value="{StaticResource TextBrush}"/>
+                    <Setter Property="BorderBrush" Value="{StaticResource BorderBrush}"/>
+                </Style>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- CalendarDayButton -->
+    <Style TargetType="CalendarDayButton">
+        <Setter Property="Background" Value="Transparent"/>
+        <Setter Property="Foreground" Value="{StaticResource TextBrush}"/>
+        <Setter Property="FontSize" Value="12"/>
+        <Style.Triggers>
+            <Trigger Property="IsToday" Value="True">
+                <Setter Property="Background" Value="{StaticResource PrimaryBrush}"/>
+                <Setter Property="Foreground" Value="White"/>
+            </Trigger>
+            <Trigger Property="IsSelected" Value="True">
+                <Setter Property="Background" Value="{StaticResource AccentBrush}"/>
+                <Setter Property="Foreground" Value="White"/>
+            </Trigger>
+            <Trigger Property="IsMouseOver" Value="True">
+                <Setter Property="Background" Value="{StaticResource SurfaceBrush}"/>
+            </Trigger>
+            <Trigger Property="IsInactive" Value="True">
+                <Setter Property="Foreground" Value="{StaticResource TextSecondaryBrush}"/>
+            </Trigger>
+        </Style.Triggers>
+    </Style>
+
+    <!-- CalendarButton (месяц/год) -->
+    <Style TargetType="CalendarButton">
+        <Setter Property="Background" Value="Transparent"/>
+        <Setter Property="Foreground" Value="{StaticResource TextBrush}"/>
+        <Setter Property="FontSize" Value="12"/>
+        <Style.Triggers>
+            <Trigger Property="IsMouseOver" Value="True">
+                <Setter Property="Background" Value="{StaticResource SurfaceBrush}"/>
+            </Trigger>
+        </Style.Triggers>
+    </Style>
+
+    <!-- CalendarItem (контейнер календаря) -->
+    <Style TargetType="CalendarItem">
+        <Setter Property="Background" Value="{StaticResource CardBrush}"/>
+        <Setter Property="BorderBrush" Value="{StaticResource BorderBrush}"/>
+        <Setter Property="BorderThickness" Value="1"/>
     </Style>
 
     <!-- TabControl -->
