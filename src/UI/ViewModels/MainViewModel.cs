@@ -289,18 +289,16 @@ public class MainViewModel : BaseViewModel
                 OrdersVM.UpdateOrder(order);
             });
 
-            // Котировки → QuotesVM
+            // Котировки → QuotesVM (показываем выбранный в QuotesVM инструмент)
             _quikConnector.OnQuoteUpdate += (ticker, quote) => App.Current?.Dispatcher.Invoke(() =>
             {
-                QuotesVM.UpdateQuote(quote);
-                // Обновляем equity и баланс
+                if (ticker == QuotesVM.SelectedInstrument)
+                    QuotesVM.UpdateQuote(quote);
                 if (ticker == SelectedInstrument)
-                {
                     MonitoringVM.AddEquityPoint(MonitoringVM.Equity);
-                }
             });
 
-            // Стакан → OrderBookVM
+            // Стакан → OrderBookVM (показываем выбранный в OrderBookVM инструмент)
             _quikConnector.OnOrderBookUpdate += (ticker, snapshot) => App.Current?.Dispatcher.Invoke(() =>
             {
                 if (ticker == OrderBookVM.SelectedInstrument)
@@ -310,8 +308,11 @@ public class MainViewModel : BaseViewModel
             await _quikConnector.ConnectAsync(ApiToken);
             AddLog("✅ QUIK Bridge запущен. Жду подключение Lua-скрипта...");
 
-            // Подписываемся на выбранный инструмент
-            await SubscribeToInstrument(SelectedInstrument);
+            // Подписываемся на ВСЕ инструменты
+            foreach (var instrument in Instruments)
+            {
+                await SubscribeToInstrument(instrument);
+            }
         }
         catch (Exception ex)
         {
