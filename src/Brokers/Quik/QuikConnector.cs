@@ -51,9 +51,13 @@ public class QuikConnector : IBrokerConnector
     public event Action<string, OrderBookSnapshot>? OnOrderBookUpdate;
     public event Action<string, QuoteData>? OnQuoteUpdate;
 
+    /// <summary>
+    /// bridgeDir — общая папка. По умолчанию: C:\OpenMarketflow\bridge
+    /// Этот путь должен совпадать с BRIDGE_DIR в quik_bridge.lua
+    /// </summary>
     public QuikConnector(string? bridgeDir = null, string? finamToken = null)
     {
-        _bridgeDir = bridgeDir ?? Path.Combine(AppContext.BaseDirectory, "bridge");
+        _bridgeDir = bridgeDir ?? @"C:\OpenMarketflow\bridge";
         if (!string.IsNullOrEmpty(finamToken))
         {
             _fallbackToken = finamToken;

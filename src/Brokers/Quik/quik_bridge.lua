@@ -11,7 +11,8 @@
 ]]
 
 -- ============ НАСТРОЙКИ ============
-local BRIDGE_DIR = getScriptPath() .. "\\bridge"
+-- ВАЖНО: путь должен совпадать с C# QuikConnector!
+local BRIDGE_DIR = "C:\\OpenMarketflow\\bridge"
 local TO_APP     = BRIDGE_DIR .. "\\to_app.jsonl"
 local TO_QUIK    = BRIDGE_DIR .. "\\to_quik.jsonl"
 local HEARTBEAT  = BRIDGE_DIR .. "\\heartbeat"
