@@ -121,7 +121,7 @@ public partial class MainWindow : Window
 
             var label = new TextBlock
             {
-                Text = price.ToString("F0"),
+                Text = price.ToString("F2"),
                 FontSize = 9,
                 Foreground = textBrush
             };
@@ -226,7 +226,7 @@ public partial class MainWindow : Window
 
             var lastLabel = new TextBlock
             {
-                Text = last.Close.ToString("F0"),
+                Text = last.Close.ToString("F2"),
                 FontSize = 10,
                 FontWeight = FontWeights.Bold,
                 Foreground = new SolidColorBrush(Colors.White),

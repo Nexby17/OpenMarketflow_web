@@ -1033,7 +1033,7 @@
                                                     </Grid>
 
                                                     <!-- Price -->
-                                                    <TextBlock Grid.Column="1" Text="{Binding Price, StringFormat=F0}" 
+                                                    <TextBlock Grid.Column="1" Text="{Binding Price, StringFormat=F2}" 
                                                                HorizontalAlignment="Center" FontSize="12" FontFamily="Consolas" FontWeight="SemiBold"
                                                                Foreground="{StaticResource TextBrush}"/>
 
