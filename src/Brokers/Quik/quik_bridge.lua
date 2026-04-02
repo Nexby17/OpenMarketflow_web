@@ -450,32 +450,56 @@ function main()
     log("🚀 OpenMarketflow QUIK Bridge запущен")
     log("Подключаюсь к " .. HOST .. ":" .. PORT .. "...")
     
+    local last_ping = os.time()
+    local ping_interval = 5  -- ping каждые 5 сек
+    local reconnect_count = 0
+    
     while is_running do
         if conn == nil then
-            if not connect() then
-                sleep(RECONNECT_SEC * 1000)
+            reconnect_count = reconnect_count + 1
+            log("🔄 Попытка подключения #" .. reconnect_count .. "...")
+            if connect() then
+                reconnect_count = 0
+                -- После реконнекта QUIK-скрипт не теряет подписки —
+                -- C# сторона сама переподпишется через subscribe_* команды
+            else
+                -- Прогрессивная пауза: 5с → 10с → 15с → 30с (max)
+                local delay = math.min(RECONNECT_SEC * math.min(reconnect_count, 6), 30)
+                log("⏳ Следующая попытка через " .. delay .. " сек...")
+                sleep(delay * 1000)
             end
         else
             -- Читаем команды
             read_commands()
             
-            -- Ping каждые 10 сек
-            send_msg("ping", {time = os.time()})
+            -- Ping каждые N сек
+            local now = os.time()
+            if now - last_ping >= ping_interval then
+                local ok = send_msg("ping", {time = now})
+                if not ok then
+                    -- Отправка не удалась — соединение мертво
+                    log("❌ Ping не отправлен — соединение потеряно")
+                    conn:close()
+                    conn = nil
+                else
+                    last_ping = now
+                end
+            end
             
-            sleep(100)  -- 100мс цикл
+            sleep(50)  -- 50мс цикл (быстрее реакция)
         end
     end
     
     -- Отписка
-    for sec, _ in pairs(subscribed_orderbooks) do
-        Unsubscribe_Level_II_Quotes(subscribed_orderbooks[sec].class_code, sec)
+    for sec, data in pairs(subscribed_orderbooks) do
+        pcall(function() Unsubscribe_Level_II_Quotes(data.class_code, sec) end)
     end
     
     for sec, data in pairs(subscribed_candles) do
-        if data.ds then data.ds:Close() end
+        pcall(function() if data.ds then data.ds:Close() end end)
     end
     
-    if conn then conn:close() end
+    if conn then pcall(function() conn:close() end) end
     log("⏹ OpenMarketflow QUIK Bridge остановлен")
 end
 

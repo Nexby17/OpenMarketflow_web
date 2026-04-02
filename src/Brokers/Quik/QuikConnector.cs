@@ -35,6 +35,20 @@ public class QuikConnector : IBrokerConnector
     private readonly int _port;
     private readonly string _host;
 
+    // Реконнект
+    private bool _autoReconnect = true;
+    private int _reconnectAttempts;
+    private DateTime _lastPingReceived;
+    private DateTime _lastDataReceived;
+    private const int PING_TIMEOUT_SEC = 30;
+    private const int RECONNECT_DELAY_MS = 5000;
+    private const int MAX_RECONNECT_ATTEMPTS = 0; // 0 = бесконечно
+
+    // Fallback: Finam REST API для данных когда QUIK офлайн
+    private readonly Finam.FinamConnector? _fallback;
+    private bool _useFallback;
+    private string _fallbackToken = string.Empty;
+
     // Подписки
     private readonly ConcurrentDictionary<string, Action<Candle>> _candleCallbacks = new();
     private readonly ConcurrentDictionary<string, Action<double, double>> _level2Callbacks = new();
@@ -65,10 +79,21 @@ public class QuikConnector : IBrokerConnector
     public event Action<string, QuoteData>? OnQuoteUpdate;
     public event Action<Trade>? OnAllTrades; // лента всех сделок
 
-    public QuikConnector(string host = "0.0.0.0", int port = 34130)
+    /// <summary>
+    /// host/port — TCP сервер для Lua.
+    /// finamToken — токен Finam REST API для fallback (опционально).
+    /// </summary>
+    public QuikConnector(string host = "0.0.0.0", int port = 34130, string? finamToken = null)
     {
         _host = host;
         _port = port;
+
+        // Fallback на Finam REST API когда QUIK недоступен
+        if (!string.IsNullOrEmpty(finamToken))
+        {
+            _fallbackToken = finamToken;
+            _fallback = new Finam.FinamConnector();
+        }
     }
 
     // === Подключение ===
@@ -80,54 +105,239 @@ public class QuikConnector : IBrokerConnector
     /// </summary>
     public async Task<bool> ConnectAsync(string login = "", string password = "")
     {
-        try
+        // Сохраняем токен если передан (fallback)
+        if (!string.IsNullOrEmpty(login) && string.IsNullOrEmpty(_fallbackToken))
+            _fallbackToken = login;
+
+        _cts = new CancellationTokenSource();
+        _autoReconnect = true;
+
+        // Запускаем TCP сервер + цикл реконнекта
+        _ = Task.Run(() => AcceptLoop(_cts.Token), _cts.Token);
+
+        // Подключаем fallback если есть токен
+        if (_fallback != null && !string.IsNullOrEmpty(_fallbackToken))
         {
-            _cts = new CancellationTokenSource();
-            _server = new TcpListener(IPAddress.Parse(_host), _port);
-            _server.Start();
-
-            OnError?.Invoke($"TCP-сервер запущен на {_host}:{_port}. Ожидаю подключение QUIK...");
-
-            // Ждём подключение Lua-скрипта (таймаут 60 сек)
-            var acceptTask = _server.AcceptTcpClientAsync(_cts.Token);
-            var timeoutTask = Task.Delay(TimeSpan.FromSeconds(60), _cts.Token);
-
-            var completed = await Task.WhenAny(acceptTask.AsTask(), timeoutTask);
-            if (completed == timeoutTask)
+            _ = Task.Run(async () =>
             {
-                OnError?.Invoke("Таймаут: QUIK Lua-скрипт не подключился за 60 секунд");
-                return false;
+                try
+                {
+                    await _fallback.ConnectAsync(_fallbackToken);
+                    OnError?.Invoke("🔄 Finam REST fallback подключён (для данных когда QUIK офлайн)");
+                }
+                catch { }
+            });
+        }
+
+        return true;
+    }
+
+    /// <summary>Цикл приёма подключений с авто-реконнектом</summary>
+    private async Task AcceptLoop(CancellationToken ct)
+    {
+        while (!ct.IsCancellationRequested && _autoReconnect)
+        {
+            try
+            {
+                // Запускаем/перезапускаем TCP сервер
+                CleanupConnection();
+                _server?.Stop();
+                _server = new TcpListener(IPAddress.Parse(_host), _port);
+                _server.Start();
+
+                OnError?.Invoke($"📡 TCP-сервер на {_host}:{_port}. Ожидаю QUIK...");
+                SwitchToFallback(true);
+
+                // Ждём подключение (бесконечно)
+                _client = await _server.AcceptTcpClientAsync(ct);
+                _client.ReceiveTimeout = PING_TIMEOUT_SEC * 1000;
+                _client.SendTimeout = 5000;
+                _stream = _client.GetStream();
+                _reader = new StreamReader(_stream, Encoding.UTF8);
+                _writer = new StreamWriter(_stream, Encoding.UTF8) { AutoFlush = true };
+
+                IsConnected = true;
+                _useFallback = false;
+                _reconnectAttempts = 0;
+                _lastPingReceived = DateTime.UtcNow;
+                _lastDataReceived = DateTime.UtcNow;
+                OnConnectionChanged?.Invoke(true);
+                OnError?.Invoke("✅ QUIK подключён! Реалтайм данные активны.");
+
+                // Запрашиваем начальное состояние
+                try
+                {
+                    await SendCommandAsync("get_balance", new { });
+                    await SendCommandAsync("get_positions", new { });
+                    await SendCommandAsync("get_orders", new { });
+                }
+                catch { }
+
+                // Переподписываем на все предыдущие подписки
+                await ResubscribeAll();
+
+                // Читаем сообщения пока соединение живо
+                await ReadLoop(ct);
+            }
+            catch (OperationCanceledException)
+            {
+                break;
+            }
+            catch (Exception ex)
+            {
+                _reconnectAttempts++;
+                OnError?.Invoke($"⚠️ QUIK отключён: {ex.Message}. Переподключение #{_reconnectAttempts}...");
             }
 
-            _client = await acceptTask;
-            _stream = _client.GetStream();
-            _reader = new StreamReader(_stream, Encoding.UTF8);
-            _writer = new StreamWriter(_stream, Encoding.UTF8) { AutoFlush = true };
+            // Переключаемся на fallback
+            IsConnected = false;
+            OnConnectionChanged?.Invoke(false);
+            SwitchToFallback(true);
 
-            IsConnected = true;
-            OnConnectionChanged?.Invoke(true);
-            OnError?.Invoke("✅ QUIK Lua-скрипт подключён!");
+            if (MAX_RECONNECT_ATTEMPTS > 0 && _reconnectAttempts >= MAX_RECONNECT_ATTEMPTS)
+            {
+                OnError?.Invoke("❌ Превышен лимит реконнектов");
+                break;
+            }
 
-            // Запускаем чтение сообщений
-            _ = Task.Run(() => ReadLoop(_cts.Token), _cts.Token);
-
-            // Запрашиваем начальное состояние
-            await SendCommandAsync("get_balance", new { });
-            await SendCommandAsync("get_positions", new { });
-            await SendCommandAsync("get_orders", new { });
-
-            return true;
+            // Пауза перед реконнектом
+            try { await Task.Delay(RECONNECT_DELAY_MS, ct); }
+            catch { break; }
         }
-        catch (Exception ex)
+    }
+
+    /// <summary>Переподписаться на все активные подписки после реконнекта</summary>
+    private async Task ResubscribeAll()
+    {
+        foreach (var ticker in _candleCallbacks.Keys)
         {
-            OnError?.Invoke($"Ошибка запуска TCP-сервера: {ex.Message}");
-            return false;
+            try
+            {
+                await SendCommandAsync("subscribe_candles", new
+                {
+                    class_code = GetClassCode(ticker),
+                    sec_code = ticker,
+                    interval = 5 // дефолтный, можно хранить в словаре
+                });
+            }
+            catch { }
         }
+
+        foreach (var ticker in _level2Callbacks.Keys.Union(_orderBookCallbacks.Keys))
+        {
+            try
+            {
+                await SendCommandAsync("subscribe_orderbook", new
+                {
+                    class_code = GetClassCode(ticker),
+                    sec_code = ticker,
+                    depth = 20
+                });
+            }
+            catch { }
+        }
+
+        foreach (var ticker in _quoteCallbacks.Keys)
+        {
+            try
+            {
+                await SendCommandAsync("subscribe_quotes", new
+                {
+                    class_code = GetClassCode(ticker),
+                    sec_code = ticker
+                });
+            }
+            catch { }
+        }
+
+        OnError?.Invoke($"🔄 Подписки восстановлены: {_candleCallbacks.Count} свечи, {_orderBookCallbacks.Count} стакан, {_quoteCallbacks.Count} котировки");
+    }
+
+    /// <summary>Переключиться на fallback / вернуться на QUIK</summary>
+    private void SwitchToFallback(bool useFallback)
+    {
+        if (_fallback == null) return;
+        if (_useFallback == useFallback) return;
+
+        _useFallback = useFallback;
+        if (useFallback)
+        {
+            OnError?.Invoke("🔄 Переключено на Finam REST API (данные с задержкой, без стакана)");
+            StartFallbackPolling();
+        }
+        else
+        {
+            OnError?.Invoke("✅ QUIK онлайн — реалтайм данные восстановлены");
+            StopFallbackPolling();
+        }
+    }
+
+    private CancellationTokenSource? _fallbackCts;
+
+    private void StartFallbackPolling()
+    {
+        if (_fallback == null || !_fallback.IsConnected) return;
+        _fallbackCts?.Cancel();
+        _fallbackCts = new CancellationTokenSource();
+        var ct = _fallbackCts.Token;
+
+        _ = Task.Run(async () =>
+        {
+            while (!ct.IsCancellationRequested && _useFallback)
+            {
+                try
+                {
+                    // Поллим свечи для подписанных тикеров
+                    foreach (var (ticker, cb) in _candleCallbacks)
+                    {
+                        var candles = await _fallback.GetHistoricalCandlesAsync(
+                            ticker, TimeSpan.FromMinutes(5),
+                            DateTime.UtcNow.AddMinutes(-10), DateTime.UtcNow);
+                        if (candles.Length > 0)
+                            cb(candles[^1]); // последняя свеча
+                    }
+
+                    // Позиции и баланс
+                    _balance = await _fallback.GetBalanceAsync();
+                    var positions = await _fallback.GetPositionsAsync();
+                    foreach (var p in positions)
+                        _positions[p.Ticker] = p;
+
+                    // Ордера
+                    var orders = await _fallback.GetActiveOrdersAsync();
+                    _activeOrders.Clear();
+                    foreach (var o in orders)
+                        _activeOrders[o.BrokerOrderId] = o;
+                }
+                catch (Exception ex)
+                {
+                    OnError?.Invoke($"Fallback polling ошибка: {ex.Message}");
+                }
+
+                await Task.Delay(10_000, ct); // каждые 10 сек
+            }
+        }, ct);
+    }
+
+    private void StopFallbackPolling()
+    {
+        _fallbackCts?.Cancel();
+        _fallbackCts = null;
+    }
+
+    private void CleanupConnection()
+    {
+        _reader?.Dispose(); _reader = null;
+        _writer?.Dispose(); _writer = null;
+        _stream?.Dispose(); _stream = null;
+        _client?.Dispose(); _client = null;
     }
 
     public async Task DisconnectAsync()
     {
+        _autoReconnect = false;
         _cts?.Cancel();
+        _fallbackCts?.Cancel();
         
         try
         {
@@ -136,11 +346,9 @@ public class QuikConnector : IBrokerConnector
         }
         catch { }
 
-        _reader?.Dispose();
-        _writer?.Dispose();
-        _stream?.Dispose();
-        _client?.Dispose();
+        CleanupConnection();
         _server?.Stop();
+        _fallback?.Dispose();
 
         IsConnected = false;
         OnConnectionChanged?.Invoke(false);
@@ -286,7 +494,13 @@ public class QuikConnector : IBrokerConnector
             while (!ct.IsCancellationRequested && _reader != null)
             {
                 var line = await _reader.ReadLineAsync(ct);
-                if (line == null) break;
+                if (line == null)
+                {
+                    OnError?.Invoke("⚠️ QUIK: соединение закрыто (EOF)");
+                    break; // выйдем в AcceptLoop → реконнект
+                }
+
+                _lastDataReceived = DateTime.UtcNow;
 
                 try
                 {
@@ -299,14 +513,19 @@ public class QuikConnector : IBrokerConnector
             }
         }
         catch (OperationCanceledException) { }
+        catch (IOException ex)
+        {
+            OnError?.Invoke($"🔌 QUIK TCP разрыв: {ex.Message}");
+        }
         catch (Exception ex)
         {
-            OnError?.Invoke($"TCP соединение потеряно: {ex.Message}");
+            OnError?.Invoke($"🔌 QUIK отключён: {ex.Message}");
         }
         finally
         {
             IsConnected = false;
             OnConnectionChanged?.Invoke(false);
+            CleanupConnection();
         }
     }
 
@@ -668,11 +887,11 @@ public class QuikConnector : IBrokerConnector
 
     public void Dispose()
     {
+        _autoReconnect = false;
         _cts?.Cancel();
-        _reader?.Dispose();
-        _writer?.Dispose();
-        _stream?.Dispose();
-        _client?.Dispose();
+        _fallbackCts?.Cancel();
+        CleanupConnection();
         _server?.Stop();
+        _fallback?.Dispose();
     }
 }
