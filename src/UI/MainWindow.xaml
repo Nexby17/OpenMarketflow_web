@@ -681,7 +681,7 @@
                     </Border>
 
                     <!-- Таблица заявок -->
-                    <DataGrid Grid.Row="1" ItemsSource="{Binding ActiveOrders}" VerticalScrollBarVisibility="Auto" CanUserEditRows="False">
+                    <DataGrid Grid.Row="1" ItemsSource="{Binding ActiveOrders}" VerticalScrollBarVisibility="Auto" CanUserAddRows="False" CanUserDeleteRows="False" AutoGenerateColumns="False">
                         <DataGrid.Columns>
                             <DataGridTextColumn Header="Время" Binding="{Binding Timestamp, StringFormat=HH:mm:ss}" Width="75" IsReadOnly="True"/>
                             <DataGridTextColumn Header="Тикер" Binding="{Binding Ticker}" Width="70" IsReadOnly="True"/>
