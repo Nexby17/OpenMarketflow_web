@@ -294,8 +294,6 @@ public class MainViewModel : BaseViewModel
             {
                 if (ticker == QuotesVM.SelectedInstrument)
                     QuotesVM.UpdateQuote(quote);
-                if (ticker == SelectedInstrument)
-                    MonitoringVM.AddEquityPoint(MonitoringVM.Equity);
             });
 
             // Стакан → OrderBookVM (показываем выбранный в OrderBookVM инструмент)
@@ -313,6 +311,15 @@ public class MainViewModel : BaseViewModel
             {
                 await SubscribeToInstrument(instrument);
             }
+
+            // Загружаем историю свечей для выбранного инструмента
+            await LoadHistoricalCandles(SelectedInstrument);
+
+            // Баланс
+            var balance = await _quikConnector.GetBalanceAsync();
+            Balance = balance;
+            MonitoringVM.Balance = balance;
+            MonitoringVM.Equity = balance;
         }
         catch (Exception ex)
         {
@@ -326,48 +333,31 @@ public class MainViewModel : BaseViewModel
 
         try
         {
-            // Котировки
-            await _quikConnector.SubscribeQuotesAsync(ticker, quote =>
-                App.Current?.Dispatcher.Invoke(() => QuotesVM.UpdateQuote(quote)));
+            // Подписка на котировки (данные приходят через OnQuoteUpdate event)
+            await _quikConnector.SubscribeQuotesAsync(ticker, _ => { });
 
-            // Стакан
-            await _quikConnector.SubscribeOrderBookAsync(ticker, snapshot =>
-                App.Current?.Dispatcher.Invoke(() => OrderBookVM.UpdateOrderBook(snapshot)));
+            // Стакан (данные через OnOrderBookUpdate event)
+            await _quikConnector.SubscribeOrderBookAsync(ticker, _ => { });
 
-            // Свечи 5 мин
+            // Свечи 5 мин (новые свечи добавляются на график только для выбранного инструмента)
             await _quikConnector.SubscribeCandlesAsync(ticker, TimeSpan.FromMinutes(5), candle =>
                 App.Current?.Dispatcher.Invoke(() =>
                 {
-                    // Добавляем свечу на график
+                    if (ticker != OrderBookVM.SelectedInstrument) return;
                     var cluster = new ClusterCandle
                     {
                         Timestamp = candle.Timestamp, Open = candle.Open, High = candle.High,
                         Low = candle.Low, Close = candle.Close, Volume = candle.Volume
                     };
-                    var candles = new List<ClusterCandle>(OrderBookVM.Candles) { cluster };
-                    if (candles.Count > 300) candles.RemoveRange(0, candles.Count - 300);
-                    OrderBookVM.UpdateCandles(candles);
+                    var list = new List<ClusterCandle>(OrderBookVM.Candles);
+                    // Обновляем последнюю или добавляем новую
+                    if (list.Count > 0 && list[^1].Timestamp == cluster.Timestamp)
+                        list[^1] = cluster;
+                    else
+                        list.Add(cluster);
+                    if (list.Count > 300) list.RemoveRange(0, list.Count - 300);
+                    OrderBookVM.UpdateCandles(list);
                 }));
-
-            // Запрашиваем историю свечей для графика
-            var history = await _quikConnector.GetHistoricalCandlesAsync(
-                ticker, TimeSpan.FromMinutes(5), DateTime.UtcNow.AddDays(-3), DateTime.UtcNow);
-            if (history.Length > 0)
-            {
-                var clusterCandles = history.Select(c => new ClusterCandle
-                {
-                    Timestamp = c.Timestamp, Open = c.Open, High = c.High,
-                    Low = c.Low, Close = c.Close, Volume = c.Volume
-                }).ToList();
-                OrderBookVM.UpdateCandles(clusterCandles);
-                AddLog($"📊 Загружено {history.Length} исторических свечей {ticker}");
-            }
-
-            // Баланс
-            var balance = await _quikConnector.GetBalanceAsync();
-            Balance = balance;
-            MonitoringVM.Balance = balance;
-            MonitoringVM.Equity = balance;
 
             AddLog($"📊 Подписки на {ticker}: котировки, стакан, свечи");
         }
@@ -375,6 +365,27 @@ public class MainViewModel : BaseViewModel
         {
             AddLog($"⚠️ Подписка {ticker}: {ex.Message}");
         }
+    }
+
+    private async Task LoadHistoricalCandles(string ticker)
+    {
+        if (_quikConnector == null) return;
+        try
+        {
+            var history = await _quikConnector.GetHistoricalCandlesAsync(
+                ticker, TimeSpan.FromMinutes(5), DateTime.UtcNow.AddDays(-3), DateTime.UtcNow);
+            if (history.Length > 0)
+            {
+                var candles = history.Select(c => new ClusterCandle
+                {
+                    Timestamp = c.Timestamp, Open = c.Open, High = c.High,
+                    Low = c.Low, Close = c.Close, Volume = c.Volume
+                }).ToList();
+                OrderBookVM.UpdateCandles(candles);
+                AddLog($"📊 Загружено {history.Length} свечей {ticker}");
+            }
+        }
+        catch (Exception ex) { AddLog($"⚠️ История {ticker}: {ex.Message}"); }
     }
 
     private async Task ConnectFinamAsync()

@@ -91,6 +91,11 @@ end
 
 -- ============ JSON ENCODER/DECODER ============
 
+-- Пометить как массив для JSON
+function as_array(t)
+    return setmetatable(t or {}, {__jsontype = "array"})
+end
+
 function encode_json(val)
     local t = type(val)
     if t == "nil" then return "null"
@@ -101,7 +106,9 @@ function encode_json(val)
     elseif t == "string" then
         return '"' .. val:gsub('\\','\\\\'):gsub('"','\\"'):gsub('\n','\\n'):gsub('\r','\\r') .. '"'
     elseif t == "table" then
-        if #val > 0 then
+        local mt = getmetatable(val)
+        local force_array = mt and mt.__jsontype == "array"
+        if force_array or #val > 0 then
             local p = {}
             for i = 1, #val do p[i] = encode_json(val[i]) end
             return "[" .. table.concat(p, ",") .. "]"
@@ -244,7 +251,7 @@ function cmd_get_balance(rid)
 end
 
 function cmd_get_positions(rid)
-    local positions = {}
+    local positions = as_array({})
     for i = 0, getNumberOf("futures_client_holding") - 1 do
         local row = getItem("futures_client_holding", i)
         if row and row.totalnet ~= 0 then
@@ -255,7 +262,7 @@ function cmd_get_positions(rid)
 end
 
 function cmd_get_orders(rid)
-    local orders = {}
+    local orders = as_array({})
     for i = 0, getNumberOf("orders") - 1 do
         local row = getItem("orders", i)
         if row and row.flags and bit.band(row.flags, 0x1) == 1 then
@@ -272,9 +279,9 @@ end
 
 function cmd_get_candles(rid, p)
     local ds = CreateDataSource(p.class_code or "SPBFUT", p.sec_code, p.interval or 5)
-    if not ds then queue_msg("response", {request_id = rid, candles = {}}); return end
+    if not ds then queue_msg("response", {request_id = rid, candles = as_array({})}); return end
     sleep(500)
-    local candles = {}
+    local candles = as_array({})
     local size = ds:Size()
     for i = math.max(1, size - (p.count or 200) + 1), size do
         local t = ds:T(i)
@@ -293,7 +300,7 @@ function OnQuote(class_code, sec_code)
     if subscribed_orderbooks[sec_code] then
         local book = getQuoteLevel2(class_code, sec_code)
         if book then
-            local bids, asks = {}, {}
+            local bids, asks = as_array({}), as_array({})
             if book.bid then for i = 1, #book.bid do table.insert(bids, {price = tonumber(book.bid[i].price) or 0, quantity = tonumber(book.bid[i].quantity) or 0}) end end
             if book.offer then for i = 1, #book.offer do table.insert(asks, {price = tonumber(book.offer[i].price) or 0, quantity = tonumber(book.offer[i].quantity) or 0}) end end
             queue_msg("orderbook", {sec_code = sec_code, bids = bids, asks = asks})
