@@ -41,7 +41,7 @@ public class MainViewModel : BaseViewModel
         _uiTimer.Tick += (_, _) => RefreshUI();
 
         // Значения по умолчанию
-        Brokers = new ObservableCollection<string> { "Альфа-Инвестиции", "Финам (Trade API)" };
+        Brokers = new ObservableCollection<string> { "Финам (QUIK)", "Финам (Trade API)", "Альфа-Инвестиции" };
         SelectedBroker = Brokers[0];
 
         Instruments = new ObservableCollection<string> { "SBER", "GAZP", "Si", "BR", "GOLD", "SPYF" };
