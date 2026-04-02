@@ -107,12 +107,10 @@ public class StrategyManagerViewModel : BaseViewModel
         Instruments = new ObservableCollection<string> { "Si", "BR", "GOLD", "SBER", "GAZP", "MX" };
         SelectedInstrument = "Si";
 
-        // Доступные стратегии
-        Strategies.Add(new StrategyItemViewModel { Name = "PSAR Grid MM", Ticker = "Si" });
-        Strategies.Add(new StrategyItemViewModel { Name = "PSAR+EMA Combo 5min", Ticker = "Si" });
-        Strategies.Add(new StrategyItemViewModel { Name = "VStop Pure 30s", Ticker = "Si" });
-        Strategies.Add(new StrategyItemViewModel { Name = "Scalping", Ticker = "Si" });
-        Strategies.Add(new StrategyItemViewModel { Name = "Breakout", Ticker = "Si" });
+        // Актуальные стратегии
+        Strategies.Add(new StrategyItemViewModel { Name = "PSAR Grid MM (1 мин)", Ticker = "Si" });
+        Strategies.Add(new StrategyItemViewModel { Name = "PSAR+EMA Combo (5 мин)", Ticker = "Si" });
+        Strategies.Add(new StrategyItemViewModel { Name = "VStop Pure (30 сек, бумага)", Ticker = "Si" });
     }
 
     // === Коллекции ===

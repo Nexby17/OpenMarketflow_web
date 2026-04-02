@@ -223,8 +223,12 @@
                 </Grid>
             </TabItem>
 
-            <!-- ==================== ВКЛАДКА: МОНИТОРИНГ ==================== -->
-            <TabItem Header="📈 Мониторинг" DataContext="{Binding MonitoringVM}">
+            <!-- ==================== ВКЛАДКА: МОНИТОРИНГ (с вложенными табами) ==================== -->
+            <TabItem Header="📈 Мониторинг">
+                <TabControl Margin="4">
+
+                    <!-- ===== Подвкладка: Обзор ===== -->
+                    <TabItem Header="📊 Обзор" DataContext="{Binding MonitoringVM}">
                 <Grid Margin="12">
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto"/>   <!-- Карточки метрик -->
@@ -347,10 +351,10 @@
                         </DataGrid>
                     </GroupBox>
                 </Grid>
-            </TabItem>
+                    </TabItem>
 
-            <!-- ==================== ВКЛАДКА: СДЕЛКИ ==================== -->
-            <TabItem Header="📋 Сделки" DataContext="{Binding TradesVM}">
+                    <!-- ===== Подвкладка: Сделки ===== -->
+                    <TabItem Header="📋 Сделки" DataContext="{Binding TradesVM}">
                 <Grid Margin="12">
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto"/>   <!-- Фильтры -->
@@ -425,6 +429,167 @@
                         </StackPanel>
                     </Border>
                 </Grid>
+                    </TabItem>
+
+                    <!-- ===== Подвкладка: Заявки ===== -->
+                    <TabItem Header="📋 Заявки" DataContext="{Binding OrdersVM}">
+                <Grid Margin="12">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+
+                    <Border Grid.Row="0" Background="{StaticResource SurfaceBrush}" CornerRadius="6" Padding="12" Margin="0,0,0,8">
+                        <StackPanel Orientation="Horizontal">
+                            <Button Content="🔄 Обновить" Style="{StaticResource SecondaryButton}" 
+                                    Command="{Binding RefreshCommand}" Margin="0,0,8,0"/>
+                            <Button Content="❌ Отменить все" Style="{StaticResource DangerButton}" 
+                                    Command="{Binding CancelAllCommand}" Margin="0,0,24,0"/>
+                            <TextBlock VerticalAlignment="Center" Foreground="{StaticResource TextSecondaryBrush}">
+                                <Run Text="Активных: "/>
+                                <Run Text="{Binding ActiveCount, Mode=OneWay}" FontWeight="Bold" Foreground="{StaticResource AccentBrush}"/>
+                            </TextBlock>
+                        </StackPanel>
+                    </Border>
+
+                    <DataGrid Grid.Row="1" ItemsSource="{Binding ActiveOrders}" VerticalScrollBarVisibility="Auto" CanUserAddRows="False" CanUserDeleteRows="False" AutoGenerateColumns="False">
+                        <DataGrid.Columns>
+                            <DataGridTextColumn Header="Время" Binding="{Binding Timestamp, StringFormat=HH:mm:ss}" Width="75" IsReadOnly="True"/>
+                            <DataGridTextColumn Header="Тикер" Binding="{Binding Ticker}" Width="70" IsReadOnly="True"/>
+                            <DataGridTextColumn Header="Напр." Binding="{Binding Direction}" Width="55" IsReadOnly="True"/>
+                            <DataGridTextColumn Header="Тип" Binding="{Binding Type}" Width="65" IsReadOnly="True"/>
+                            <DataGridTextColumn Header="Цена" Binding="{Binding Price, StringFormat=F2}" Width="85"/>
+                            <DataGridTextColumn Header="Объём" Binding="{Binding Volume}" Width="65"/>
+                            <DataGridTextColumn Header="Исп." Binding="{Binding FilledVolume}" Width="50" IsReadOnly="True"/>
+                            <DataGridTextColumn Header="Статус" Binding="{Binding Status}" Width="85" IsReadOnly="True">
+                                <DataGridTextColumn.ElementStyle>
+                                    <Style TargetType="TextBlock">
+                                        <Setter Property="Foreground" Value="{Binding StatusColor, Converter={StaticResource StringBrush}}"/>
+                                    </Style>
+                                </DataGridTextColumn.ElementStyle>
+                            </DataGridTextColumn>
+                            <DataGridTemplateColumn Header="" Width="140">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <StackPanel Orientation="Horizontal">
+                                            <Button Content="✔ Прим." Style="{StaticResource SecondaryButton}" Padding="6,2" FontSize="11" Margin="0,0,4,0"
+                                                    Command="{Binding DataContext.ModifyOrderCommand, RelativeSource={RelativeSource AncestorType=DataGrid}}"
+                                                    CommandParameter="{Binding}"
+                                                    Visibility="{Binding IsModified, Converter={StaticResource BoolToVis}}"/>
+                                            <Button Content="✖" Style="{StaticResource DangerButton}" Padding="6,2" FontSize="11"
+                                                    Command="{Binding DataContext.CancelOrderCommand, RelativeSource={RelativeSource AncestorType=DataGrid}}"
+                                                    CommandParameter="{Binding}"/>
+                                        </StackPanel>
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                            </DataGridTemplateColumn>
+                        </DataGrid.Columns>
+                    </DataGrid>
+
+                    <Border Grid.Row="2" Background="{StaticResource SurfaceBrush}" CornerRadius="6" Padding="16,10" Margin="0,8,0,0">
+                        <TextBlock Foreground="{StaticResource TextSecondaryBrush}" FontSize="12">
+                            <Run Text="Двойной клик по ячейке Цена/Объём → редактирование → кнопка Прим. для отправки"/>
+                        </TextBlock>
+                    </Border>
+                </Grid>
+                    </TabItem>
+
+                    <!-- ===== Подвкладка: Котировки ===== -->
+                    <TabItem Header="💹 Котировки" DataContext="{Binding QuotesVM}">
+                <Grid Margin="12">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
+
+                    <Border Grid.Row="0" Background="{StaticResource SurfaceBrush}" CornerRadius="6" Padding="12" Margin="0,0,0,8">
+                        <StackPanel Orientation="Horizontal">
+                            <Label Content="Инструмент:" VerticalAlignment="Center"/>
+                            <ComboBox ItemsSource="{Binding Instruments}" SelectedItem="{Binding SelectedInstrument}" 
+                                      Width="120" Margin="8,0,16,0" VerticalAlignment="Center"/>
+                            <TextBlock VerticalAlignment="Center" Foreground="{StaticResource TextSecondaryBrush}" FontSize="11">
+                                <Run Text="Обновлено: "/>
+                                <Run Text="{Binding TimeSinceUpdate, Mode=OneWay}"/>
+                            </TextBlock>
+                        </StackPanel>
+                    </Border>
+
+                    <Grid Grid.Row="1" Margin="0,0,0,8">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/><ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="*"/><ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <Border Grid.Column="0" Style="{StaticResource MetricCard}">
+                            <StackPanel HorizontalAlignment="Center">
+                                <TextBlock Text="Последняя" FontSize="11" Foreground="{StaticResource TextSecondaryBrush}" HorizontalAlignment="Center"/>
+                                <TextBlock Text="{Binding Last, StringFormat=F2}" FontSize="28" FontWeight="Bold" 
+                                           Foreground="{Binding LastColor, Converter={StaticResource StringBrush}}" HorizontalAlignment="Center"/>
+                                <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                                    <TextBlock Text="{Binding Change, StringFormat={}{0:+0.00;-0.00;0}}" FontSize="13" 
+                                               Foreground="{Binding ChangeColor, Converter={StaticResource StringBrush}}"/>
+                                    <TextBlock Text=" (" Foreground="{StaticResource TextSecondaryBrush}" FontSize="13"/>
+                                    <TextBlock Text="{Binding ChangePercent, StringFormat={}{0:+0.00;-0.00;0}%}" FontSize="13"
+                                               Foreground="{Binding ChangeColor, Converter={StaticResource StringBrush}}"/>
+                                    <TextBlock Text=")" Foreground="{StaticResource TextSecondaryBrush}" FontSize="13"/>
+                                </StackPanel>
+                            </StackPanel>
+                        </Border>
+                        <Border Grid.Column="1" Style="{StaticResource MetricCard}">
+                            <StackPanel HorizontalAlignment="Center">
+                                <TextBlock Text="Bid" FontSize="11" Foreground="{StaticResource TextSecondaryBrush}" HorizontalAlignment="Center"/>
+                                <TextBlock Text="{Binding Bid, StringFormat=F2}" FontSize="22" FontWeight="Bold" Foreground="{StaticResource GreenBrush}" HorizontalAlignment="Center"/>
+                            </StackPanel>
+                        </Border>
+                        <Border Grid.Column="2" Style="{StaticResource MetricCard}">
+                            <StackPanel HorizontalAlignment="Center">
+                                <TextBlock Text="Ask" FontSize="11" Foreground="{StaticResource TextSecondaryBrush}" HorizontalAlignment="Center"/>
+                                <TextBlock Text="{Binding Ask, StringFormat=F2}" FontSize="22" FontWeight="Bold" Foreground="{StaticResource RedBrush}" HorizontalAlignment="Center"/>
+                            </StackPanel>
+                        </Border>
+                        <Border Grid.Column="3" Style="{StaticResource MetricCard}">
+                            <StackPanel HorizontalAlignment="Center">
+                                <TextBlock Text="Спред" FontSize="11" Foreground="{StaticResource TextSecondaryBrush}" HorizontalAlignment="Center"/>
+                                <TextBlock Text="{Binding Spread, StringFormat=F2}" FontSize="22" FontWeight="Bold" Foreground="{StaticResource YellowBrush}" HorizontalAlignment="Center"/>
+                            </StackPanel>
+                        </Border>
+                    </Grid>
+
+                    <Grid Grid.Row="2">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/><ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <GroupBox Grid.Column="0" Header="Сессия" Margin="0,0,4,0">
+                            <Grid Margin="8">
+                                <Grid.RowDefinitions><RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/></Grid.RowDefinitions>
+                                <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                <TextBlock Grid.Row="0" Grid.Column="0" Text="Открытие:" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,2"/>
+                                <TextBlock Grid.Row="0" Grid.Column="1" Text="{Binding Open, StringFormat=F2}" HorizontalAlignment="Right" FontWeight="SemiBold" Margin="0,2"/>
+                                <TextBlock Grid.Row="1" Grid.Column="0" Text="Максимум:" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,2"/>
+                                <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding High, StringFormat=F2}" HorizontalAlignment="Right" FontWeight="SemiBold" Foreground="{StaticResource GreenBrush}" Margin="0,2"/>
+                                <TextBlock Grid.Row="2" Grid.Column="0" Text="Минимум:" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,2"/>
+                                <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding Low, StringFormat=F2}" HorizontalAlignment="Right" FontWeight="SemiBold" Foreground="{StaticResource RedBrush}" Margin="0,2"/>
+                                <TextBlock Grid.Row="3" Grid.Column="0" Text="Пред. закр.:" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,2"/>
+                                <TextBlock Grid.Row="3" Grid.Column="1" Text="{Binding PrevClose, StringFormat=F2}" HorizontalAlignment="Right" FontWeight="SemiBold" Margin="0,2"/>
+                            </Grid>
+                        </GroupBox>
+                        <GroupBox Grid.Column="1" Header="Объёмы" Margin="4,0,0,0">
+                            <Grid Margin="8">
+                                <Grid.RowDefinitions><RowDefinition/><RowDefinition/></Grid.RowDefinitions>
+                                <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                <TextBlock Grid.Row="0" Grid.Column="0" Text="Объём:" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,2"/>
+                                <TextBlock Grid.Row="0" Grid.Column="1" Text="{Binding Volume, StringFormat=N0}" HorizontalAlignment="Right" FontWeight="SemiBold" Margin="0,2"/>
+                                <TextBlock Grid.Row="1" Grid.Column="0" Text="Откр. интерес:" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,2"/>
+                                <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding OpenInterest, StringFormat=N0}" HorizontalAlignment="Right" FontWeight="SemiBold" Margin="0,2"/>
+                            </Grid>
+                        </GroupBox>
+                    </Grid>
+                </Grid>
+                    </TabItem>
+
+                </TabControl>
             </TabItem>
 
             <!-- ==================== ВКЛАДКА: ТЕСТИРОВАНИЕ ==================== -->
@@ -657,207 +822,7 @@
                 </Grid>
             </TabItem>
 
-            <!-- ==================== ВКЛАДКА: ЗАЯВКИ ==================== -->
-            <TabItem Header="📋 Заявки" DataContext="{Binding OrdersVM}">
-                <Grid Margin="12">
-                    <Grid.RowDefinitions>
-                        <RowDefinition Height="Auto"/>   <!-- Кнопки -->
-                        <RowDefinition Height="*"/>      <!-- Таблица -->
-                        <RowDefinition Height="Auto"/>   <!-- Статистика -->
-                    </Grid.RowDefinitions>
-
-                    <!-- Кнопки управления -->
-                    <Border Grid.Row="0" Background="{StaticResource SurfaceBrush}" CornerRadius="6" Padding="12" Margin="0,0,0,8">
-                        <StackPanel Orientation="Horizontal">
-                            <Button Content="🔄 Обновить" Style="{StaticResource SecondaryButton}" 
-                                    Command="{Binding RefreshCommand}" Margin="0,0,8,0"/>
-                            <Button Content="❌ Отменить все" Style="{StaticResource DangerButton}" 
-                                    Command="{Binding CancelAllCommand}" Margin="0,0,24,0"/>
-                            <TextBlock VerticalAlignment="Center" Foreground="{StaticResource TextSecondaryBrush}">
-                                <Run Text="Активных: "/>
-                                <Run Text="{Binding ActiveCount, Mode=OneWay}" FontWeight="Bold" Foreground="{StaticResource AccentBrush}"/>
-                            </TextBlock>
-                        </StackPanel>
-                    </Border>
-
-                    <!-- Таблица заявок -->
-                    <DataGrid Grid.Row="1" ItemsSource="{Binding ActiveOrders}" VerticalScrollBarVisibility="Auto" CanUserAddRows="False" CanUserDeleteRows="False" AutoGenerateColumns="False">
-                        <DataGrid.Columns>
-                            <DataGridTextColumn Header="Время" Binding="{Binding Timestamp, StringFormat=HH:mm:ss}" Width="75" IsReadOnly="True"/>
-                            <DataGridTextColumn Header="Тикер" Binding="{Binding Ticker}" Width="70" IsReadOnly="True"/>
-                            <DataGridTextColumn Header="Напр." Binding="{Binding Direction}" Width="55" IsReadOnly="True"/>
-                            <DataGridTextColumn Header="Тип" Binding="{Binding Type}" Width="65" IsReadOnly="True"/>
-                            <DataGridTextColumn Header="Цена" Binding="{Binding Price, StringFormat=F2}" Width="85">
-                                <DataGridTextColumn.ElementStyle>
-                                    <Style TargetType="TextBlock">
-                                        <Setter Property="Foreground" Value="{StaticResource AccentBrush}"/>
-                                        <Setter Property="FontWeight" Value="SemiBold"/>
-                                    </Style>
-                                </DataGridTextColumn.ElementStyle>
-                            </DataGridTextColumn>
-                            <DataGridTextColumn Header="Объём" Binding="{Binding Volume}" Width="65"/>
-                            <DataGridTextColumn Header="Исп." Binding="{Binding FilledVolume}" Width="50" IsReadOnly="True"/>
-                            <DataGridTextColumn Header="Статус" Binding="{Binding Status}" Width="85" IsReadOnly="True">
-                                <DataGridTextColumn.ElementStyle>
-                                    <Style TargetType="TextBlock">
-                                        <Setter Property="Foreground" Value="{Binding StatusColor, Converter={StaticResource StringBrush}}"/>
-                                    </Style>
-                                </DataGridTextColumn.ElementStyle>
-                            </DataGridTextColumn>
-                            <DataGridTemplateColumn Header="" Width="140">
-                                <DataGridTemplateColumn.CellTemplate>
-                                    <DataTemplate>
-                                        <StackPanel Orientation="Horizontal">
-                                            <Button Content="✔ Прим." Style="{StaticResource SecondaryButton}" Padding="6,2" FontSize="11" Margin="0,0,4,0"
-                                                    Command="{Binding DataContext.ModifyOrderCommand, RelativeSource={RelativeSource AncestorType=DataGrid}}"
-                                                    CommandParameter="{Binding}"
-                                                    Visibility="{Binding IsModified, Converter={StaticResource BoolToVis}}"/>
-                                            <Button Content="✖" Style="{StaticResource DangerButton}" Padding="6,2" FontSize="11"
-                                                    Command="{Binding DataContext.CancelOrderCommand, RelativeSource={RelativeSource AncestorType=DataGrid}}"
-                                                    CommandParameter="{Binding}"/>
-                                        </StackPanel>
-                                    </DataTemplate>
-                                </DataGridTemplateColumn.CellTemplate>
-                            </DataGridTemplateColumn>
-                        </DataGrid.Columns>
-                    </DataGrid>
-
-                    <!-- Статистика -->
-                    <Border Grid.Row="2" Background="{StaticResource SurfaceBrush}" CornerRadius="6" Padding="16,10" Margin="0,8,0,0">
-                        <TextBlock Foreground="{StaticResource TextSecondaryBrush}" FontSize="12">
-                            <Run Text="Двойной клик по ячейке Цена/Объём → редактирование → кнопка Прим. для отправки"/>
-                        </TextBlock>
-                    </Border>
-                </Grid>
-            </TabItem>
-
-            <!-- ==================== ВКЛАДКА: КОТИРОВКИ ==================== -->
-            <TabItem Header="💹 Котировки" DataContext="{Binding QuotesVM}">
-                <Grid Margin="12">
-                    <Grid.RowDefinitions>
-                        <RowDefinition Height="Auto"/>   <!-- Выбор инструмента -->
-                        <RowDefinition Height="Auto"/>   <!-- Цены -->
-                        <RowDefinition Height="Auto"/>   <!-- Детали -->
-                        <RowDefinition Height="*"/>      <!-- Резерв -->
-                    </Grid.RowDefinitions>
-
-                    <!-- Выбор инструмента -->
-                    <Border Grid.Row="0" Background="{StaticResource SurfaceBrush}" CornerRadius="6" Padding="12" Margin="0,0,0,8">
-                        <StackPanel Orientation="Horizontal">
-                            <Label Content="Инструмент:" VerticalAlignment="Center"/>
-                            <ComboBox ItemsSource="{Binding Instruments}" SelectedItem="{Binding SelectedInstrument}" 
-                                      Width="120" Margin="8,0,16,0" VerticalAlignment="Center"/>
-                            <TextBlock VerticalAlignment="Center" Foreground="{StaticResource TextSecondaryBrush}" FontSize="11">
-                                <Run Text="Обновлено: "/>
-                                <Run Text="{Binding TimeSinceUpdate, Mode=OneWay}"/>
-                            </TextBlock>
-                        </StackPanel>
-                    </Border>
-
-                    <!-- Главные цены -->
-                    <Grid Grid.Row="1" Margin="0,0,0,8">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*"/>
-                            <ColumnDefinition Width="*"/>
-                            <ColumnDefinition Width="*"/>
-                            <ColumnDefinition Width="*"/>
-                        </Grid.ColumnDefinitions>
-
-                        <!-- Last -->
-                        <Border Grid.Column="0" Style="{StaticResource MetricCard}">
-                            <StackPanel HorizontalAlignment="Center">
-                                <TextBlock Text="Последняя" FontSize="11" Foreground="{StaticResource TextSecondaryBrush}" HorizontalAlignment="Center"/>
-                                <TextBlock Text="{Binding Last, StringFormat=F2}" FontSize="28" FontWeight="Bold" 
-                                           Foreground="{Binding LastColor, Converter={StaticResource StringBrush}}" HorizontalAlignment="Center"/>
-                                <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
-                                    <TextBlock Text="{Binding Change, StringFormat={}{0:+0.00;-0.00;0}}" FontSize="13" 
-                                               Foreground="{Binding ChangeColor, Converter={StaticResource StringBrush}}"/>
-                                    <TextBlock Text=" (" Foreground="{StaticResource TextSecondaryBrush}" FontSize="13"/>
-                                    <TextBlock Text="{Binding ChangePercent, StringFormat={}{0:+0.00;-0.00;0}%}" FontSize="13"
-                                               Foreground="{Binding ChangeColor, Converter={StaticResource StringBrush}}"/>
-                                    <TextBlock Text=")" Foreground="{StaticResource TextSecondaryBrush}" FontSize="13"/>
-                                </StackPanel>
-                            </StackPanel>
-                        </Border>
-
-                        <!-- Bid -->
-                        <Border Grid.Column="1" Style="{StaticResource MetricCard}">
-                            <StackPanel HorizontalAlignment="Center">
-                                <TextBlock Text="Bid" FontSize="11" Foreground="{StaticResource TextSecondaryBrush}" HorizontalAlignment="Center"/>
-                                <TextBlock Text="{Binding Bid, StringFormat=F2}" FontSize="22" FontWeight="Bold" 
-                                           Foreground="{StaticResource GreenBrush}" HorizontalAlignment="Center"/>
-                            </StackPanel>
-                        </Border>
-
-                        <!-- Ask -->
-                        <Border Grid.Column="2" Style="{StaticResource MetricCard}">
-                            <StackPanel HorizontalAlignment="Center">
-                                <TextBlock Text="Ask" FontSize="11" Foreground="{StaticResource TextSecondaryBrush}" HorizontalAlignment="Center"/>
-                                <TextBlock Text="{Binding Ask, StringFormat=F2}" FontSize="22" FontWeight="Bold" 
-                                           Foreground="{StaticResource RedBrush}" HorizontalAlignment="Center"/>
-                            </StackPanel>
-                        </Border>
-
-                        <!-- Spread -->
-                        <Border Grid.Column="3" Style="{StaticResource MetricCard}">
-                            <StackPanel HorizontalAlignment="Center">
-                                <TextBlock Text="Спред" FontSize="11" Foreground="{StaticResource TextSecondaryBrush}" HorizontalAlignment="Center"/>
-                                <TextBlock Text="{Binding Spread, StringFormat=F2}" FontSize="22" FontWeight="Bold" 
-                                           Foreground="{StaticResource YellowBrush}" HorizontalAlignment="Center"/>
-                            </StackPanel>
-                        </Border>
-                    </Grid>
-
-                    <!-- Детальная информация -->
-                    <Grid Grid.Row="2">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*"/>
-                            <ColumnDefinition Width="*"/>
-                        </Grid.ColumnDefinitions>
-
-                        <GroupBox Grid.Column="0" Header="Сессия" Margin="0,0,4,0">
-                            <Grid Margin="8">
-                                <Grid.RowDefinitions>
-                                    <RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/>
-                                </Grid.RowDefinitions>
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/>
-                                </Grid.ColumnDefinitions>
-
-                                <TextBlock Grid.Row="0" Grid.Column="0" Text="Открытие:" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,2"/>
-                                <TextBlock Grid.Row="0" Grid.Column="1" Text="{Binding Open, StringFormat=F2}" HorizontalAlignment="Right" FontWeight="SemiBold" Margin="0,2"/>
-
-                                <TextBlock Grid.Row="1" Grid.Column="0" Text="Максимум:" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,2"/>
-                                <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding High, StringFormat=F2}" HorizontalAlignment="Right" FontWeight="SemiBold" Foreground="{StaticResource GreenBrush}" Margin="0,2"/>
-
-                                <TextBlock Grid.Row="2" Grid.Column="0" Text="Минимум:" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,2"/>
-                                <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding Low, StringFormat=F2}" HorizontalAlignment="Right" FontWeight="SemiBold" Foreground="{StaticResource RedBrush}" Margin="0,2"/>
-
-                                <TextBlock Grid.Row="3" Grid.Column="0" Text="Пред. закр.:" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,2"/>
-                                <TextBlock Grid.Row="3" Grid.Column="1" Text="{Binding PrevClose, StringFormat=F2}" HorizontalAlignment="Right" FontWeight="SemiBold" Margin="0,2"/>
-                            </Grid>
-                        </GroupBox>
-
-                        <GroupBox Grid.Column="1" Header="Объёмы" Margin="4,0,0,0">
-                            <Grid Margin="8">
-                                <Grid.RowDefinitions>
-                                    <RowDefinition/><RowDefinition/>
-                                </Grid.RowDefinitions>
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/>
-                                </Grid.ColumnDefinitions>
-
-                                <TextBlock Grid.Row="0" Grid.Column="0" Text="Объём:" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,2"/>
-                                <TextBlock Grid.Row="0" Grid.Column="1" Text="{Binding Volume, StringFormat=N0}" HorizontalAlignment="Right" FontWeight="SemiBold" Margin="0,2"/>
-
-                                <TextBlock Grid.Row="1" Grid.Column="0" Text="Откр. интерес:" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,2"/>
-                                <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding OpenInterest, StringFormat=N0}" HorizontalAlignment="Right" FontWeight="SemiBold" Margin="0,2"/>
-                            </Grid>
-                        </GroupBox>
-                    </Grid>
-                </Grid>
-            </TabItem>
-
+            <!-- Заявки и Котировки перенесены во вкладку Мониторинг -->
             <!-- ==================== ВКЛАДКА: СТРАТЕГИИ ==================== -->
             <TabItem Header="⚙️ Стратегии" DataContext="{Binding StrategyManagerVM}">
                 <Grid Margin="12">

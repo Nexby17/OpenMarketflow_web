@@ -47,7 +47,7 @@ public class MainViewModel : BaseViewModel
         Instruments = new ObservableCollection<string> { "SBER", "GAZP", "Si", "BR", "GOLD", "SPYF" };
         SelectedInstrument = Instruments[0];
 
-        Strategies = new ObservableCollection<string> { "Scalping (EMA Cross + RSI)", "Breakout (BB + ATR)", "Spread Arbitrage" };
+        Strategies = new ObservableCollection<string> { "PSAR Grid MM (1 мин)", "PSAR+EMA Combo (5 мин)", "VStop Pure (30 сек, бумага)" };
         SelectedStrategy = Strategies[0];
 
         StopLossModes = new ObservableCollection<string> { "Пункты", "%" };
