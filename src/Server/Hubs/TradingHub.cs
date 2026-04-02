@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.SignalR;
 using HedgeFund.Core.Models;
 using HedgeFund.Server.Services;
+using System.Collections.Generic;
 
 namespace HedgeFund.Server.Hubs;
 
@@ -160,6 +161,117 @@ public class TradingHub : Hub
     {
         var status = _tradingService.GetStatus();
         await Clients.Caller.SendAsync("OnStatusUpdate", status);
+    }
+
+    // === ЗАЯВКИ ===
+
+    /// <summary>Получить активные заявки</summary>
+    public async Task GetActiveOrders()
+    {
+        var orders = await _tradingService.GetActiveOrdersAsync();
+        await Clients.Caller.SendAsync("OnActiveOrders", orders);
+    }
+
+    /// <summary>Изменить заявку (цена/объём)</summary>
+    public async Task ModifyOrder(string orderId, double newPrice, int newVolume)
+    {
+        _logger.LogInformation("Изменение заявки {OrderId}: цена={Price}, объём={Vol}", orderId, newPrice, newVolume);
+        var success = await _tradingService.ModifyOrderAsync(orderId, newPrice, newVolume);
+        if (success)
+        {
+            await Clients.All.SendAsync("OnLogMessage", DateTime.UtcNow.ToString("o"), "INFO",
+                $"Заявка {orderId} изменена: цена={newPrice:F2}, объём={newVolume}");
+        }
+        else
+        {
+            await Clients.Caller.SendAsync("OnError", $"Не удалось изменить заявку {orderId}");
+        }
+    }
+
+    /// <summary>Отменить заявку</summary>
+    public async Task CancelOrder(string orderId)
+    {
+        _logger.LogInformation("Отмена заявки {OrderId}", orderId);
+        var success = await _tradingService.CancelOrderAsync(orderId);
+        if (success)
+        {
+            await Clients.All.SendAsync("OnLogMessage", DateTime.UtcNow.ToString("o"), "INFO",
+                $"Заявка {orderId} отменена");
+        }
+        else
+        {
+            await Clients.Caller.SendAsync("OnError", $"Не удалось отменить заявку {orderId}");
+        }
+    }
+
+    /// <summary>Отменить все заявки</summary>
+    public async Task CancelAllOrders()
+    {
+        _logger.LogWarning("Отмена ВСЕХ заявок от клиента {ConnectionId}", Context.ConnectionId);
+        await _tradingService.CancelAllOrdersAsync();
+        await Clients.All.SendAsync("OnLogMessage", DateTime.UtcNow.ToString("o"), "INFO",
+            "Все заявки отменены");
+    }
+
+    // === КОТИРОВКИ ===
+
+    /// <summary>Подписаться на котировки инструмента</summary>
+    public async Task SubscribeQuotes(string ticker)
+    {
+        _logger.LogInformation("Подписка на котировки {Ticker}", ticker);
+        await _tradingService.SubscribeQuotesAsync(ticker, async quote =>
+        {
+            await Clients.Caller.SendAsync("OnQuoteUpdate", quote);
+        });
+    }
+
+    // === СТРАТЕГИИ ===
+
+    /// <summary>Получить статусы всех стратегий</summary>
+    public async Task GetStrategyStatuses()
+    {
+        var statuses = _strategyRunner.GetStrategyStatuses();
+        await Clients.Caller.SendAsync("OnStrategyStatuses", statuses);
+    }
+
+    /// <summary>Приостановить стратегию</summary>
+    public async Task PauseStrategy(string strategyName)
+    {
+        _logger.LogInformation("Пауза стратегии {Strategy}", strategyName);
+        _strategyRunner.Pause(strategyName);
+        await Clients.All.SendAsync("OnLogMessage", DateTime.UtcNow.ToString("o"), "INFO",
+            $"Стратегия {strategyName} приостановлена");
+    }
+
+    /// <summary>Остановить стратегию и закрыть все её позиции</summary>
+    public async Task StopAndCloseAll(string strategyName)
+    {
+        _logger.LogWarning("СТОП ТОРГИ: {Strategy} — закрытие всех позиций", strategyName);
+        await _tradingService.StopAndCloseStrategyAsync(strategyName);
+        _strategyRunner.Stop(strategyName);
+        await Clients.All.SendAsync("OnLogMessage", DateTime.UtcNow.ToString("o"), "WARNING",
+            $"🔴 Стратегия {strategyName} остановлена, все позиции закрыты");
+        await Clients.All.SendAsync("OnStatusUpdate", _tradingService.GetStatus());
+    }
+
+    // === СТАКАН + ГРАФИК ===
+
+    /// <summary>Подписаться на стакан</summary>
+    public async Task SubscribeOrderBook(string ticker)
+    {
+        _logger.LogInformation("Подписка на стакан {Ticker}", ticker);
+        await _tradingService.SubscribeOrderBookAsync(ticker, async snapshot =>
+        {
+            await Clients.Caller.SendAsync("OnOrderBookUpdate", snapshot);
+        });
+    }
+
+    /// <summary>Получить свечи для графика</summary>
+    public async Task GetCandles(string ticker, string timeframe)
+    {
+        _logger.LogInformation("Запрос свечей {Ticker} TF={TF}", ticker, timeframe);
+        var candles = await _tradingService.GetCandlesAsync(ticker, timeframe);
+        await Clients.Caller.SendAsync("OnCandlesUpdate", candles);
     }
 
     /// <summary>Запустить бэктест</summary>

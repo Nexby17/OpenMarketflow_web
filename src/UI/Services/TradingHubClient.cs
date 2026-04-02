@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.SignalR.Client;
 using HedgeFund.Core.Models;
+using System.Collections.Generic;
 
 namespace HedgeFund.UI.Services;
 
@@ -40,6 +41,14 @@ public class TradingHubClient : IAsyncDisposable
     public event Action<string>? OnError;
     public event Action<bool>? OnConnectionChanged;
 
+    // Новые события
+    public event Action<Order[]>? OnActiveOrdersReceived;
+    public event Action<Order>? OnOrderUpdated;
+    public event Action<QuoteData>? OnQuoteUpdate;
+    public event Action<StrategyStatus[]>? OnStrategyStatusesReceived;
+    public event Action<OrderBookSnapshot>? OnOrderBookUpdate;
+    public event Action<List<ClusterCandle>>? OnCandlesReceived;
+
     // === Подключение ===
 
     /// <summary>Подключиться к серверу (например "http://localhost:5050/trading")</summary>
@@ -63,6 +72,12 @@ public class TradingHubClient : IAsyncDisposable
         _connection.On<BacktestResultEvent>("OnBacktestResult", e => OnBacktestResult?.Invoke(e));
         _connection.On<TradeApprovalEvent>("OnTradeApprovalRequired", e => OnTradeApprovalRequired?.Invoke(e));
         _connection.On<string>("OnError", e => OnError?.Invoke(e));
+        _connection.On<Order[]>("OnActiveOrders", e => OnActiveOrdersReceived?.Invoke(e));
+        _connection.On<Order>("OnOrderUpdated", e => OnOrderUpdated?.Invoke(e));
+        _connection.On<QuoteData>("OnQuoteUpdate", e => OnQuoteUpdate?.Invoke(e));
+        _connection.On<StrategyStatus[]>("OnStrategyStatuses", e => OnStrategyStatusesReceived?.Invoke(e));
+        _connection.On<OrderBookSnapshot>("OnOrderBookUpdate", e => OnOrderBookUpdate?.Invoke(e));
+        _connection.On<List<ClusterCandle>>("OnCandlesUpdate", e => OnCandlesReceived?.Invoke(e));
 
         // Обработка состояния подключения
         _connection.Closed += _ =>
@@ -168,6 +183,74 @@ public class TradingHubClient : IAsyncDisposable
     {
         EnsureConnected();
         await _connection!.InvokeAsync("RunBacktest", strategyName, ticker, timeframe, from, to, parameters);
+    }
+
+    // === Заявки ===
+
+    public async Task GetActiveOrdersAsync()
+    {
+        EnsureConnected();
+        await _connection!.InvokeAsync("GetActiveOrders");
+    }
+
+    public async Task ModifyOrderAsync(string orderId, double newPrice, int newVolume)
+    {
+        EnsureConnected();
+        await _connection!.InvokeAsync("ModifyOrder", orderId, newPrice, newVolume);
+    }
+
+    public async Task CancelOrderAsync(string orderId)
+    {
+        EnsureConnected();
+        await _connection!.InvokeAsync("CancelOrder", orderId);
+    }
+
+    public async Task CancelAllOrdersAsync()
+    {
+        EnsureConnected();
+        await _connection!.InvokeAsync("CancelAllOrders");
+    }
+
+    // === Котировки ===
+
+    public async Task SubscribeQuotesAsync(string ticker)
+    {
+        EnsureConnected();
+        await _connection!.InvokeAsync("SubscribeQuotes", ticker);
+    }
+
+    // === Стратегии ===
+
+    public async Task GetStrategyStatusesAsync()
+    {
+        EnsureConnected();
+        await _connection!.InvokeAsync("GetStrategyStatuses");
+    }
+
+    public async Task PauseStrategyAsync(string name)
+    {
+        EnsureConnected();
+        await _connection!.InvokeAsync("PauseStrategy", name);
+    }
+
+    public async Task StopAndCloseAllAsync(string strategyName)
+    {
+        EnsureConnected();
+        await _connection!.InvokeAsync("StopAndCloseAll", strategyName);
+    }
+
+    // === Стакан + График ===
+
+    public async Task SubscribeOrderBookAsync(string ticker)
+    {
+        EnsureConnected();
+        await _connection!.InvokeAsync("SubscribeOrderBook", ticker);
+    }
+
+    public async Task GetCandlesAsync(string ticker, string timeframe)
+    {
+        EnsureConnected();
+        await _connection!.InvokeAsync("GetCandles", ticker, timeframe);
     }
 
     // === Вспомогательные ===

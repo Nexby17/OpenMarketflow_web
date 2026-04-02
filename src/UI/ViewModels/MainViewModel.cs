@@ -22,7 +22,12 @@ public class MainViewModel : BaseViewModel
         MonitoringVM = new MonitoringViewModel();
         TradesVM = new TradesViewModel();
         BacktestVM = new BacktestViewModel();
+        OrdersVM = new OrdersViewModel();
+        QuotesVM = new QuotesViewModel();
+        StrategyManagerVM = new StrategyManagerViewModel();
+        OrderBookVM = new OrderBookViewModel();
         BacktestVM.ApplyToTradingRequested += OnApplyBacktestToTrading;
+        WireUpNewVMs();
 
         // Команды
         StartCommand = new RelayCommand(Start, () => !IsRunning);
@@ -62,6 +67,10 @@ public class MainViewModel : BaseViewModel
     public MonitoringViewModel MonitoringVM { get; }
     public TradesViewModel TradesVM { get; }
     public BacktestViewModel BacktestVM { get; }
+    public OrdersViewModel OrdersVM { get; }
+    public QuotesViewModel QuotesVM { get; }
+    public StrategyManagerViewModel StrategyManagerVM { get; }
+    public OrderBookViewModel OrderBookVM { get; }
 
     // === Свойства привязки ===
 
@@ -481,8 +490,11 @@ public class MainViewModel : BaseViewModel
 
                 await _hubClient.ConnectAsync(ServerUrl);
                 IsServerConnected = true;
+                WireUpHubEvents();
                 AddLog($"✅ Подключён к серверу: {ServerUrl}");
                 await _hubClient.RequestStatusAsync();
+                QuotesVM.StartRefresh();
+                OrderBookVM.StartRefresh();
             }
             catch (Exception ex)
             {
@@ -535,5 +547,120 @@ public class MainViewModel : BaseViewModel
             }
             catch (Exception ex) { AddLog($"❌ Ошибка: {ex.Message}"); }
         }
+    }
+
+    // === ПРОВОДКА НОВЫХ VM ===
+
+    private void WireUpNewVMs()
+    {
+        // Заявки
+        OrdersVM.CancelOrderRequested += async (id) =>
+        {
+            if (_hubClient != null && IsServerConnected)
+            {
+                try { await _hubClient.CancelOrderAsync(id); AddLog($"❌ Заявка {id} отменена"); }
+                catch (Exception ex) { AddLog($"❌ Ошибка: {ex.Message}"); }
+            }
+        };
+        OrdersVM.ModifyOrderRequested += async (id, price, vol) =>
+        {
+            if (_hubClient != null && IsServerConnected)
+            {
+                try { await _hubClient.ModifyOrderAsync(id, price, vol); AddLog($"✏️ Заявка {id} изменена"); }
+                catch (Exception ex) { AddLog($"❌ Ошибка: {ex.Message}"); }
+            }
+        };
+        OrdersVM.CancelAllRequested += async () =>
+        {
+            if (_hubClient != null && IsServerConnected)
+            {
+                try { await _hubClient.CancelAllOrdersAsync(); AddLog("❌ Все заявки отменены"); }
+                catch (Exception ex) { AddLog($"❌ Ошибка: {ex.Message}"); }
+            }
+        };
+        OrdersVM.RefreshRequested += async () =>
+        {
+            if (_hubClient != null && IsServerConnected)
+                try { await _hubClient.GetActiveOrdersAsync(); } catch { }
+        };
+
+        // Котировки
+        QuotesVM.SubscribeRequested += async (ticker) =>
+        {
+            if (_hubClient != null && IsServerConnected)
+                try { await _hubClient.SubscribeQuotesAsync(ticker); } catch { }
+        };
+
+        // Стратегии
+        StrategyManagerVM.StartRequested += async (name, ticker, pars) =>
+        {
+            if (_hubClient != null && IsServerConnected)
+            {
+                try { await _hubClient.StartStrategyAsync(name, ticker, pars); AddLog($"▶ Стратегия {name} запущена"); }
+                catch (Exception ex) { AddLog($"❌ {ex.Message}"); }
+            }
+        };
+        StrategyManagerVM.StopRequested += async (name) =>
+        {
+            if (_hubClient != null && IsServerConnected)
+            {
+                try { await _hubClient.StopStrategyAsync(name); AddLog($"⏹ Стратегия {name} остановлена"); }
+                catch (Exception ex) { AddLog($"❌ {ex.Message}"); }
+            }
+        };
+        StrategyManagerVM.PauseRequested += async (name) =>
+        {
+            if (_hubClient != null && IsServerConnected)
+                try { await _hubClient.PauseStrategyAsync(name); } catch { }
+        };
+        StrategyManagerVM.StopAndCloseRequested += async (name) =>
+        {
+            if (_hubClient != null && IsServerConnected)
+            {
+                try { await _hubClient.StopAndCloseAllAsync(name); AddLog($"🔴 {name}: стоп торги + закрытие позиций"); }
+                catch (Exception ex) { AddLog($"❌ {ex.Message}"); }
+            }
+        };
+        StrategyManagerVM.EmergencyStopRequested += async () => await EmergencyStopAsync();
+
+        // Стакан
+        OrderBookVM.SubscribeBookRequested += async (ticker) =>
+        {
+            if (_hubClient != null && IsServerConnected)
+                try { await _hubClient.SubscribeOrderBookAsync(ticker); } catch { }
+        };
+        OrderBookVM.TimeframeChangeRequested += async (tf) =>
+        {
+            if (_hubClient != null && IsServerConnected)
+                try { await _hubClient.GetCandlesAsync(OrderBookVM.SelectedInstrument, tf); } catch { }
+        };
+    }
+
+    private void WireUpHubEvents()
+    {
+        if (_hubClient == null) return;
+
+        _hubClient.OnActiveOrdersReceived += orders =>
+            App.Current?.Dispatcher.Invoke(() =>
+                OrdersVM.UpdateOrders(orders.Select(OrderViewModel.FromOrder)));
+
+        _hubClient.OnOrderUpdated += order =>
+            App.Current?.Dispatcher.Invoke(() => OrdersVM.UpdateOrder(order));
+
+        _hubClient.OnQuoteUpdate += quote =>
+            App.Current?.Dispatcher.Invoke(() => QuotesVM.UpdateQuote(quote));
+
+        _hubClient.OnStrategyStatusesReceived += statuses =>
+            App.Current?.Dispatcher.Invoke(() =>
+            {
+                foreach (var s in statuses)
+                    StrategyManagerVM.UpdateStrategyStatus(s);
+            });
+
+        _hubClient.OnOrderBookUpdate += snapshot =>
+            App.Current?.Dispatcher.Invoke(() => OrderBookVM.UpdateOrderBook(snapshot));
+
+        _hubClient.OnCandlesReceived += candles =>
+            App.Current?.Dispatcher.Invoke(() => OrderBookVM.UpdateCandles(candles));
     }
 }

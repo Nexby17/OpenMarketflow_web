@@ -140,6 +140,50 @@ public class StrategyRunner : IDisposable
         lock (_lock) return _running.Keys.ToList();
     }
 
+    /// <summary>Приостановить стратегию</summary>
+    public void Pause(string strategyName)
+    {
+        lock (_lock)
+        {
+            if (_running.TryGetValue(strategyName, out var running))
+            {
+                running.IsPaused = true;
+                _logger.LogInformation("Стратегия {Strategy} приостановлена", strategyName);
+            }
+        }
+    }
+
+    /// <summary>Возобновить стратегию</summary>
+    public void ResumeStrategy(string strategyName)
+    {
+        lock (_lock)
+        {
+            if (_running.TryGetValue(strategyName, out var running))
+            {
+                running.IsPaused = false;
+                _logger.LogInformation("Стратегия {Strategy} возобновлена", strategyName);
+            }
+        }
+    }
+
+    /// <summary>Получить статусы всех стратегий</summary>
+    public StrategyStatus[] GetStrategyStatuses()
+    {
+        lock (_lock)
+        {
+            return _running.Values.Select(r => new StrategyStatus
+            {
+                Name = r.Name,
+                State = r.IsPaused ? StrategyState.Paused :
+                        r.CancellationSource.IsCancellationRequested ? StrategyState.Stopped :
+                        StrategyState.Running,
+                Ticker = r.Ticker,
+                Parameters = r.Parameters,
+                StartTime = r.StartTime
+            }).ToArray();
+        }
+    }
+
     // === Основной цикл стратегии ===
 
     private async Task RunStrategyLoopAsync(RunningStrategy running, CancellationToken ct)
@@ -219,5 +263,7 @@ public class StrategyRunner : IDisposable
         public IStrategy Strategy { get; set; } = null!;
         public Dictionary<string, double> Parameters { get; set; } = new();
         public CancellationTokenSource CancellationSource { get; set; } = null!;
+        public bool IsPaused { get; set; }
+        public DateTime StartTime { get; set; } = DateTime.UtcNow;
     }
 }
