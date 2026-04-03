@@ -879,10 +879,6 @@
                                 <ComboBox ItemsSource="{Binding Instruments}" SelectedItem="{Binding SelectedInstrument}" Width="90"/>
                                 <Button Content="🔄" Style="{StaticResource SecondaryButton}" 
                                         Command="{Binding SubscribeCommand}" Padding="6,2" Margin="8,0,0,0"/>
-                                <TextBlock VerticalAlignment="Center" Margin="12,0,0,0" FontSize="18" FontWeight="Bold"
-                                           Foreground="{StaticResource AccentBrush}">
-                                    <Run Text="{Binding LastPrice, StringFormat=F2, Mode=OneWay}"/>
-                                </TextBlock>
                             </StackPanel>
                         </Border>
 
@@ -964,17 +960,7 @@
                             </ScrollViewer>
                         </Border>
 
-                        <!-- Спред -->
-                        <Border Grid.Row="3" Background="{StaticResource SurfaceBrush}" CornerRadius="6" Padding="8" Margin="0,6,0,0">
-                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
-                                <TextBlock Text="Bid: " Foreground="{StaticResource TextSecondaryBrush}" FontSize="12"/>
-                                <TextBlock Text="{Binding BestBid, StringFormat=F2}" Foreground="{StaticResource GreenBrush}" FontWeight="Bold" FontSize="12" Margin="0,0,16,0"/>
-                                <TextBlock Text="Ask: " Foreground="{StaticResource TextSecondaryBrush}" FontSize="12"/>
-                                <TextBlock Text="{Binding BestAsk, StringFormat=F2}" Foreground="{StaticResource RedBrush}" FontWeight="Bold" FontSize="12" Margin="0,0,16,0"/>
-                                <TextBlock Text="Спред: " Foreground="{StaticResource TextSecondaryBrush}" FontSize="12"/>
-                                <TextBlock Text="{Binding SpreadValue, StringFormat=F2}" Foreground="{StaticResource YellowBrush}" FontWeight="Bold" FontSize="12"/>
-                            </StackPanel>
-                        </Border>
+                        <!-- Bid/Ask/Спред убраны — отображаются в карточках справа -->
                     </Grid>
 
                     <!-- ПРАВАЯ ПАНЕЛЬ: Котировки + График -->
