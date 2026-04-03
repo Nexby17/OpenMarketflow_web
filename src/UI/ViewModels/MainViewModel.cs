@@ -363,51 +363,7 @@ public class MainViewModel : BaseViewModel
         catch (Exception ex) { AddLog($"⚠️ История {ticker}: {ex.Message}"); }
     }
 
-    private async Task ConnectFinamAsync()
-    {
-        if (string.IsNullOrWhiteSpace(ApiToken))
-        {
-            AddLog("⚠ Токен Финам не указан. Введите токен или установите FINAM_TOKEN.");
-            return;
-        }
-
-        try
-        {
-            AddLog("Подключение к Финам Trade API...");
-            var finam = new FinamConnector();
-
-            finam.OnTrade += OnTradeReceived;
-            finam.OnOrderUpdate += OnOrderReceived;
-            finam.OnError += msg => AddLog($"⚠ Финам: {msg}");
-            finam.OnConnectionChanged += connected =>
-            {
-                AddLog(connected ? "✓ Подключён к Финам" : "✗ Отключён от Финам");
-            };
-
-            var success = await finam.ConnectAsync(ApiToken);
-            if (success)
-            {
-                _connector = finam;
-                AddLog("✓ Финам: подключение успешно.");
-
-                // Получаем начальный баланс
-                var balance = await finam.GetBalanceAsync();
-                Balance = balance;
-                MonitoringVM.Balance = balance;
-                MonitoringVM.Equity = balance;
-                MonitoringVM.InitialBalance = balance;
-                MonitoringVM.AddEquityPoint(balance);
-            }
-            else
-            {
-                AddLog("✗ Не удалось подключиться к Финам.");
-            }
-        }
-        catch (Exception ex)
-        {
-            AddLog($"✗ Ошибка подключения Финам: {ex.Message}");
-        }
-    }
+    // ConnectFinamAsync — единственная версия выше (строка ~255)
 
     private void OnTradeReceived(Trade trade)
     {
