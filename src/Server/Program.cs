@@ -34,6 +34,8 @@ builder.WebHost.UseUrls($"http://0.0.0.0:{port}");
 var app = builder.Build();
 
 app.UseCors();
+app.UseDefaultFiles();
+app.UseStaticFiles();
 
 // === Маппинг SignalR Hub ===
 app.MapHub<TradingHub>("/trading");
