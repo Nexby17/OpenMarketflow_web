@@ -121,10 +121,14 @@
 
                     <!-- ROW 2: Кнопки управления -->
                     <StackPanel Grid.Row="2" Orientation="Horizontal" Margin="0,0,0,8">
-                        <Button Content="▶  СТАРТ" Style="{StaticResource PrimaryButton}" 
-                                Command="{Binding StartCommand}" Width="120"/>
-                        <Button Content="⏹  СТОП" Style="{StaticResource DangerButton}" 
-                                Command="{Binding StopCommand}" Width="120" Margin="8,0,0,0"/>
+                        <Button Content="🔌 Подключиться" Style="{StaticResource SecondaryButton}" 
+                                Command="{Binding ConnectBrokerCommand}" Width="150" Padding="8,6"/>
+                        <TextBlock Text="{Binding BrokerStatusText}" VerticalAlignment="Center" 
+                                   Margin="10,0,0,0" FontSize="12"/>
+                        <Button Content="🤖 Запустить бота" Style="{StaticResource PrimaryButton}" 
+                                Command="{Binding StartBotCommand}" Width="150" Margin="16,0,0,0" Padding="8,6"/>
+                        <Button Content="⏹ Стоп" Style="{StaticResource DangerButton}" 
+                                Command="{Binding StopCommand}" Width="80" Margin="8,0,0,0" Padding="8,6"/>
                         <TextBlock VerticalAlignment="Center" Margin="24,0,0,0" FontSize="16">
                             <Run Text="Баланс: " Foreground="{StaticResource TextSecondaryBrush}"/>
                             <Run Text="{Binding Balance, StringFormat=N0}" Foreground="{StaticResource PrimaryBrush}" FontWeight="Bold" FontSize="18"/>

@@ -33,7 +33,8 @@ public class MainViewModel : BaseViewModel
         WireUpNewVMs();
 
         // Команды
-        StartCommand = new RelayCommand(Start, () => !IsRunning);
+        ConnectBrokerCommand = new RelayCommand(ConnectBroker, () => !IsBrokerConnected);
+        StartBotCommand = new RelayCommand(StartBot, () => IsBrokerConnected && !IsRunning);
         StopCommand = new RelayCommand(Stop, () => IsRunning);
         ToggleMartingaleCommand = new RelayCommand(ToggleMartingale);
         ToggleStopLossCommand = new RelayCommand(ToggleStopLoss);
@@ -215,43 +216,46 @@ public class MainViewModel : BaseViewModel
 
     // === Команды ===
 
-    public ICommand StartCommand { get; }
+    public ICommand ConnectBrokerCommand { get; }
+    public ICommand StartBotCommand { get; }
     public ICommand StopCommand { get; }
+
+    private bool _isBrokerConnected;
+    public bool IsBrokerConnected
+    {
+        get => _isBrokerConnected;
+        set { if (SetField(ref _isBrokerConnected, value)) OnPropertyChanged(nameof(BrokerStatusText)); }
+    }
+    public string BrokerStatusText => IsBrokerConnected ? "✅ Подключён" : "❌ Не подключён";
     public ICommand ToggleMartingaleCommand { get; }
     public ICommand ToggleStopLossCommand { get; }
     public ICommand LoadTokenCommand { get; }
 
     // === Логика ===
 
-    private async void Start()
+    /// <summary>Подключение к брокеру (кнопка 1)</summary>
+    private async void ConnectBroker()
     {
-        if (IsRunning) return;
+        if (IsBrokerConnected) return;
+        await ConnectFinamAsync();
+    }
 
-        var settings = new AveragingSettings
-        {
-            Enabled = true,
-            Mode = IsMartingale ? AveragingMode.Martingale : AveragingMode.Fixed,
-            BaseLotSize = BaseLotSize,
-            MaxAveragingCount = MaxAveraging,
-            StopLossEnabled = StopLossEnabled,
-            StopLossPoints = SelectedStopLossMode == "Пункты" ? StopLossValue : 0,
-            StopLossPercent = SelectedStopLossMode == "%" ? StopLossValue : 0,
-            UsePercentStopLoss = SelectedStopLossMode == "%"
-        };
+    /// <summary>Запуск торгового робота (кнопка 2)</summary>
+    private void StartBot()
+    {
+        if (IsRunning || !IsBrokerConnected) return;
 
-        AddLog("Робот запущен. Брокер: " + SelectedBroker + ", Инструмент: " + SelectedInstrument);
-        AddLog("Стратегия: " + SelectedStrategy);
+        AddLog($"🤖 Робот запущен: {SelectedStrategy} на {SelectedInstrument}");
         AddLog($"Усреднение: {AveragingModeText}, лимит: {MaxAveragingText}");
         if (StopLossEnabled)
             AddLog($"Стоп-лосс: {StopLossValue} {SelectedStopLossMode}");
 
-        // Подключение к брокеру
-        // Всегда через Finam Trade API (REST + gRPC)
-        await ConnectFinamAsync();
-
         IsRunning = true;
         _uiTimer.Start();
         MonitoringVM.StartRefresh();
+
+        // TODO: запуск выбранной стратегии через StrategyRunner
+        AddLog("✅ Стратегия активна. Ожидание сигналов...");
     }
 
     private async Task ConnectFinamAsync()
@@ -298,6 +302,7 @@ public class MainViewModel : BaseViewModel
             });
 
             await _finamConnector.ConnectAsync(token);
+            IsBrokerConnected = true;
             AddLog("✅ Финам подключён!");
 
             // Подписываемся на ВСЕ инструменты
