@@ -801,7 +801,47 @@ public class MainViewModel : BaseViewModel
                     });
                 }, ct);
 
-                // 2. Исторические свечи
+                // 2. Стакан gRPC
+                _ = Task.Run(async () =>
+                {
+                    try
+                    {
+                        await _finamConnector.SubscribeOrderBookAsync(ticker, (rows) =>
+                        {
+                            if (ct.IsCancellationRequested) return;
+                            App.Current?.Dispatcher.Invoke(() =>
+                            {
+                                if (OrderBookVM.SelectedInstrument != ticker) return;
+
+                                long maxVol = rows.Count > 0
+                                    ? Math.Max(rows.Max(r => r.bidVol), rows.Max(r => r.askVol))
+                                    : 1;
+                                if (maxVol == 0) maxVol = 1;
+
+                                OrderBookVM.OrderBookRows.Clear();
+                                foreach (var (price, bidVol, askVol) in rows.OrderByDescending(r => r.price))
+                                {
+                                    OrderBookVM.OrderBookRows.Add(new OrderBookRowViewModel
+                                    {
+                                        Price = price,
+                                        BidVolume = bidVol,
+                                        AskVolume = askVol,
+                                        BidBarWidth = (double)bidVol / maxVol * 80,
+                                        AskBarWidth = (double)askVol / maxVol * 80,
+                                        IsLastPrice = Math.Abs(price - OrderBookVM.LastPrice) < 1
+                                    });
+                                }
+                            });
+                        }, ct);
+                    }
+                    catch (OperationCanceledException) { }
+                    catch (Exception ex)
+                    {
+                        App.Current?.Dispatcher.Invoke(() => AddLog($"⚠️ Стакан {ticker}: {ex.Message}"));
+                    }
+                }, ct);
+
+                // 3. Исторические свечи
                 await LoadHistoricalCandles(ticker);
 
                 AddLog($"📊 Переключено на {ticker}");

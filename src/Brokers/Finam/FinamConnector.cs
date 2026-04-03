@@ -167,6 +167,22 @@ public class FinamConnector : IBrokerConnector
         return Task.CompletedTask;
     }
 
+    /// <summary>Подписка на стакан через gRPC SubscribeOrderBook</summary>
+    public async Task SubscribeOrderBookAsync(string ticker,
+        Action<List<(double price, long bidVol, long askVol)>> onOrderBook,
+        CancellationToken ct = default)
+    {
+        EnsureConnected();
+        if (_grpcClient?.IsConnected == true)
+        {
+            var token = ct == default ? _globalCts!.Token : ct;
+            await _grpcClient.SubscribeOrderBookAsync(ToSymbol(ticker), (symbol, rows) =>
+            {
+                onOrderBook(rows);
+            }, token);
+        }
+    }
+
     /// <summary>Подписка на обновления счёта (позиции, equity)</summary>
     public async Task SubscribeAccountAsync(
         Action<double, List<(string symbol, long qty, double avgPrice)>> onUpdate)
