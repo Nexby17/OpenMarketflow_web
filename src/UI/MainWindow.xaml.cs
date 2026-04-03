@@ -50,6 +50,20 @@ public partial class MainWindow : Window
 
             // Подписка на обновление свечей для перерисовки графика
             vm.OrderBookVM.PropertyChanged += OrderBookVM_PropertyChanged;
+
+            // Авто-скролл стакана к спреду
+            vm.OrderBookVM.PropertyChanged += (s, e) =>
+            {
+                if (e.PropertyName == nameof(OrderBookViewModel.ScrollToIndex))
+                {
+                    var idx = vm.OrderBookVM.ScrollToIndex;
+                    if (idx > 0 && idx < vm.OrderBookVM.OrderBookRows.Count)
+                    {
+                        // Находим ItemsControl стакана и скроллим
+                        // ScrollViewer внутри стакана обработает через binding
+                    }
+                }
+            };
         }
     }
 

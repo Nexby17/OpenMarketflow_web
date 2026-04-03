@@ -306,8 +306,8 @@ public class MainViewModel : BaseViewModel
                 await SubscribeToInstrument(instrument);
             }
 
-            // Загружаем историю свечей для выбранного инструмента
-            await LoadHistoricalCandles(SelectedInstrument);
+            // Подписка на дефолтный инструмент в Стакане (котировки + стакан + свечи)
+            await ResubscribeOrderBookInstrumentAsync(OrderBookVM.SelectedInstrument);
 
             // Баланс
             var balance = await _finamConnector.GetBalanceAsync();
@@ -831,12 +831,21 @@ public class MainViewModel : BaseViewModel
                                     book[price] = (bidVol, askVol);
                             }
 
-                            // Отправляем в UI (редко — не чаще 5 раз в секунду)
+                            // Отправляем в UI
                             App.Current?.Dispatcher.BeginInvoke(() =>
                             {
                                 if (OrderBookVM.SelectedInstrument != ticker) return;
 
-                                var snapshot = book.ToList();
+                                // Ограничиваем стакан ±25 уровней от спреда (не нужно скроллить)
+                                var allRows = book.ToList();
+                                // Находим границу bid/ask (первый bid сверху)
+                                int spreadIdx = allRows.FindIndex(r => r.Value.bidVol > 0);
+                                if (spreadIdx < 0) spreadIdx = allRows.Count / 2;
+                                int showAbove = 25; // асков сверху
+                                int showBelow = 25; // бидов снизу
+                                int startIdx = Math.Max(0, spreadIdx - showAbove);
+                                int endIdx = Math.Min(allRows.Count, spreadIdx + showBelow);
+                                var snapshot = allRows.GetRange(startIdx, endIdx - startIdx);
                                 long maxVol = snapshot.Count > 0
                                     ? Math.Max(
                                         snapshot.Max(r => r.Value.bidVol),
@@ -860,6 +869,8 @@ public class MainViewModel : BaseViewModel
                                             IsLastPrice = Math.Abs(price - OrderBookVM.LastPrice) < 1
                                         });
                                     }
+                                    // Авто-скролл к спреду
+                                    OrderBookVM.NotifyScrollNeeded();
                                 }
                                 else
                                 {

@@ -233,6 +233,27 @@ public class OrderBookViewModel : BaseViewModel
         Candles = candles;
     }
 
+    /// <summary>Индекс строки для авто-скролла к спреду</summary>
+    public int ScrollToIndex
+    {
+        get
+        {
+            if (OrderBookRows.Count == 0 || LastPrice <= 0) return 0;
+            // Находим строку ближайшую к LastPrice
+            double minDiff = double.MaxValue;
+            int bestIdx = 0;
+            for (int i = 0; i < OrderBookRows.Count; i++)
+            {
+                double diff = Math.Abs(OrderBookRows[i].Price - LastPrice);
+                if (diff < minDiff) { minDiff = diff; bestIdx = i; }
+            }
+            return bestIdx;
+        }
+    }
+
+    /// <summary>Триггер авто-скролла</summary>
+    public void NotifyScrollNeeded() => OnPropertyChanged(nameof(ScrollToIndex));
+
     public void StartRefresh() => _refreshTimer.Start();
     public void StopRefresh() => _refreshTimer.Stop();
 
