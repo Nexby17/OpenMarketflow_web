@@ -169,18 +169,31 @@ async function fetchStatus() {
 
 function updateStatus(s) {
     if (!s) return;
-    el('balance').textContent = fmt(s.balance || s.Balance);
-    el('monBalance').textContent = fmt(s.balance || s.Balance);
-    el('monEquity').textContent = fmt(s.equity || s.Equity);
-    el('monPnlToday').textContent = fmtPnl(s.todayPnL || s.TodayPnL || 0);
-    el('monPnlTotal').textContent = fmtPnl(s.totalPnL || s.TotalPnL || 0);
-    el('monTrades').textContent = s.todayTrades || s.TodayTrades || 0;
-    el('monPositions').textContent = s.openPositions || s.OpenPositions || 0;
-
-    if (s.isConnectedToBroker || s.IsConnectedToBroker) {
+    // Поддержка обоих форматов (camelCase и PascalCase)
+    const v = (a, b) => s[a] ?? s[b] ?? 0;
+    
+    el('balance').textContent = fmt(v('balance','Balance'));
+    el('monBalance').textContent = fmt(v('balance','Balance'));
+    el('monEquity').textContent = fmt(v('equity','Equity'));
+    
+    const pnlToday = v('todayPnL','TodayPnL');
+    const pnlTotal = v('totalPnL','TotalPnL');
+    el('monPnlToday').textContent = fmtPnl(pnlToday);
+    el('monPnlToday').className = 'metric-value ' + (pnlToday > 0 ? 'green' : pnlToday < 0 ? 'red' : '');
+    el('monPnlTotal').textContent = fmtPnl(pnlTotal);
+    el('monPnlTotal').className = 'metric-value ' + (pnlTotal > 0 ? 'green' : pnlTotal < 0 ? 'red' : '');
+    
+    el('monTrades').textContent = v('todayTrades','TodayTrades');
+    el('monPositions').textContent = v('openPositions','OpenPositions');
+    
+    const brokerStatus = s.brokerStatus || s.BrokerStatus || '';
+    const connected = s.isConnectedToBroker ?? s.IsConnectedToBroker ?? false;
+    if (connected) {
         isConnected = true;
         el('brokerStatus').textContent = '✅ Подключён';
         el('startBotBtn').disabled = false;
+        el('statusIndicator').className = 'status-dot green';
+        el('statusText').textContent = `Подключён | ${brokerStatus}`;
     }
 }
 
@@ -467,4 +480,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Auto-refresh status
     setInterval(fetchStatus, 10000);
+
+    // Автозагрузка свечей для дефолтного инструмента
+    setTimeout(() => {
+        initChart();
+        switchOrderBookInstrument();
+    }, 500);
 });
