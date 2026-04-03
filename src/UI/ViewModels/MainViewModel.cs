@@ -327,10 +327,7 @@ public class MainViewModel : BaseViewModel
 
         try
         {
-            // Подписка на стакан (bid/ask)
-            await _finamConnector.SubscribeLevel2Async(ticker, (bid, ask) => { });
-
-            // Свечи 5 мин через gRPC стрим
+            // Свечи через gRPC стрим (фильтруем по выбранному инструменту)
             await _finamConnector.SubscribeCandlesAsync(ticker, TimeSpan.FromMinutes(5), candle =>
                 App.Current?.Dispatcher.Invoke(() =>
                 {
@@ -349,7 +346,7 @@ public class MainViewModel : BaseViewModel
                     OrderBookVM.UpdateCandles(list);
                 }));
 
-            AddLog($"📊 Подписки на {ticker}: gRPC свечи, котировки");
+            AddLog($"📊 gRPC свечи {ticker}");
         }
         catch (Exception ex)
         {
@@ -746,34 +743,10 @@ public class MainViewModel : BaseViewModel
         };
         StrategyManagerVM.EmergencyStopRequested += async () => await EmergencyStopAsync();
 
-        // Стакан + котировки + свечи при смене инструмента
+        // Кнопка 🔄 в стакане — переподписка
         OrderBookVM.SubscribeBookRequested += async (ticker) =>
         {
-            if (_finamConnector != null && _finamConnector.IsConnected)
-            {
-                try
-                {
-                    // Котировки → LastPrice, Bid, Ask
-                    await _finamConnector.SubscribeQuotesAsync(ticker, (bid, ask, last) =>
-                        App.Current?.Dispatcher.Invoke(() =>
-                        {
-                            OrderBookVM.LastPrice = last;
-                            OrderBookVM.BestBid = bid;
-                            OrderBookVM.BestAsk = ask;
-                            OrderBookVM.SpreadValue = ask - bid;
-                        }));
-
-                    // Исторические свечи
-                    await LoadHistoricalCandles(ticker);
-
-                    AddLog($"📊 Подписка на {ticker}: котировки + свечи");
-                }
-                catch (Exception ex) { AddLog($"⚠️ Подписка {ticker}: {ex.Message}"); }
-            }
-            else if (_hubClient != null && IsServerConnected)
-            {
-                try { await _hubClient.SubscribeOrderBookAsync(ticker); } catch { }
-            }
+            await ResubscribeOrderBookInstrumentAsync(ticker);
         };
         OrderBookVM.TimeframeChangeRequested += async (tf) =>
         {
@@ -798,24 +771,46 @@ public class MainViewModel : BaseViewModel
         };
     }
 
-    /// <summary>Переподписка на котировки + свечи при смене инструмента в Стакане</summary>
+    private CancellationTokenSource? _orderBookCts;
+
+    /// <summary>Переподписка на котировки + стакан + свечи при смене инструмента в Стакане</summary>
     private async Task ResubscribeOrderBookInstrumentAsync(string ticker)
     {
+        // Отменяем предыдущие подписки на стакан/котировки
+        _orderBookCts?.Cancel();
+        _orderBookCts = new CancellationTokenSource();
+        var ct = _orderBookCts.Token;
+
         try
         {
             if (_finamConnector?.IsConnected == true)
             {
-                // Котировки gRPC
-                await _finamConnector.SubscribeQuotesAsync(ticker, (bid, ask, last) =>
-                    App.Current?.Dispatcher.Invoke(() =>
+                // 1. Котировки gRPC (только для этого инструмента)
+                _ = Task.Run(async () =>
+                {
+                    try
                     {
-                        OrderBookVM.LastPrice = last;
-                        OrderBookVM.BestBid = bid;
-                        OrderBookVM.BestAsk = ask;
-                        OrderBookVM.SpreadValue = ask - bid;
-                    }));
+                        await _finamConnector.SubscribeQuotesAsync(ticker, (bid, ask, last) =>
+                        {
+                            if (ct.IsCancellationRequested) return;
+                            App.Current?.Dispatcher.Invoke(() =>
+                            {
+                                if (OrderBookVM.SelectedInstrument != ticker) return;
+                                OrderBookVM.LastPrice = last;
+                                OrderBookVM.BestBid = bid;
+                                OrderBookVM.BestAsk = ask;
+                                OrderBookVM.SpreadValue = ask - bid;
+                            });
+                        });
+                    }
+                    catch (OperationCanceledException) { }
+                    catch (Exception ex)
+                    {
+                        App.Current?.Dispatcher.Invoke(() => AddLog($"⚠️ Котировки {ticker}: {ex.Message}"));
+                    }
+                }, ct);
 
-                // Свечи
+                // 2. Исторические свечи
                 await LoadHistoricalCandles(ticker);
 
                 AddLog($"📊 Переключено на {ticker}");
