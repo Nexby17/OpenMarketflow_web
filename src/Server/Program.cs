@@ -105,21 +105,25 @@ app.MapGet("/api/quote", async (TradingService svc, string ticker) =>
     catch (Exception ex) { return Results.Ok(new { bid = 0.0, ask = 0.0, last = 0.0, error = ex.Message }); }
 });
 
-// === REST: стакан (snapshot) ===
+// === REST: стакан (snapshot) через Finam REST API ===
 app.MapGet("/api/orderbook", async (TradingService svc, string ticker) =>
 {
     try
     {
         var connector = svc.Connector;
         if (connector?.IsConnected != true) return Results.Ok(new { rows = Array.Empty<object>() });
-        // Используем REST Finam API
-        var symbol = ticker.Contains('@') ? ticker : (new[] {"Si","BR","GD","MX","RI","GOLD","ED","Eu"}.Any(p => ticker.StartsWith(p, StringComparison.OrdinalIgnoreCase)) ? $"{ticker}@RTSX" : $"{ticker}@MISX");
         var restClient = connector.RestClient;
         if (restClient == null) return Results.Ok(new { rows = Array.Empty<object>() });
-        // REST orderbook через /v1/instruments/{symbol}/orderbook 
-        return Results.Ok(new { message = "use SignalR for live orderbook" });
+
+        var futPrefixes = new[] {"Si","BR","GD","MX","RI","GOLD","ED","Eu","SBRF","GAZR"};
+        var symbol = ticker.Contains('@') ? ticker 
+            : (futPrefixes.Any(p => ticker.StartsWith(p, StringComparison.OrdinalIgnoreCase)) ? $"{ticker}@RTSX" : $"{ticker}@MISX");
+
+        // Вызываем Finam REST: GET /v1/instruments/{symbol}/orderbook
+        var ob = await restClient.GetOrderBookAsync(symbol);
+        return Results.Ok(ob);
     }
-    catch (Exception ex) { return Results.Ok(new { error = ex.Message }); }
+    catch (Exception ex) { return Results.Ok(new { rows = Array.Empty<object>(), error = ex.Message }); }
 });
 
 Console.WriteLine($"═══════════════════════════════════════════");

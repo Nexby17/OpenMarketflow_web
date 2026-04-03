@@ -328,9 +328,14 @@ function switchOrderBookInstrument() {
     initChart();
     loadCandles(ticker, tf);
     loadQuote(ticker);
-    // Поллинг котировок каждые 2 сек
+    loadOrderBook(ticker);
+    // Поллинг котировок + стакан
     if (window._quoteInterval) clearInterval(window._quoteInterval);
-    window._quoteInterval = setInterval(() => loadQuote(el('obInstrument').value), 2000);
+    window._quoteInterval = setInterval(() => {
+        const t = el('obInstrument').value;
+        loadQuote(t);
+        loadOrderBook(t);
+    }, 2000);
 }
 
 function loadQuote(ticker) {
@@ -341,6 +346,40 @@ function loadQuote(ticker) {
             if (q.bid > 0) el('obBid').textContent = q.bid.toFixed(2);
             if (q.ask > 0) el('obAsk').textContent = q.ask.toFixed(2);
             if (q.spread > 0) el('obSpread').textContent = q.spread.toFixed(2);
+        })
+        .catch(() => {});
+}
+
+function loadOrderBook(ticker) {
+    fetch(`/api/orderbook?ticker=${ticker}`)
+        .then(r => r.json())
+        .then(data => {
+            if (!data.rows || data.rows.length === 0) return;
+            const rows = data.rows;
+            const maxVol = Math.max(...rows.map(r => Math.max(r.bid || 0, r.ask || 0)), 1);
+            
+            // Сортируем по убыванию цены
+            rows.sort((a, b) => b.price - a.price);
+            
+            // Находим границу bid/ask и ограничиваем ±25
+            const spreadIdx = rows.findIndex(r => (r.bid || 0) > 0);
+            const si = spreadIdx >= 0 ? spreadIdx : Math.floor(rows.length / 2);
+            const start = Math.max(0, si - 25);
+            const end = Math.min(rows.length, si + 25);
+            const visible = rows.slice(start, end);
+            
+            let html = '';
+            for (const r of visible) {
+                const bidW = ((r.bid || 0) / maxVol * 100).toFixed(0);
+                const askW = ((r.ask || 0) / maxVol * 100).toFixed(0);
+                const isSpread = r.bid > 0 && visible.indexOf(r) === visible.findIndex(x => x.bid > 0);
+                html += `<div class="ob-row${isSpread ? ' spread-row' : ''}">
+                    <div class="ob-bid"><div class="ob-bar-bid" style="width:${bidW}%"></div>${r.bid || ''}</div>
+                    <div class="ob-price">${r.price.toFixed(2)}</div>
+                    <div class="ob-ask"><div class="ob-bar-ask" style="width:${askW}%"></div>${r.ask || ''}</div>
+                </div>`;
+            }
+            el('orderbookLadder').innerHTML = html;
         })
         .catch(() => {});
 }

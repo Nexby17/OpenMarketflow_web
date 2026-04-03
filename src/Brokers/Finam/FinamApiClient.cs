@@ -134,6 +134,34 @@ public class FinamApiClient : IDisposable
     // === MarketData Service ===
 
     /// <summary>Получить свечи (бары)</summary>
+    /// <summary>Получить стакан (orderbook)</summary>
+    public async Task<object?> GetOrderBookAsync(string symbol)
+    {
+        await EnsureAuthenticatedAsync();
+        try
+        {
+            var response = await _http.GetAsync($"/v1/instruments/{symbol}/orderbook");
+            var content = await response.Content.ReadAsStringAsync();
+            if (!response.IsSuccessStatusCode) return new { rows = Array.Empty<object>(), error = content };
+            // Возвращаем как есть — JSON прокинется на клиент
+            var doc = System.Text.Json.JsonDocument.Parse(content);
+            var orderbook = doc.RootElement.GetProperty("orderbook");
+            var rows = new List<object>();
+            foreach (var row in orderbook.GetProperty("rows").EnumerateArray())
+            {
+                var price = row.GetProperty("price").GetProperty("value").GetString() ?? "0";
+                string bidVol = "0", askVol = "0";
+                if (row.TryGetProperty("buy_size", out var bs)) bidVol = bs.GetProperty("value").GetString() ?? "0";
+                if (row.TryGetProperty("sell_size", out var ss)) askVol = ss.GetProperty("value").GetString() ?? "0";
+                rows.Add(new { price = double.Parse(price, System.Globalization.CultureInfo.InvariantCulture),
+                               bid = double.Parse(bidVol, System.Globalization.CultureInfo.InvariantCulture),
+                               ask = double.Parse(askVol, System.Globalization.CultureInfo.InvariantCulture) });
+            }
+            return new { rows };
+        }
+        catch (Exception ex) { return new { rows = Array.Empty<object>(), error = ex.Message }; }
+    }
+
     public async Task<BarsResponse?> GetBarsAsync(string symbol, string timeframe, string from, string to)
         => await GetAsync<BarsResponse>($"/v1/marketdata/bars?symbol={symbol}&timeframe={timeframe}&interval.start_time={from}&interval.end_time={to}");
 
