@@ -309,6 +309,43 @@ public class MainViewModel : BaseViewModel
             // Подписка на дефолтный инструмент в Стакане (котировки + стакан + свечи)
             await ResubscribeOrderBookInstrumentAsync(OrderBookVM.SelectedInstrument);
 
+            // Подписка на обновления счёта (equity, позиции) через gRPC
+            await _finamConnector.SubscribeAccountAsync((equity, positions) =>
+            {
+                App.Current?.Dispatcher.Invoke(() =>
+                {
+                    // Equity и баланс
+                    MonitoringVM.Equity = equity;
+                    if (MonitoringVM.InitialBalance == 0)
+                        MonitoringVM.InitialBalance = equity;
+                    
+                    // PnL
+                    MonitoringVM.PnLToday = equity - MonitoringVM.InitialBalance;
+                    Balance = equity;
+
+                    // Equity curve
+                    MonitoringVM.AddEquityPoint(equity);
+
+                    // Позиции
+                    var openPositions = positions.Where(p => p.qty != 0).ToList();
+                    MonitoringVM.OpenPositionsCount = openPositions.Count;
+                    MonitoringVM.OpenPositions.Clear();
+                    foreach (var pos in openPositions)
+                    {
+                        var position = new Position
+                        {
+                            Ticker = pos.symbol.Split('@')[0],
+                            Direction = pos.qty > 0 ? SignalDirection.Buy : SignalDirection.Sell,
+                            Entries = new List<PositionEntry>
+                            {
+                                new() { Price = pos.avgPrice, Volume = (int)Math.Abs(pos.qty) }
+                            }
+                        };
+                        MonitoringVM.OpenPositions.Add(new PositionViewModel(position));
+                    }
+                });
+            });
+
             // Баланс
             var balance = await _finamConnector.GetBalanceAsync();
             Balance = balance;
