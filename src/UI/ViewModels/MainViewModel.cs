@@ -43,10 +43,10 @@ public class MainViewModel : BaseViewModel
         _uiTimer.Tick += (_, _) => RefreshUI();
 
         // Значения по умолчанию
-        Brokers = new ObservableCollection<string> { "Финам (QUIK)", "Финам (Trade API)", "Альфа-Инвестиции" };
+        Brokers = new ObservableCollection<string> { "Финам (Trade API)" };
         SelectedBroker = Brokers[0];
 
-        Instruments = new ObservableCollection<string> { "SBER", "GAZP", "Si", "BR", "GOLD", "SPYF" };
+        Instruments = new ObservableCollection<string> { "SiM6", "SiU6", "Si", "SBER", "GAZP", "BR", "GOLD" };
         SelectedInstrument = Instruments[0];
 
         Strategies = new ObservableCollection<string> { "PSAR Grid MM (1 мин)", "PSAR+EMA Combo (5 мин)", "VStop Pure (30 сек, бумага)" };
@@ -244,14 +244,8 @@ public class MainViewModel : BaseViewModel
             AddLog($"Стоп-лосс: {StopLossValue} {SelectedStopLossMode}");
 
         // Подключение к брокеру
-        if (SelectedBroker == "Финам (Trade API)")
-        {
-            await ConnectFinamAsync();
-        }
-        else if (SelectedBroker == "Финам (QUIK)")
-        {
-            await ConnectFinamAsync();
-        }
+        // Всегда через Finam Trade API (REST + gRPC)
+        await ConnectFinamAsync();
 
         IsRunning = true;
         _uiTimer.Start();
