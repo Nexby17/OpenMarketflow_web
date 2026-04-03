@@ -13,6 +13,8 @@ public class FinamConnector : IBrokerConnector
 {
     private FinamApiClient? _restClient;
     private FinamGrpcClient? _grpcClient;
+    public FinamGrpcClient? GrpcClient => _grpcClient;
+    public FinamApiClient? RestClient => _restClient;
     private string _accountId = string.Empty;
     private CancellationTokenSource? _globalCts;
 

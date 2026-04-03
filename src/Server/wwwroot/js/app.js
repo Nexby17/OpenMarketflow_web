@@ -327,9 +327,22 @@ function switchOrderBookInstrument() {
     const tf = el('obTimeframe').value;
     initChart();
     loadCandles(ticker, tf);
-    if (connection) {
-        connection.invoke('SubscribeOrderBook', ticker).catch(() => {});
-    }
+    loadQuote(ticker);
+    // Поллинг котировок каждые 2 сек
+    if (window._quoteInterval) clearInterval(window._quoteInterval);
+    window._quoteInterval = setInterval(() => loadQuote(el('obInstrument').value), 2000);
+}
+
+function loadQuote(ticker) {
+    fetch(`/api/quote?ticker=${ticker}`)
+        .then(r => r.json())
+        .then(q => {
+            if (q.last > 0) el('obLast').textContent = q.last.toFixed(2);
+            if (q.bid > 0) el('obBid').textContent = q.bid.toFixed(2);
+            if (q.ask > 0) el('obAsk').textContent = q.ask.toFixed(2);
+            if (q.spread > 0) el('obSpread').textContent = q.spread.toFixed(2);
+        })
+        .catch(() => {});
 }
 
 function switchTimeframe() {

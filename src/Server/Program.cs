@@ -89,6 +89,39 @@ app.MapGet("/api/candles", async (TradingService svc, string ticker, int tf, int
     catch (Exception ex) { return Results.BadRequest(new { error = ex.Message }); }
 });
 
+// === REST: котировки через Finam API ===
+app.MapGet("/api/quote", async (TradingService svc, string ticker) =>
+{
+    try
+    {
+        var connector = svc.Connector;
+        if (connector?.IsConnected != true) return Results.Ok(new { error = "not connected" });
+        var grpc = connector.GrpcClient;
+        if (grpc == null) return Results.Ok(new { error = "no grpc" });
+        var (bid, ask, last) = await grpc.GetLastQuoteAsync(
+            ticker.Contains('@') ? ticker : (new[] {"Si","BR","GD","MX","RI","GOLD","ED","Eu","SBRF","GAZR"}.Any(p => ticker.StartsWith(p, StringComparison.OrdinalIgnoreCase)) ? $"{ticker}@RTSX" : $"{ticker}@MISX"));
+        return Results.Ok(new { bid, ask, last, spread = ask - bid });
+    }
+    catch (Exception ex) { return Results.Ok(new { bid = 0.0, ask = 0.0, last = 0.0, error = ex.Message }); }
+});
+
+// === REST: стакан (snapshot) ===
+app.MapGet("/api/orderbook", async (TradingService svc, string ticker) =>
+{
+    try
+    {
+        var connector = svc.Connector;
+        if (connector?.IsConnected != true) return Results.Ok(new { rows = Array.Empty<object>() });
+        // Используем REST Finam API
+        var symbol = ticker.Contains('@') ? ticker : (new[] {"Si","BR","GD","MX","RI","GOLD","ED","Eu"}.Any(p => ticker.StartsWith(p, StringComparison.OrdinalIgnoreCase)) ? $"{ticker}@RTSX" : $"{ticker}@MISX");
+        var restClient = connector.RestClient;
+        if (restClient == null) return Results.Ok(new { rows = Array.Empty<object>() });
+        // REST orderbook через /v1/instruments/{symbol}/orderbook 
+        return Results.Ok(new { message = "use SignalR for live orderbook" });
+    }
+    catch (Exception ex) { return Results.Ok(new { error = ex.Message }); }
+});
+
 Console.WriteLine($"═══════════════════════════════════════════");
 Console.WriteLine($"  OpenMarketflow Trading Server");
 Console.WriteLine($"  SignalR Hub: http://0.0.0.0:{port}/trading");
