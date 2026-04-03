@@ -390,13 +390,15 @@ public class FinamConnector : IBrokerConnector
     }
 
     /// <summary>
-    /// Определить биржу по тикеру: фьючерсы → SPBFUT, акции → MISX
+    /// Определить биржу по тикеру:
+    /// MISX — МосБиржа, все основные рынки (акции, облигации, ETF)
+    /// RTSX — МосБиржа, рынок деривативов (фьючерсы, опционы)
     /// </summary>
     private static string ToSymbol(string ticker)
     {
         if (ticker.Contains('@')) return ticker;
 
-        // Фьючерсы MOEX: Si, BR, GD, MX, RI, GOLD, ED, Eu, SBRF, GAZR, LKOH, ROSN, VTBR, SNGR, SILV, NG, PL
+        // Фьючерсы MOEX: Si, BR, GD, MX, RI, GOLD, ED, Eu, SBRF, GAZR и т.д.
         // Формат: БазовыйКод + Месяц(буква) + Год(цифра), напр.: SiM6, BRN6, GDM6, MXM6
         var futuresPrefixes = new[] { "Si", "BR", "GD", "MX", "RI", "GOLD", "ED", "Eu", 
                                        "SBRF", "GAZR", "LKOH", "ROSN", "VTBR", "SNGR", 
@@ -405,10 +407,10 @@ public class FinamConnector : IBrokerConnector
         foreach (var prefix in futuresPrefixes)
         {
             if (ticker.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
-                return $"{ticker}@SPBFUT";
+                return $"{ticker}@RTSX";  // Рынок деривативов МосБиржи
         }
 
-        // Акции → MISX
+        // Акции, облигации, ETF → MISX
         return $"{ticker}@MISX";
     }
 
