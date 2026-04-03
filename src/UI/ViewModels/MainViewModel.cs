@@ -6,7 +6,7 @@ using HedgeFund.Core;
 using HedgeFund.Core.Averaging;
 using HedgeFund.Core.Models;
 using HedgeFund.Core.Strategies;
-using HedgeFund.Brokers.Quik;
+// QuikConnector удалён — всё через Finam Trade API (REST + gRPC)
 using HedgeFund.UI.Services;
 
 namespace HedgeFund.UI.ViewModels;
@@ -15,7 +15,7 @@ public class MainViewModel : BaseViewModel
 {
     private TradingEngine? _engine;
     private IBrokerConnector? _connector;
-    private QuikConnector? _quikConnector;
+    private FinamConnector? _finamConnector;
     private readonly DispatcherTimer _uiTimer;
 
     public MainViewModel()
@@ -250,7 +250,7 @@ public class MainViewModel : BaseViewModel
         }
         else if (SelectedBroker == "Финам (QUIK)")
         {
-            await ConnectQuikAsync();
+            await ConnectFinamAsync();
         }
 
         IsRunning = true;
@@ -258,53 +258,38 @@ public class MainViewModel : BaseViewModel
         MonitoringVM.StartRefresh();
     }
 
-    private async Task ConnectQuikAsync()
+    private async Task ConnectFinamAsync()
     {
         try
         {
-            AddLog("📡 Подключение к QUIK...");
+            AddLog("📡 Подключение к Финам (REST + gRPC)...");
 
-            // Папка bridge рядом с exe
-            _quikConnector = new QuikConnector(finamToken: ApiToken);
-            _connector = _quikConnector;
+            _finamConnector = new FinamConnector();
+            _connector = _finamConnector;
 
             // События от коннектора
-            _quikConnector.OnError += msg => App.Current?.Dispatcher.Invoke(() => AddLog(msg));
-            _quikConnector.OnConnectionChanged += connected => App.Current?.Dispatcher.Invoke(() =>
+            _finamConnector.OnError += msg => App.Current?.Dispatcher.Invoke(() => AddLog(msg));
+            _finamConnector.OnConnectionChanged += connected => App.Current?.Dispatcher.Invoke(() =>
             {
-                AddLog(connected ? "✅ QUIK онлайн — реалтайм данные" : "⚠️ QUIK офлайн");
+                AddLog(connected ? "✅ Финам подключён (gRPC + REST)" : "⚠️ Финам отключён");
                 OnPropertyChanged(nameof(StatusText));
                 OnPropertyChanged(nameof(StatusColor));
             });
 
-            _quikConnector.OnTrade += trade => App.Current?.Dispatcher.Invoke(() =>
+            _finamConnector.OnTrade += trade => App.Current?.Dispatcher.Invoke(() =>
             {
                 AddLog($"💹 Сделка: {trade.Ticker} {trade.Direction} {trade.Volume}@{trade.Price:F0}");
                 MonitoringVM.TradesToday++;
             });
 
-            _quikConnector.OnOrderUpdate += order => App.Current?.Dispatcher.Invoke(() =>
+            _finamConnector.OnOrderUpdate += order => App.Current?.Dispatcher.Invoke(() =>
             {
                 AddLog($"📝 Ордер: {order.Ticker} {order.Direction} {order.Status} @{order.Price:F0}");
                 OrdersVM.UpdateOrder(order);
             });
 
-            // Котировки → QuotesVM (показываем выбранный в QuotesVM инструмент)
-            _quikConnector.OnQuoteUpdate += (ticker, quote) => App.Current?.Dispatcher.Invoke(() =>
-            {
-                if (ticker == QuotesVM.SelectedInstrument)
-                    QuotesVM.UpdateQuote(quote);
-            });
-
-            // Стакан → OrderBookVM (показываем выбранный в OrderBookVM инструмент)
-            _quikConnector.OnOrderBookUpdate += (ticker, snapshot) => App.Current?.Dispatcher.Invoke(() =>
-            {
-                if (ticker == OrderBookVM.SelectedInstrument)
-                    OrderBookVM.UpdateOrderBook(snapshot);
-            });
-
-            await _quikConnector.ConnectAsync(ApiToken);
-            AddLog("✅ QUIK Bridge запущен. Жду подключение Lua-скрипта...");
+            await _finamConnector.ConnectAsync(ApiToken);
+            AddLog("✅ Финам подключён!");
 
             // Подписываемся на ВСЕ инструменты
             foreach (var instrument in Instruments)
@@ -316,31 +301,28 @@ public class MainViewModel : BaseViewModel
             await LoadHistoricalCandles(SelectedInstrument);
 
             // Баланс
-            var balance = await _quikConnector.GetBalanceAsync();
+            var balance = await _finamConnector.GetBalanceAsync();
             Balance = balance;
             MonitoringVM.Balance = balance;
             MonitoringVM.Equity = balance;
         }
         catch (Exception ex)
         {
-            AddLog($"❌ Ошибка QUIK: {ex.Message}");
+            AddLog($"❌ Ошибка Финам: {ex.Message}");
         }
     }
 
     private async Task SubscribeToInstrument(string ticker)
     {
-        if (_quikConnector == null || string.IsNullOrEmpty(ticker)) return;
+        if (_finamConnector == null || string.IsNullOrEmpty(ticker)) return;
 
         try
         {
-            // Подписка на котировки (данные приходят через OnQuoteUpdate event)
-            await _quikConnector.SubscribeQuotesAsync(ticker, _ => { });
+            // Подписка на стакан (bid/ask)
+            await _finamConnector.SubscribeLevel2Async(ticker, (bid, ask) => { });
 
-            // Стакан (данные через OnOrderBookUpdate event)
-            await _quikConnector.SubscribeOrderBookAsync(ticker, _ => { });
-
-            // Свечи 5 мин (новые свечи добавляются на график только для выбранного инструмента)
-            await _quikConnector.SubscribeCandlesAsync(ticker, TimeSpan.FromMinutes(5), candle =>
+            // Свечи 5 мин через gRPC стрим
+            await _finamConnector.SubscribeCandlesAsync(ticker, TimeSpan.FromMinutes(5), candle =>
                 App.Current?.Dispatcher.Invoke(() =>
                 {
                     if (ticker != OrderBookVM.SelectedInstrument) return;
@@ -350,7 +332,6 @@ public class MainViewModel : BaseViewModel
                         Low = candle.Low, Close = candle.Close, Volume = candle.Volume
                     };
                     var list = new List<ClusterCandle>(OrderBookVM.Candles);
-                    // Обновляем последнюю или добавляем новую
                     if (list.Count > 0 && list[^1].Timestamp == cluster.Timestamp)
                         list[^1] = cluster;
                     else
@@ -359,7 +340,7 @@ public class MainViewModel : BaseViewModel
                     OrderBookVM.UpdateCandles(list);
                 }));
 
-            AddLog($"📊 Подписки на {ticker}: котировки, стакан, свечи");
+            AddLog($"📊 Подписки на {ticker}: gRPC свечи, котировки");
         }
         catch (Exception ex)
         {
@@ -369,10 +350,10 @@ public class MainViewModel : BaseViewModel
 
     private async Task LoadHistoricalCandles(string ticker)
     {
-        if (_quikConnector == null) return;
+        if (_finamConnector == null) return;
         try
         {
-            var history = await _quikConnector.GetHistoricalCandlesAsync(
+            var history = await _finamConnector.GetHistoricalCandlesAsync(
                 ticker, TimeSpan.FromMinutes(5), DateTime.UtcNow.AddDays(-3), DateTime.UtcNow);
             if (history.Length > 0)
             {
@@ -462,7 +443,7 @@ public class MainViewModel : BaseViewModel
         _connector?.DisconnectAsync();
         _connector?.Dispose();
         _connector = null;
-        _quikConnector = null;
+        _finamConnector = null;
 
         IsRunning = false;
         _uiTimer.Stop();
@@ -695,9 +676,9 @@ public class MainViewModel : BaseViewModel
         // Заявки
         OrdersVM.CancelOrderRequested += async (id) =>
         {
-            if (_quikConnector != null)
+            if (_finamConnector != null)
             {
-                try { await _quikConnector.CancelOrderAsync(id); AddLog($"❌ Заявка {id} отменена"); }
+                try { await _finamConnector.CancelOrderAsync(id); AddLog($"❌ Заявка {id} отменена"); }
                 catch (Exception ex) { AddLog($"❌ Ошибка: {ex.Message}"); }
             }
             else if (_hubClient != null && IsServerConnected)
@@ -709,11 +690,11 @@ public class MainViewModel : BaseViewModel
         OrdersVM.ModifyOrderRequested += async (id, price, vol) =>
         {
             // QUIK: cancel + re-place
-            if (_quikConnector != null)
+            if (_finamConnector != null)
             {
                 try
                 {
-                    await _quikConnector.CancelOrderAsync(id);
+                    await _finamConnector.CancelOrderAsync(id);
                     // TODO: re-place with new price/vol
                     AddLog($"✏️ Заявка {id} отменена (изменение через cancel+replace)");
                 }
@@ -727,11 +708,11 @@ public class MainViewModel : BaseViewModel
         };
         OrdersVM.CancelAllRequested += async () =>
         {
-            if (_quikConnector != null)
+            if (_finamConnector != null)
             {
-                var orders = await _quikConnector.GetActiveOrdersAsync();
+                var orders = await _finamConnector.GetActiveOrdersAsync();
                 foreach (var o in orders)
-                    try { await _quikConnector.CancelOrderAsync(o.BrokerOrderId); } catch { }
+                    try { await _finamConnector.CancelOrderAsync(o.BrokerOrderId); } catch { }
                 AddLog("❌ Все заявки отменены");
             }
             else if (_hubClient != null && IsServerConnected)
@@ -742,9 +723,9 @@ public class MainViewModel : BaseViewModel
         };
         OrdersVM.RefreshRequested += async () =>
         {
-            if (_quikConnector != null)
+            if (_finamConnector != null)
             {
-                var orders = await _quikConnector.GetActiveOrdersAsync();
+                var orders = await _finamConnector.GetActiveOrdersAsync();
                 OrdersVM.UpdateOrders(orders.Select(OrderViewModel.FromOrder));
             }
             else if (_hubClient != null && IsServerConnected)
@@ -754,7 +735,7 @@ public class MainViewModel : BaseViewModel
         // Котировки
         QuotesVM.SubscribeRequested += async (ticker) =>
         {
-            if (_quikConnector != null)
+            if (_finamConnector != null)
             {
                 try { await SubscribeToInstrument(ticker); }
                 catch { }

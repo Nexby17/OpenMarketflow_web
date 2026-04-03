@@ -11,4 +11,29 @@
     <ProjectReference Include="..\Core\HedgeFund.Core.csproj" />
   </ItemGroup>
 
+  <!-- gRPC / Protobuf -->
+  <ItemGroup>
+    <PackageReference Include="Google.Protobuf" Version="3.28.*" />
+    <PackageReference Include="Google.Api.CommonProtos" Version="2.15.*" />
+    <PackageReference Include="Grpc.Net.Client" Version="2.67.*" />
+    <PackageReference Include="Grpc.Tools" Version="2.67.*" PrivateAssets="All" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Finam Trade API gRPC services -->
+    <Protobuf Include="Finam\Protos\grpc\tradeapi\v1\accounts\*.proto" GrpcServices="Client" ProtoRoot="Finam\Protos" />
+    <Protobuf Include="Finam\Protos\grpc\tradeapi\v1\assets\*.proto" GrpcServices="Client" ProtoRoot="Finam\Protos" />
+    <Protobuf Include="Finam\Protos\grpc\tradeapi\v1\auth\*.proto" GrpcServices="Client" ProtoRoot="Finam\Protos" />
+    <Protobuf Include="Finam\Protos\grpc\tradeapi\v1\marketdata\*.proto" GrpcServices="Client" ProtoRoot="Finam\Protos" />
+    <Protobuf Include="Finam\Protos\grpc\tradeapi\v1\orders\*.proto" GrpcServices="Client" ProtoRoot="Finam\Protos" />
+    <Protobuf Include="Finam\Protos\grpc\tradeapi\v1\reports\*.proto" GrpcServices="Client" ProtoRoot="Finam\Protos" />
+    <Protobuf Include="Finam\Protos\grpc\tradeapi\v1\metrics\*.proto" GrpcServices="Client" ProtoRoot="Finam\Protos" />
+    <Protobuf Include="Finam\Protos\grpc\tradeapi\v1\side.proto" GrpcServices="None" ProtoRoot="Finam\Protos" />
+    <Protobuf Include="Finam\Protos\grpc\tradeapi\v1\trade.proto" GrpcServices="None" ProtoRoot="Finam\Protos" />
+    <!-- gateway annotations (import dependency) -->
+    <Protobuf Include="Finam\Protos\grpc\gateway\**\*.proto" GrpcServices="None" ProtoRoot="Finam\Protos" />
+    <!-- google well-known types: import-only, no C# codegen (classes come from NuGet) -->
+    <Protobuf Include="Finam\Protos\google\**\*.proto" GrpcServices="None" ProtoRoot="Finam\Protos" Access="Internal" CompileOutputs="false" />
+  </ItemGroup>
+
 </Project>

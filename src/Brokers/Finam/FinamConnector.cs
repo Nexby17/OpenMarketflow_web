@@ -1,19 +1,20 @@
 using HedgeFund.Core;
 using HedgeFund.Core.Models;
+using GrpcMd = Grpc.Tradeapi.V1.Marketdata;
 
 namespace HedgeFund.Brokers.Finam;
 
 /// <summary>
-/// Коннектор Финам через новый Trade API v1 (REST).
-/// Host: api.finam.ru
-/// Auth: Bearer JWT token
+/// Коннектор Финам через Trade API (REST + gRPC стриминг).
+/// gRPC — основной источник реалтайм данных (свечи, котировки, стакан).
+/// REST — fallback для исторических данных и legacy совместимости.
 /// </summary>
 public class FinamConnector : IBrokerConnector
 {
-    private FinamApiClient? _client;
+    private FinamApiClient? _restClient;
+    private FinamGrpcClient? _grpcClient;
     private string _accountId = string.Empty;
-    private readonly Dictionary<string, Action<Candle>> _candleSubscriptions = new();
-    private CancellationTokenSource? _pollCts;
+    private CancellationTokenSource? _globalCts;
 
     public string BrokerName => "Финам (Trade API)";
     public bool IsConnected { get; private set; }
@@ -24,51 +25,68 @@ public class FinamConnector : IBrokerConnector
     public event Action<bool>? OnConnectionChanged;
 
     /// <summary>
-    /// Подключение. token = access_token (длинный, ~2683 символов).
-    /// Внутри: access_token → JWT → получение account_ids через TokenDetails.
+    /// Подключение. token = access_token (длинный).
+    /// Создаёт REST клиент + gRPC клиент с подписками.
     /// </summary>
     public async Task<bool> ConnectAsync(string token, string accountId = "")
     {
         try
         {
-            _client = new FinamApiClient(token);
+            _globalCts = new CancellationTokenSource();
 
-            // Шаг 1: Получаем JWT из access_token
-            await _client.AuthenticateAsync();
+            // REST клиент (для исторических данных и legacy)
+            _restClient = new FinamApiClient(token);
+            await _restClient.AuthenticateAsync();
 
-            // Шаг 2: Проверяем подключение
-            var clock = await _client.GetClockAsync();
-            if (clock == null)
+            // gRPC клиент (основной — стриминг)
+            _grpcClient = new FinamGrpcClient(token);
+            _grpcClient.OnError += msg => OnError?.Invoke(msg);
+            _grpcClient.OnLog += msg => Console.WriteLine(msg);
+
+            bool grpcOk = await _grpcClient.ConnectAsync(accountId);
+            if (!grpcOk)
             {
-                OnError?.Invoke("Не удалось получить время сервера");
-                return false;
-            }
-
-            // Шаг 3: Получаем account_ids через TokenDetails
-            if (string.IsNullOrEmpty(accountId))
-            {
-                var details = await _client.GetTokenDetailsAsync();
-                if (details?.AccountIds.Count > 0)
-                {
-                    _accountId = details.AccountIds[0];
-                }
-                else
-                {
-                    // Fallback: пробуем через /v1/accounts
-                    var accounts = await _client.GetAccountsAsync();
-                    if (accounts?.Accounts.Count > 0)
-                    {
-                        _accountId = accounts.Accounts[0].AccountId;
-                    }
-                    else
-                    {
-                        OnError?.Invoke("Нет доступных торговых счетов.");
-                    }
-                }
+                OnError?.Invoke("⚠️ gRPC не подключился, работаем через REST fallback");
             }
             else
             {
-                _accountId = accountId;
+                _accountId = _grpcClient.AccountId;
+
+                // Подписка на свои сделки (gRPC stream)
+                _ = Task.Run(() => _grpcClient.SubscribeMyTradesAsync(
+                    (symbol, side, price, qty) =>
+                    {
+                        OnTrade?.Invoke(new Trade
+                        {
+                            Ticker = symbol.Split('@')[0],
+                            Direction = side.Contains("BUY") ? SignalDirection.Buy : SignalDirection.Sell,
+                            Price = price,
+                            Volume = qty,
+                            Timestamp = DateTime.UtcNow
+                        });
+                    }, _globalCts.Token));
+
+                // Подписка на обновления заявок (gRPC stream)
+                _ = Task.Run(() => _grpcClient.SubscribeOrdersAsync(
+                    (orderId, status, side, price, qty) =>
+                    {
+                        OnOrderUpdate?.Invoke(new Order
+                        {
+                            BrokerOrderId = orderId,
+                            Status = MapGrpcOrderStatus(status),
+                            Direction = side.Contains("BUY") ? SignalDirection.Buy : SignalDirection.Sell,
+                            Price = price,
+                            Volume = qty
+                        });
+                    }, _globalCts.Token));
+            }
+
+            // Fallback account_id через REST если gRPC не дал
+            if (string.IsNullOrEmpty(_accountId))
+            {
+                var details = await _restClient.GetTokenDetailsAsync();
+                if (details?.AccountIds.Count > 0)
+                    _accountId = details.AccountIds[0];
             }
 
             IsConnected = true;
@@ -84,93 +102,155 @@ public class FinamConnector : IBrokerConnector
 
     public Task DisconnectAsync()
     {
-        _pollCts?.Cancel();
-        _client?.Dispose();
-        _client = null;
+        _globalCts?.Cancel();
+        _grpcClient?.Dispose();
+        _restClient?.Dispose();
         IsConnected = false;
         OnConnectionChanged?.Invoke(false);
         return Task.CompletedTask;
     }
 
+    // === Маркетдата: gRPC стриминг ===
+
+    /// <summary>
+    /// Подписка на свечи через gRPC SubscribeBars (реалтайм, без polling).
+    /// </summary>
     public async Task SubscribeCandlesAsync(string ticker, TimeSpan timeframe, Action<Candle> onCandle)
     {
         EnsureConnected();
-        _candleSubscriptions[ticker] = onCandle;
+        var symbol = ToSymbol(ticker);
+        var tf = TimeframeToGrpc(timeframe);
 
-        // Polling свечей (REST не поддерживает стриминг, нужен gRPC для этого)
-        // Пока используем polling каждые N секунд
-        _pollCts = new CancellationTokenSource();
-        _ = Task.Run(async () =>
+        if (_grpcClient?.IsConnected == true)
         {
-            while (!_pollCts.Token.IsCancellationRequested)
-            {
-                try
-                {
-                    var tf = TimeframeToString(timeframe);
-                    var to = DateTime.UtcNow.ToString("o");
-                    var from = DateTime.UtcNow.Subtract(timeframe * 2).ToString("o");
-
-                    var bars = await _client!.GetBarsAsync($"{ticker}@MISX", tf, from, to);
-                    if (bars?.Bars.Count > 0)
-                    {
-                        var lastBar = bars.Bars[^1];
-                        var candle = BarToCandle(lastBar);
-                        onCandle(candle);
-                    }
-                }
-                catch (Exception ex)
-                {
-                    OnError?.Invoke($"Ошибка получения свечей {ticker}: {ex.Message}");
-                }
-
-                await Task.Delay(timeframe < TimeSpan.FromMinutes(5) 
-                    ? TimeSpan.FromSeconds(10) 
-                    : TimeSpan.FromSeconds(30), _pollCts.Token);
-            }
-        }, _pollCts.Token);
+            // gRPC стрим — получаем свечи в реалтайме
+            _ = Task.Run(() => _grpcClient.SubscribeBarsAsync(symbol, tf, onCandle, _globalCts!.Token));
+        }
+        else
+        {
+            // REST fallback: polling
+            OnError?.Invoke($"gRPC недоступен для {ticker}, используем REST polling");
+            _ = Task.Run(async () => await PollCandlesRestAsync(ticker, timeframe, onCandle, _globalCts!.Token));
+        }
     }
 
+    /// <summary>Подписка на котировки через gRPC</summary>
+    public async Task SubscribeQuotesAsync(string ticker, Action<double, double, double> onQuote)
+    {
+        EnsureConnected();
+        if (_grpcClient?.IsConnected == true)
+        {
+            _ = Task.Run(() => _grpcClient.SubscribeQuoteAsync(
+                new[] { ToSymbol(ticker) },
+                (symbol, bid, ask, last) => onQuote(bid, ask, last),
+                _globalCts!.Token));
+        }
+    }
+
+    /// <summary>Подписка на стакан через gRPC</summary>
     public Task SubscribeLevel2Async(string ticker, Action<double, double> onBidAsk)
     {
-        // Требует gRPC стриминг (SubscribeOrderBook)
-        // Для REST пока не реализовано
-        OnError?.Invoke("Level2 подписка требует gRPC. Пока не реализовано.");
+        EnsureConnected();
+        if (_grpcClient?.IsConnected == true)
+        {
+            _ = Task.Run(() => _grpcClient.SubscribeQuoteAsync(
+                new[] { ToSymbol(ticker) },
+                (symbol, bid, ask, last) => onBidAsk(bid, ask),
+                _globalCts!.Token));
+        }
+        else
+        {
+            OnError?.Invoke("Level2 требует gRPC. Недоступен.");
+        }
         return Task.CompletedTask;
     }
+
+    /// <summary>Подписка на обновления счёта (позиции, equity)</summary>
+    public async Task SubscribeAccountAsync(
+        Action<double, List<(string symbol, long qty, double avgPrice)>> onUpdate)
+    {
+        EnsureConnected();
+        if (_grpcClient?.IsConnected == true)
+        {
+            _ = Task.Run(() => _grpcClient.SubscribeAccountAsync(onUpdate, _globalCts!.Token));
+        }
+    }
+
+    // === Исторические данные: gRPC unary (fallback REST) ===
 
     public async Task<Candle[]> GetHistoricalCandlesAsync(string ticker, TimeSpan timeframe, DateTime from, DateTime to)
     {
         EnsureConnected();
+        var symbol = ToSymbol(ticker);
+        var tf = TimeframeToGrpc(timeframe);
 
-        var tf = TimeframeToString(timeframe);
-        var bars = await _client!.GetBarsAsync(
-            $"{ticker}@MISX", tf,
-            from.ToString("o"), to.ToString("o"));
+        // Пробуем gRPC
+        if (_grpcClient?.IsConnected == true)
+        {
+            try
+            {
+                return await _grpcClient.GetBarsAsync(symbol, tf, from, to);
+            }
+            catch (Exception ex)
+            {
+                OnError?.Invoke($"gRPC GetBars failed: {ex.Message}, fallback REST");
+            }
+        }
 
+        // REST fallback
+        var tfStr = TimeframeToString(timeframe);
+        var bars = await _restClient!.GetBarsAsync(symbol, tfStr, from.ToString("o"), to.ToString("o"));
         if (bars?.Bars == null) return Array.Empty<Candle>();
-
         return bars.Bars.Select(BarToCandle).ToArray();
     }
+
+    // === Торговля: gRPC (fallback REST) ===
 
     public async Task<Order> PlaceOrderAsync(Order order)
     {
         EnsureConnected();
         EnsureAccountId();
 
+        var symbol = ToSymbol(order.Ticker);
+        var side = order.Direction == SignalDirection.Buy
+            ? Grpc.Tradeapi.V1.Side.Buy
+            : Grpc.Tradeapi.V1.Side.Sell;
+        var orderType = order.Type == Core.Models.OrderType.Market
+            ? Grpc.Tradeapi.V1.Orders.OrderType.Market
+            : Grpc.Tradeapi.V1.Orders.OrderType.Limit;
+
+        if (_grpcClient?.IsConnected == true)
+        {
+            try
+            {
+                var orderId = await _grpcClient.PlaceOrderAsync(symbol, side, orderType,
+                    order.Volume, order.Type == Core.Models.OrderType.Limit ? order.Price : null,
+                    order.Comment);
+                order.BrokerOrderId = orderId;
+                order.Status = OrderStatus.Active;
+                OnOrderUpdate?.Invoke(order);
+                return order;
+            }
+            catch (Exception ex)
+            {
+                OnError?.Invoke($"gRPC PlaceOrder failed: {ex.Message}, fallback REST");
+            }
+        }
+
+        // REST fallback
         var request = new PlaceOrderRequest
         {
             AccountId = _accountId,
-            Symbol = $"{order.Ticker}@MISX",
+            Symbol = symbol,
             Side = order.Direction == SignalDirection.Buy ? "SIDE_BUY" : "SIDE_SELL",
             Quantity = order.Volume,
-            OrderType = order.Type == OrderType.Market ? "ORDER_TYPE_MARKET" : "ORDER_TYPE_LIMIT",
-            Price = order.Type == OrderType.Limit ? order.Price : null
+            OrderType = order.Type == Core.Models.OrderType.Market ? "ORDER_TYPE_MARKET" : "ORDER_TYPE_LIMIT",
+            Price = order.Type == Core.Models.OrderType.Limit ? order.Price : null
         };
 
-        var result = await _client!.PlaceOrderAsync(request);
+        var result = await _restClient!.PlaceOrderAsync(request);
         order.BrokerOrderId = result?.OrderId ?? "";
         order.Status = OrderStatus.Active;
-        
         OnOrderUpdate?.Invoke(order);
         return order;
     }
@@ -180,7 +260,13 @@ public class FinamConnector : IBrokerConnector
         EnsureConnected();
         EnsureAccountId();
 
-        var result = await _client!.CancelOrderAsync(_accountId, orderId);
+        if (_grpcClient?.IsConnected == true)
+        {
+            try { return await _grpcClient.CancelOrderAsync(orderId); }
+            catch { /* fallback REST */ }
+        }
+
+        var result = await _restClient!.CancelOrderAsync(_accountId, orderId);
         return result != null;
     }
 
@@ -189,7 +275,7 @@ public class FinamConnector : IBrokerConnector
         EnsureConnected();
         EnsureAccountId();
 
-        var result = await _client!.GetOrdersAsync(_accountId);
+        var result = await _restClient!.GetOrdersAsync(_accountId);
         if (result?.Orders == null) return Array.Empty<Order>();
 
         return result.Orders.Select(o => new Order
@@ -209,7 +295,26 @@ public class FinamConnector : IBrokerConnector
         EnsureConnected();
         EnsureAccountId();
 
-        var account = await _client!.GetAccountAsync(_accountId);
+        // Пробуем gRPC
+        if (_grpcClient?.IsConnected == true)
+        {
+            try
+            {
+                var (equity, positions) = await _grpcClient.GetAccountInfoAsync();
+                return positions.Select(p => new Position
+                {
+                    Ticker = p.symbol.Split('@')[0],
+                    Direction = p.qty > 0 ? SignalDirection.Buy : SignalDirection.Sell,
+                    Entries = new List<PositionEntry>
+                    {
+                        new() { Price = p.avgPrice, Volume = (int)Math.Abs(p.qty), Comment = "Позиция из Финам" }
+                    }
+                }).Where(p => p.Entries[0].Volume > 0).ToArray();
+            }
+            catch { /* fallback REST */ }
+        }
+
+        var account = await _restClient!.GetAccountAsync(_accountId);
         if (account?.Positions == null) return Array.Empty<Position>();
 
         return account.Positions.Select(p => new Position
@@ -218,12 +323,7 @@ public class FinamConnector : IBrokerConnector
             Direction = p.Balance > 0 ? SignalDirection.Buy : SignalDirection.Sell,
             Entries = new List<PositionEntry>
             {
-                new()
-                {
-                    Price = p.AveragePrice,
-                    Volume = (int)Math.Abs(p.Balance),
-                    Comment = "Позиция из Финам"
-                }
+                new() { Price = p.AveragePrice, Volume = (int)Math.Abs(p.Balance), Comment = "Позиция из Финам" }
             }
         }).ToArray();
     }
@@ -233,7 +333,17 @@ public class FinamConnector : IBrokerConnector
         EnsureConnected();
         EnsureAccountId();
 
-        var account = await _client!.GetAccountAsync(_accountId);
+        if (_grpcClient?.IsConnected == true)
+        {
+            try
+            {
+                var (equity, _) = await _grpcClient.GetAccountInfoAsync();
+                return equity;
+            }
+            catch { /* fallback REST */ }
+        }
+
+        var account = await _restClient!.GetAccountAsync(_accountId);
         return account?.Money.FirstOrDefault(m => m.Currency == "RUB")?.Balance ?? 0;
     }
 
@@ -241,17 +351,62 @@ public class FinamConnector : IBrokerConnector
 
     private void EnsureConnected()
     {
-        if (!IsConnected || _client == null)
+        if (!IsConnected)
             throw new InvalidOperationException("Не подключен к Финам API");
     }
 
     private void EnsureAccountId()
     {
         if (string.IsNullOrEmpty(_accountId))
-            throw new InvalidOperationException("Торговый счёт не привязан. Используйте торговый токен.");
+            throw new InvalidOperationException("Торговый счёт не привязан");
     }
 
-    private static string TimeframeToString(TimeSpan tf) => tf.TotalMinutes switch
+    /// <summary>REST polling свечей как fallback</summary>
+    private async Task PollCandlesRestAsync(string ticker, TimeSpan timeframe,
+        Action<Candle> onCandle, CancellationToken ct)
+    {
+        while (!ct.IsCancellationRequested)
+        {
+            try
+            {
+                var to = DateTime.UtcNow;
+                var from = to.Subtract(timeframe * 2);
+                var tfStr = TimeframeToString(timeframe);
+
+                var bars = await _restClient!.GetBarsAsync($"{ticker}@MISX", tfStr, from.ToString("o"), to.ToString("o"));
+                if (bars?.Bars.Count > 0)
+                    onCandle(BarToCandle(bars.Bars[^1]));
+            }
+            catch (Exception ex)
+            {
+                OnError?.Invoke($"REST polling {ticker}: {ex.Message}");
+            }
+
+            var delay = timeframe < TimeSpan.FromMinutes(5)
+                ? TimeSpan.FromSeconds(10)
+                : TimeSpan.FromSeconds(30);
+            await Task.Delay(delay, ct);
+        }
+    }
+
+    private static string ToSymbol(string ticker) =>
+        ticker.Contains('@') ? ticker : $"{ticker}@MISX";
+
+    private static GrpcMd.TimeFrame TimeframeToGrpc(TimeSpan tf) => (int)tf.TotalMinutes switch
+    {
+        1 => GrpcMd.TimeFrame.M1,
+        5 => GrpcMd.TimeFrame.M5,
+        15 => GrpcMd.TimeFrame.M15,
+        30 => GrpcMd.TimeFrame.M30,
+        60 => GrpcMd.TimeFrame.H1,
+        120 => GrpcMd.TimeFrame.H2,
+        240 => GrpcMd.TimeFrame.H4,
+        480 => GrpcMd.TimeFrame.H8,
+        1440 => GrpcMd.TimeFrame.D,
+        _ => GrpcMd.TimeFrame.M5
+    };
+
+    private static string TimeframeToString(TimeSpan tf) => (int)tf.TotalMinutes switch
     {
         1 => "TIME_FRAME_M1",
         5 => "TIME_FRAME_M5",
@@ -274,16 +429,28 @@ public class FinamConnector : IBrokerConnector
 
     private static OrderStatus MapOrderStatus(string status) => status switch
     {
-        "ORDER_STATUS_ACTIVE" => OrderStatus.Active,
+        "ORDER_STATUS_ACTIVE" or "ORDER_STATUS_NEW" => OrderStatus.Active,
         "ORDER_STATUS_FILLED" => OrderStatus.Filled,
-        "ORDER_STATUS_CANCELLED" => OrderStatus.Cancelled,
+        "ORDER_STATUS_PARTIALLY_FILLED" => OrderStatus.PartiallyFilled,
+        "ORDER_STATUS_CANCELLED" or "ORDER_STATUS_CANCELED" => OrderStatus.Cancelled,
         "ORDER_STATUS_REJECTED" => OrderStatus.Rejected,
+        _ => OrderStatus.Pending
+    };
+
+    private static OrderStatus MapGrpcOrderStatus(string status) => status switch
+    {
+        var s when s.Contains("FILLED") && !s.Contains("PARTIAL") => OrderStatus.Filled,
+        var s when s.Contains("PARTIAL") => OrderStatus.PartiallyFilled,
+        var s when s.Contains("CANCEL") => OrderStatus.Cancelled,
+        var s when s.Contains("REJECT") => OrderStatus.Rejected,
+        var s when s.Contains("NEW") || s.Contains("ACTIVE") => OrderStatus.Active,
         _ => OrderStatus.Pending
     };
 
     public void Dispose()
     {
-        _pollCts?.Cancel();
-        _client?.Dispose();
+        _globalCts?.Cancel();
+        _grpcClient?.Dispose();
+        _restClient?.Dispose();
     }
 }

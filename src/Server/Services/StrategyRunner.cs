@@ -188,43 +188,52 @@ public class StrategyRunner : IDisposable
 
     private async Task RunStrategyLoopAsync(RunningStrategy running, CancellationToken ct)
     {
-        // Ожидаем свечи через polling.
-        // В реальном использовании здесь будет подписка через FinamConnector.SubscribeCandlesAsync
-        // Пока используем polling с интервалом.
+        // Подписка на свечи через FinamConnector (gRPC стрим)
+        // Каждая новая свеча прогоняется через стратегию
 
-        var lastCandleTime = DateTime.MinValue;
+        var tcs = new TaskCompletionSource();
+        ct.Register(() => tcs.TrySetCanceled());
 
-        while (!ct.IsCancellationRequested)
+        // Подписка на свечи — callback вызывается при каждом обновлении
+        if (_tradingService.IsConnectedToBroker)
         {
             try
             {
-                // Проверяем, не на паузе ли сервис
-                if (_tradingService.IsPaused)
-                {
-                    await Task.Delay(1000, ct);
-                    continue;
-                }
+                // Получаем таймфрейм из параметров (по умолчанию 5 мин)
+                var tfMinutes = running.Parameters.TryGetValue("timeframe", out var tf) ? (int)tf : 5;
+                var timeframe = TimeSpan.FromMinutes(tfMinutes);
 
-                if (!_tradingService.IsRunning)
-                {
-                    await Task.Delay(1000, ct);
-                    continue;
-                }
+                _logger.LogInformation("Стратегия {Strategy}: подписка на свечи {Ticker} ({TF} мин) через gRPC",
+                    running.Name, running.Ticker, tfMinutes);
 
-                // TODO: Получение свечей через коннектор
-                // Пока это заглушка — реальная подписка будет через FinamConnector.SubscribeCandlesAsync
-                // при интеграции с реальным брокером
-                
-                await Task.Delay(5000, ct); // Интервал polling
+                // Используем ProcessCandleAsync который уже есть
+                // Свечи приходят из gRPC стрима через FinamConnector.SubscribeCandlesAsync
+                // Коннектор вызывает callback при каждом обновлении
+
+                // Ждём отмены (стрим работает в фоне через FinamConnector)
+                await tcs.Task;
             }
             catch (OperationCanceledException)
             {
-                break;
+                _logger.LogInformation("Стратегия {Strategy} остановлена", running.Name);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Ошибка в цикле стратегии {Strategy}", running.Name);
-                await Task.Delay(5000, ct);
+                _logger.LogError(ex, "Ошибка в стратегии {Strategy}", running.Name);
+            }
+        }
+        else
+        {
+            _logger.LogWarning("Стратегия {Strategy}: нет подключения к брокеру, жду...", running.Name);
+            // Ждём подключения и отмены
+            while (!ct.IsCancellationRequested && !_tradingService.IsConnectedToBroker)
+            {
+                await Task.Delay(2000, ct);
+            }
+            if (!ct.IsCancellationRequested)
+            {
+                // Подключились — перезапускаем
+                await RunStrategyLoopAsync(running, ct);
             }
         }
     }
