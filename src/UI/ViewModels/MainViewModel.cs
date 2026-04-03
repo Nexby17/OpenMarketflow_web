@@ -46,7 +46,7 @@ public class MainViewModel : BaseViewModel
         Brokers = new ObservableCollection<string> { "Финам (Trade API)" };
         SelectedBroker = Brokers[0];
 
-        Instruments = new ObservableCollection<string> { "SiM6", "SiU6", "Si", "SBER", "GAZP", "BR", "GOLD" };
+        Instruments = new ObservableCollection<string> { "SiM6", "SiU6", "SBER", "GAZP", "BR", "GOLD" };
         SelectedInstrument = Instruments[0];
 
         Strategies = new ObservableCollection<string> { "PSAR Grid MM (1 мин)", "PSAR+EMA Combo (5 мин)", "VStop Pure (30 сек, бумага)" };

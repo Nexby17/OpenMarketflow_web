@@ -63,8 +63,8 @@ public class OrderBookViewModel : BaseViewModel
 
     public OrderBookViewModel()
     {
-        Instruments = new ObservableCollection<string> { "Si", "BR", "GOLD", "SBER", "GAZP" };
-        SelectedInstrument = "Si";
+        Instruments = new ObservableCollection<string> { "SiM6", "SiU6", "SBER", "GAZP", "BR", "GOLD" };
+        SelectedInstrument = "SiM6";
 
         Timeframes = new ObservableCollection<string> { "1m", "5m", "15m", "1h", "4h", "D" };
         SelectedTimeframe = "5m";
