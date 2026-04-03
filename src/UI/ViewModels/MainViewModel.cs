@@ -781,6 +781,16 @@ public class MainViewModel : BaseViewModel
         _orderBookCts = new CancellationTokenSource();
         var ct = _orderBookCts.Token;
 
+        // Очищаем стакан при смене
+        App.Current?.Dispatcher.Invoke(() =>
+        {
+            OrderBookVM.OrderBookRows.Clear();
+            OrderBookVM.LastPrice = 0;
+            OrderBookVM.BestBid = 0;
+            OrderBookVM.BestAsk = 0;
+            OrderBookVM.SpreadValue = 0;
+        });
+
         try
         {
             if (_finamConnector?.IsConnected == true)
@@ -801,35 +811,70 @@ public class MainViewModel : BaseViewModel
                     });
                 }, ct);
 
-                // 2. Стакан gRPC
+                // 2. Стакан gRPC (инкрементальный апдейт без мигания)
                 _ = Task.Run(async () =>
                 {
+                    // Локальный снимок стакана (накапливаем incremental обновления)
+                    var book = new SortedDictionary<double, (long bidVol, long askVol)>(Comparer<double>.Create((a, b) => b.CompareTo(a)));
                     try
                     {
                         await _finamConnector.SubscribeOrderBookAsync(ticker, (rows) =>
                         {
                             if (ct.IsCancellationRequested) return;
-                            App.Current?.Dispatcher.Invoke(() =>
+
+                            // Обновляем локальный снимок
+                            foreach (var (price, bidVol, askVol) in rows)
+                            {
+                                if (bidVol == 0 && askVol == 0)
+                                    book.Remove(price);
+                                else
+                                    book[price] = (bidVol, askVol);
+                            }
+
+                            // Отправляем в UI (редко — не чаще 5 раз в секунду)
+                            App.Current?.Dispatcher.BeginInvoke(() =>
                             {
                                 if (OrderBookVM.SelectedInstrument != ticker) return;
 
-                                long maxVol = rows.Count > 0
-                                    ? Math.Max(rows.Max(r => r.bidVol), rows.Max(r => r.askVol))
+                                var snapshot = book.ToList();
+                                long maxVol = snapshot.Count > 0
+                                    ? Math.Max(
+                                        snapshot.Max(r => r.Value.bidVol),
+                                        snapshot.Max(r => r.Value.askVol))
                                     : 1;
                                 if (maxVol == 0) maxVol = 1;
 
-                                OrderBookVM.OrderBookRows.Clear();
-                                foreach (var (price, bidVol, askVol) in rows.OrderByDescending(r => r.price))
+                                // Smart update: совмещаем с существующими строками
+                                // Если кол-во строк сильно изменилось — перестроить
+                                if (Math.Abs(OrderBookVM.OrderBookRows.Count - snapshot.Count) > 10
+                                    || OrderBookVM.OrderBookRows.Count == 0)
                                 {
-                                    OrderBookVM.OrderBookRows.Add(new OrderBookRowViewModel
+                                    OrderBookVM.OrderBookRows.Clear();
+                                    foreach (var (price, (bidVol, askVol)) in snapshot)
                                     {
-                                        Price = price,
-                                        BidVolume = bidVol,
-                                        AskVolume = askVol,
-                                        BidBarWidth = (double)bidVol / maxVol * 80,
-                                        AskBarWidth = (double)askVol / maxVol * 80,
-                                        IsLastPrice = Math.Abs(price - OrderBookVM.LastPrice) < 1
-                                    });
+                                        OrderBookVM.OrderBookRows.Add(new OrderBookRowViewModel
+                                        {
+                                            Price = price, BidVolume = bidVol, AskVolume = askVol,
+                                            BidBarWidth = (double)bidVol / maxVol * 80,
+                                            AskBarWidth = (double)askVol / maxVol * 80,
+                                            IsLastPrice = Math.Abs(price - OrderBookVM.LastPrice) < 1
+                                        });
+                                    }
+                                }
+                                else
+                                {
+                                    // In-place update существующих строк
+                                    for (int i = 0; i < Math.Min(snapshot.Count, OrderBookVM.OrderBookRows.Count); i++)
+                                    {
+                                        var row = OrderBookVM.OrderBookRows[i];
+                                        var (price, (bidVol, askVol)) = snapshot[i];
+                                        row.Price = price;
+                                        row.BidVolume = bidVol;
+                                        row.AskVolume = askVol;
+                                        row.BidBarWidth = (double)bidVol / maxVol * 80;
+                                        row.AskBarWidth = (double)askVol / maxVol * 80;
+                                        row.IsLastPrice = Math.Abs(price - OrderBookVM.LastPrice) < 1;
+                                    }
                                 }
                             });
                         }, ct);
