@@ -26,7 +26,7 @@ public class BacktestViewModel : BaseViewModel
         SelectedStrategyName = StrategyNames[0];
 
         // Инструменты
-        Tickers = new ObservableCollection<string> { "SiM6", "SiU6", "Si", "SBER", "GAZP", "LKOH", "BR", "GOLD" };
+        Tickers = new ObservableCollection<string> { "SiM6", "SiU6", "SBER", "GAZP", "BRM6", "GDM6" };
         SelectedTicker = Tickers[0];
 
         // Таймфреймы

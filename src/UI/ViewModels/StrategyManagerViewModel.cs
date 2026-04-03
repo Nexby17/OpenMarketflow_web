@@ -104,13 +104,13 @@ public class StrategyManagerViewModel : BaseViewModel
         EmergencyStopAllCommand = new RelayCommand(EmergencyStopAll);
 
         // Инструменты для выбора
-        Instruments = new ObservableCollection<string> { "Si", "BR", "GOLD", "SBER", "GAZP", "MX" };
+        Instruments = new ObservableCollection<string> { "SiM6", "SiU6", "SBER", "GAZP", "BRM6", "GDM6" };
         SelectedInstrument = "Si";
 
         // Актуальные стратегии
-        Strategies.Add(new StrategyItemViewModel { Name = "PSAR Grid MM (1 мин)", Ticker = "Si" });
-        Strategies.Add(new StrategyItemViewModel { Name = "PSAR+EMA Combo (5 мин)", Ticker = "Si" });
-        Strategies.Add(new StrategyItemViewModel { Name = "VStop Pure (30 сек, бумага)", Ticker = "Si" });
+        Strategies.Add(new StrategyItemViewModel { Name = "PSAR Grid MM (1 мин)", Ticker = "SiM6" });
+        Strategies.Add(new StrategyItemViewModel { Name = "PSAR+EMA Combo (5 мин)", Ticker = "SiM6" });
+        Strategies.Add(new StrategyItemViewModel { Name = "VStop Pure (30 сек, бумага)", Ticker = "SiM6" });
     }
 
     // === Коллекции ===

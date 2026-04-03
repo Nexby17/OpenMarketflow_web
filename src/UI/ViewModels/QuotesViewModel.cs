@@ -12,7 +12,7 @@ public class QuotesViewModel : BaseViewModel
 
     public QuotesViewModel()
     {
-        Instruments = new ObservableCollection<string> { "Si", "BR", "GOLD", "SBER", "GAZP", "SPYF", "MX", "RI" };
+        Instruments = new ObservableCollection<string> { "SiM6", "SiU6", "SBER", "GAZP", "BRM6", "GDM6" };
         SelectedInstrument = "Si";
 
         SubscribeCommand = new RelayCommand(Subscribe);
