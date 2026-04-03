@@ -82,22 +82,18 @@
                         <RowDefinition Height="*"/>      <!-- Лог -->
                     </Grid.RowDefinitions>
 
-                    <!-- ROW 0: Токен API -->
-                    <Grid Grid.Row="0" Margin="0,0,0,10">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="Auto"/>
-                            <ColumnDefinition Width="*"/>
-                            <ColumnDefinition Width="Auto"/>
-                            <ColumnDefinition Width="Auto"/>
-                        </Grid.ColumnDefinitions>
-                        <Label Grid.Column="0" Content="Токен API:" VerticalAlignment="Center" Margin="0,0,8,0"/>
-                        <PasswordBox Grid.Column="1" x:Name="TokenBox" VerticalAlignment="Center"/>
-                        <Button Grid.Column="2" Content="📋 Из ENV" Style="{StaticResource SecondaryButton}" 
-                                Command="{Binding LoadTokenCommand}" Margin="8,0,0,0" VerticalAlignment="Center"/>
-                        <Button Grid.Column="3" Content="📤 На сервер" Style="{StaticResource PrimaryButton}" 
-                                Command="{Binding SendTokenToServerCommand}" Margin="8,0,0,0" VerticalAlignment="Center"
-                                ToolTip="Отправить токен на Trading Server для подключения к Финам"/>
-                    </Grid>
+                    <!-- ROW 0: Статус токена -->
+                    <Border Grid.Row="0" Margin="0,0,0,10" Background="{StaticResource SurfaceBrush}" CornerRadius="6" Padding="10,6">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="Токен Финам: " Foreground="{StaticResource TextSecondaryBrush}" VerticalAlignment="Center"/>
+                            <TextBlock Text="{Binding SettingsVM.FinamTokenMasked}" FontWeight="SemiBold" VerticalAlignment="Center"
+                                       Foreground="{Binding SettingsVM.HasFinamToken, Converter={StaticResource BoolOnOff}}"/>
+                            <TextBlock Text="  │  Токен Альфа: " Foreground="{StaticResource TextSecondaryBrush}" VerticalAlignment="Center" Margin="16,0,0,0"/>
+                            <TextBlock Text="{Binding SettingsVM.AlfaTokenMasked}" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                            <TextBlock Text="  ← укажите во вкладке Настройки" Foreground="{StaticResource TextSecondaryBrush}" 
+                                       VerticalAlignment="Center" FontSize="11" Margin="12,0,0,0"/>
+                        </StackPanel>
+                    </Border>
 
                     <!-- ROW 1: Выбор брокера / инструмента / стратегии -->
                     <Grid Grid.Row="1" Margin="0,0,0,10">
@@ -1094,6 +1090,94 @@
                                     MouseWheel="ChartCanvas_MouseWheel"/>
                         </Border>
                     </Grid>
+                </Grid>
+            </TabItem>
+
+            <!-- ==================== ВКЛАДКА: НАСТРОЙКИ ==================== -->
+            <TabItem Header="⚙️ Настройки" DataContext="{Binding SettingsVM}">
+                <Grid Margin="16">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
+
+                    <!-- Заголовок -->
+                    <TextBlock Grid.Row="0" Text="🔑 Токены брокеров" FontSize="18" FontWeight="Bold" Margin="0,0,0,16"/>
+
+                    <!-- Токен Финам -->
+                    <GroupBox Grid.Row="1" Header="Финам Trade API" Margin="0,0,0,12">
+                        <Grid Margin="8">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                            </Grid.RowDefinitions>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+
+                            <Label Grid.Row="0" Grid.Column="0" Content="Токен:" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                            <PasswordBox Grid.Row="0" Grid.Column="1" x:Name="FinamTokenBox" VerticalAlignment="Center" Margin="0,0,0,8"/>
+
+                            <Label Grid.Row="1" Grid.Column="0" Content="Статус:" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                            <StackPanel Grid.Row="1" Grid.Column="1" Orientation="Horizontal">
+                                <TextBlock Text="{Binding FinamTokenMasked}" VerticalAlignment="Center" 
+                                           FontFamily="Consolas" FontSize="12"
+                                           Foreground="{StaticResource AccentBrush}"/>
+                            </StackPanel>
+                        </Grid>
+                    </GroupBox>
+
+                    <!-- Токен Альфа -->
+                    <GroupBox Grid.Row="2" Header="Альфа-Инвестиции" Margin="0,0,0,12">
+                        <Grid Margin="8">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                            </Grid.RowDefinitions>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+
+                            <Label Grid.Row="0" Grid.Column="0" Content="Токен:" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                            <PasswordBox Grid.Row="0" Grid.Column="1" x:Name="AlfaTokenBox" VerticalAlignment="Center" Margin="0,0,0,8"/>
+
+                            <Label Grid.Row="1" Grid.Column="0" Content="Статус:" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                            <StackPanel Grid.Row="1" Grid.Column="1" Orientation="Horizontal">
+                                <TextBlock Text="{Binding AlfaTokenMasked}" VerticalAlignment="Center" 
+                                           FontFamily="Consolas" FontSize="12"
+                                           Foreground="{StaticResource AccentBrush}"/>
+                            </StackPanel>
+                        </Grid>
+                    </GroupBox>
+
+                    <!-- Кнопки -->
+                    <StackPanel Grid.Row="3" Orientation="Horizontal" Margin="0,0,0,12">
+                        <Button Content="💾 Сохранить" Style="{StaticResource PrimaryButton}" 
+                                Command="{Binding SaveCommand}" Padding="20,8" FontSize="14"/>
+                        <Button Content="📋 Из ENV" Style="{StaticResource SecondaryButton}" 
+                                Command="{Binding LoadFromEnvCommand}" Margin="12,0,0,0" Padding="16,8"/>
+                        <TextBlock Text="{Binding StatusMessage}" VerticalAlignment="Center" 
+                                   Margin="20,0,0,0" FontSize="13" Foreground="{StaticResource GreenBrush}"/>
+                    </StackPanel>
+
+                    <!-- Пояснение -->
+                    <Border Grid.Row="4" Background="{StaticResource SurfaceBrush}" CornerRadius="8" Padding="16" VerticalAlignment="Top">
+                        <StackPanel>
+                            <TextBlock Text="ℹ️ Как получить токены:" FontWeight="SemiBold" Margin="0,0,0,8"/>
+                            <TextBlock TextWrapping="Wrap" Foreground="{StaticResource TextSecondaryBrush}" FontSize="12" LineHeight="22">
+                                <Run FontWeight="SemiBold" Text="Финам:"/><Run Text=" Зайдите на "/><Run Text="api.finam.ru" FontWeight="SemiBold"/><Run Text=" → Токены → Создать новый токен. Скопируйте secret key."/>
+                                <LineBreak/>
+                                <Run FontWeight="SemiBold" Text="Альфа:"/><Run Text=" Личный кабинет Альфа-Инвестиций → Настройки → API-токены."/>
+                                <LineBreak/><LineBreak/>
+                                <Run Text="Токены сохраняются в settings.json рядом с приложением. При следующем запуске загружаются автоматически."/>
+                            </TextBlock>
+                        </StackPanel>
+                    </Border>
                 </Grid>
             </TabItem>
 

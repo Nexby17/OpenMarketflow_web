@@ -30,17 +30,21 @@ public partial class MainWindow : Window
                     LogListBox.ScrollIntoView(LogListBox.Items[^1]);
             };
 
-            // PasswordBox → ViewModel (PasswordBox не поддерживает Binding)
-            TokenBox.PasswordChanged += (_, _) =>
+            // PasswordBox → SettingsVM (PasswordBox не поддерживает Binding)
+            FinamTokenBox.PasswordChanged += (_, _) =>
             {
-                vm.ApiToken = TokenBox.Password;
+                vm.SettingsVM.FinamToken = FinamTokenBox.Password;
+            };
+            AlfaTokenBox.PasswordChanged += (_, _) =>
+            {
+                vm.SettingsVM.AlfaToken = AlfaTokenBox.Password;
             };
 
-            // Если токен уже загружен из ENV, показать маску
-            if (!string.IsNullOrEmpty(vm.ApiToken))
-            {
-                TokenBox.Password = vm.ApiToken;
-            }
+            // Если токены уже загружены из settings.json
+            if (!string.IsNullOrEmpty(vm.SettingsVM.FinamToken))
+                FinamTokenBox.Password = vm.SettingsVM.FinamToken;
+            if (!string.IsNullOrEmpty(vm.SettingsVM.AlfaToken))
+                AlfaTokenBox.Password = vm.SettingsVM.AlfaToken;
 
             vm.AddLog("OpenMarketflow загружен. Выберите параметры и нажмите СТАРТ.");
 

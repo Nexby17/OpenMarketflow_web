@@ -28,6 +28,7 @@ public class MainViewModel : BaseViewModel
         QuotesVM = new QuotesViewModel();
         StrategyManagerVM = new StrategyManagerViewModel();
         OrderBookVM = new OrderBookViewModel();
+        SettingsVM = new SettingsViewModel();
         BacktestVM.ApplyToTradingRequested += OnApplyBacktestToTrading;
         WireUpNewVMs();
 
@@ -73,6 +74,7 @@ public class MainViewModel : BaseViewModel
     public QuotesViewModel QuotesVM { get; }
     public StrategyManagerViewModel StrategyManagerVM { get; }
     public OrderBookViewModel OrderBookVM { get; }
+    public SettingsViewModel SettingsVM { get; }
 
     // === Свойства привязки ===
 
@@ -256,6 +258,19 @@ public class MainViewModel : BaseViewModel
     {
         try
         {
+            // Токен: сначала из Настроек, потом из поля ввода, потом ENV
+            var token = !string.IsNullOrWhiteSpace(SettingsVM.FinamToken)
+                ? SettingsVM.FinamToken
+                : !string.IsNullOrWhiteSpace(ApiToken)
+                    ? ApiToken
+                    : Environment.GetEnvironmentVariable("FINAM_TOKEN") ?? "";
+
+            if (string.IsNullOrWhiteSpace(token))
+            {
+                AddLog("⚠ Токен Финам не указан. Укажите во вкладке Настройки.");
+                return;
+            }
+
             AddLog("📡 Подключение к Финам (REST + gRPC)...");
 
             _finamConnector = new FinamConnector();
@@ -282,7 +297,7 @@ public class MainViewModel : BaseViewModel
                 OrdersVM.UpdateOrder(order);
             });
 
-            await _finamConnector.ConnectAsync(ApiToken);
+            await _finamConnector.ConnectAsync(token);
             AddLog("✅ Финам подключён!");
 
             // Подписываемся на ВСЕ инструменты
