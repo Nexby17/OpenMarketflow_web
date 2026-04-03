@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using System.Windows;
 using System.Windows.Input;
 using HedgeFund.Core.Backtesting;
 using HedgeFund.Core.Models;
@@ -52,7 +53,21 @@ public class BacktestViewModel : BaseViewModel
         EquityPoints = new List<double>();
 
         // Команды
-        RunTestCommand = new RelayCommand(async _ => await RunTestAsync(), _ => !IsRunning);
+        RunTestCommand = new RelayCommand(_ =>
+        {
+            _ = Task.Run(async () =>
+            {
+                try { await RunTestAsync(); }
+                catch (Exception ex)
+                {
+                    App.Current?.Dispatcher.Invoke(() =>
+                    {
+                        StatusText = $"❌ Ошибка: {ex.Message}";
+                        IsRunning = false;
+                    });
+                }
+            });
+        }, _ => !IsRunning);
         CancelTestCommand = new RelayCommand(_ => CancelTest(), _ => IsRunning);
     }
 

@@ -518,7 +518,7 @@
                                     <Label Content="Инструмент"/>
                                     <ComboBox ItemsSource="{Binding Tickers}" 
                                               SelectedItem="{Binding SelectedTicker}" 
-                                              IsEditable="True" Margin="0,0,0,6"/>
+                                              Margin="0,0,0,6"/>
 
                                     <Label Content="Таймфрейм"/>
                                     <ComboBox ItemsSource="{Binding Timeframes}" 
