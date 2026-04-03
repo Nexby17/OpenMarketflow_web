@@ -540,7 +540,7 @@ public class MainViewModel : BaseViewModel
 
     private TradingHubClient? _hubClient;
 
-    private string _serverUrl = "http://localhost:5050/trading";
+    private string _serverUrl = "http://216.57.106.32:5050/trading";
     public string ServerUrl
     {
         get => _serverUrl;
