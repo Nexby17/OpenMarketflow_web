@@ -37,7 +37,7 @@ public class VStopPureStrategy : IStrategy
     private double _vstop;
     private int _trend;       // 1=up, -1=down
     private double _maxPrice, _minPrice;
-    private double _af;       // ATR EMA factor
+    // _af убран (не используется, ATR считается через буфер)
     private int _barCount;
     private readonly double[] _trBuf;  // true range buffer for initial ATR
     private double _atrVal;
@@ -159,7 +159,6 @@ public class VStopPureStrategy : IStrategy
         if (Mode != StrategyMode.Running) return null;
 
         // Close existing + open new
-        Signal? closeSignal = null;
         if (_posDir != 0)
         {
             double pnl = _posDir == 1 ? c - _entryPrice - Params.Commission : _entryPrice - c - Params.Commission;

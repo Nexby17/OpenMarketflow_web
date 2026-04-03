@@ -79,7 +79,7 @@ public class PsarGridMmStrategy : IStrategy
     private bool _entryFilled;     // entry lot ещё в позиции?
     private bool _gridActive;      // grid activated (PnL went negative)
 
-    private int _nLots;              // число лотов в grid (без entry)
+    private int _nLots = 0;          // число лотов в grid (без entry)
 
     // Grid levels
     private readonly double[] _gridPrice;    // limit price
