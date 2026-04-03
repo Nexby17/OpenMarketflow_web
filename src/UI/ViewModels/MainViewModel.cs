@@ -362,8 +362,13 @@ public class MainViewModel : BaseViewModel
         if (_finamConnector == null) return;
         try
         {
+            var tfMinutes = OrderBookVM.SelectedTimeframe switch
+            {
+                "1m" => 1, "5m" => 5, "15m" => 15, "1h" => 60, "4h" => 240, "D" => 1440, _ => 5
+            };
+            var days = tfMinutes <= 5 ? 3 : tfMinutes <= 60 ? 7 : 30;
             var history = await _finamConnector.GetHistoricalCandlesAsync(
-                ticker, TimeSpan.FromMinutes(5), DateTime.UtcNow.AddDays(-3), DateTime.UtcNow);
+                ticker, TimeSpan.FromMinutes(tfMinutes), DateTime.UtcNow.AddDays(-days), DateTime.UtcNow);
             if (history.Length > 0)
             {
                 var candles = history.Select(c => new ClusterCandle
@@ -741,17 +746,90 @@ public class MainViewModel : BaseViewModel
         };
         StrategyManagerVM.EmergencyStopRequested += async () => await EmergencyStopAsync();
 
-        // Стакан
+        // Стакан + котировки + свечи при смене инструмента
         OrderBookVM.SubscribeBookRequested += async (ticker) =>
         {
-            if (_hubClient != null && IsServerConnected)
+            if (_finamConnector != null && _finamConnector.IsConnected)
+            {
+                try
+                {
+                    // Котировки → LastPrice, Bid, Ask
+                    await _finamConnector.SubscribeQuotesAsync(ticker, (bid, ask, last) =>
+                        App.Current?.Dispatcher.Invoke(() =>
+                        {
+                            OrderBookVM.LastPrice = last;
+                            OrderBookVM.BestBid = bid;
+                            OrderBookVM.BestAsk = ask;
+                            OrderBookVM.SpreadValue = ask - bid;
+                        }));
+
+                    // Исторические свечи
+                    await LoadHistoricalCandles(ticker);
+
+                    AddLog($"📊 Подписка на {ticker}: котировки + свечи");
+                }
+                catch (Exception ex) { AddLog($"⚠️ Подписка {ticker}: {ex.Message}"); }
+            }
+            else if (_hubClient != null && IsServerConnected)
+            {
                 try { await _hubClient.SubscribeOrderBookAsync(ticker); } catch { }
+            }
         };
         OrderBookVM.TimeframeChangeRequested += async (tf) =>
         {
-            if (_hubClient != null && IsServerConnected)
+            if (_finamConnector != null && _finamConnector.IsConnected)
+            {
+                try { await LoadHistoricalCandles(OrderBookVM.SelectedInstrument); }
+                catch (Exception ex) { AddLog($"⚠️ Смена TF: {ex.Message}"); }
+            }
+            else if (_hubClient != null && IsServerConnected)
+            {
                 try { await _hubClient.GetCandlesAsync(OrderBookVM.SelectedInstrument, tf); } catch { }
+            }
         };
+
+        // При смене инструмента на вкладке Стакан — переподписываемся
+        OrderBookVM.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(OrderBookVM.SelectedInstrument) && !string.IsNullOrEmpty(OrderBookVM.SelectedInstrument))
+            {
+                _ = ResubscribeOrderBookInstrumentAsync(OrderBookVM.SelectedInstrument);
+            }
+        };
+    }
+
+    /// <summary>Переподписка на котировки + свечи при смене инструмента в Стакане</summary>
+    private async Task ResubscribeOrderBookInstrumentAsync(string ticker)
+    {
+        try
+        {
+            if (_finamConnector?.IsConnected == true)
+            {
+                // Котировки gRPC
+                await _finamConnector.SubscribeQuotesAsync(ticker, (bid, ask, last) =>
+                    App.Current?.Dispatcher.Invoke(() =>
+                    {
+                        OrderBookVM.LastPrice = last;
+                        OrderBookVM.BestBid = bid;
+                        OrderBookVM.BestAsk = ask;
+                        OrderBookVM.SpreadValue = ask - bid;
+                    }));
+
+                // Свечи
+                await LoadHistoricalCandles(ticker);
+
+                AddLog($"📊 Переключено на {ticker}");
+            }
+            else if (_hubClient != null && IsServerConnected)
+            {
+                await _hubClient.SubscribeOrderBookAsync(ticker);
+                await _hubClient.GetCandlesAsync(ticker, OrderBookVM.SelectedTimeframe);
+            }
+        }
+        catch (Exception ex)
+        {
+            App.Current?.Dispatcher.Invoke(() => AddLog($"⚠️ Переключение {ticker}: {ex.Message}"));
+        }
     }
 
     private void WireUpHubEvents()
