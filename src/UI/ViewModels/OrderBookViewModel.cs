@@ -63,7 +63,7 @@ public class OrderBookViewModel : BaseViewModel
 
     public OrderBookViewModel()
     {
-        Instruments = new ObservableCollection<string> { "SiM6", "SiU6", "SBER", "GAZP", "BR", "GOLD" };
+        Instruments = new ObservableCollection<string> { "SiM6", "SiU6", "SBER", "GAZP", "BRM6", "GDM6" };
         SelectedInstrument = "SiM6";
 
         Timeframes = new ObservableCollection<string> { "1m", "5m", "15m", "1h", "4h", "D" };

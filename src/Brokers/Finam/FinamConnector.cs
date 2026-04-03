@@ -373,7 +373,7 @@ public class FinamConnector : IBrokerConnector
                 var from = to.Subtract(timeframe * 2);
                 var tfStr = TimeframeToString(timeframe);
 
-                var bars = await _restClient!.GetBarsAsync($"{ticker}@MISX", tfStr, from.ToString("o"), to.ToString("o"));
+                var bars = await _restClient!.GetBarsAsync(ToSymbol(ticker), tfStr, from.ToString("o"), to.ToString("o"));
                 if (bars?.Bars.Count > 0)
                     onCandle(BarToCandle(bars.Bars[^1]));
             }
@@ -389,8 +389,28 @@ public class FinamConnector : IBrokerConnector
         }
     }
 
-    private static string ToSymbol(string ticker) =>
-        ticker.Contains('@') ? ticker : $"{ticker}@MISX";
+    /// <summary>
+    /// Определить биржу по тикеру: фьючерсы → SPBFUT, акции → MISX
+    /// </summary>
+    private static string ToSymbol(string ticker)
+    {
+        if (ticker.Contains('@')) return ticker;
+
+        // Фьючерсы MOEX: Si, BR, GD, MX, RI, GOLD, ED, Eu, SBRF, GAZR, LKOH, ROSN, VTBR, SNGR, SILV, NG, PL
+        // Формат: БазовыйКод + Месяц(буква) + Год(цифра), напр.: SiM6, BRN6, GDM6, MXM6
+        var futuresPrefixes = new[] { "Si", "BR", "GD", "MX", "RI", "GOLD", "ED", "Eu", 
+                                       "SBRF", "GAZR", "LKOH", "ROSN", "VTBR", "SNGR", 
+                                       "SILV", "NG", "PL", "CR", "ALRS", "MGNT" };
+
+        foreach (var prefix in futuresPrefixes)
+        {
+            if (ticker.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+                return $"{ticker}@SPBFUT";
+        }
+
+        // Акции → MISX
+        return $"{ticker}@MISX";
+    }
 
     private static GrpcMd.TimeFrame TimeframeToGrpc(TimeSpan tf) => (int)tf.TotalMinutes switch
     {
