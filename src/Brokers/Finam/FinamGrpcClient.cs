@@ -395,6 +395,7 @@ public class FinamGrpcClient : IDisposable
                 retryDelay = 1000;
             }
             catch (OperationCanceledException) { break; }
+            catch (RpcException ex) when (ex.StatusCode == StatusCode.Cancelled) { break; }
             catch (RpcException ex) when (ex.StatusCode == StatusCode.Unauthenticated)
             {
                 OnError?.Invoke($"📡 {streamName}: JWT протух, обновляю...");
