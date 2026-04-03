@@ -135,15 +135,17 @@ public class FinamConnector : IBrokerConnector
     }
 
     /// <summary>Подписка на котировки через gRPC</summary>
-    public async Task SubscribeQuotesAsync(string ticker, Action<double, double, double> onQuote)
+    public async Task SubscribeQuotesAsync(string ticker, Action<double, double, double> onQuote,
+        CancellationToken ct = default)
     {
         EnsureConnected();
         if (_grpcClient?.IsConnected == true)
         {
+            var token = ct == default ? _globalCts!.Token : ct;
             _ = Task.Run(() => _grpcClient.SubscribeQuoteAsync(
                 new[] { ToSymbol(ticker) },
                 (symbol, bid, ask, last) => onQuote(bid, ask, last),
-                _globalCts!.Token));
+                token));
         }
     }
 

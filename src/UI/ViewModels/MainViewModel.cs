@@ -785,29 +785,20 @@ public class MainViewModel : BaseViewModel
         {
             if (_finamConnector?.IsConnected == true)
             {
-                // 1. Котировки gRPC (только для этого инструмента)
-                _ = Task.Run(async () =>
+                // 1. Котировки gRPC (только для этого инструмента, отменяется при смене)
+                await _finamConnector.SubscribeQuotesAsync(ticker, (bid, ask, last) =>
                 {
-                    try
+                    if (ct.IsCancellationRequested) return;
+                    // Пропускаем нулевые значения (нет активных котировок)
+                    if (last <= 0) return;
+                    App.Current?.Dispatcher.Invoke(() =>
                     {
-                        await _finamConnector.SubscribeQuotesAsync(ticker, (bid, ask, last) =>
-                        {
-                            if (ct.IsCancellationRequested) return;
-                            App.Current?.Dispatcher.Invoke(() =>
-                            {
-                                if (OrderBookVM.SelectedInstrument != ticker) return;
-                                OrderBookVM.LastPrice = last;
-                                OrderBookVM.BestBid = bid;
-                                OrderBookVM.BestAsk = ask;
-                                OrderBookVM.SpreadValue = ask - bid;
-                            });
-                        });
-                    }
-                    catch (OperationCanceledException) { }
-                    catch (Exception ex)
-                    {
-                        App.Current?.Dispatcher.Invoke(() => AddLog($"⚠️ Котировки {ticker}: {ex.Message}"));
-                    }
+                        if (OrderBookVM.SelectedInstrument != ticker) return;
+                        OrderBookVM.LastPrice = last;
+                        if (bid > 0) OrderBookVM.BestBid = bid;
+                        if (ask > 0) OrderBookVM.BestAsk = ask;
+                        if (bid > 0 && ask > 0) OrderBookVM.SpreadValue = ask - bid;
+                    });
                 }, ct);
 
                 // 2. Исторические свечи
