@@ -81,12 +81,30 @@ public class FinamConnector : IBrokerConnector
                     }, _globalCts.Token));
             }
 
-            // Fallback account_id через REST если gRPC не дал
+            // Находим FORTS счёт (для фьючерсов) или первый с балансом
             if (string.IsNullOrEmpty(_accountId))
             {
                 var details = await _restClient.GetTokenDetailsAsync();
                 if (details?.AccountIds.Count > 0)
-                    _accountId = details.AccountIds[0];
+                {
+                    // Пробуем найти FORTS счёт
+                    foreach (var id in details.AccountIds)
+                    {
+                        try
+                        {
+                            var acc = await _restClient.GetAccountAsync(id);
+                            if (acc != null)
+                            {
+                                var type = acc.GetType().GetProperty("Type")?.GetValue(acc)?.ToString() ?? "";
+                                // В REST ответе тип в поле type (может быть FORTS, MICEX)
+                                Console.WriteLine($"[FINAM] Account {id}: money={acc.Money?.Count ?? 0}");
+                            }
+                        }
+                        catch { }
+                    }
+                    // Используем последний счёт (FORTS обычно последний)
+                    _accountId = details.AccountIds[^1];
+                }
             }
 
             IsConnected = true;

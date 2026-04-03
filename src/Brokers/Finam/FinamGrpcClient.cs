@@ -77,7 +77,7 @@ public class FinamGrpcClient : IDisposable
                     new GrpcAuth.TokenDetailsRequest { Token = _jwt },
                     CreateAuthHeaders());
                 if (details.AccountIds.Count > 0)
-                    _accountId = details.AccountIds[0];
+                    _accountId = details.AccountIds[^1]; // FORTS обычно последний
             }
             Log($"📋 Account: {_accountId}");
 
