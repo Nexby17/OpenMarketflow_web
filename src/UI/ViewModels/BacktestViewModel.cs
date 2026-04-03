@@ -406,28 +406,31 @@ public class BacktestViewModel : BaseViewModel
 
             Progress = 100;
 
-            // Обновляем результаты
-            ResultPnL = result.TotalPnL;
-            ResultTrades = result.TotalTrades;
-            ResultWinRate = result.WinRate;
-            ResultProfitFactor = double.IsInfinity(result.ProfitFactor) ? 999.99 : result.ProfitFactor;
-            ResultSharpe = result.SharpeRatio;
-            ResultMaxDD = result.MaxDrawdown;
-            ResultAvgWin = result.AvgWin;
-            ResultAvgLoss = result.AvgLoss;
+            // Обновляем результаты через Dispatcher (коллекции только из UI потока)
+            Application.Current?.Dispatcher.Invoke(() =>
+            {
+                ResultPnL = result.TotalPnL;
+                ResultTrades = result.TotalTrades;
+                ResultWinRate = result.WinRate;
+                ResultProfitFactor = double.IsInfinity(result.ProfitFactor) ? 999.99 : result.ProfitFactor;
+                ResultSharpe = result.SharpeRatio;
+                ResultMaxDD = result.MaxDrawdown;
+                ResultAvgWin = result.AvgWin;
+                ResultAvgLoss = result.AvgLoss;
 
-            // Equity Curve
-            EquityPoints = result.EquityCurve;
-            OnPropertyChanged(nameof(EquityPointsGeometry));
-            OnPropertyChanged(nameof(ZeroLineY));
+                // Equity Curve
+                EquityPoints = result.EquityCurve;
+                OnPropertyChanged(nameof(EquityPointsGeometry));
+                OnPropertyChanged(nameof(ZeroLineY));
 
-            // Сделки
-            BacktestTrades.Clear();
-            foreach (var trade in result.Trades)
-                BacktestTrades.Add(trade);
+                // Сделки
+                BacktestTrades.Clear();
+                foreach (var trade in result.Trades)
+                    BacktestTrades.Add(trade);
 
-            StatusText = $"✓ Готово за {result.Duration.TotalSeconds:F1} сек | " +
-                         $"{candles.Count} свечей, {result.TotalTrades} сделок";
+                StatusText = $"✓ Готово за {result.Duration.TotalSeconds:F1} сек | " +
+                             $"{candles.Count} свечей, {result.TotalTrades} сделок";
+            });
         }
         catch (OperationCanceledException)
         {
