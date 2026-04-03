@@ -87,13 +87,13 @@ function initSignalR() {
         .then(() => {
             el('statusIndicator').className = 'status-dot green';
             el('statusText').textContent = 'Подключён к серверу';
-            addLog(now(), 'INFO', '✅ SignalR подключён');
+            addLog(nowTime(), 'INFO', '✅ SignalR подключён');
             fetchStatus();
         })
         .catch(err => {
             el('statusIndicator').className = 'status-dot red';
             el('statusText').textContent = 'Ошибка подключения';
-            addLog(now(), 'ERROR', `SignalR: ${err.message}`);
+            addLog(nowTime(), 'ERROR', `SignalR: ${err.message}`);
         });
 }
 
@@ -101,10 +101,10 @@ function initSignalR() {
 async function connectBroker() {
     const token = localStorage.getItem('finamToken') || '';
     if (!token) {
-        addLog(now(), 'ERROR', '⚠ Токен Финам не указан. Укажите во вкладке Настройки.');
+        addLog(nowTime(), 'ERROR', '⚠ Токен Финам не указан. Укажите во вкладке Настройки.');
         return;
     }
-    addLog(now(), 'INFO', '🔌 Подключение к Финам...');
+    addLog(nowTime(), 'INFO', '🔌 Подключение к Финам...');
     try {
         const resp = await fetch('/connect-broker', { method: 'POST' });
         const data = await resp.json();
@@ -112,13 +112,13 @@ async function connectBroker() {
             isConnected = true;
             el('brokerStatus').textContent = '✅ Подключён';
             el('startBotBtn').disabled = false;
-            addLog(now(), 'INFO', `✅ ${data.broker} подключён`);
+            addLog(nowTime(), 'INFO', `✅ ${data.broker} подключён`);
             fetchStatus();
         } else {
-            addLog(now(), 'ERROR', `❌ ${data.error || 'Не удалось подключиться'}`);
+            addLog(nowTime(), 'ERROR', `❌ ${data.error || 'Не удалось подключиться'}`);
         }
     } catch (e) {
-        addLog(now(), 'ERROR', `❌ ${e.message}`);
+        addLog(nowTime(), 'ERROR', `❌ ${e.message}`);
     }
 }
 
@@ -130,9 +130,9 @@ async function startBot() {
         await connection.invoke('StartStrategy', strategy, ticker, {});
         isBotRunning = true;
         el('stopBotBtn').disabled = false;
-        addLog(now(), 'INFO', `🤖 Запущен: ${strategy} на ${ticker}`);
+        addLog(nowTime(), 'INFO', `🤖 Запущен: ${strategy} на ${ticker}`);
     } catch (e) {
-        addLog(now(), 'ERROR', `❌ ${e.message}`);
+        addLog(nowTime(), 'ERROR', `❌ ${e.message}`);
     }
 }
 
@@ -143,9 +143,9 @@ async function stopBot() {
         await connection.invoke('StopStrategy', strategy);
         isBotRunning = false;
         el('stopBotBtn').disabled = true;
-        addLog(now(), 'INFO', '⏹ Бот остановлен');
+        addLog(nowTime(), 'INFO', '⏹ Бот остановлен');
     } catch (e) {
-        addLog(now(), 'ERROR', `❌ ${e.message}`);
+        addLog(nowTime(), 'ERROR', `❌ ${e.message}`);
     }
 }
 
@@ -153,9 +153,9 @@ async function emergencyStop() {
     if (!connection) return;
     try {
         await connection.invoke('EmergencyStop');
-        addLog(now(), 'ERROR', '🔴 ЭКСТРЕННАЯ ОСТАНОВКА');
+        addLog(nowTime(), 'ERROR', '🔴 ЭКСТРЕННАЯ ОСТАНОВКА');
     } catch (e) {
-        addLog(now(), 'ERROR', `❌ ${e.message}`);
+        addLog(nowTime(), 'ERROR', `❌ ${e.message}`);
     }
 }
 
@@ -298,44 +298,28 @@ function initChart() {
 }
 
 function loadCandles(ticker, tf) {
-    // Load via MOEX ISS (client-side for simplicity)
-    const tfMap = { '1': 1, '5': 5, '15': 15, '60': 60, '1440': 24 };
-    const interval = tfMap[tf] || 5;
-    const now = new Date();
-    const from = new Date(now - (interval <= 5 ? 3 : interval <= 60 ? 7 : 30) * 86400000);
-    const fromStr = from.toISOString().split('T')[0];
-    const toStr = now.toISOString().split('T')[0];
+    const tfMinutes = parseInt(tf) || 5;
+    const days = tfMinutes <= 5 ? 3 : tfMinutes <= 60 ? 7 : 30;
 
-    // Determine market
-    const futures = ['SiM6','SiU6','BRM6','GDM6','SiH6','SiZ6'];
-    const isFut = futures.includes(ticker);
-    const engine = isFut ? 'futures' : 'stock';
-    const market = isFut ? 'forts' : 'shares';
-    const board = isFut ? 'RFUD' : 'TQBR';
-
-    const url = `https://iss.moex.com/iss/engines/${engine}/markets/${market}/boards/${board}/securities/${ticker}/candles.json?interval=${interval}&from=${fromStr}&till=${toStr}&start=0&iss.json=extended&iss.meta=off`;
-
-    fetch(url)
+    // Загружаем через Finam API (сервер)
+    fetch(`/api/candles?ticker=${ticker}&tf=${tfMinutes}&days=${days}`)
         .then(r => r.json())
         .then(data => {
-            const rows = data[1]?.candles || [];
-            if (!rows.length) { addLog(now(), 'INFO', `Нет данных для ${ticker}`); return; }
-            
-            const candles = rows.map(r => ({
-                time: new Date(r.begin).getTime() / 1000,
-                open: r.open, high: r.high, low: r.low, close: r.close
-            }));
-            const volumes = rows.map(r => ({
-                time: new Date(r.begin).getTime() / 1000,
-                value: r.volume || 0,
-                color: r.close >= r.open ? 'rgba(34,197,94,0.3)' : 'rgba(239,68,68,0.3)'
+            if (data.error) { addLog(nowTime(), 'ERROR', data.error); return; }
+            if (!data.length) { addLog(nowTime(), 'INFO', `Нет данных для ${ticker}`); return; }
+
+            const candles = data.map(r => ({ time: r.t, open: r.o, high: r.h, low: r.l, close: r.c }));
+            const volumes = data.map(r => ({
+                time: r.t, value: r.v || 0,
+                color: r.c >= r.o ? 'rgba(34,197,94,0.3)' : 'rgba(239,68,68,0.3)'
             }));
 
             if (candleSeries) candleSeries.setData(candles);
             if (volumeSeries) volumeSeries.setData(volumes);
             el('obCandleCount').textContent = `${candles.length} свечей`;
+            addLog(nowTime(), 'INFO', `📊 ${ticker}: ${candles.length} свечей (${tfMinutes}м)`);
         })
-        .catch(e => addLog(now(), 'ERROR', `Загрузка свечей: ${e.message}`));
+        .catch(e => addLog(nowTime(), 'ERROR', `Свечи: ${e.message}`));
 }
 
 function switchOrderBookInstrument() {
@@ -430,18 +414,18 @@ async function startStrategy(name) {
     if (!connection) return;
     try {
         await connection.invoke('StartStrategy', name, el('obInstrument')?.value || 'SiM6', {});
-        addLog(now(), 'INFO', `▶ ${name} запущена`);
-    } catch(e) { addLog(now(), 'ERROR', e.message); }
+        addLog(nowTime(), 'INFO', `▶ ${name} запущена`);
+    } catch(e) { addLog(nowTime(), 'ERROR', e.message); }
 }
 async function pauseStrategy(name) {
     if (!connection) return;
-    try { await connection.invoke('PauseStrategy', name); addLog(now(), 'INFO', `⏸ ${name}`); }
-    catch(e) { addLog(now(), 'ERROR', e.message); }
+    try { await connection.invoke('PauseStrategy', name); addLog(nowTime(), 'INFO', `⏸ ${name}`); }
+    catch(e) { addLog(nowTime(), 'ERROR', e.message); }
 }
 async function stopStrategy(name) {
     if (!connection) return;
-    try { await connection.invoke('StopStrategy', name); addLog(now(), 'INFO', `⏹ ${name}`); }
-    catch(e) { addLog(now(), 'ERROR', e.message); }
+    try { await connection.invoke('StopStrategy', name); addLog(nowTime(), 'INFO', `⏹ ${name}`); }
+    catch(e) { addLog(nowTime(), 'ERROR', e.message); }
 }
 
 // === Log ===
@@ -458,7 +442,7 @@ function addLog(time, level, msg) {
 
 // === Helpers ===
 function el(id) { return document.getElementById(id); }
-function now() { return new Date().toLocaleTimeString(); }
+function nowTime() { return new Date().toLocaleTimeString(); }
 function fmt(n) { return n ? Math.round(n).toLocaleString('ru-RU') : '—'; }
 function fmtPnl(n) {
     if (!n) return '0';

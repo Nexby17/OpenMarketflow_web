@@ -66,6 +66,29 @@ app.MapPost("/send-log", async (IHubContext<TradingHub> hub, HttpRequest req) =>
     return Results.Ok(new { sent = true });
 });
 
+// === REST: свечи через Finam API ===
+app.MapGet("/api/candles", async (TradingService svc, string ticker, int tf, int days) =>
+{
+    try
+    {
+        // Получаем FinamConnector из TradingService
+        var connector = svc.Connector;
+        if (connector != null && connector.IsConnected)
+        {
+            var to = DateTime.UtcNow;
+            var from = to.AddDays(-Math.Max(1, Math.Min(days, 30)));
+            var timeframe = TimeSpan.FromMinutes(tf > 0 ? tf : 5);
+            var candles = await connector.GetHistoricalCandlesAsync(ticker, timeframe, from, to);
+            return Results.Ok(candles.Select(c => new {
+                t = new DateTimeOffset(c.Timestamp.ToUniversalTime()).ToUnixTimeSeconds(),
+                o = c.Open, h = c.High, l = c.Low, c = c.Close, v = c.Volume
+            }));
+        }
+        return Results.Ok(Array.Empty<object>());
+    }
+    catch (Exception ex) { return Results.BadRequest(new { error = ex.Message }); }
+});
+
 Console.WriteLine($"═══════════════════════════════════════════");
 Console.WriteLine($"  OpenMarketflow Trading Server");
 Console.WriteLine($"  SignalR Hub: http://0.0.0.0:{port}/trading");
