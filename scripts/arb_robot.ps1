@@ -76,7 +76,7 @@ function SR($ch, $pl, $t=10) {
         RM
         if($script:resp.ContainsKey($id)){
             $r = $script:resp[$id]
-            $script:resp.Remove($id)
+            [void]$script:resp.Remove($id)
             return $r
         }
         Start-Sleep -Milliseconds 300
