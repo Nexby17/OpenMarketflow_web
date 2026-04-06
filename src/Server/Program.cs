@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.SignalR;
 using HedgeFund.Server.Hubs;
 using HedgeFund.Server.Services;
+using HedgeFund.Core.Strategies;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -126,11 +127,68 @@ app.MapGet("/api/orderbook", async (TradingService svc, string ticker) =>
     catch (Exception ex) { return Results.Ok(new { rows = Array.Empty<object>(), error = ex.Message }); }
 });
 
+// === REST API: Арбитраж ===
+ArbLauncher? arbLauncher = null;
+
+app.MapPost("/arb/start", () =>
+{
+    if (arbLauncher == null) return Results.BadRequest(new { error = "Арбитраж не инициализирован. POST /arb/init" });
+    arbLauncher.Start();
+    return Results.Ok(new { status = "running", detail = arbLauncher.GetStatus() });
+});
+
+app.MapPost("/arb/stop", () =>
+{
+    if (arbLauncher == null) return Results.BadRequest(new { error = "Арбитраж не инициализирован" });
+    arbLauncher.StopTrading();
+    return Results.Ok(new { status = "stopped", detail = arbLauncher.GetStatus() });
+});
+
+app.MapPost("/arb/pause", () =>
+{
+    if (arbLauncher == null) return Results.BadRequest(new { error = "Арбитраж не инициализирован" });
+    arbLauncher.Pause();
+    return Results.Ok(new { status = "paused", detail = arbLauncher.GetStatus() });
+});
+
+app.MapGet("/arb/status", () =>
+{
+    if (arbLauncher == null) return Results.Ok(new { status = "not_initialized" });
+    return Results.Ok(new { status = "ok", detail = arbLauncher.GetStatus(), connected = arbLauncher.IsConnected });
+});
+
+app.MapPost("/arb/init", (HttpRequest req) =>
+{
+    var token = Environment.GetEnvironmentVariable("FINAM_TOKEN");
+    if (string.IsNullOrEmpty(token))
+        return Results.BadRequest(new { error = "FINAM_TOKEN не задан" });
+
+    if (arbLauncher != null)
+        return Results.Ok(new { status = "already_initialized", detail = arbLauncher.GetStatus() });
+
+    var capital = 10_000_000.0;
+    arbLauncher = new ArbLauncher(token, capital: capital);
+    return Results.Ok(new { status = "initialized", capital });
+});
+
+app.MapPost("/arb/pair/{spot}/start", (string spot) =>
+{
+    arbLauncher?.SetPairMode(spot, StrategyMode.Running);
+    return Results.Ok(new { pair = spot, mode = "running" });
+});
+
+app.MapPost("/arb/pair/{spot}/stop", (string spot) =>
+{
+    arbLauncher?.SetPairMode(spot, StrategyMode.Stopped);
+    return Results.Ok(new { pair = spot, mode = "stopped" });
+});
+
 Console.WriteLine($"═══════════════════════════════════════════");
 Console.WriteLine($"  OpenMarketflow Trading Server");
 Console.WriteLine($"  SignalR Hub: http://0.0.0.0:{port}/trading");
 Console.WriteLine($"  Health:     http://0.0.0.0:{port}/health");
 Console.WriteLine($"  Status:     http://0.0.0.0:{port}/status");
+Console.WriteLine($"  Арбитраж:   POST /arb/init → /arb/start");
 Console.WriteLine($"═══════════════════════════════════════════");
 
 // Автоподключение к Финам если токен задан
@@ -152,6 +210,11 @@ if (!string.IsNullOrEmpty(finamToken))
             Console.WriteLine("✅ Подключено к Финам!");
             await hub.Clients.All.SendAsync("OnLogMessage", DateTime.UtcNow.ToString("HH:mm:ss"), "INFO", "✅ Подключено к Финам!");
             await hub.Clients.All.SendAsync("OnStatusUpdate", tradingService.GetStatus());
+            
+            // Автозапуск арбитража
+            Console.WriteLine("🔄 Инициализация арбитражного портфеля...");
+            arbLauncher = new ArbLauncher(finamToken);
+            await hub.Clients.All.SendAsync("OnLogMessage", DateTime.UtcNow.ToString("HH:mm:ss"), "INFO", "📊 Арбитраж инициализирован. POST /arb/start для запуска");
         }
         else
         {

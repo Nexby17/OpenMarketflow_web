@@ -335,7 +335,7 @@ function switchOrderBookInstrument() {
         const t = el('obInstrument').value;
         loadQuote(t);
         loadOrderBook(t);
-    }, 2000);
+    }, 500);
 }
 
 function loadQuote(ticker) {
