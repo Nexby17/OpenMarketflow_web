@@ -1,0 +1,32 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net48</TargetFramework>
+    <PlatformTarget>x86</PlatformTarget>
+    <LangVersion>latest</LangVersion>
+    <RootNamespace>HedgeFund.AlfaBridge</RootNamespace>
+  </PropertyGroup>
+  
+  <!-- ADClientSDK и зависимости из папки терминала -->
+  <ItemGroup>
+    <Reference Include="ADClientSDK">
+      <HintPath>C:\Program Files (x86)\Alfa-Direct Pro\ADClientSDK.dll</HintPath>
+    </Reference>
+    <Reference Include="ADir.BaseStructures">
+      <HintPath>C:\Program Files (x86)\Alfa-Direct Pro\ADir.BaseStructures.dll</HintPath>
+    </Reference>
+    <Reference Include="ADir.ClientStructures">
+      <HintPath>C:\Program Files (x86)\Alfa-Direct Pro\ADir.ClientStructures.dll</HintPath>
+    </Reference>
+    <Reference Include="Core.Contract">
+      <HintPath>C:\Program Files (x86)\Alfa-Direct Pro\Core.Contract.dll</HintPath>
+    </Reference>
+    <Reference Include="ADOrder">
+      <HintPath>C:\Program Files (x86)\Alfa-Direct Pro\ADOrder.dll</HintPath>
+    </Reference>
+  </ItemGroup>
+  
+  <ItemGroup>
+    <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
+  </ItemGroup>
+</Project>
