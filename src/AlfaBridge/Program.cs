@@ -6,255 +6,311 @@ using System.Linq;
 using System.Net;
 using System.Text;
 using System.Threading;
-using ADClientSDK;
-using AD.Common.DataStructures;
-using AD.Common.Helpers;
 using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
+using WebSocketSharp;
 
 namespace HedgeFund.AlfaBridge
 {
+    /// <summary>
+    /// AlfaBridge v2 — WebSocket PRO API.
+    /// Подключается к ws://127.0.0.1:3366/router/ (терминал Альфа-Директ).
+    /// Слушает HTTP :15200 для OpenMarketflow Server.
+    /// </summary>
     class Program
     {
-        static AdClient _client;
-        static HttpListener _listener;
+        static WebSocket _ws;
+        static HttpListener _http;
         static bool _connected = false;
-        static string _account = "";
-        static int _idSubAccount = 0;
-        static int _idRazdel = 0;
+        static bool _authorized = false;
+        static int _requestId = 0;
+
+        // Кэш данных из терминала
+        static readonly ConcurrentDictionary<string, JToken> _subscriptionData = new ConcurrentDictionary<string, JToken>();
+        static readonly ConcurrentDictionary<string, ManualResetEventSlim> _pendingRequests = new ConcurrentDictionary<string, ManualResetEventSlim>();
+        static readonly ConcurrentDictionary<string, JToken> _responseData = new ConcurrentDictionary<string, JToken>();
         static readonly ConcurrentQueue<string> _logQueue = new ConcurrentQueue<string>();
         static readonly ConcurrentQueue<object> _orderEvents = new ConcurrentQueue<object>();
 
+        // Данные клиента
+        static int _idAccount = 0;
+        static int _idSubAccount = 0;
+        static int _idRazdel = 0;
+        static int _idRazdelForts = 0;
+        static readonly ConcurrentDictionary<string, JObject> _assets = new ConcurrentDictionary<string, JObject>();
+
         const int HTTP_PORT = 15200;
+        const string WS_URL = "ws://127.0.0.1:3366/router/";
 
         static void Main(string[] args)
         {
-            Console.Title = "AlfaBridge — OpenMarketflow";
-            
-            // --diag режим: полная диагностика SDK
-            if (args.Length > 0 && args[0] == "--diag")
-            {
-                string dLogin = "", dPassword = "";
-                var credsPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Desktop), "alfa_creds.txt");
-                if (File.Exists(credsPath))
-                {
-                    var lines = File.ReadAllLines(credsPath);
-                    if (lines.Length >= 2) { dLogin = lines[0].Trim(); dPassword = lines[1].Trim(); }
-                }
-                if (args.Length >= 3) { dLogin = args[1]; dPassword = args[2]; }
-                Diagnostic.Run(dLogin, dPassword);
-                return;
-            }
-            
+            Console.Title = "AlfaBridge v2 — WebSocket PRO API";
             Log("═══════════════════════════════════════");
-            Log("  AlfaBridge v1.0 — Альфа-Директ ↔ OpenMarketflow");
-            Log($"  HTTP: http://localhost:{HTTP_PORT}/");
+            Log("  AlfaBridge v2 — Альфа-Директ WebSocket PRO API");
+            Log($"  Terminal WS: {WS_URL}");
+            Log($"  HTTP Bridge: http://localhost:{HTTP_PORT}/");
             Log("═══════════════════════════════════════");
 
-            // Инициализация ADFactory — без этого Packer.CreatePacket падает с NullReference
-            try { Packer.ADFactory = new ClientADFactoryWithSDK(); Log("ADFactory: ClientADFactoryWithSDK"); }
-            catch { try { Packer.ADFactory = new ClientADFactory(); Log("ADFactory: ClientADFactory"); } catch (Exception ex2) { Log($"ADFactory FAIL: {ex2.Message}"); } }
+            // Подключаемся к роутеру терминала
+            ConnectWebSocket();
 
-            _client = new AdClient();
-
-            _client.OnConnectionChanged += (frontEnd, status) =>
-            {
-                Log($"[CONN] {frontEnd}: {status}");
-            };
-
-            _client.ConnectionError += (error) =>
-            {
-                Log($"[ERROR] {error}");
-            };
-
-            // Логин/пароль из аргументов или файла alfa_creds.txt
-            string login = "";
-            string password = "";
-            
-            if (args.Length >= 2)
-            {
-                login = args[0];
-                password = args[1];
-            }
-            else
-            {
-                // Читаем из alfa_creds.txt рядом с exe
-                var credsPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "alfa_creds.txt");
-                if (!File.Exists(credsPath))
-                    credsPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Desktop), "alfa_creds.txt");
-                
-                if (File.Exists(credsPath))
-                {
-                    var lines = File.ReadAllLines(credsPath);
-                    if (lines.Length >= 2)
-                    {
-                        login = lines[0].Trim();
-                        password = lines[1].Trim();
-                        Log($"   Логин из {credsPath}: {login}");
-                    }
-                }
-                else
-                {
-                    Log("");
-                    Log("!!! Создайте файл alfa_creds.txt на рабочем столе:");
-                    Log("    Строка 1: логин");
-                    Log("    Строка 2: пароль");
-                    Log($"    Путь: {Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Desktop), "alfa_creds.txt")}");
-                    Log("");
-                    Log("    Или запустите: AlfaBridge.exe логин пароль");
-                    Log("");
-                    Log("Пробую подключиться без креденшлов (через терминал)...");
-                }
-            }
-            
-            Log("🔌 Подключение к Альфа-Директ...");
-            Log($"   Connect('{login}', '***') — подключаемся...");
-            try
-            {
-                var connectThread = new Thread(() =>
-                {
-                    try { _client.Connect(login, password); }
-                    catch (Exception ex) { Log($"[CONNECT ERROR] {ex.Message}"); }
-                });
-                connectThread.IsBackground = true;
-                connectThread.Start();
-                
-                if (!connectThread.Join(TimeSpan.FromSeconds(10)))
-                {
-                    Log("⚠️ Connect завис (10 сек). Терминал запущен и авторизован?");
-                    Log("⚠️ Продолжаю без подключения... HTTP сервер всё равно запустится.");
-                }
-                else
-                {
-                    Log("✅ Connect() завершился");
-                }
-            }
-            catch (Exception ex)
-            {
-                Log($"[CONNECT EXCEPTION] {ex.Message}");
-            }
-            
-            Thread.Sleep(2000);
-            Log("Проверяю статус подключения...");
-
-            // Проверяем подключение
-            try
-            {
-                var status = _client.GetConnectionStatus(FrontEndType.AuthAndOperInitServer);
-                _connected = (status == ConnectionStatus.Connected || status == ConnectionStatus.Authorized);
-                Log($"[STATUS] Auth: {status}");
-
-                var rtStatus = _client.GetConnectionStatus(FrontEndType.RealTimeBirzInfoServer);
-                Log($"[STATUS] RealTime: {rtStatus}");
-            }
-            catch (Exception ex)
-            {
-                Log($"[STATUS ERROR] {ex.Message}");
-            }
-
-            if (_connected)
-            {
-                Log("✅ Подключён к терминалу!");
-                InitAccount();
-                InitOrderCallback();
-            }
-            else
-            {
-                Log("⚠️ Не удалось определить статус. Пробуем работать...");
-                // Попробуем всё равно — может подключение придёт позже
-                try { InitAccount(); } catch { }
-                try { InitOrderCallback(); } catch { }
-            }
-
+            // Запускаем HTTP сервер
             StartHttpServer();
         }
 
-        static void InitAccount()
+        static void ConnectWebSocket()
         {
-            try
+            Log("🔌 Подключение к терминалу...");
+            _ws = new WebSocket(WS_URL);
+
+            _ws.OnOpen += (s, e) =>
             {
-                var razdelEntities = _client.Dictionaries.GetSubAccountRazdels();
-                if (razdelEntities != null)
+                _connected = true;
+                Log("✅ WebSocket подключён к роутеру терминала");
+                InitSubscriptions();
+            };
+
+            _ws.OnMessage += (s, e) =>
+            {
+                try { HandleMessage(e.Data); }
+                catch (Exception ex) { Log($"[MSG ERROR] {ex.Message}"); }
+            };
+
+            _ws.OnError += (s, e) =>
+            {
+                Log($"[WS ERROR] {e.Message}");
+            };
+
+            _ws.OnClose += (s, e) =>
+            {
+                _connected = false;
+                _authorized = false;
+                Log($"[WS CLOSED] {e.Code} {e.Reason}");
+                // Переподключение через 3 сек
+                Thread.Sleep(3000);
+                Log("🔄 Переподключение...");
+                try { _ws.Connect(); } catch { }
+            };
+
+            _ws.Connect();
+            Thread.Sleep(2000);
+
+            if (!_connected)
+            {
+                Log("⚠️ Не удалось подключиться. Терминал запущен?");
+            }
+        }
+
+        static void InitSubscriptions()
+        {
+            // 1. Монитор состояния
+            SendWs(new { Command = "listen", Channel = "#ConnectionState.Bus" });
+
+            // 2. Подписка на справочники
+            SubscribeEntity("AssetInfoEntity", init: true);
+            SubscribeEntity("ClientAccountEntity", init: true);
+            SubscribeEntity("ClientSubAccountEntity", init: true);
+            SubscribeEntity("SubAccountRazdelEntity", init: true);
+            SubscribeEntity("AllowedOrderParamEntity", init: true);
+
+            // 3. Подписка на заявки и позиции
+            SubscribeEntity("OrderEntity", init: true);
+            SubscribeEntity("ClientPositionEntity", init: true);
+            SubscribeEntity("ClientBalanceEntity", init: true);
+            SubscribeEntity("ClientOperationEntity", init: true);
+
+            Log("📡 Подписки отправлены");
+        }
+
+        static void SubscribeEntity(string type, bool init = false, long[] keys = null)
+        {
+            // Слушаем шину
+            SendWs(new { Command = "listen", Channel = $"#Data.Bus.{type}" });
+
+            // Запрос подписки
+            var payload = new JObject { ["Type"] = type };
+            if (init) payload["Init"] = true;
+            if (keys != null) payload["Keys"] = new JArray(keys);
+
+            var id = NextId();
+            SendWs(new { Command = "request", Channel = "#Data.Query", Id = id, Payload = payload.ToString(Formatting.None) });
+        }
+
+        static void HandleMessage(string raw)
+        {
+            var msg = JObject.Parse(raw);
+            var command = msg["Command"]?.ToString();
+            var channel = msg["Channel"]?.ToString() ?? "";
+            var id = msg["Id"]?.ToString();
+            var payloadStr = msg["Payload"]?.ToString();
+
+            JObject payload = null;
+            if (!string.IsNullOrEmpty(payloadStr))
+            {
+                try { payload = JObject.Parse(payloadStr); } catch { }
+            }
+
+            // Ответ на наш запрос
+            if (command == "response" && id != null && payload != null)
+            {
+                var type = payload["Type"]?.ToString() ?? channel;
+                
+                // Сохраняем данные
+                var data = payload["Data"];
+                if (data != null)
                 {
-                    foreach (var r in razdelEntities)
+                    _subscriptionData[type] = data;
+                    ProcessEntityData(type, data);
+                }
+
+                // Разблокируем ожидающий запрос
+                if (_pendingRequests.TryGetValue(id, out var evt))
+                {
+                    _responseData[id] = payload;
+                    evt.Set();
+                }
+            }
+
+            // Обновление шины
+            if (command == "broadcast" && payload != null)
+            {
+                var type = payload["Type"]?.ToString() ?? "";
+                var updated = payload["Updated"];
+                var deleted = payload["Deleted"];
+
+                if (updated != null && type != "")
+                {
+                    ProcessEntityData(type, updated);
+                }
+
+                // Обновления заявок
+                if (type == "OrderEntity" && updated != null)
+                {
+                    foreach (var o in updated)
                     {
-                        if (!string.IsNullOrEmpty(r.CodeSubAccount))
+                        _orderEvents.Enqueue(new
                         {
-                            _account = r.CodeSubAccount;
-                            _idSubAccount = r.IdSubAccount;
-                            _idRazdel = r.IdRazdel;
-                            Log($"📋 Счёт: {_account} (sub={_idSubAccount}, razdel={_idRazdel})");
-                            break;
-                        }
+                            numEDocument = o["NumEDocument"]?.Value<long>() ?? 0,
+                            status = o["IdOrderStatus"]?.Value<int>() ?? 0,
+                            direction = o["BuySell"]?.Value<int>() ?? 0,
+                            idObject = o["IdObject"]?.Value<int>() ?? 0,
+                            quantity = o["Quantity"]?.Value<int>() ?? 0,
+                            price = o["LimitPrice"]?.Value<double>() ?? 0,
+                            comment = o["Comment"]?.ToString() ?? ""
+                        });
                     }
                 }
             }
-            catch (Exception ex)
+
+            // Состояние терминала
+            if (channel == "#ConnectionState.Bus" && payload != null)
             {
-                Log($"[ACCOUNT ERROR] {ex.Message}");
+                var authStatus = payload.SelectToken("States.User.AuthStatus")?.Value<int>() ?? 0;
+                _authorized = authStatus == 2;
+                var login = payload.SelectToken("States.User.Login")?.ToString() ?? "";
+                var readyToSign = payload.SelectToken("States.SignService.ReadyToSign")?.Value<bool>() ?? false;
+                Log($"[STATE] Login={login} Auth={authStatus} ReadyToSign={readyToSign}");
             }
         }
 
-        static void InitOrderCallback()
+        static void ProcessEntityData(string type, JToken data)
         {
-            try
-            {
-                _client.Trading.OnOrderChanged += (order) =>
-                {
-                    if (order == null) return;
-                    var ev = new
-                    {
-                        numEDocument = order.NumEDocument,
-                        status = order.IdOrderStatus.ToString(),
-                        direction = order.BuySell.ToString(),
-                        idObject = order.IdObject,
-                        quantity = order.Quantity,
-                        price = order.LimitPrice,
-                        comment = order.Comment ?? ""
-                    };
-                    _orderEvents.Enqueue(ev);
-                    Log($"[ORDER] #{order.NumEDocument} {order.BuySell} {order.Quantity}x obj={order.IdObject} @ {order.LimitPrice} → {order.IdOrderStatus}");
-                };
+            if (data == null) return;
 
-                _client.Portfolio.OnBalanceChanged += (balances) =>
-                {
-                    if (balances == null) return;
-                    foreach (var b in balances)
-                    {
-                        Log($"[BALANCE] sub={b.IdSubAccount}: bal={b.Balance:F2} money={b.Money:F2} portfolio={b.PortfolioValue:F2}");
-                    }
-                };
-            }
-            catch (Exception ex)
+            switch (type)
             {
-                Log($"[CALLBACK ERROR] {ex.Message}");
+                case "AssetInfoEntity":
+                    foreach (var item in data)
+                    {
+                        var ticker = item["Ticker"]?.ToString();
+                        if (!string.IsNullOrEmpty(ticker))
+                            _assets[ticker] = item as JObject ?? new JObject();
+                    }
+                    break;
+
+                case "ClientAccountEntity":
+                    foreach (var item in data)
+                    {
+                        _idAccount = item["IdAccount"]?.Value<int>() ?? 0;
+                        Log($"📋 Account: {_idAccount}");
+                    }
+                    break;
+
+                case "ClientSubAccountEntity":
+                    foreach (var item in data)
+                    {
+                        _idSubAccount = item["IdSubAccount"]?.Value<int>() ?? 0;
+                        Log($"📋 SubAccount: {_idSubAccount}");
+                    }
+                    break;
+
+                case "SubAccountRazdelEntity":
+                    foreach (var item in data)
+                    {
+                        var razdelGroup = item["IdRazdelGroup"]?.Value<int>() ?? 0;
+                        var idRazdel = item["IdRazdel"]?.Value<int>() ?? 0;
+                        var rcode = item["RCode"]?.ToString() ?? "";
+                        Log($"📋 Razdel: {idRazdel} group={razdelGroup} rcode={rcode}");
+                        if (razdelGroup == 1) _idRazdel = idRazdel;      // РЦБ
+                        if (razdelGroup == 2) _idRazdelForts = idRazdel;  // ФОРТС
+                    }
+                    break;
             }
         }
+
+        // === WebSocket отправка ===
+
+        static void SendWs(object msg)
+        {
+            if (_ws?.IsAlive != true) return;
+            var json = JsonConvert.SerializeObject(msg);
+            _ws.Send(json);
+        }
+
+        static JToken SendRequest(string channel, JObject payload, int timeoutMs = 5000)
+        {
+            var id = NextId();
+            var evt = new ManualResetEventSlim(false);
+            _pendingRequests[id] = evt;
+
+            SendWs(new { Command = "request", Channel = channel, Id = id, Payload = payload.ToString(Formatting.None) });
+
+            if (evt.Wait(timeoutMs))
+            {
+                _responseData.TryRemove(id, out var result);
+                _pendingRequests.TryRemove(id, out _);
+                return result;
+            }
+
+            _pendingRequests.TryRemove(id, out _);
+            return null;
+        }
+
+        static string NextId() => Interlocked.Increment(ref _requestId).ToString();
+
+        // === HTTP сервер ===
 
         static void StartHttpServer()
         {
-            _listener = new HttpListener();
-            _listener.Prefixes.Add($"http://localhost:{HTTP_PORT}/");
-            _listener.Prefixes.Add($"http://127.0.0.1:{HTTP_PORT}/");
-            _listener.Start();
-            Log($"📡 HTTP сервер запущен на порту {HTTP_PORT}");
-            Log("Готов к работе. Endpoints: GET /status, /instruments, /fininfo, /positions, /orders");
-            Log("Торговля: POST /order/market, /order/limit, /order/cancel");
+            _http = new HttpListener();
+            _http.Prefixes.Add($"http://localhost:{HTTP_PORT}/");
+            _http.Prefixes.Add($"http://127.0.0.1:{HTTP_PORT}/");
+            _http.Start();
+            Log($"📡 HTTP сервер: http://localhost:{HTTP_PORT}/");
+            Log("Готов. Endpoints: /status, /instruments, /fininfo, /positions, /orders, /order/market...");
 
             while (true)
             {
                 try
                 {
-                    var ctx = _listener.GetContext();
-                    ThreadPool.QueueUserWorkItem(_ => HandleRequest(ctx));
+                    var ctx = _http.GetContext();
+                    ThreadPool.QueueUserWorkItem(_ => HandleHttp(ctx));
                 }
-                catch (Exception ex)
-                {
-                    Log($"[HTTP ERROR] {ex.Message}");
-                }
+                catch (Exception ex) { Log($"[HTTP] {ex.Message}"); }
             }
         }
 
-        static void HandleRequest(HttpListenerContext ctx)
+        static void HandleHttp(HttpListenerContext ctx)
         {
             var path = ctx.Request.Url.AbsolutePath.ToLower().TrimEnd('/');
             var method = ctx.Request.HttpMethod;
@@ -265,47 +321,45 @@ namespace HedgeFund.AlfaBridge
                 switch (path)
                 {
                     case "/status":
-                        ConnectionStatus authSt = ConnectionStatus.Disconnected;
-                        ConnectionStatus rtSt = ConnectionStatus.Disconnected;
-                        try { authSt = _client.GetConnectionStatus(FrontEndType.AuthAndOperInitServer); } catch { }
-                        try { rtSt = _client.GetConnectionStatus(FrontEndType.RealTimeBirzInfoServer); } catch { }
                         result = new
                         {
                             connected = _connected,
-                            authStatus = authSt.ToString(),
-                            realTimeStatus = rtSt.ToString(),
-                            account = _account,
-                            idSubAccount = _idSubAccount,
-                            version = AdClient.Version?.ToString() ?? "",
-                            terminalVersion = AdClient.TerminalVersion?.ToString() ?? "",
+                            authorized = _authorized,
+                            account = _idAccount,
+                            subAccount = _idSubAccount,
+                            razdelRcb = _idRazdel,
+                            razdelForts = _idRazdelForts,
+                            assetsLoaded = _assets.Count,
                         };
                         break;
 
                     case "/instruments":
-                        var name = GetParam(ctx, "name");
+                        var name = GetParam(ctx, "name")?.ToUpper();
                         if (!string.IsNullOrEmpty(name))
                         {
-                            var found = _client.Dictionaries.SearchInstruments(name, ObjectGroup.None);
-                            if (found != null)
-                            {
-                                result = found.Select(f =>
+                            var found = _assets.Where(kv => 
+                                kv.Key.Contains(name) || 
+                                (kv.Value["Name"]?.ToString() ?? "").ToUpper().Contains(name))
+                                .Take(20)
+                                .Select(kv => new
                                 {
-                                    var obj = _client.Dictionaries.GetObjectByIdFi(f.IdFi);
-                                    return new
+                                    ticker = kv.Key,
+                                    idObject = kv.Value["IdObject"]?.Value<int>() ?? 0,
+                                    name = kv.Value["Name"]?.ToString() ?? "",
+                                    idObjectGroup = kv.Value["IdObjectGroup"]?.Value<int>() ?? 0,
+                                    instruments = kv.Value["Instruments"]?.Select(i => new
                                     {
-                                        idFi = f.IdFi,
-                                        idObject = f.IdObject,
-                                        idMarketBoard = f.IdMarketBoard.ToString(),
-                                        symbol = obj?.SymbolObject ?? "",
-                                        name = obj?.NameObject ?? "",
-                                        desc = obj?.DescObject ?? "",
-                                    };
+                                        idFi = i["IdFi"]?.Value<int>() ?? 0,
+                                        idMarketBoard = i["IdMarketBoard"]?.Value<int>() ?? 0,
+                                        rcode = i["RCode"]?.ToString() ?? "",
+                                        isLiquid = i["IsLiquid"]?.Value<bool>() ?? false,
+                                    }).ToArray()
                                 }).ToArray();
-                            }
+                            result = found;
                         }
                         else
                         {
-                            result = new { error = "param 'name' required. Example: /instruments?name=SBER" };
+                            result = new { error = "param 'name' required", example = "/instruments?name=SBER" };
                         }
                         break;
 
@@ -313,172 +367,138 @@ namespace HedgeFund.AlfaBridge
                         var idFi = GetIntParam(ctx, "idFi");
                         if (idFi > 0)
                         {
-                            _client.RealTime.SubscribeFinInfo(idFi);
-                            Thread.Sleep(500);
-                            var fi = _client.RealTime.GetFinInfo(idFi);
-                            if (fi != null)
-                            {
-                                result = new
-                                {
-                                    idFi = fi.IdFI,
-                                    last = fi.Last,
-                                    bid = fi.Bid,
-                                    ask = fi.Ask,
-                                    high = fi.High,
-                                    low = fi.Low,
-                                    open = fi.Open,
-                                    volume = fi.VolToday,
-                                    numTrades = fi.NumTrades,
-                                };
-                            }
-                            else
-                            {
-                                result = new { error = "FinInfo not available for idFi=" + idFi };
-                            }
-                        }
-                        else
-                        {
-                            result = new { error = "param 'idFi' required" };
-                        }
-                        break;
+                            // Подписываемся на FinInfoLastEntity + FinInfoOrderBookEntity
+                            SubscribeEntity("FinInfoLastEntity", init: true, keys: new[] { (long)idFi });
+                            SubscribeEntity("FinInfoOrderBookEntity", init: true, keys: new[] { (long)idFi });
+                            Thread.Sleep(1500);
 
-                    case "/queue":
-                        var qIdFi = GetIntParam(ctx, "idFi");
-                        if (qIdFi > 0)
-                        {
-                            _client.RealTime.SubscribeQueue(qIdFi);
-                            Thread.Sleep(300);
-                            var q = _client.RealTime.GetQueue(qIdFi);
-                            if (q != null)
+                            var last = GetCachedData("FinInfoLastEntity", idFi);
+                            var book = GetCachedData("FinInfoOrderBookEntity", idFi);
+
+                            result = new
                             {
-                                // GetQueue returns IQueue; cast to OrderBookEntity for Lines
-                                var ob = q as OrderBookEntity;
-                                if (ob?.Lines != null)
-                                {
-                                    result = new
-                                    {
-                                        idFi = qIdFi,
-                                        rows = ob.Lines.Where(l => l != null).Select(r => new
-                                        {
-                                            price = r.Price,
-                                            buy = r.BuyQty,
-                                            sell = r.SellQty
-                                        }).ToArray()
-                                    };
-                                }
-                                else
-                                {
-                                    result = new { idFi = qIdFi, info = "Queue available but no Lines (type: " + q.GetType().Name + ")" };
-                                }
-                            }
+                                idFi,
+                                last = last?["Last"]?.Value<double>() ?? 0,
+                                open = last?["Open"]?.Value<double>() ?? 0,
+                                high = last?["High"]?.Value<double>() ?? 0,
+                                low = last?["Low"]?.Value<double>() ?? 0,
+                                volume = last?["VolToday"]?.Value<long>() ?? 0,
+                                bid = book?["Bid"]?.Value<double>() ?? 0,
+                                ask = book?["Ask"]?.Value<double>() ?? 0,
+                                bidQty = book?["BidQty"]?.Value<int>() ?? 0,
+                                askQty = book?["AskQty"]?.Value<int>() ?? 0,
+                            };
                         }
                         break;
 
                     case "/positions":
-                        var pos = _client.Portfolio.GetPositions();
-                        if (pos != null)
+                        if (_subscriptionData.TryGetValue("ClientPositionEntity", out var posData))
                         {
-                            result = pos.Select(p =>
-                            {
-                                var obj = _client.Dictionaries.GetObjectByIdFi(p.IdFiBalance);
-                                return new
-                                {
-                                    idObject = p.IdObject,
-                                    idSubAccount = p.IdSubAccount,
-                                    idRazdel = p.IdRazdel,
-                                    symbol = obj?.SymbolObject ?? "",
-                                    backPos = p.BackPos,
-                                    buyQty = p.BuyQty,
-                                    sellQty = p.SellQty,
-                                    trdPL = p.TrdPL,
-                                    variationMargin = p.VariationMargin,
-                                };
-                            }).ToArray();
+                            result = posData;
+                        }
+                        else
+                        {
+                            result = new object[0];
                         }
                         break;
 
                     case "/balance":
-                        // Получаем баланс через OnBalanceChanged или напрямую
-                        result = new
+                        if (_subscriptionData.TryGetValue("ClientBalanceEntity", out var balData))
                         {
-                            account = _account,
-                            idSubAccount = _idSubAccount,
-                        };
+                            result = balData;
+                        }
+                        else
+                        {
+                            result = new { account = _idAccount };
+                        }
                         break;
 
                     case "/orders":
-                        var orders = _client.Trading.GetOrders();
-                        if (orders != null)
+                        if (_subscriptionData.TryGetValue("OrderEntity", out var ordData))
                         {
-                            result = orders.Select(o =>
-                            {
-                                var obj = _client.Dictionaries.GetObjectByIdFi(o.IdObject);
-                                return new
-                                {
-                                    numEDocument = o.NumEDocument,
-                                    idObject = o.IdObject,
-                                    symbol = obj?.SymbolObject ?? "",
-                                    direction = o.BuySell.ToString(),
-                                    quantity = o.Quantity,
-                                    rest = o.Rest,
-                                    price = o.LimitPrice,
-                                    filledPrice = o.FilledPrice,
-                                    status = o.IdOrderStatus.ToString(),
-                                    comment = o.Comment ?? "",
-                                    isActive = o.IsActiveStatus,
-                                };
-                            }).ToArray();
+                            result = ordData;
+                        }
+                        else
+                        {
+                            result = new object[0];
                         }
                         break;
 
                     case "/order/market":
-                        if (method == "POST")
-                        {
-                            var body = ReadBody(ctx);
-                            var req = JsonConvert.DeserializeObject<OrderRequest>(body);
-                            string errorMsg = "";
-                            var dir = req.Direction?.ToLower() == "buy"
-                                ? OrderDirection.Buy
-                                : OrderDirection.Sell;
-
-                            _client.Trading.CreateMarketOrder(
-                                req.Account ?? _account,
-                                req.IdFi,
-                                dir,
-                                req.Quantity,
-                                LifeTime.DAY,
-                                req.Comment ?? "AlfaBridge",
-                                out errorMsg);
-
-                            var ok = string.IsNullOrEmpty(errorMsg);
-                            result = new { success = ok, error = errorMsg };
-                            Log($"[MARKET] {dir} {req.Quantity}x idFi={req.IdFi} → {(ok ? "OK" : errorMsg)}");
-                        }
-                        break;
-
                     case "/order/limit":
                         if (method == "POST")
                         {
                             var body = ReadBody(ctx);
-                            var req = JsonConvert.DeserializeObject<OrderRequest>(body);
-                            string errorMsg = "";
-                            var dir = req.Direction?.ToLower() == "buy"
-                                ? OrderDirection.Buy
-                                : OrderDirection.Sell;
+                            var req = JObject.Parse(body);
 
-                            _client.Trading.CreateLimitOrder(
-                                req.Account ?? _account,
-                                req.IdFi,
-                                dir,
-                                req.Quantity,
-                                req.Price,
-                                LifeTime.DAY,
-                                req.Comment ?? "AlfaBridge",
-                                out errorMsg);
+                            var ticker = req["ticker"]?.ToString();
+                            var direction = req["direction"]?.ToString()?.ToLower();
+                            var quantity = req["quantity"]?.Value<int>() ?? 0;
+                            var price = req["price"]?.Value<double>() ?? 0;
+                            var comment = req["comment"]?.ToString() ?? "AlfaBridge";
 
-                            var ok = string.IsNullOrEmpty(errorMsg);
-                            result = new { success = ok, error = errorMsg };
-                            Log($"[LIMIT] {dir} {req.Quantity}x idFi={req.IdFi} @ {req.Price} → {(ok ? "OK" : errorMsg)}");
+                            // Найти инструмент
+                            JObject asset = null;
+                            if (!string.IsNullOrEmpty(ticker) && _assets.TryGetValue(ticker, out asset)) { }
+
+                            if (asset == null)
+                            {
+                                result = new { error = $"Instrument '{ticker}' not found" };
+                                break;
+                            }
+
+                            var idObject = asset["IdObject"]?.Value<int>() ?? 0;
+                            var instr = asset["Instruments"]?.FirstOrDefault(i => i["IsLiquid"]?.Value<bool>() == true)
+                                       ?? asset["Instruments"]?.FirstOrDefault();
+                            var idMarketBoard = instr?["IdMarketBoard"]?.Value<int>() ?? 0;
+                            var idObjectGroup = asset["IdObjectGroup"]?.Value<int>() ?? 0;
+                            var rcode = instr?["RCode"]?.ToString() ?? "";
+
+                            // Выбираем razdel по rcode
+                            var razdel = rcode == "FORTS" ? _idRazdelForts : _idRazdel;
+
+                            // Ищем AllowedOrderParams
+                            var isMarket = path.Contains("market");
+                            var orderType = isMarket ? 1 : 2;
+                            var idAllowed = FindAllowedOrderParams(idObjectGroup, idMarketBoard, orderType);
+
+                            // Собираем заявку
+                            var orderPayload = new JObject
+                            {
+                                ["IdAccount"] = _idAccount,
+                                ["IdSubAccount"] = _idSubAccount,
+                                ["IdRazdel"] = razdel,
+                                ["IdPriceControlType"] = 3,
+                                ["IdObject"] = idObject,
+                                ["BuySell"] = direction == "buy" ? 1 : -1,
+                                ["Quantity"] = quantity,
+                                ["Comment"] = comment,
+                                ["IdAllowedOrderParams"] = idAllowed,
+                            };
+
+                            if (!isMarket && price > 0)
+                                orderPayload["LimitPrice"] = price;
+
+                            var resp = SendRequest("#Order.Enter.Query", orderPayload, 10000);
+                            var respStatus = resp?["ResponseStatus"]?.Value<int>() ?? -1;
+                            var errMsg = resp?.SelectToken("Error.Message")?.ToString()
+                                        ?? resp?.SelectToken("Value.ErrorText")?.ToString() ?? "";
+
+                            result = new
+                            {
+                                success = respStatus == 0,
+                                responseStatus = respStatus,
+                                numEDocument = resp?.SelectToken("Value.NumEDocument")?.Value<long>() ?? 0,
+                                error = errMsg,
+                                ticker,
+                                direction,
+                                quantity,
+                                price,
+                                idAllowed,
+                            };
+
+                            var ok = respStatus == 0;
+                            Log($"[{(isMarket ? "MARKET" : "LIMIT")}] {direction} {quantity}x {ticker} (obj={idObject}) @ {price} → {(ok ? "OK" : errMsg)}");
                         }
                         break;
 
@@ -486,42 +506,84 @@ namespace HedgeFund.AlfaBridge
                         if (method == "POST")
                         {
                             var body = ReadBody(ctx);
-                            var req = JsonConvert.DeserializeObject<CancelRequest>(body);
-                            _client.Trading.CancelOrder(req.NumEDocument);
-                            result = new { success = true, numEDocument = req.NumEDocument };
-                            Log($"[CANCEL] #{req.NumEDocument}");
+                            var req = JObject.Parse(body);
+                            var numDoc = req["numEDocument"]?.Value<long>() ?? 0;
+
+                            var cancelPayload = new JObject
+                            {
+                                ["IdAccount"] = _idAccount,
+                                ["IdSubAccount"] = _idSubAccount,
+                                ["IdRazdel"] = _idRazdel,
+                                ["NumEDocumentBase"] = numDoc,
+                            };
+
+                            var resp = SendRequest("#Order.Cancel.Query", cancelPayload, 10000);
+                            result = new
+                            {
+                                success = resp?["ResponseStatus"]?.Value<int>() == 0,
+                                numEDocument = numDoc,
+                            };
+                            Log($"[CANCEL] #{numDoc}");
                         }
                         break;
 
                     case "/events":
                         var events = new List<object>();
-                        while (_orderEvents.TryDequeue(out var ev))
-                            events.Add(ev);
+                        while (_orderEvents.TryDequeue(out var ev)) events.Add(ev);
                         result = events;
+                        break;
+
+                    case "/candles":
+                        var cIdFi = GetIntParam(ctx, "idFi");
+                        var cDays = GetIntParam(ctx, "days");
+                        if (cDays == 0) cDays = 5;
+                        var interval = GetParam(ctx, "interval") ?? "minute";
+                        var period = GetIntParam(ctx, "period");
+                        if (period == 0) period = 5;
+
+                        if (cIdFi > 0)
+                        {
+                            var archPayload = new JObject
+                            {
+                                ["IdFi"] = cIdFi,
+                                ["CandleType"] = 0,
+                                ["Interval"] = interval,
+                                ["Period"] = period,
+                                ["FirstDay"] = DateTime.UtcNow.AddDays(-cDays).ToString("yyyy-MM-ddT00:00:00"),
+                                ["LastDay"] = DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ss+03:00"),
+                                ["AtLeastOneCandle"] = false,
+                                ["TakeLastNCandles"] = 0,
+                            };
+
+                            var resp = SendRequest("#Archive.Query", archPayload, 15000);
+                            result = resp;
+                        }
                         break;
 
                     case "/log":
                         var logs = new List<string>();
-                        while (_logQueue.TryDequeue(out var l))
-                            logs.Add(l);
+                        while (_logQueue.TryDequeue(out var l)) logs.Add(l);
                         result = logs;
                         break;
 
                     default:
                         result = new
                         {
-                            service = "AlfaBridge v1.0",
+                            service = "AlfaBridge v2 — WebSocket PRO API",
+                            connected = _connected,
+                            authorized = _authorized,
                             endpoints = new[]
                             {
                                 "GET  /status",
                                 "GET  /instruments?name=SBER",
-                                "GET  /fininfo?idFi=12345",
-                                "GET  /queue?idFi=12345",
+                                "GET  /fininfo?idFi=144950",
                                 "GET  /positions",
+                                "GET  /balance",
                                 "GET  /orders",
-                                "POST /order/market  {idFi, direction, quantity, comment}",
-                                "POST /order/limit   {idFi, direction, quantity, price, comment}",
+                                "POST /order/market  {ticker, direction, quantity, comment}",
+                                "POST /order/limit   {ticker, direction, quantity, price, comment}",
                                 "POST /order/cancel  {numEDocument}",
+                                "GET  /candles?idFi=144950&days=5&interval=minute&period=5",
                                 "GET  /events",
                                 "GET  /log",
                             }
@@ -535,30 +597,58 @@ namespace HedgeFund.AlfaBridge
                 Log($"[ERROR] {path}: {ex.Message}");
             }
 
-            var json = JsonConvert.SerializeObject(result ?? new { }, Formatting.Indented);
-            var buffer = Encoding.UTF8.GetBytes(json);
-            ctx.Response.ContentType = "application/json; charset=utf-8";
-            ctx.Response.ContentLength64 = buffer.Length;
-            ctx.Response.Headers.Add("Access-Control-Allow-Origin", "*");
-            ctx.Response.OutputStream.Write(buffer, 0, buffer.Length);
-            ctx.Response.Close();
+            Respond(ctx, result);
         }
 
-        static string GetParam(HttpListenerContext ctx, string name)
+        static int FindAllowedOrderParams(int objectGroup, int marketBoard, int orderType)
         {
-            return ctx.Request.QueryString[name];
+            if (_subscriptionData.TryGetValue("AllowedOrderParamEntity", out var data))
+            {
+                foreach (var item in data)
+                {
+                    if (item["IdObjectGroup"]?.Value<int>() == objectGroup &&
+                        item["IdMarketBoard"]?.Value<int>() == marketBoard &&
+                        item["IdOrderType"]?.Value<int>() == orderType &&
+                        item["IdDocumentType"]?.Value<int>() == 1)
+                    {
+                        return item["IdAllowedOrderParams"]?.Value<int>() ?? 0;
+                    }
+                }
+            }
+            return 0;
         }
 
+        static JToken GetCachedData(string type, int idFi)
+        {
+            if (_subscriptionData.TryGetValue(type, out var data))
+            {
+                return data.FirstOrDefault(d => d["IdFi"]?.Value<int>() == idFi);
+            }
+            return null;
+        }
+
+        static string GetParam(HttpListenerContext ctx, string name) => ctx.Request.QueryString[name];
         static int GetIntParam(HttpListenerContext ctx, string name)
         {
-            int.TryParse(ctx.Request.QueryString[name], out var val);
-            return val;
+            int.TryParse(ctx.Request.QueryString[name], out var v);
+            return v;
         }
 
         static string ReadBody(HttpListenerContext ctx)
         {
-            using (var reader = new StreamReader(ctx.Request.InputStream, ctx.Request.ContentEncoding))
-                return reader.ReadToEnd();
+            using (var r = new StreamReader(ctx.Request.InputStream, ctx.Request.ContentEncoding))
+                return r.ReadToEnd();
+        }
+
+        static void Respond(HttpListenerContext ctx, object result)
+        {
+            var json = JsonConvert.SerializeObject(result ?? new { }, Formatting.Indented);
+            var buf = Encoding.UTF8.GetBytes(json);
+            ctx.Response.ContentType = "application/json; charset=utf-8";
+            ctx.Response.ContentLength64 = buf.Length;
+            ctx.Response.Headers.Add("Access-Control-Allow-Origin", "*");
+            ctx.Response.OutputStream.Write(buf, 0, buf.Length);
+            ctx.Response.Close();
         }
 
         static void Log(string msg)
@@ -566,44 +656,7 @@ namespace HedgeFund.AlfaBridge
             var line = $"[{DateTime.Now:HH:mm:ss}] {msg}";
             Console.WriteLine(line);
             _logQueue.Enqueue(line);
-            while (_logQueue.Count > 500)
-                _logQueue.TryDequeue(out _);
+            while (_logQueue.Count > 500) _logQueue.TryDequeue(out _);
         }
-
-        static string ReadPassword()
-        {
-            var sb = new StringBuilder();
-            while (true)
-            {
-                var key = Console.ReadKey(true);
-                if (key.Key == ConsoleKey.Enter) break;
-                if (key.Key == ConsoleKey.Backspace && sb.Length > 0)
-                {
-                    sb.Remove(sb.Length - 1, 1);
-                    Console.Write("\b \b");
-                }
-                else if (key.KeyChar != 0)
-                {
-                    sb.Append(key.KeyChar);
-                    Console.Write("*");
-                }
-            }
-            return sb.ToString();
-        }
-    }
-
-    class OrderRequest
-    {
-        public string Account { get; set; }
-        public int IdFi { get; set; }
-        public string Direction { get; set; }
-        public int Quantity { get; set; }
-        public double Price { get; set; }
-        public string Comment { get; set; }
-    }
-
-    class CancelRequest
-    {
-        public long NumEDocument { get; set; }
     }
 }

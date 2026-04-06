@@ -7,32 +7,8 @@
     <RootNamespace>HedgeFund.AlfaBridge</RootNamespace>
   </PropertyGroup>
   
-  <!-- ADClientSDK и зависимости из папки терминала -->
-  <ItemGroup>
-    <Reference Include="ADClientSDK">
-      <HintPath>C:\Program Files (x86)\Alfa-Direct Pro\ADClientSDK.dll</HintPath>
-    </Reference>
-    <Reference Include="ADir.BaseStructures">
-      <HintPath>C:\Program Files (x86)\Alfa-Direct Pro\ADir.BaseStructures.dll</HintPath>
-    </Reference>
-    <Reference Include="ADir.ClientStructures">
-      <HintPath>C:\Program Files (x86)\Alfa-Direct Pro\ADir.ClientStructures.dll</HintPath>
-    </Reference>
-    <Reference Include="Core.Contract">
-      <HintPath>C:\Program Files (x86)\Alfa-Direct Pro\Core.Contract.dll</HintPath>
-    </Reference>
-    <Reference Include="ADOrder">
-      <HintPath>C:\Program Files (x86)\Alfa-Direct Pro\ADOrder.dll</HintPath>
-    </Reference>
-    <Reference Include="ADir.DataCollections">
-      <HintPath>C:\Program Files (x86)\Alfa-Direct Pro\ADir.DataCollections.dll</HintPath>
-    </Reference>
-    <Reference Include="ADir.NetProtocol">
-      <HintPath>C:\Program Files (x86)\Alfa-Direct Pro\ADir.NetProtocol.dll</HintPath>
-    </Reference>
-  </ItemGroup>
-  
   <ItemGroup>
     <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
+    <PackageReference Include="WebSocketSharp" Version="1.0.3-rc11" />
   </ItemGroup>
 </Project>
