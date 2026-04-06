@@ -40,7 +40,7 @@ function SW($o){
     $script:ws.SendAsync($seg, [Net.WebSockets.WebSocketMessageType]::Text, $true, [Threading.CancellationToken]::None).Wait()
 }
 
-function RM {
+function RecvMsg {
     $buf = New-Object byte[] 1048576
     $all = New-Object byte[] 0
     while($script:ws.State -eq 'Open'){
@@ -73,7 +73,7 @@ function SR($ch, $pl, $t=10) {
     SW @{ Command="request"; Channel=$ch; Id=$id; Payload=$pj }
     $dl = [DateTime]::Now.AddSeconds($t)
     while([DateTime]::Now -lt $dl){
-        RM
+        RecvMsg
         if($script:resp.ContainsKey($id)){
             $r = $script:resp[$id]
             [void]$script:resp.Remove($id)
@@ -202,12 +202,12 @@ $null = SR "#Data.Query" @{ Type="SubAccountRazdelEntity"; Init=$true } 5
 $null = SR "#Data.Query" @{ Type="AllowedOrderParamEntity"; Init=$true } 5
 
 Start-Sleep 2
-RM
+RecvMsg
 
 L "Loading instruments (this may take 20-30 sec)..."
 $null = SR "#Data.Query" @{ Type="AssetInfoEntity"; Init=$true } 60
 Start-Sleep 5
-RM
+RecvMsg
 L "Loaded: spot=$($script:spotIdFi) fut=$($script:futIdFi)"
 
 if($script:spotIdFi -eq 0){ L "FAIL: $SPOT_TICKER not found" Red; Read-Host; exit }
@@ -223,7 +223,7 @@ L ""
 $iter = 0
 while($true){
     $iter++
-    RM
+    RecvMsg
     $sp = GP $script:spotIdFi
     $fp = GP $script:futIdFi
     if($sp -le 0 -or $fp -le 0){ L "[#$iter] No prices spot=$sp fut=$fp" Yellow; Start-Sleep $CHECK_SEC; continue }
