@@ -502,6 +502,115 @@ function fmtPnl(n) {
     return s + Math.round(n).toLocaleString('ru-RU');
 }
 
+// === Arbitrage ===
+async function arbInit() {
+    try {
+        const resp = await fetch('/arb/init', { method: 'POST' });
+        const data = await resp.json();
+        if (resp.ok) {
+            el('arbStatusText').textContent = '✅ Инициализирован';
+            el('arbStartBtn').disabled = false;
+            el('arbPauseBtn').disabled = false;
+            el('arbStopBtn').disabled = false;
+            arbLog('INFO', `Арбитраж инициализирован. Капитал: ${(data.capital||0).toLocaleString('ru-RU')} ₽`);
+            arbRefreshStatus();
+        } else {
+            arbLog('ERROR', data.error || 'Ошибка инициализации');
+        }
+    } catch (e) { arbLog('ERROR', e.message); }
+}
+
+async function arbStart() {
+    try {
+        const resp = await fetch('/arb/start', { method: 'POST' });
+        const data = await resp.json();
+        el('arbStatusText').textContent = '▶️ Торгует';
+        el('arbStatusText').style.color = 'var(--green)';
+        arbLog('INFO', '▶️ Арбитраж запущен');
+        arbRefreshStatus();
+    } catch (e) { arbLog('ERROR', e.message); }
+}
+
+async function arbPause() {
+    try {
+        await fetch('/arb/pause', { method: 'POST' });
+        el('arbStatusText').textContent = '⏸ Пауза';
+        el('arbStatusText').style.color = 'var(--yellow)';
+        arbLog('INFO', '⏸ Арбитраж на паузе');
+    } catch (e) { arbLog('ERROR', e.message); }
+}
+
+async function arbStop() {
+    try {
+        await fetch('/arb/stop', { method: 'POST' });
+        el('arbStatusText').textContent = '⏹ Остановлен';
+        el('arbStatusText').style.color = 'var(--red)';
+        arbLog('INFO', '⏹ Арбитраж остановлен, позиции закрыты');
+        arbRefreshStatus();
+    } catch (e) { arbLog('ERROR', e.message); }
+}
+
+async function arbPairStart(spot) {
+    try {
+        await fetch(`/arb/pair/${spot}/start`, { method: 'POST' });
+        arbLog('INFO', `▶ ${spot} запущена`);
+    } catch (e) { arbLog('ERROR', e.message); }
+}
+
+async function arbPairStop(spot) {
+    try {
+        await fetch(`/arb/pair/${spot}/stop`, { method: 'POST' });
+        arbLog('INFO', `⏹ ${spot} остановлена`);
+    } catch (e) { arbLog('ERROR', e.message); }
+}
+
+async function arbRefreshStatus() {
+    try {
+        const resp = await fetch('/arb/status');
+        const data = await resp.json();
+        if (data.status === 'not_initialized') return;
+        
+        el('arbConnected').textContent = data.connected ? '✅' : '❌';
+        el('arbConnected').className = 'metric-value ' + (data.connected ? 'green' : 'red');
+        
+        // Parse detail string for metrics
+        const detail = data.detail || '';
+        const pnlMatch = detail.match(/PnL: ([+-]?[\d,]+)/);
+        const tradesMatch = detail.match(/Сделок: (\d+)/);
+        if (pnlMatch) {
+            const pnl = parseInt(pnlMatch[1].replace(/,/g, ''));
+            el('arbTotalPnl').textContent = pnl.toLocaleString('ru-RU') + ' ₽';
+            el('arbTotalPnl').className = 'metric-value ' + (pnl > 0 ? 'green' : pnl < 0 ? 'red' : '');
+        }
+        if (tradesMatch) {
+            el('arbTotalTrades').textContent = tradesMatch[1];
+        }
+        
+        const dteMatch = detail.match(/DaysToExpiry: (\d+)/);
+        if (dteMatch) el('arbDTE').textContent = dteMatch[1] + ' дн';
+        
+        // Enable buttons
+        el('arbStartBtn').disabled = false;
+        el('arbPauseBtn').disabled = false;
+        el('arbStopBtn').disabled = false;
+    } catch (e) { /* silent */ }
+}
+
+function arbLog(level, msg) {
+    const container = el('arbLogContainer');
+    if (!container) return;
+    const time = new Date().toLocaleTimeString();
+    const cls = level === 'ERROR' ? 'log-error' : level === 'TRADE' ? 'log-trade' : 'log-info';
+    const div = document.createElement('div');
+    div.className = 'log-entry';
+    div.innerHTML = `<span class="log-time">[${time}]</span> <span class="${cls}">${msg}</span>`;
+    container.appendChild(div);
+    while (container.children.length > MAX_LOG) container.removeChild(container.firstChild);
+    container.scrollTop = container.scrollHeight;
+    // Also to main log
+    addLog(time, level, `[ARB] ${msg}`);
+}
+
 // === Init ===
 document.addEventListener('DOMContentLoaded', () => {
     loadSettings();
@@ -516,6 +625,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Auto-refresh status
     setInterval(fetchStatus, 10000);
+    setInterval(arbRefreshStatus, 5000);
 
     // Автозагрузка свечей для дефолтного инструмента
     setTimeout(() => {

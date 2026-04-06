@@ -27,6 +27,7 @@
         <button class="tab" data-tab="orderbook">📊 Стакан</button>
         <button class="tab" data-tab="monitoring">📈 Мониторинг</button>
         <button class="tab" data-tab="testing">🧪 Тестирование</button>
+        <button class="tab" data-tab="arbitrage">🔄 Арбитраж</button>
         <button class="tab" data-tab="strategies">⚙️ Стратегии</button>
         <button class="tab" data-tab="settings">🔧 Настройки</button>
     </nav>
@@ -223,6 +224,74 @@
             <div class="metric-card"><div class="metric-label">Сделок</div><div id="stratTrades" class="metric-value">0</div></div>
         </div>
         <div id="strategyList" class="strategy-list"></div>
+    </div>
+
+    <!-- ==================== АРБИТРАЖ ==================== -->
+    <div id="arbitrage" class="tab-content">
+        <div class="panel-row">
+            <div class="card flex-1">
+                <div class="card-header">Арбитраж акция/фьючерс — Портфель</div>
+                <div class="card-body row gap-8">
+                    <button class="btn btn-primary" onclick="arbInit()" id="arbInitBtn">🔄 Инициализировать</button>
+                    <button class="btn btn-primary" onclick="arbStart()" id="arbStartBtn" disabled>▶️ Старт</button>
+                    <button class="btn btn-secondary" onclick="arbPause()" id="arbPauseBtn" disabled>⏸ Пауза</button>
+                    <button class="btn btn-danger" onclick="arbStop()" id="arbStopBtn" disabled>⏹ Стоп</button>
+                    <span id="arbStatusText" class="status-text">Не инициализирован</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Метрики портфеля -->
+        <div class="metrics-row">
+            <div class="metric-card"><div class="metric-label">Общий PnL</div><div id="arbTotalPnl" class="metric-value">0 ₽</div></div>
+            <div class="metric-card"><div class="metric-label">Сделок</div><div id="arbTotalTrades" class="metric-value">0</div></div>
+            <div class="metric-card"><div class="metric-label">Подключён</div><div id="arbConnected" class="metric-value red">❌</div></div>
+            <div class="metric-card"><div class="metric-label">DTE</div><div id="arbDTE" class="metric-value">—</div></div>
+        </div>
+
+        <!-- Пары -->
+        <div class="card">
+            <div class="card-header">Арбитражные пары</div>
+            <table class="data-table">
+                <thead><tr>
+                    <th>Пара</th><th>Спот</th><th>Фьючерс</th><th>Z-score</th><th>Базис %</th><th>Позиция</th><th>PnL</th><th>Сделок</th><th>WR</th><th>Управление</th>
+                </tr></thead>
+                <tbody id="arbPairsTable">
+                    <tr><td>ROSN</td><td>ROSN</td><td>ROSNM6</td><td>—</td><td>—</td><td>—</td><td>0</td><td>0</td><td>—</td>
+                        <td><button class="btn btn-primary btn-sm" onclick="arbPairStart('ROSN')">▶</button>
+                            <button class="btn btn-danger btn-sm" onclick="arbPairStop('ROSN')">⏹</button></td></tr>
+                    <tr><td>TATN</td><td>TATN</td><td>TATNM6</td><td>—</td><td>—</td><td>—</td><td>0</td><td>0</td><td>—</td>
+                        <td><button class="btn btn-primary btn-sm" onclick="arbPairStart('TATN')">▶</button>
+                            <button class="btn btn-danger btn-sm" onclick="arbPairStop('TATN')">⏹</button></td></tr>
+                    <tr><td>GAZP</td><td>GAZP</td><td>GAZRM6</td><td>—</td><td>—</td><td>—</td><td>0</td><td>0</td><td>—</td>
+                        <td><button class="btn btn-primary btn-sm" onclick="arbPairStart('GAZP')">▶</button>
+                            <button class="btn btn-danger btn-sm" onclick="arbPairStop('GAZP')">⏹</button></td></tr>
+                    <tr><td>SBER</td><td>SBER</td><td>SBRFM6</td><td>—</td><td>—</td><td>—</td><td>0</td><td>0</td><td>—</td>
+                        <td><button class="btn btn-primary btn-sm" onclick="arbPairStart('SBER')">▶</button>
+                            <button class="btn btn-danger btn-sm" onclick="arbPairStop('SBER')">⏹</button></td></tr>
+                    <tr><td>ALRS</td><td>ALRS</td><td>ALRSM6</td><td>—</td><td>—</td><td>—</td><td>0</td><td>0</td><td>—</td>
+                        <td><button class="btn btn-primary btn-sm" onclick="arbPairStart('ALRS')">▶</button>
+                            <button class="btn btn-danger btn-sm" onclick="arbPairStop('ALRS')">⏹</button></td></tr>
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Лог арбитража -->
+        <div class="card">
+            <div class="card-header">Лог арбитража</div>
+            <div id="arbLogContainer" class="log-container"></div>
+        </div>
+
+        <!-- Инфо -->
+        <div class="card">
+            <div class="card-header">ℹ️ О стратегии</div>
+            <div class="card-body">
+                <p><b>Арбитраж акция/фьючерс</b> — торгуем расширения базиса между спотом и фьючерсом.</p>
+                <p><b>Результат бэктеста (2 года):</b> +22% net/year, Walk-forward 20/20, Monte Carlo 100% profit</p>
+                <p><b>Пары:</b> ROSN (+27%), TATN (+26%), GAZP (+23%), SBER (+18%), ALRS (+11%)</p>
+                <p><b>Логика:</b> Z-score базиса > порога → лонг спред. Z-score вернулся → выход.</p>
+            </div>
+        </div>
     </div>
 
     <!-- ==================== НАСТРОЙКИ ==================== -->
