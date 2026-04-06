@@ -47,8 +47,34 @@ namespace HedgeFund.AlfaBridge
             };
 
             Log("🔌 Подключение к Альфа-Директ...");
-            _client.Connect("", "");
-            Thread.Sleep(3000);
+            Log("   Connect('', '') — подключаемся через запущенный терминал...");
+            try
+            {
+                var connectThread = new Thread(() =>
+                {
+                    try { _client.Connect("", ""); }
+                    catch (Exception ex) { Log($"[CONNECT ERROR] {ex.Message}"); }
+                });
+                connectThread.IsBackground = true;
+                connectThread.Start();
+                
+                if (!connectThread.Join(TimeSpan.FromSeconds(10)))
+                {
+                    Log("⚠️ Connect завис (10 сек). Терминал запущен и авторизован?");
+                    Log("⚠️ Продолжаю без подключения... HTTP сервер всё равно запустится.");
+                }
+                else
+                {
+                    Log("✅ Connect() завершился");
+                }
+            }
+            catch (Exception ex)
+            {
+                Log($"[CONNECT EXCEPTION] {ex.Message}");
+            }
+            
+            Thread.Sleep(2000);
+            Log("Проверяю статус подключения...");
 
             // Проверяем подключение
             try
