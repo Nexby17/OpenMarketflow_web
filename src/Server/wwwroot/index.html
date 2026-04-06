@@ -29,6 +29,7 @@
         <button class="tab" data-tab="testing">🧪 Тестирование</button>
         <button class="tab" data-tab="arbitrage">🔄 Арбитраж</button>
         <button class="tab" data-tab="strategies">⚙️ Стратегии</button>
+        <button class="tab" data-tab="alfa">🌍 Альфа-Директ</button>
         <button class="tab" data-tab="settings">🔧 Настройки</button>
     </nav>
 
@@ -288,6 +289,68 @@
                 <p><b>Пары:</b> ROSN (+27%), TATN (+26%), GAZP (+23%), SBER (+18%), ALRS (+11%)</p>
                 <p><b>Логика:</b> Z-score базиса > порога → лонг спред. Z-score вернулся → выход.</p>
             </div>
+        </div>
+    </div>
+
+    <!-- ==================== АЛЬФА-ДИРЕКТ ==================== -->
+    <div id="alfa" class="tab-content">
+        <div class="panel-row">
+            <div class="card flex-1">
+                <div class="card-header">🌍 Альфа-Директ 5 — WebSocket PRO API</div>
+                <div class="card-body row gap-8">
+                    <span>AlfaBridge:</span>
+                    <input id="alfaBridgeUrl" class="input" value="http://localhost:15200" style="width:250px">
+                    <button class="btn btn-primary" onclick="alfaConnect()">🔌 Подключить</button>
+                    <span id="alfaStatusText" class="status-text">Не подключён</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="metrics-row">
+            <div class="metric-card"><div class="metric-label">Статус</div><div id="alfaAuthStatus" class="metric-value">—</div></div>
+            <div class="metric-card"><div class="metric-label">Счёт</div><div id="alfaAccount" class="metric-value">—</div></div>
+            <div class="metric-card"><div class="metric-label">Инструментов</div><div id="alfaAssets" class="metric-value">—</div></div>
+            <div class="metric-card"><div class="metric-label">Подпись</div><div id="alfaSign" class="metric-value">—</div></div>
+        </div>
+
+        <!-- Поиск инструментов -->
+        <div class="card">
+            <div class="card-header row gap-8">
+                🔍 Поиск инструментов
+                <input id="alfaSearchInput" class="input" placeholder="SBER, GAZP, ROSN..." style="width:200px" onkeyup="if(event.key==='Enter')alfaSearch()">
+                <button class="btn btn-secondary btn-sm" onclick="alfaSearch()">Найти</button>
+            </div>
+            <table class="data-table" id="alfaSearchResults">
+                <thead><tr><th>Тикер</th><th>Название</th><th>Группа</th><th>IdObject</th><th>IdFi</th><th>Рынок</th><th>Ликвид</th><th>Котировки</th></tr></thead>
+                <tbody id="alfaSearchBody"></tbody>
+            </table>
+        </div>
+
+        <!-- Котировки -->
+        <div class="card">
+            <div class="card-header">📊 Котировки</div>
+            <table class="data-table">
+                <thead><tr><th>Тикер</th><th>IdFi</th><th>Last</th><th>Bid</th><th>Ask</th><th>High</th><th>Low</th><th>Volume</th></tr></thead>
+                <tbody id="alfaQuotesBody"></tbody>
+            </table>
+        </div>
+
+        <!-- Позиции -->
+        <div class="card">
+            <div class="card-header">💼 Позиции</div>
+            <div id="alfaPositions" class="card-body"><i>Нажмите "Подключить"</i></div>
+        </div>
+
+        <!-- Заявки -->
+        <div class="card">
+            <div class="card-header">📝 Заявки</div>
+            <div id="alfaOrders" class="card-body"><i>Нажмите "Подключить"</i></div>
+        </div>
+
+        <!-- Лог -->
+        <div class="card">
+            <div class="card-header">Лог AlfaBridge</div>
+            <div id="alfaLogContainer" class="log-container"></div>
         </div>
     </div>
 

@@ -712,6 +712,132 @@ function arbLog(level, msg) {
     addLog(time, level, `[ARB] ${msg}`);
 }
 
+// === Alfa-Direct ===
+let alfaUrl = 'http://localhost:15200';
+let alfaQuotes = {};
+
+async function alfaConnect() {
+    alfaUrl = el('alfaBridgeUrl')?.value || 'http://localhost:15200';
+    el('alfaStatusText').textContent = '⏳ Подключаюсь...';
+    try {
+        const resp = await fetch(alfaUrl + '/status');
+        const data = await resp.json();
+        el('alfaStatusText').textContent = data.connected ? '✅ Подключён' : '❌ Нет связи';
+        el('alfaStatusText').style.color = data.connected ? 'var(--green)' : 'var(--red)';
+        el('alfaAuthStatus').textContent = data.authorized ? '✅ Авторизован' : '❌';
+        el('alfaAuthStatus').className = 'metric-value ' + (data.authorized ? 'green' : 'red');
+        el('alfaAccount').textContent = data.account || '—';
+        el('alfaAssets').textContent = data.assetsLoaded || 0;
+        el('alfaSign').textContent = data.authorized ? 'Готова' : 'Нет';
+        if (data.connected) {
+            alfaLoadPositions();
+            alfaLoadOrders();
+            if (!window._alfaInterval) window._alfaInterval = setInterval(alfaRefresh, 5000);
+        }
+    } catch (e) {
+        el('alfaStatusText').textContent = '❌ ' + e.message;
+        el('alfaStatusText').style.color = 'var(--red)';
+    }
+}
+
+async function alfaSearch() {
+    const q = el('alfaSearchInput')?.value?.trim();
+    if (!q) return;
+    try {
+        const resp = await fetch(alfaUrl + '/instruments?name=' + encodeURIComponent(q));
+        const data = await resp.json();
+        const tbody = el('alfaSearchBody');
+        if (!Array.isArray(data)) { tbody.innerHTML = '<tr><td colspan=8>' + JSON.stringify(data) + '</td></tr>'; return; }
+        const groups = {1:'Акции',2:'Облигации',3:'Фонды',4:'Фьючерсы',5:'Опционы'};
+        tbody.innerHTML = data.map(a => {
+            const instrs = (a.instruments || []).map(i => 
+                `<div>idFi=<b>${i.idFi}</b> board=${i.idMarketBoard} ${i.rcode} ${i.isLiquid ? '✅' : ''}</div>`
+            ).join('');
+            const liquidFi = (a.instruments || []).find(i => i.isLiquid);
+            const idFi = liquidFi ? liquidFi.idFi : (a.instruments?.[0]?.idFi || 0);
+            return `<tr>
+                <td><b>${a.ticker}</b></td>
+                <td>${a.name}</td>
+                <td>${groups[a.idObjectGroup] || a.idObjectGroup}</td>
+                <td>${a.idObject}</td>
+                <td>${instrs}</td>
+                <td>${liquidFi?.rcode || ''}</td>
+                <td>${liquidFi?.isLiquid ? '✅' : ''}</td>
+                <td><button class="btn btn-secondary btn-sm" onclick="alfaGetQuote(${idFi},'${a.ticker}')">📊</button></td>
+            </tr>`;
+        }).join('');
+    } catch (e) { el('alfaSearchBody').innerHTML = '<tr><td colspan=8>Ошибка: ' + e.message + '</td></tr>'; }
+}
+
+async function alfaGetQuote(idFi, ticker) {
+    try {
+        const resp = await fetch(alfaUrl + '/fininfo?idFi=' + idFi);
+        const data = await resp.json();
+        alfaQuotes[ticker] = { ...data, ticker, idFi };
+        alfaRenderQuotes();
+    } catch (e) { console.error(e); }
+}
+
+function alfaRenderQuotes() {
+    const tbody = el('alfaQuotesBody');
+    tbody.innerHTML = Object.values(alfaQuotes).map(q => `<tr>
+        <td><b>${q.ticker}</b></td>
+        <td>${q.idFi}</td>
+        <td class="accent">${q.last || '—'}</td>
+        <td class="green">${q.bid || '—'}</td>
+        <td class="red">${q.ask || '—'}</td>
+        <td>${q.high || '—'}</td>
+        <td>${q.low || '—'}</td>
+        <td>${q.volume || '—'}</td>
+    </tr>`).join('');
+}
+
+async function alfaLoadPositions() {
+    try {
+        const resp = await fetch(alfaUrl + '/positions');
+        const data = await resp.json();
+        if (Array.isArray(data) && data.length > 0) {
+            let html = '<table class="data-table"><thead><tr><th>Инструмент</th><th>Позиция</th><th>Покупки</th><th>Продажи</th><th>PnL</th></tr></thead><tbody>';
+            data.forEach(p => {
+                html += `<tr><td>${p.IdObject || p.idObject || ''}</td><td>${p.TorgPos || p.BackPos || ''}</td><td>${p.DailyBuyQuantity || p.BuyQty || ''}</td><td>${p.DailySellQuantity || p.SellQty || ''}</td><td>${p.DailyPL || p.TrdPL || ''}</td></tr>`;
+            });
+            html += '</tbody></table>';
+            el('alfaPositions').innerHTML = html;
+        } else {
+            el('alfaPositions').innerHTML = '<i>Нет открытых позиций</i>';
+        }
+    } catch (e) { el('alfaPositions').innerHTML = 'Ошибка: ' + e.message; }
+}
+
+async function alfaLoadOrders() {
+    try {
+        const resp = await fetch(alfaUrl + '/orders');
+        const data = await resp.json();
+        if (Array.isArray(data) && data.length > 0) {
+            let html = '<table class="data-table"><thead><tr><th>#</th><th>Инструмент</th><th>Напр.</th><th>Кол-во</th><th>Цена</th><th>Статус</th></tr></thead><tbody>';
+            data.forEach(o => {
+                const dir = (o.BuySell || o.buySell) == 1 ? 'Buy' : 'Sell';
+                html += `<tr><td>${o.NumEDocument || o.numEDocument || ''}</td><td>${o.IdObject || o.idObject || ''}</td><td>${dir}</td><td>${o.Quantity || o.quantity || ''}</td><td>${o.LimitPrice || o.limitPrice || o.Price || ''}</td><td>${o.IdOrderStatus || o.status || ''}</td></tr>`;
+            });
+            html += '</tbody></table>';
+            el('alfaOrders').innerHTML = html;
+        } else {
+            el('alfaOrders').innerHTML = '<i>Нет заявок</i>';
+        }
+    } catch (e) { el('alfaOrders').innerHTML = 'Ошибка: ' + e.message; }
+}
+
+async function alfaRefresh() {
+    try {
+        // Обновляем котировки
+        for (const [ticker, q] of Object.entries(alfaQuotes)) {
+            if (q.idFi) alfaGetQuote(q.idFi, ticker);
+        }
+        alfaLoadPositions();
+        alfaLoadOrders();
+    } catch { }
+}
+
 // === Init ===
 document.addEventListener('DOMContentLoaded', () => {
     loadSettings();
