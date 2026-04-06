@@ -112,24 +112,21 @@ namespace HedgeFund.AlfaBridge
         {
             try
             {
-                _client.Trading.OnOrderChanged += (orders) =>
+                _client.Trading.OnOrderChanged += (order) =>
                 {
-                    if (orders == null) return;
-                    foreach (var o in orders)
+                    if (order == null) return;
+                    var ev = new
                     {
-                        var ev = new
-                        {
-                            numEDocument = o.NumEDocument,
-                            status = o.IdOrderStatus.ToString(),
-                            direction = o.BuySell.ToString(),
-                            idObject = o.IdObject,
-                            quantity = o.Quantity,
-                            price = o.LimitPrice,
-                            comment = o.Comment ?? ""
-                        };
-                        _orderEvents.Enqueue(ev);
-                        Log($"[ORDER] #{o.NumEDocument} {o.BuySell} {o.Quantity}x obj={o.IdObject} @ {o.LimitPrice} → {o.IdOrderStatus}");
-                    }
+                        numEDocument = order.NumEDocument,
+                        status = order.IdOrderStatus.ToString(),
+                        direction = order.BuySell.ToString(),
+                        idObject = order.IdObject,
+                        quantity = order.Quantity,
+                        price = order.LimitPrice,
+                        comment = order.Comment ?? ""
+                    };
+                    _orderEvents.Enqueue(ev);
+                    Log($"[ORDER] #{order.NumEDocument} {order.BuySell} {order.Quantity}x obj={order.IdObject} @ {order.LimitPrice} → {order.IdOrderStatus}");
                 };
 
                 _client.Portfolio.OnBalanceChanged += (balances) =>
@@ -266,18 +263,27 @@ namespace HedgeFund.AlfaBridge
                             _client.RealTime.SubscribeQueue(qIdFi);
                             Thread.Sleep(300);
                             var q = _client.RealTime.GetQueue(qIdFi);
-                            if (q != null && q.Lines != null)
+                            if (q != null)
                             {
-                                result = new
+                                // GetQueue returns IQueue; cast to OrderBookEntity for Lines
+                                var ob = q as OrderBookEntity;
+                                if (ob?.Lines != null)
                                 {
-                                    idFi = qIdFi,
-                                    rows = q.Lines.Where(l => l != null).Select(r => new
+                                    result = new
                                     {
-                                        price = r.Price,
-                                        buy = r.BuyQty,
-                                        sell = r.SellQty
-                                    }).ToArray()
-                                };
+                                        idFi = qIdFi,
+                                        rows = ob.Lines.Where(l => l != null).Select(r => new
+                                        {
+                                            price = r.Price,
+                                            buy = r.BuyQty,
+                                            sell = r.SellQty
+                                        }).ToArray()
+                                    };
+                                }
+                                else
+                                {
+                                    result = new { idFi = qIdFi, info = "Queue available but no Lines (type: " + q.GetType().Name + ")" };
+                                }
                             }
                         }
                         break;
