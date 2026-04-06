@@ -22,6 +22,16 @@ namespace HedgeFund.AlfaBridge
 
         public static void Run(string login, string password)
         {
+            // Перехват необработанных исключений из фоновых потоков SDK
+            AppDomain.CurrentDomain.UnhandledException += (s, e) =>
+            {
+                var ex = e.ExceptionObject as Exception;
+                var msg = $"CAUGHT UNHANDLED: {ex?.GetType().Name}: {ex?.Message}";
+                _events.Add(msg);
+                Console.WriteLine(msg);
+                // Не даём процессу умереть
+            };
+
             Log("═══════════════════════════════════════════════════");
             Log("  ADClientSDK Diagnostic — " + DateTime.Now);
             Log("═══════════════════════════════════════════════════");
