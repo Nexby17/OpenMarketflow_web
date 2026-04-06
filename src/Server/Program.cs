@@ -207,30 +207,53 @@ app.MapGet("/arb/status", () =>
 
 app.MapPost("/arb/init", async (HttpRequest req) =>
 {
-    // Токен: из тела запроса или из переменной окружения
-    string? token = null;
     try
     {
-        using var reader = new StreamReader(req.Body);
-        var body = await reader.ReadToEndAsync();
-        if (!string.IsNullOrWhiteSpace(body))
+        // Токен: из тела запроса или из переменной окружения
+        string? token = null;
+        try
         {
-            var json = System.Text.Json.JsonDocument.Parse(body);
-            if (json.RootElement.TryGetProperty("token", out var t))
-                token = t.GetString();
+            using var reader = new StreamReader(req.Body);
+            var body = await reader.ReadToEndAsync();
+            Console.WriteLine($"[ARB/INIT] body: {body?.Substring(0, Math.Min(body?.Length ?? 0, 100))}");
+            if (!string.IsNullOrWhiteSpace(body))
+            {
+                var json = System.Text.Json.JsonDocument.Parse(body);
+                if (json.RootElement.TryGetProperty("token", out var t))
+                {
+                    var val = t.GetString();
+                    if (!string.IsNullOrWhiteSpace(val))
+                        token = val;
+                }
+            }
         }
-    } catch { }
-    
-    token ??= Environment.GetEnvironmentVariable("FINAM_TOKEN");
-    if (string.IsNullOrEmpty(token))
-        return Results.BadRequest(new { error = "Токен не передан. Подключитесь на вкладке Торговля или задайте FINAM_TOKEN" });
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[ARB/INIT] Ошибка парсинга body: {ex.Message}");
+        }
+        
+        if (string.IsNullOrEmpty(token))
+            token = Environment.GetEnvironmentVariable("FINAM_TOKEN");
+        
+        Console.WriteLine($"[ARB/INIT] token: {(string.IsNullOrEmpty(token) ? "EMPTY" : token.Substring(0, Math.Min(4, token.Length)) + "...")}");
+        
+        if (string.IsNullOrEmpty(token))
+            return Results.Json(new { error = "Токен не передан. Сначала подключитесь на вкладке Торговля" }, statusCode: 400);
 
-    if (arbLauncher != null)
-        return Results.Ok(new { status = "already_initialized", detail = arbLauncher.GetStatus() });
+        if (arbLauncher != null)
+            return Results.Json(new { status = "already_initialized", detail = arbLauncher.GetStatus() });
 
-    var capital = 10_000_000.0;
-    arbLauncher = new ArbLauncher(token, capital: capital);
-    return Results.Ok(new { status = "initialized", capital });
+        var capital = 10_000_000.0;
+        Console.WriteLine($"[ARB/INIT] Создаю ArbLauncher...");
+        arbLauncher = new ArbLauncher(token, capital: capital);
+        Console.WriteLine($"[ARB/INIT] ✅ ArbLauncher создан");
+        return Results.Json(new { status = "initialized", capital });
+    }
+    catch (Exception ex)
+    {
+        Console.WriteLine($"[ARB/INIT] ❌ Ошибка: {ex}");
+        return Results.Json(new { error = $"Ошибка инициализации: {ex.Message}" }, statusCode: 500);
+    }
 });
 
 app.MapPost("/arb/pair/{spot}/start", (string spot) =>

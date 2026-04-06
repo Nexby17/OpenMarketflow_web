@@ -513,23 +513,40 @@ function fmtPnl(n) {
 async function arbInit() {
     try {
         const token = localStorage.getItem('finamToken') || '';
+        if (!token) {
+            arbLog('ERROR', 'Токен не задан. Сначала укажите токен во вкладке Настройки');
+            return;
+        }
+        el('arbStatusText').textContent = '⏳ Инициализация...';
+        arbLog('INFO', '🔄 Инициализация арбитража...');
+        
         const resp = await fetch('/arb/init', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ token })
         });
-        const data = await resp.json();
-        if (resp.ok) {
+        
+        const text = await resp.text();
+        arbLog('INFO', `Ответ сервера: ${resp.status} ${text.substring(0, 200)}`);
+        
+        let data;
+        try { data = JSON.parse(text); } catch { data = { error: text || 'Пустой ответ от сервера' }; }
+        
+        if (resp.ok && !data.error) {
             el('arbStatusText').textContent = '✅ Инициализирован';
             el('arbStartBtn').disabled = false;
             el('arbPauseBtn').disabled = false;
             el('arbStopBtn').disabled = false;
-            arbLog('INFO', `Арбитраж инициализирован. Капитал: ${(data.capital||0).toLocaleString('ru-RU')} ₽`);
+            arbLog('INFO', `✅ Арбитраж инициализирован. Капитал: ${(data.capital||0).toLocaleString('ru-RU')} ₽`);
             arbRefreshStatus();
         } else {
-            arbLog('ERROR', data.error || 'Ошибка инициализации');
+            el('arbStatusText').textContent = '❌ Ошибка';
+            arbLog('ERROR', data.error || `Ошибка инициализации (${resp.status})`);
         }
-    } catch (e) { arbLog('ERROR', e.message); }
+    } catch (e) {
+        el('arbStatusText').textContent = '❌ Ошибка';
+        arbLog('ERROR', `Исключение: ${e.message}`);
+    }
 }
 
 async function arbStart() {
