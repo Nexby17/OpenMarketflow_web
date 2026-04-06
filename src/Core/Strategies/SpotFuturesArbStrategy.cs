@@ -33,7 +33,27 @@ public class SpotFuturesArbStrategy
 
     // === Управление позицией ===
     public int MaxLots { get; set; } = 100;            // Макс лотов
-    public int BaseLots { get; set; } = 10;            // Базовый размер входа
+    public int BaseLots { get; set; } = 10;            // Базовый размер входа (контрактов фьючерса)
+    
+    // === Раздельные лоты для каждой ноги ===
+    /// <summary>Лоты акций (на МосБирже 1 лот = 1/10/100 акций)</summary>
+    public int SpotLots { get; set; } = 0;             // 0 = авторасчёт из FutLots
+    /// <summary>Контракты фьючерса</summary>
+    public int FutLots { get; set; } = 1;
+    /// <summary>Акций в 1 лоте акции на МосБирже (SBER=10, GAZP=10, ROSN=1, TATN=1, ALRS=10)</summary>
+    public int SharesPerSpotLot { get; set; } = 10;
+    /// <summary>ГО за 1 контракт фьючерса (руб.)</summary>
+    public double FuturesGO { get; set; } = 5000;
+    
+    /// <summary>Лоты акций для ордера (авторасчёт если SpotLots=0)</summary>
+    public int EffectiveSpotLots => SpotLots > 0 ? SpotLots 
+        : (SharesPerSpotLot > 0 ? FutLots * LotSize / SharesPerSpotLot : FutLots * LotSize);
+    
+    /// <summary>Стоимость позиции акций (руб.)</summary>
+    public double SpotValueRub => EffectiveSpotLots * SharesPerSpotLot * LastSpotPrice;
+    
+    /// <summary>ГО фьючерсной ноги (руб.)</summary>
+    public double FutGORub => FutLots * FuturesGO;
 
     // === Состояние ===
     public ArbPosition CurrentPosition { get; private set; } = new();
@@ -150,7 +170,9 @@ public class SpotFuturesArbStrategy
             Direction = dir,
             EntrySpotPrice = spot,
             EntryFuturesPrice = fut,
-            Lots = BaseLots,
+            Lots = FutLots,
+            SpotLots = EffectiveSpotLots,
+            FutLots = FutLots,
             OpenTime = ts,
             SpotTicker = SpotTicker,
             FuturesTicker = FuturesTicker,
@@ -165,7 +187,9 @@ public class SpotFuturesArbStrategy
             FuturesTicker = FuturesTicker,
             SpotPrice = spot,
             FuturesPrice = fut,
-            Lots = BaseLots,
+            Lots = FutLots,
+            SpotLots = EffectiveSpotLots,
+            FutLots = FutLots,
             ZScore = LastZScore,
             BasisAnnual = LastBasisAnnual,
             Reason = reason,
@@ -283,9 +307,11 @@ public class ArbPosition
     public string FuturesTicker { get; set; } = "";
     public double EntrySpotPrice { get; set; }
     public double EntryFuturesPrice { get; set; }
-    public int Lots { get; set; }
+    public int Lots { get; set; }           // legacy, = FutLots
+    public int SpotLots { get; set; }       // лоты акций
+    public int FutLots { get; set; }        // контракты фьючерса
     public DateTime OpenTime { get; set; }
-    public bool IsOpen => Direction != ArbDirection.None && Lots > 0;
+    public bool IsOpen => Direction != ArbDirection.None && (FutLots > 0 || Lots > 0);
 }
 
 public class ArbSignal
@@ -297,7 +323,9 @@ public class ArbSignal
     public string FuturesTicker { get; set; } = "";
     public double SpotPrice { get; set; }
     public double FuturesPrice { get; set; }
-    public int Lots { get; set; }
+    public int Lots { get; set; }           // legacy, = FutLots
+    public int SpotLots { get; set; }       // лоты акций
+    public int FutLots { get; set; }        // контракты фьючерса
     public double ZScore { get; set; }
     public double BasisAnnual { get; set; }
     public double PnL { get; set; }

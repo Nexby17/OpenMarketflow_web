@@ -232,34 +232,33 @@ public class ArbLauncher : IDisposable
     {
         try
         {
+            var spotLots = signal.SpotLots > 0 ? signal.SpotLots : signal.Lots;
+            var futLots = signal.FutLots > 0 ? signal.FutLots : signal.Lots;
+            
             if (signal.Action == ArbAction.Open)
             {
                 if (signal.Direction == ArbDirection.LongSpread)
                 {
-                    // Лонг спот + шорт фьючерс
-                    await PlaceOrder(signal.SpotTicker, SignalDirection.Buy, signal.Lots, "ARB OPEN: лонг спот");
-                    await PlaceOrder(signal.FuturesTicker, SignalDirection.Sell, signal.Lots, "ARB OPEN: шорт фьючерс");
+                    await PlaceOrder(signal.SpotTicker, SignalDirection.Buy, spotLots, $"ARB OPEN: лонг {spotLots} лот акций");
+                    await PlaceOrder(signal.FuturesTicker, SignalDirection.Sell, futLots, $"ARB OPEN: шорт {futLots} контрактов");
                 }
                 else
                 {
-                    // Шорт спот + лонг фьючерс
-                    await PlaceOrder(signal.SpotTicker, SignalDirection.Sell, signal.Lots, "ARB OPEN: шорт спот");
-                    await PlaceOrder(signal.FuturesTicker, SignalDirection.Buy, signal.Lots, "ARB OPEN: лонг фьючерс");
+                    await PlaceOrder(signal.SpotTicker, SignalDirection.Sell, spotLots, $"ARB OPEN: шорт {spotLots} лот акций");
+                    await PlaceOrder(signal.FuturesTicker, SignalDirection.Buy, futLots, $"ARB OPEN: лонг {futLots} контрактов");
                 }
             }
             else if (signal.Action == ArbAction.Close)
             {
                 if (signal.Direction == ArbDirection.LongSpread)
                 {
-                    // Закрываем: продаём спот + покупаем фьючерс
-                    await PlaceOrder(signal.SpotTicker, SignalDirection.Sell, signal.Lots, "ARB CLOSE: продать спот");
-                    await PlaceOrder(signal.FuturesTicker, SignalDirection.Buy, signal.Lots, "ARB CLOSE: купить фьючерс");
+                    await PlaceOrder(signal.SpotTicker, SignalDirection.Sell, spotLots, $"ARB CLOSE: продать {spotLots} лот акций");
+                    await PlaceOrder(signal.FuturesTicker, SignalDirection.Buy, futLots, $"ARB CLOSE: купить {futLots} контрактов");
                 }
                 else
                 {
-                    // Закрываем: покупаем спот + продаём фьючерс
-                    await PlaceOrder(signal.SpotTicker, SignalDirection.Buy, signal.Lots, "ARB CLOSE: купить спот");
-                    await PlaceOrder(signal.FuturesTicker, SignalDirection.Sell, signal.Lots, "ARB CLOSE: продать фьючерс");
+                    await PlaceOrder(signal.SpotTicker, SignalDirection.Buy, spotLots, $"ARB CLOSE: купить {spotLots} лот акций");
+                    await PlaceOrder(signal.FuturesTicker, SignalDirection.Sell, futLots, $"ARB CLOSE: продать {futLots} контрактов");
                 }
 
                 Log($"💰 PnL сделки: {signal.PnL:+#,##0;-#,##0;0} ₽ | Итого: {_portfolio.TotalPnL:+#,##0;-#,##0;0} ₽");

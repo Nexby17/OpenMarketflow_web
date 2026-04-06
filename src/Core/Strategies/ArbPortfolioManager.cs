@@ -31,78 +31,90 @@ public class ArbPortfolioManager
     public void InitializeDefaultPortfolio()
     {
         // ROSN — лидер по доходности (+27.1% net)
+        // 1 фьюч. контракт = 100 акций, 1 лот акций = 1 акция
         AddStrategy(new SpotFuturesArbStrategy
         {
             Name = "ARB_ROSN",
             SpotTicker = "ROSN",
-            FuturesTicker = "", // Устанавливается при подключении (ближайший контракт)
-            LotSize = 100,
+            FuturesTicker = "",
+            LotSize = 100,          // акций в 1 фьюч. контракте
+            SharesPerSpotLot = 1,   // акций в 1 лоте акции на МосБирже
+            FuturesGO = 7500,       // ГО за 1 контракт (~руб)
             Window = 15,
             EntryZ = 1.0,
             ExitZ = 0.0,
             StopZ = 3.5,
             RollDaysBeforeExpiry = 20,
-            BaseLots = 10,  // Масштабировать под капитал
+            FutLots = 1,
+            SpotLots = 0,           // авто: 1х100/1 = 100 лотов акций
         });
 
-        // TATN — лучший Sharpe и max DD (-10K)
+        // TATN — лучший Sharpe. 1 контракт = 100 акций, 1 лот = 1 акция
         AddStrategy(new SpotFuturesArbStrategy
         {
             Name = "ARB_TATN",
             SpotTicker = "TATN",
             FuturesTicker = "",
             LotSize = 100,
+            SharesPerSpotLot = 1,
+            FuturesGO = 5000,
             Window = 15,
             EntryZ = 1.0,
             ExitZ = 0.5,
             StopZ = 3.5,
             RollDaysBeforeExpiry = 15,
-            BaseLots = 8,
+            FutLots = 1,
         });
 
-        // GAZP — стабильный, 0 roll losses
+        // GAZP — стабильный, 0 roll losses. 1 контракт = 100 акций, 1 лот = 10 акций
         AddStrategy(new SpotFuturesArbStrategy
         {
             Name = "ARB_GAZP",
             SpotTicker = "GAZP",
             FuturesTicker = "",
             LotSize = 100,
+            SharesPerSpotLot = 10,
+            FuturesGO = 4000,
             Window = 20,
             EntryZ = 1.5,
             ExitZ = 0.0,
             StopZ = 3.5,
             RollDaysBeforeExpiry = 20,
-            BaseLots = 8,
+            FutLots = 1,
         });
 
-        // SBER — надёжный, но ниже доходность
+        // SBER — надёжный. 1 контракт = 100 акций, 1 лот = 10 акций
         AddStrategy(new SpotFuturesArbStrategy
         {
             Name = "ARB_SBER",
             SpotTicker = "SBER",
             FuturesTicker = "",
             LotSize = 100,
+            SharesPerSpotLot = 10,
+            FuturesGO = 6000,
             Window = 15,
             EntryZ = 1.5,
             ExitZ = -0.5,
             StopZ = 3.5,
             RollDaysBeforeExpiry = 10,
-            BaseLots = 5,
+            FutLots = 1,
         });
 
-        // ALRS — 100% WR, малая аллокация
+        // ALRS — 100% WR. 1 контракт = 100 акций, 1 лот = 10 акций
         AddStrategy(new SpotFuturesArbStrategy
         {
             Name = "ARB_ALRS",
             SpotTicker = "ALRS",
             FuturesTicker = "",
             LotSize = 100,
+            SharesPerSpotLot = 10,
+            FuturesGO = 2000,
             Window = 15,
             EntryZ = 2.5,
             ExitZ = 0.5,
             StopZ = 3.0,
             RollDaysBeforeExpiry = 5,
-            BaseLots = 2,
+            FutLots = 1,
         });
 
         Log($"Портфель инициализирован: {_strategies.Count} стратегий");

@@ -268,21 +268,35 @@ app.MapPost("/arb/pair/{spot}/stop", (string spot) =>
     return Results.Ok(new { pair = spot, mode = "stopped" });
 });
 
-app.MapPost("/arb/pair/{spot}/lots/{lots:int}", (string spot, int lots) =>
+// Установить лоты: POST /arb/pair/ROSN/lots с JSON {spotLots: 100, futLots: 1}
+app.MapPost("/arb/pair/{spot}/lots", async (string spot, HttpRequest req) =>
 {
-    if (arbLauncher == null)
-        return Results.Json(new { error = "Арбитраж не инициализирован" }, statusCode: 400);
-    if (lots < 1 || lots > 1000)
-        return Results.Json(new { error = "Лоты: 1-1000" }, statusCode: 400);
-    
-    var name = $"ARB_{spot}";
-    var strategy = arbLauncher.Portfolio.Strategies.Values.FirstOrDefault(s => s.Name == name);
-    if (strategy == null)
-        return Results.Json(new { error = $"Пара {spot} не найдена" }, statusCode: 404);
-    
-    strategy.BaseLots = lots;
-    Console.WriteLine($"[ARB] {name}: лоты = {lots}");
-    return Results.Json(new { pair = spot, lots, status = "ok" });
+    try
+    {
+        if (arbLauncher == null)
+            return Results.Json(new { error = "Арбитраж не инициализирован" }, statusCode: 400);
+        
+        var name = $"ARB_{spot}";
+        var strategy = arbLauncher.Portfolio.Strategies.Values.FirstOrDefault(s => s.Name == name);
+        if (strategy == null)
+            return Results.Json(new { error = $"Пара {spot} не найдена" }, statusCode: 404);
+        
+        using var reader = new StreamReader(req.Body);
+        var body = await reader.ReadToEndAsync();
+        var json = System.Text.Json.JsonDocument.Parse(body);
+        
+        if (json.RootElement.TryGetProperty("spotLots", out var sl))
+            strategy.SpotLots = sl.GetInt32();
+        if (json.RootElement.TryGetProperty("futLots", out var fl))
+            strategy.FutLots = fl.GetInt32();
+        
+        Console.WriteLine($"[ARB] {name}: spotLots={strategy.SpotLots} (эфф.={strategy.EffectiveSpotLots}), futLots={strategy.FutLots}");
+        return Results.Json(new { pair = spot, spotLots = strategy.EffectiveSpotLots, futLots = strategy.FutLots, status = "ok" });
+    }
+    catch (Exception ex)
+    {
+        return Results.Json(new { error = ex.Message }, statusCode: 400);
+    }
 });
 
 app.MapGet("/arb/pairs", () =>
@@ -295,16 +309,25 @@ app.MapGet("/arb/pairs", () =>
         name = s.Name,
         spot = s.SpotTicker,
         futures = s.FuturesTicker,
-        lots = s.BaseLots,
+        spotLots = s.EffectiveSpotLots,
+        futLots = s.FutLots,
+        spotValueRub = Math.Round(s.SpotValueRub, 0),
+        futGORub = Math.Round(s.FutGORub, 0),
+        totalValueRub = Math.Round(s.SpotValueRub + s.FutGORub, 0),
         zScore = Math.Round(s.LastZScore, 2),
         basisAnnual = Math.Round(s.LastBasisAnnual, 1),
         isOpen = s.CurrentPosition.IsOpen,
         posDirection = s.CurrentPosition.Direction.ToString(),
-        posLots = s.CurrentPosition.Lots,
+        posSpotLots = s.CurrentPosition.SpotLots,
+        posFutLots = s.CurrentPosition.FutLots,
         pnl = Math.Round(s.TotalPnL, 0),
         trades = s.TotalTrades,
         winRate = s.TotalTrades > 0 ? Math.Round(s.WinRate, 0) : 0,
-        mode = s.Mode.ToString()
+        mode = s.Mode.ToString(),
+        spotPrice = Math.Round(s.LastSpotPrice, 2),
+        futPrice = Math.Round(s.LastFuturesPrice, 2),
+        sharesPerSpotLot = s.SharesPerSpotLot,
+        futuresGO = s.FuturesGO,
     }).ToArray();
     
     return Results.Json(new { pairs });
