@@ -50,6 +50,10 @@ namespace HedgeFund.AlfaBridge
             Log($"  HTTP: http://localhost:{HTTP_PORT}/");
             Log("═══════════════════════════════════════");
 
+            // Инициализация ADFactory — без этого Packer.CreatePacket падает с NullReference
+            try { Packer.ADFactory = new ClientADFactoryWithSDK(); Log("ADFactory: ClientADFactoryWithSDK"); }
+            catch { try { Packer.ADFactory = new ClientADFactory(); Log("ADFactory: ClientADFactory"); } catch (Exception ex2) { Log($"ADFactory FAIL: {ex2.Message}"); } }
+
             _client = new AdClient();
 
             _client.OnConnectionChanged += (frontEnd, status) =>

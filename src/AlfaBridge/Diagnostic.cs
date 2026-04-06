@@ -27,8 +27,31 @@ namespace HedgeFund.AlfaBridge
             Log("═══════════════════════════════════════════════════");
             Log("");
 
+            // 0. Инициализация фабрики
+            Log("--- STEP 0: Init ADFactory ---");
+            try
+            {
+                // ClientADFactoryWithSDK инициализирует Packer для работы вне терминала
+                Packer.ADFactory = new ClientADFactoryWithSDK();
+                Log("OK: Packer.ADFactory = ClientADFactoryWithSDK");
+            }
+            catch (Exception ex)
+            {
+                Log($"ClientADFactoryWithSDK FAIL: {ex.Message}");
+                try
+                {
+                    Packer.ADFactory = new ClientADFactory();
+                    Log("OK: Packer.ADFactory = ClientADFactory (fallback)");
+                }
+                catch (Exception ex2)
+                {
+                    Log($"ClientADFactory FAIL: {ex2.Message}");
+                }
+            }
+
             // 1. Создание клиента
             AdClient client = null;
+            Log("");
             Log("--- STEP 1: Create AdClient ---");
             try
             {
