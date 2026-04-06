@@ -52,7 +52,7 @@ function RM{
     $buf=[byte[]]::new(1048576)  # 1MB buffer
     $ms=[IO.MemoryStream]::new()
     while($ws.State-eq'Open'){
-        $seg=New-Object ArraySegment[byte] -ArgumentList @(,$buf)
+        $seg=[System.ArraySegment[byte]]::new($buf)
         $cts=[Threading.CancellationTokenSource]::new(200)
         try{
             $r=$ws.ReceiveAsync($seg,$cts.Token).GetAwaiter().GetResult()
