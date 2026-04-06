@@ -566,27 +566,23 @@ namespace HedgeFund.AlfaBridge
                         result = logs;
                         break;
 
+                    case "/ui":
+                    case "":
+                    case "/index.html":
+                        // Встроенный UI
+                        var html = GetEmbeddedHtml();
+                        var htmlBuf = Encoding.UTF8.GetBytes(html);
+                        ctx.Response.ContentType = "text/html; charset=utf-8";
+                        ctx.Response.ContentLength64 = htmlBuf.Length;
+                        ctx.Response.OutputStream.Write(htmlBuf, 0, htmlBuf.Length);
+                        ctx.Response.Close();
+                        return; // не идём в Respond()
+
                     default:
                         result = new
                         {
-                            service = "AlfaBridge v2 — WebSocket PRO API",
-                            connected = _connected,
-                            authorized = _authorized,
-                            endpoints = new[]
-                            {
-                                "GET  /status",
-                                "GET  /instruments?name=SBER",
-                                "GET  /fininfo?idFi=144950",
-                                "GET  /positions",
-                                "GET  /balance",
-                                "GET  /orders",
-                                "POST /order/market  {ticker, direction, quantity, comment}",
-                                "POST /order/limit   {ticker, direction, quantity, price, comment}",
-                                "POST /order/cancel  {numEDocument}",
-                                "GET  /candles?idFi=144950&days=5&interval=minute&period=5",
-                                "GET  /events",
-                                "GET  /log",
-                            }
+                            service = "AlfaBridge v2",
+                            ui = "http://localhost:15200/ui",
                         };
                         break;
                 }
@@ -658,5 +654,113 @@ namespace HedgeFund.AlfaBridge
             _logQueue.Enqueue(line);
             while (_logQueue.Count > 500) _logQueue.TryDequeue(out _);
         }
+
+        static string GetEmbeddedHtml() => @"<!DOCTYPE html>
+<html><head><meta charset='utf-8'><title>AlfaBridge</title>
+<style>
+body{background:#1a1a2e;color:#e0e0e0;font-family:system-ui;margin:0;padding:16px}
+.card{background:#16213e;border-radius:8px;padding:12px;margin:8px 0}
+.card h3{margin:0 0 8px;color:#00d4ff}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th,td{padding:4px 8px;text-align:left;border-bottom:1px solid #2d2d44}
+th{color:#9ca3af}
+.green{color:#22c55e}.red{color:#ef4444}.accent{color:#00d4ff}
+input,button{background:#0f3460;color:#e0e0e0;border:1px solid #2d2d44;padding:6px 12px;border-radius:4px}
+button{cursor:pointer}button:hover{background:#1a4a80}
+.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.metric{background:#0f3460;padding:8px 16px;border-radius:6px;text-align:center}
+.metric .val{font-size:18px;font-weight:bold}
+.metric .lbl{font-size:11px;color:#9ca3af}
+#log{background:#0a0a1a;padding:8px;font-family:monospace;font-size:11px;max-height:200px;overflow-y:auto;border-radius:4px}
+</style></head><body>
+<h2>⚡ AlfaBridge — Альфа-Директ 5</h2>
+
+<div class='row' style='margin:12px 0'>
+<div class='metric'><div class='lbl'>Статус</div><div class='val' id='st'>—</div></div>
+<div class='metric'><div class='lbl'>Счёт</div><div class='val' id='acc'>—</div></div>
+<div class='metric'><div class='lbl'>Инструментов</div><div class='val' id='assets'>—</div></div>
+<div class='metric'><div class='lbl'>Подпись</div><div class='val' id='sign'>—</div></div>
+</div>
+
+<div class='card'><h3>🔍 Поиск инструментов</h3>
+<div class='row'><input id='sq' placeholder='SBER, GAZP, ROSN...' onkeyup='if(event.key==""Enter"")search()'><button onclick='search()'>Найти</button></div>
+<table><thead><tr><th>Тикер</th><th>Название</th><th>Группа</th><th>IdFi</th><th>Рынок</th><th></th></tr></thead><tbody id='sr'></tbody></table>
+</div>
+
+<div class='card'><h3>📊 Котировки</h3>
+<table><thead><tr><th>Тикер</th><th>Last</th><th>Bid</th><th>Ask</th><th>High</th><th>Low</th><th>Volume</th></tr></thead><tbody id='qt'></tbody></table>
+</div>
+
+<div class='card'><h3>💼 Позиции</h3><div id='pos'><i>Загрузка...</i></div></div>
+<div class='card'><h3>📝 Заявки</h3><div id='ord'><i>Загрузка...</i></div></div>
+<div class='card'><h3>Лог</h3><div id='log'></div></div>
+
+<script>
+const B='';
+const G={1:'Акции',2:'Облиг.',3:'Фонды',4:'Фьючерсы',5:'Опционы'};
+let quotes={};
+
+async function load(){
+ try{
+  const r=await(await fetch(B+'/status')).json();
+  document.getElementById('st').innerHTML=r.authorized?'<span class=green>✅ ОК</span>':'<span class=red>❌</span>';
+  document.getElementById('acc').textContent=r.account||'—';
+  document.getElementById('assets').textContent=r.assetsLoaded||0;
+  document.getElementById('sign').textContent=r.authorized?'Готова':'Нет';
+  loadPos();loadOrd();refreshQ();
+ }catch(e){document.getElementById('st').innerHTML='<span class=red>❌ '+e.message+'</span>';}
+}
+
+async function search(){
+ const q=document.getElementById('sq').value;
+ if(!q)return;
+ const r=await(await fetch(B+'/instruments?name='+q)).json();
+ if(!Array.isArray(r)){document.getElementById('sr').innerHTML='<tr><td colspan=6>'+JSON.stringify(r)+'</td></tr>';return;}
+ document.getElementById('sr').innerHTML=r.map(a=>{
+  const i=(a.instruments||[]).find(x=>x.isLiquid)||(a.instruments||[])[0]||{};
+  return '<tr><td><b>'+a.ticker+'</b></td><td>'+a.name+'</td><td>'+(G[a.idObjectGroup]||a.idObjectGroup)+'</td><td>'+
+   (i.idFi||'')+'</td><td>'+(i.rcode||'')+'</td><td><button onclick="\'getQ('+i.idFi+',\''+a.ticker+'\')\'">📊</button></td></tr>';
+ }).join('');
+}
+
+async function getQ(idFi,t){
+ const r=await(await fetch(B+'/fininfo?idFi='+idFi)).json();
+ quotes[t]={...r,t,idFi};
+ renderQ();
+}
+function renderQ(){
+ document.getElementById('qt').innerHTML=Object.values(quotes).map(q=>
+  '<tr><td><b>'+q.t+'</b></td><td class=accent>'+(q.last||'—')+'</td><td class=green>'+(q.bid||'—')+
+  '</td><td class=red>'+(q.ask||'—')+'</td><td>'+(q.high||'—')+'</td><td>'+(q.low||'—')+
+  '</td><td>'+(q.volume||'—')+'</td></tr>'
+ ).join('');
+}
+async function refreshQ(){for(const[t,q]of Object.entries(quotes)){if(q.idFi)getQ(q.idFi,t);}}
+
+async function loadPos(){
+ try{
+  const r=await(await fetch(B+'/positions')).json();
+  if(Array.isArray(r)&&r.length){
+   let h='<table><tr><th>ID</th><th>Поз.</th><th>Покупки</th><th>Продажи</th><th>PnL</th></tr>';
+   r.forEach(p=>h+='<tr><td>'+(p.IdObject||'')+'</td><td>'+(p.TorgPos||p.BackPos||'')+'</td><td>'+(p.DailyBuyQuantity||'')+'</td><td>'+(p.DailySellQuantity||'')+'</td><td>'+(p.DailyPL||'')+'</td></tr>');
+   document.getElementById('pos').innerHTML=h+'</table>';
+  }else document.getElementById('pos').innerHTML='<i>Нет позиций</i>';
+ }catch(e){document.getElementById('pos').textContent=e.message;}
+}
+
+async function loadOrd(){
+ try{
+  const r=await(await fetch(B+'/orders')).json();
+  if(Array.isArray(r)&&r.length){
+   let h='<table><tr><th>#</th><th>Instr</th><th>Dir</th><th>Qty</th><th>Price</th><th>Status</th></tr>';
+   r.forEach(o=>h+='<tr><td>'+(o.NumEDocument||'')+'</td><td>'+(o.IdObject||'')+'</td><td>'+((o.BuySell||0)==1?'Buy':'Sell')+'</td><td>'+(o.Quantity||'')+'</td><td>'+(o.LimitPrice||o.Price||'')+'</td><td>'+(o.IdOrderStatus||'')+'</td></tr>');
+   document.getElementById('ord').innerHTML=h+'</table>';
+  }else document.getElementById('ord').textContent='Нет заявок';
+ }catch(e){document.getElementById('ord').textContent=e.message;}
+}
+
+load();
+setInterval(load,10000);
+</script></body></html>";
     }
 }
