@@ -254,24 +254,10 @@
             <div class="card-header">Арбитражные пары</div>
             <table class="data-table">
                 <thead><tr>
-                    <th>Пара</th><th>Спот</th><th>Фьючерс</th><th>Z-score</th><th>Базис %</th><th>Позиция</th><th>PnL</th><th>Сделок</th><th>WR</th><th>Управление</th>
+                    <th>Пара</th><th>Спот</th><th>Фьючерс</th><th>Лоты</th><th>Z-score</th><th>Базис %</th><th>Позиция</th><th>PnL</th><th>Сделок</th><th>WR</th><th>Режим</th><th>Управление</th>
                 </tr></thead>
                 <tbody id="arbPairsTable">
-                    <tr><td>ROSN</td><td>ROSN</td><td>ROSNM6</td><td>—</td><td>—</td><td>—</td><td>0</td><td>0</td><td>—</td>
-                        <td><button class="btn btn-primary btn-sm" onclick="arbPairStart('ROSN')">▶</button>
-                            <button class="btn btn-danger btn-sm" onclick="arbPairStop('ROSN')">⏹</button></td></tr>
-                    <tr><td>TATN</td><td>TATN</td><td>TATNM6</td><td>—</td><td>—</td><td>—</td><td>0</td><td>0</td><td>—</td>
-                        <td><button class="btn btn-primary btn-sm" onclick="arbPairStart('TATN')">▶</button>
-                            <button class="btn btn-danger btn-sm" onclick="arbPairStop('TATN')">⏹</button></td></tr>
-                    <tr><td>GAZP</td><td>GAZP</td><td>GAZRM6</td><td>—</td><td>—</td><td>—</td><td>0</td><td>0</td><td>—</td>
-                        <td><button class="btn btn-primary btn-sm" onclick="arbPairStart('GAZP')">▶</button>
-                            <button class="btn btn-danger btn-sm" onclick="arbPairStop('GAZP')">⏹</button></td></tr>
-                    <tr><td>SBER</td><td>SBER</td><td>SBRFM6</td><td>—</td><td>—</td><td>—</td><td>0</td><td>0</td><td>—</td>
-                        <td><button class="btn btn-primary btn-sm" onclick="arbPairStart('SBER')">▶</button>
-                            <button class="btn btn-danger btn-sm" onclick="arbPairStop('SBER')">⏹</button></td></tr>
-                    <tr><td>ALRS</td><td>ALRS</td><td>ALRSM6</td><td>—</td><td>—</td><td>—</td><td>0</td><td>0</td><td>—</td>
-                        <td><button class="btn btn-primary btn-sm" onclick="arbPairStart('ALRS')">▶</button>
-                            <button class="btn btn-danger btn-sm" onclick="arbPairStop('ALRS')">⏹</button></td></tr>
+                    <!-- Заполняется динамически через JS -->
                 </tbody>
             </table>
         </div>

@@ -622,7 +622,68 @@ async function arbRefreshStatus() {
         el('arbStartBtn').disabled = false;
         el('arbPauseBtn').disabled = false;
         el('arbStopBtn').disabled = false;
+        
+        // Refresh pairs table
+        arbRefreshPairs();
     } catch (e) { /* silent */ }
+}
+
+async function arbRefreshPairs() {
+    try {
+        const resp = await fetch('/arb/pairs');
+        const data = await resp.json();
+        if (!data.pairs || data.pairs.length === 0) return;
+        
+        const tbody = el('arbPairsTable');
+        const rows = data.pairs.map(p => {
+            const pnlCls = p.pnl > 0 ? 'pnl-positive' : p.pnl < 0 ? 'pnl-negative' : '';
+            const posText = p.isOpen ? `${p.posDirection} x${p.posLots}` : '—';
+            const modeDot = p.mode === 'Running' ? '🟢' : p.mode === 'Paused' ? '🟡' : '🔴';
+            const zCls = Math.abs(p.zScore) > 1.0 ? 'accent' : '';
+            
+            return `<tr>
+                <td><b>${p.spot}</b></td>
+                <td>${p.spot}</td>
+                <td>${p.futures}</td>
+                <td>
+                    <input type="number" class="input" style="width:60px;padding:2px 4px;text-align:center" 
+                           value="${p.lots}" min="1" max="1000" 
+                           onchange="arbSetLots('${p.spot}', this.value)" 
+                           title="Лоты для ${p.spot}">
+                </td>
+                <td class="${zCls}">${p.zScore.toFixed(2)}</td>
+                <td>${p.basisAnnual.toFixed(1)}%</td>
+                <td>${posText}</td>
+                <td class="${pnlCls}">${p.pnl.toLocaleString('ru-RU')}</td>
+                <td>${p.trades}</td>
+                <td>${p.winRate > 0 ? p.winRate + '%' : '—'}</td>
+                <td>${modeDot} ${p.mode}</td>
+                <td>
+                    <button class="btn btn-primary btn-sm" onclick="arbPairStart('${p.spot}')">▶</button>
+                    <button class="btn btn-danger btn-sm" onclick="arbPairStop('${p.spot}')">⏹</button>
+                </td>
+            </tr>`;
+        }).join('');
+        
+        tbody.innerHTML = rows;
+    } catch (e) { /* silent */ }
+}
+
+async function arbSetLots(spot, lots) {
+    lots = parseInt(lots);
+    if (!lots || lots < 1 || lots > 1000) {
+        arbLog('ERROR', `Некорректное количество лотов: ${lots}`);
+        return;
+    }
+    try {
+        const resp = await fetch(`/arb/pair/${spot}/lots/${lots}`, { method: 'POST' });
+        const data = await resp.json();
+        if (resp.ok) {
+            arbLog('INFO', `✅ ${spot}: лоты = ${lots}`);
+        } else {
+            arbLog('ERROR', data.error || 'Ошибка установки лотов');
+        }
+    } catch (e) { arbLog('ERROR', e.message); }
 }
 
 function arbLog(level, msg) {

@@ -268,6 +268,48 @@ app.MapPost("/arb/pair/{spot}/stop", (string spot) =>
     return Results.Ok(new { pair = spot, mode = "stopped" });
 });
 
+app.MapPost("/arb/pair/{spot}/lots/{lots:int}", (string spot, int lots) =>
+{
+    if (arbLauncher == null)
+        return Results.Json(new { error = "Арбитраж не инициализирован" }, statusCode: 400);
+    if (lots < 1 || lots > 1000)
+        return Results.Json(new { error = "Лоты: 1-1000" }, statusCode: 400);
+    
+    var name = $"ARB_{spot}";
+    var strategy = arbLauncher.Portfolio.Strategies.Values.FirstOrDefault(s => s.Name == name);
+    if (strategy == null)
+        return Results.Json(new { error = $"Пара {spot} не найдена" }, statusCode: 404);
+    
+    strategy.BaseLots = lots;
+    Console.WriteLine($"[ARB] {name}: лоты = {lots}");
+    return Results.Json(new { pair = spot, lots, status = "ok" });
+});
+
+app.MapGet("/arb/pairs", () =>
+{
+    if (arbLauncher == null)
+        return Results.Json(new { pairs = Array.Empty<object>() });
+    
+    var pairs = arbLauncher.Portfolio.Strategies.Values.Select(s => new
+    {
+        name = s.Name,
+        spot = s.SpotTicker,
+        futures = s.FuturesTicker,
+        lots = s.BaseLots,
+        zScore = Math.Round(s.LastZScore, 2),
+        basisAnnual = Math.Round(s.LastBasisAnnual, 1),
+        isOpen = s.CurrentPosition.IsOpen,
+        posDirection = s.CurrentPosition.Direction.ToString(),
+        posLots = s.CurrentPosition.Lots,
+        pnl = Math.Round(s.TotalPnL, 0),
+        trades = s.TotalTrades,
+        winRate = s.TotalTrades > 0 ? Math.Round(s.WinRate, 0) : 0,
+        mode = s.Mode.ToString()
+    }).ToArray();
+    
+    return Results.Json(new { pairs });
+});
+
 Console.WriteLine($"═══════════════════════════════════════════");
 Console.WriteLine($"  OpenMarketflow Trading Server");
 Console.WriteLine($"  SignalR Hub: http://0.0.0.0:{port}/trading");
