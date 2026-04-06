@@ -1,410 +1,263 @@
-# ═══════════════════════════════════════════════════════════════
-#  Арбитражный робот для Альфа-Директ 5 (WebSocket PRO API)
-#  Запуск: powershell -ExecutionPolicy Bypass -File arb_robot.ps1
-#  Требование: терминал Альфа-Директ 5 запущен и авторизован
-# ═══════════════════════════════════════════════════════════════
+# Arbitrage Robot for Alfa-Direct 5 (WebSocket PRO API)
+# Run: powershell -ExecutionPolicy Bypass -File arb_robot.ps1
+# Requires: Alfa-Direct 5 terminal running and authorized
 
-# === НАСТРОЙКИ (МЕНЯЙ ПОД СЕБЯ) ===
-$SPOT_TICKER  = "SBER"          # Акция
-$FUT_TICKER   = "SBRF"          # Фьючерс (ищем по тикеру)
-$WINDOW       = 15              # Окно Z-score (количество наблюдений)
-$ENTRY_Z      = 1.0             # Z-score порог входа
-$EXIT_Z       = 0.0             # Z-score порог выхода
-$STOP_Z       = 3.5             # Z-score стоп
-$SPOT_LOTS    = 100             # Лоты акций (в штуках)
-$FUT_LOTS     = 1               # Контракты фьючерса
-$LOT_SIZE     = 100             # Акций в 1 контракте фьючерса
-$CHECK_INTERVAL = 30            # Секунд между проверками
-$DRY_RUN      = $true           # $true = только смотрим, $false = торгуем
+# === SETTINGS ===
+$SPOT_TICKER  = "SBER"
+$FUT_TICKER   = "SBRF"
+$WINDOW       = 15
+$ENTRY_Z      = 1.0
+$EXIT_Z       = 0.0
+$STOP_Z       = 3.5
+$SPOT_LOTS    = 100
+$FUT_LOTS     = 1
+$LOT_SIZE     = 100
+$CHECK_SEC    = 30
+$DRY_RUN      = $true
 
-# === WebSocket ===
 $WS_URL = "ws://127.0.0.1:3366/router/"
 $ws = $null
-$requestId = 0
-$responses = @{}
-$subscriptionData = @{}
-$connected = $false
+$rid = 0
+$resp = @{}
+$sdata = @{}
+$position = "NONE"
+$bh = [System.Collections.ArrayList]::new()
+$spotIdFi=0; $futIdFi=0; $spotIdObj=0; $futIdObj=0; $spotBoard=0; $futBoard=0
+$idAcc=0; $idSub=0; $idRaz=0; $idRazF=0; $totalPnL=0; $trades=0
 
-# Состояние стратегии
-$position = "NONE"  # NONE, LONG_SPREAD, SHORT_SPREAD
-$basisHistory = [System.Collections.ArrayList]::new()
-$spotIdFi = 0
-$futIdFi = 0
-$spotIdObject = 0
-$futIdObject = 0
-$spotIdMarketBoard = 0
-$futIdMarketBoard = 0
-$idAccount = 0
-$idSubAccount = 0
-$idRazdel = 0
-$idRazdelForts = 0
-$totalPnL = 0
-$trades = 0
+function L($m,$c="White"){Write-Host "[$((Get-Date).ToString('HH:mm:ss'))] $m" -F $c}
+function NI{$script:rid++;return "$($script:rid)"}
 
-function Log($msg, $color = "White") {
-    $ts = Get-Date -Format "HH:mm:ss"
-    Write-Host "[$ts] $msg" -ForegroundColor $color
+function SW($o){
+    if($ws.State-ne'Open'){return}
+    $j=$o|ConvertTo-Json -Compress -Depth 5
+    $b=[Text.Encoding]::UTF8.GetBytes($j)
+    $ws.SendAsync([ArraySegment[byte]]::new($b),[Net.WebSockets.WebSocketMessageType]::Text,$true,[Threading.CancellationToken]::None).Wait()
 }
 
-function NextId { $script:requestId++; return "$($script:requestId)" }
-
-function SendWs($obj) {
-    if ($ws.State -ne 'Open') { return }
-    $json = $obj | ConvertTo-Json -Compress -Depth 5
-    $bytes = [System.Text.Encoding]::UTF8.GetBytes($json)
-    $segment = [System.ArraySegment[byte]]::new($bytes)
-    $ws.SendAsync($segment, [System.Net.WebSockets.WebSocketMessageType]::Text, $true, [System.Threading.CancellationToken]::None).Wait()
-}
-
-function SendRequest($channel, $payload, $timeoutSec = 10) {
-    $id = NextId
-    $payloadJson = $payload | ConvertTo-Json -Compress -Depth 5
-    SendWs @{ Command = "request"; Channel = $channel; Id = $id; Payload = $payloadJson }
-    
-    $deadline = (Get-Date).AddSeconds($timeoutSec)
-    while ((Get-Date) -lt $deadline) {
-        ReceiveMessages
-        if ($responses.ContainsKey($id)) {
-            $result = $responses[$id]
-            $responses.Remove($id)
-            return $result
-        }
-        Start-Sleep -Milliseconds 200
+function SR($ch,$pl,$t=10){
+    $id=NI
+    $pj=$pl|ConvertTo-Json -Compress -Depth 5
+    SW @{Command="request";Channel=$ch;Id=$id;Payload=$pj}
+    $dl=(Get-Date).AddSeconds($t)
+    while((Get-Date)-lt$dl){
+        RM
+        if($resp.ContainsKey($id)){$r=$resp[$id];$resp.Remove($id);return $r}
+        Start-Sleep -M 200
     }
     return $null
 }
 
-function ReceiveMessages {
-    $buffer = [byte[]]::new(65536)
-    while ($ws.State -eq 'Open') {
-        $segment = [System.ArraySegment[byte]]::new($buffer)
-        $cts = [System.Threading.CancellationTokenSource]::new(100)
-        try {
-            $result = $ws.ReceiveAsync($segment, $cts.Token).GetAwaiter().GetResult()
-            if ($result.MessageType -eq 'Text') {
-                $text = [System.Text.Encoding]::UTF8.GetString($buffer, 0, $result.Count)
-                HandleMessage $text
+function RM{
+    $buf=[byte[]]::new(65536)
+    while($ws.State-eq'Open'){
+        $seg=[ArraySegment[byte]]::new($buf)
+        $cts=[Threading.CancellationTokenSource]::new(100)
+        try{
+            $r=$ws.ReceiveAsync($seg,$cts.Token).GetAwaiter().GetResult()
+            if($r.MessageType-eq'Text'){
+                $txt=[Text.Encoding]::UTF8.GetString($buf,0,$r.Count)
+                HM $txt
             }
-        } catch {
-            break  # таймаут — нет сообщений
-        } finally {
-            $cts.Dispose()
-        }
+        }catch{break}finally{$cts.Dispose()}
     }
 }
 
-function HandleMessage($raw) {
-    $msg = $raw | ConvertFrom-Json
-    $command = $msg.Command
-    $channel = $msg.Channel
-    $id = $msg.Id
-    
-    $payload = $null
-    if ($msg.Payload) {
-        try { $payload = $msg.Payload | ConvertFrom-Json } catch {}
+function HM($raw){
+    $m=$raw|ConvertFrom-Json
+    $cmd=$m.Command;$ch=$m.Channel;$id=$m.Id
+    $pl=$null
+    if($m.Payload){try{$pl=$m.Payload|ConvertFrom-Json}catch{}}
+    if($cmd-eq"response"-and$id-and$pl){
+        $resp[$id]=$pl
+        if($pl.Data){$sdata[$pl.Type]=$pl.Data;PD $pl.Type $pl.Data}
     }
-    
-    # Ответ на запрос
-    if ($command -eq "response" -and $id -and $payload) {
-        $responses[$id] = $payload
-        $type = $payload.Type
-        if ($payload.Data) {
-            $subscriptionData[$type] = $payload.Data
-            ProcessData $type $payload.Data
-        }
-    }
-    
-    # Broadcast (обновления)
-    if ($command -eq "broadcast" -and $payload) {
-        $type = $payload.Type
-        if ($payload.Updated) {
-            ProcessData $type $payload.Updated
-        }
-    }
-    
-    # Состояние терминала
-    if ($channel -eq "#ConnectionState.Bus" -and $payload) {
-        $auth = $payload.States.User.AuthStatus
-        $login = $payload.States.User.Login
-        if ($auth -eq 2) { $script:connected = $true }
+    if($cmd-eq"broadcast"-and$pl){
+        if($pl.Updated){PD $pl.Type $pl.Updated}
     }
 }
 
-function ProcessData($type, $data) {
-    switch ($type) {
-        "ClientAccountEntity" {
-            foreach ($item in $data) {
-                $script:idAccount = $item.IdAccount
-                Log "  Счёт: $($item.IdAccount)" Cyan
+function PD($type,$data){
+    switch($type){
+        "ClientAccountEntity"{foreach($i in $data){$script:idAcc=$i.IdAccount;L "  Account: $($i.IdAccount)" Cyan}}
+        "ClientSubAccountEntity"{foreach($i in $data){$script:idSub=$i.IdSubAccount;L "  SubAccount: $($i.IdSubAccount)" Cyan}}
+        "SubAccountRazdelEntity"{
+            foreach($i in $data){
+                if($i.RCode-eq"MICEX"-or($i.IdRazdelGroup-eq1-and$i.RCode-eq"ALFA")){$script:idRaz=$i.IdRazdel}
+                if($i.RCode-eq"FORTS"){$script:idRazF=$i.IdRazdel}
             }
         }
-        "ClientSubAccountEntity" {
-            foreach ($item in $data) {
-                $script:idSubAccount = $item.IdSubAccount
-                Log "  Субсчёт: $($item.IdSubAccount)" Cyan
-            }
-        }
-        "SubAccountRazdelEntity" {
-            foreach ($item in $data) {
-                $group = $item.IdRazdelGroup
-                $rcode = $item.RCode
-                if ($rcode -eq "MICEX" -or ($group -eq 1 -and $rcode -eq "ALFA")) {
-                    $script:idRazdel = $item.IdRazdel
+        "AssetInfoEntity"{
+            foreach($i in $data){
+                $t=$i.Ticker
+                if($t-eq$SPOT_TICKER){
+                    $script:spotIdObj=$i.IdObject
+                    $ins=$i.Instruments|Where-Object{$_.IsLiquid}|Select-Object -First 1
+                    if(-not$ins){$ins=$i.Instruments|Select-Object -First 1}
+                    if($ins){$script:spotIdFi=$ins.IdFi;$script:spotBoard=$ins.IdMarketBoard}
+                    L "  SPOT: $t IdObj=$($i.IdObject) IdFi=$($script:spotIdFi)" Green
                 }
-                if ($rcode -eq "FORTS") {
-                    $script:idRazdelForts = $item.IdRazdel
-                }
-            }
-        }
-        "AssetInfoEntity" {
-            foreach ($item in $data) {
-                $ticker = $item.Ticker
-                if ($ticker -eq $SPOT_TICKER) {
-                    $script:spotIdObject = $item.IdObject
-                    $instr = $item.Instruments | Where-Object { $_.IsLiquid } | Select-Object -First 1
-                    if (-not $instr) { $instr = $item.Instruments | Select-Object -First 1 }
-                    if ($instr) {
-                        $script:spotIdFi = $instr.IdFi
-                        $script:spotIdMarketBoard = $instr.IdMarketBoard
-                    }
-                    Log "  СПОТ: $ticker IdObj=$($item.IdObject) IdFi=$($script:spotIdFi) Board=$($script:spotIdMarketBoard)" Green
-                }
-                if ($ticker -like "$FUT_TICKER*") {
-                    $script:futIdObject = $item.IdObject
-                    $instr = $item.Instruments | Where-Object { $_.IsLiquid } | Select-Object -First 1
-                    if (-not $instr) { $instr = $item.Instruments | Select-Object -First 1 }
-                    if ($instr) {
-                        $script:futIdFi = $instr.IdFi
-                        $script:futIdMarketBoard = $instr.IdMarketBoard
-                    }
-                    Log "  ФЬЮЧЕРС: $ticker IdObj=$($item.IdObject) IdFi=$($script:futIdFi) Board=$($script:futIdMarketBoard)" Yellow
+                if($t-like"$FUT_TICKER*"){
+                    $script:futIdObj=$i.IdObject
+                    $ins=$i.Instruments|Where-Object{$_.IsLiquid}|Select-Object -First 1
+                    if(-not$ins){$ins=$i.Instruments|Select-Object -First 1}
+                    if($ins){$script:futIdFi=$ins.IdFi;$script:futBoard=$ins.IdMarketBoard}
+                    L "  FUT:  $t IdObj=$($i.IdObject) IdFi=$($script:futIdFi)" Yellow
                 }
             }
         }
     }
 }
 
-function GetPrice($idFi) {
-    # Подписка + получение
-    SendWs @{ Command = "listen"; Channel = "#Data.Bus.FinInfoLastEntity" }
-    $resp = SendRequest "#Data.Query" @{ Type = "FinInfoLastEntity"; Keys = @($idFi); Init = $true }
-    if ($resp -and $resp.Data) {
-        $fi = $resp.Data | Where-Object { $_.IdFi -eq $idFi } | Select-Object -First 1
-        if ($fi) { return $fi.Last }
+function GP($idFi){
+    SW @{Command="listen";Channel="#Data.Bus.FinInfoLastEntity"}
+    $r=SR "#Data.Query" @{Type="FinInfoLastEntity";Keys=@($idFi);Init=$true}
+    if($r-and$r.Data){
+        $fi=$r.Data|Where-Object{$_.IdFi-eq$idFi}|Select-Object -First 1
+        if($fi){return $fi.Last}
     }
     return 0
 }
 
-function PlaceOrder($idObject, $idMarketBoard, $buySell, $quantity, $comment, $isSpot) {
-    $razdel = if ($isSpot) { $idRazdel } else { $idRazdelForts }
-    $group = if ($isSpot) { 1 } else { 4 }  # Stocks / Futures
-    
-    # Ищем AllowedOrderParams (рыночная заявка)
-    $idAllowed = 0
-    if ($subscriptionData.ContainsKey("AllowedOrderParamEntity")) {
-        foreach ($p in $subscriptionData["AllowedOrderParamEntity"]) {
-            if ($p.IdObjectGroup -eq $group -and $p.IdMarketBoard -eq $idMarketBoard -and $p.IdOrderType -eq 1 -and $p.IdDocumentType -eq 1) {
-                $idAllowed = $p.IdAllowedOrderParams
-                break
+function PO($idObj,$board,$bs,$qty,$cmt,$isSpot){
+    $raz=if($isSpot){$idRaz}else{$idRazF}
+    $grp=if($isSpot){1}else{4}
+    $idA=0
+    if($sdata.ContainsKey("AllowedOrderParamEntity")){
+        foreach($p in $sdata["AllowedOrderParamEntity"]){
+            if($p.IdObjectGroup-eq$grp-and$p.IdMarketBoard-eq$board-and$p.IdOrderType-eq1-and$p.IdDocumentType-eq1){
+                $idA=$p.IdAllowedOrderParams;break
             }
         }
     }
-    
-    $order = @{
-        IdAccount = $idAccount
-        IdSubAccount = $idSubAccount
-        IdRazdel = $razdel
-        IdPriceControlType = 3
-        IdObject = $idObject
-        BuySell = $buySell  # 1=buy, -1=sell
-        Quantity = $quantity
-        Comment = $comment
-        IdAllowedOrderParams = $idAllowed
+    $ord=@{IdAccount=$idAcc;IdSubAccount=$idSub;IdRazdel=$raz;IdPriceControlType=3;IdObject=$idObj;BuySell=$bs;Quantity=$qty;Comment=$cmt;IdAllowedOrderParams=$idA}
+    if($DRY_RUN){
+        $d=if($bs-eq1){"BUY"}else{"SELL"}
+        L "  [DRY] $d $qty pcs obj=$idObj allowed=$idA raz=$raz" Magenta
+        return @{ResponseStatus=0}
     }
-    
-    if ($DRY_RUN) {
-        $dir = if ($buySell -eq 1) { "BUY" } else { "SELL" }
-        Log "  [DRY RUN] $dir $quantity шт obj=$idObject allowed=$idAllowed razdel=$razdel" Magenta
-        return @{ ResponseStatus = 0; DryRun = $true }
-    }
-    
-    $resp = SendRequest "#Order.Enter.Query" $order 15
-    return $resp
+    return SR "#Order.Enter.Query" $ord 15
 }
 
-# ═══════════════════════════════════════════════════════════════
-#  MAIN
-# ═══════════════════════════════════════════════════════════════
+# === MAIN ===
+L "=======================================" Cyan
+L "  ARB ROBOT v1.0" Cyan
+L "  Pair: $SPOT_TICKER / $FUT_TICKER" Cyan
+L "  Z: entry=$ENTRY_Z exit=$EXIT_Z stop=$STOP_Z" Cyan
+L "  Lots: spot=$SPOT_LOTS fut=$FUT_LOTS" Cyan
+$mt=if($DRY_RUN){"DRY RUN"}else{"LIVE"}
+$mc=if($DRY_RUN){"Yellow"}else{"Red"}
+L "  Mode: $mt" $mc
+L "=======================================" Cyan
 
-Log "═══════════════════════════════════════════════" Cyan
-Log "  АРБИТРАЖНЫЙ РОБОТ v1.0" Cyan
-Log "  Пара: $SPOT_TICKER / $FUT_TICKER" Cyan
-Log "  Z-score: вход=$ENTRY_Z выход=$EXIT_Z стоп=$STOP_Z" Cyan
-Log "  Лоты: спот=$SPOT_LOTS фьючерс=$FUT_LOTS" Cyan
-Log "  Режим: $(if ($DRY_RUN) {'БУМАЖНАЯ ТОРГОВЛЯ'} else {'РЕАЛЬНАЯ ТОРГОВЛЯ'})" $(if ($DRY_RUN) {'Yellow'} else {'Red'})
-Log "═══════════════════════════════════════════════" Cyan
-
-# 1. Подключение
-Log "🔌 Подключение к ws://127.0.0.1:3366/router/..."
-$ws = [System.Net.WebSockets.ClientWebSocket]::new()
-try {
-    $ws.ConnectAsync([Uri]$WS_URL, [System.Threading.CancellationToken]::None).Wait()
-    Log "✅ WebSocket подключён!" Green
-} catch {
-    Log "❌ Не удалось подключиться. Терминал v5 запущен?" Red
-    Read-Host "Нажмите Enter"
+L "Connecting to $WS_URL ..."
+$ws=[Net.WebSockets.ClientWebSocket]::new()
+try{
+    $ws.ConnectAsync([Uri]$WS_URL,[Threading.CancellationToken]::None).Wait()
+    L "OK: WebSocket connected!" Green
+}catch{
+    L "FAIL: Cannot connect. Is terminal v5 running?" Red
+    Read-Host "Press Enter"
     exit
 }
 
-# 2. Подписки
-Log "📡 Подписка на данные..."
-SendWs @{ Command = "listen"; Channel = "#ConnectionState.Bus" }
-SendWs @{ Command = "listen"; Channel = "#Data.Bus.AssetInfoEntity" }
-SendWs @{ Command = "listen"; Channel = "#Data.Bus.ClientAccountEntity" }
-SendWs @{ Command = "listen"; Channel = "#Data.Bus.ClientSubAccountEntity" }
-SendWs @{ Command = "listen"; Channel = "#Data.Bus.SubAccountRazdelEntity" }
-SendWs @{ Command = "listen"; Channel = "#Data.Bus.AllowedOrderParamEntity" }
-SendWs @{ Command = "listen"; Channel = "#Data.Bus.OrderEntity" }
+L "Subscribing..."
+SW @{Command="listen";Channel="#ConnectionState.Bus"}
+SW @{Command="listen";Channel="#Data.Bus.AssetInfoEntity"}
+SW @{Command="listen";Channel="#Data.Bus.ClientAccountEntity"}
+SW @{Command="listen";Channel="#Data.Bus.ClientSubAccountEntity"}
+SW @{Command="listen";Channel="#Data.Bus.SubAccountRazdelEntity"}
+SW @{Command="listen";Channel="#Data.Bus.AllowedOrderParamEntity"}
+SW @{Command="listen";Channel="#Data.Bus.OrderEntity"}
 
-# Запрашиваем данные
-SendRequest "#Data.Query" @{ Type = "AssetInfoEntity"; Init = $true } 15 | Out-Null
-SendRequest "#Data.Query" @{ Type = "ClientAccountEntity"; Init = $true } 5 | Out-Null
-SendRequest "#Data.Query" @{ Type = "ClientSubAccountEntity"; Init = $true } 5 | Out-Null
-SendRequest "#Data.Query" @{ Type = "SubAccountRazdelEntity"; Init = $true } 5 | Out-Null
-SendRequest "#Data.Query" @{ Type = "AllowedOrderParamEntity"; Init = $true } 5 | Out-Null
+SR "#Data.Query" @{Type="AssetInfoEntity";Init=$true} 15|Out-Null
+SR "#Data.Query" @{Type="ClientAccountEntity";Init=$true} 5|Out-Null
+SR "#Data.Query" @{Type="ClientSubAccountEntity";Init=$true} 5|Out-Null
+SR "#Data.Query" @{Type="SubAccountRazdelEntity";Init=$true} 5|Out-Null
+SR "#Data.Query" @{Type="AllowedOrderParamEntity";Init=$true} 5|Out-Null
 
 Start-Sleep 3
-ReceiveMessages
+RM
 
-# 3. Проверяем что нашли инструменты
-if ($spotIdFi -eq 0) { Log "❌ Не нашёл $SPOT_TICKER! Проверь тикер." Red; Read-Host; exit }
-if ($futIdFi -eq 0) { Log "❌ Не нашёл $FUT_TICKER! Проверь тикер." Red; Read-Host; exit }
-if ($idAccount -eq 0) { Log "❌ Не получил счёт!" Red; Read-Host; exit }
+if($spotIdFi-eq0){L "FAIL: $SPOT_TICKER not found!" Red;Read-Host;exit}
+if($futIdFi-eq0){L "FAIL: $FUT_TICKER not found!" Red;Read-Host;exit}
+if($idAcc-eq0){L "FAIL: No account!" Red;Read-Host;exit}
 
-Log "" 
-Log "═══ ГОТОВ К РАБОТЕ ═══" Green
-Log "  Спот: $SPOT_TICKER IdFi=$spotIdFi IdObj=$spotIdObject"
-Log "  Фьючерс: $FUT_TICKER IdFi=$futIdFi IdObj=$futIdObject"
-Log "  Счёт: $idAccount Субсчёт: $idSubAccount"
-Log "  Раздел РЦБ: $idRazdel ФОРТС: $idRazdelForts"
-Log ""
+L ""
+L "=== READY ===" Green
+L "  Spot: $SPOT_TICKER IdFi=$spotIdFi IdObj=$spotIdObj"
+L "  Fut:  $FUT_TICKER IdFi=$futIdFi IdObj=$futIdObj"
+L "  Acc=$idAcc Sub=$idSub RazRCB=$idRaz RazFORTS=$idRazF"
+L ""
 
-# 4. Главный цикл
-$iteration = 0
-while ($true) {
-    $iteration++
-    ReceiveMessages
+$iter=0
+while($true){
+    $iter++
+    RM
+    $sp=GP $spotIdFi
+    $fp=GP $futIdFi
+    if($sp-le0-or$fp-le0){L "[#$iter] No prices: spot=$sp fut=$fp" Yellow;Start-Sleep $CHECK_SEC;continue}
     
-    # Получаем цены
-    $spotPrice = GetPrice $spotIdFi
-    $futPrice = GetPrice $futIdFi
+    $bPct=($fp/($sp*$LOT_SIZE)-1)*100
+    $bAnn=$bPct*365/60
+    [void]$bh.Add($bAnn)
+    if($bh.Count-gt$WINDOW){$bh.RemoveAt(0)}
     
-    if ($spotPrice -le 0 -or $futPrice -le 0) {
-        Log "[#$iteration] Нет цен: спот=$spotPrice фьючерс=$futPrice" Yellow
-        Start-Sleep $CHECK_INTERVAL
-        continue
+    $z=0
+    if($bh.Count-ge$WINDOW){
+        $avg=($bh|Measure-Object -Average).Average
+        $std=[Math]::Sqrt(($bh|ForEach-Object{($_-$avg)*($_-$avg)}|Measure-Object -Sum).Sum/$WINDOW)
+        if($std-gt0.001){$z=($bAnn-$avg)/$std}
     }
     
-    # Базис (% годовых, упрощённо)
-    $basisPct = ($futPrice / ($spotPrice * $LOT_SIZE) - 1) * 100
-    $basisAnnual = $basisPct * 365 / 60  # ~60 дней до экспирации
+    $pe=switch($position){"NONE"{"  "};"LONG_SPREAD"{"LG"};"SHORT_SPREAD"{"SH"}}
+    L "[#$iter] [$pe] Spot=$([Math]::Round($sp,2)) Fut=$([Math]::Round($fp,2)) Basis=$([Math]::Round($bAnn,1))% Z=$([Math]::Round($z,2)) PnL=$totalPnL T=$trades" Cyan
     
-    # Добавляем в историю
-    [void]$basisHistory.Add($basisAnnual)
-    if ($basisHistory.Count -gt $WINDOW) { $basisHistory.RemoveAt(0) }
+    if($bh.Count-lt$WINDOW){L "  Warmup: $($bh.Count)/$WINDOW" Gray;Start-Sleep $CHECK_SEC;continue}
     
-    # Z-score
-    $zScore = 0
-    if ($basisHistory.Count -ge $WINDOW) {
-        $mean = ($basisHistory | Measure-Object -Average).Average
-        $std = [Math]::Sqrt(($basisHistory | ForEach-Object { ($_ - $mean) * ($_ - $mean) } | Measure-Object -Sum).Sum / $WINDOW)
-        if ($std -gt 0.001) { $zScore = ($basisAnnual - $mean) / $std }
-    }
-    
-    # Статус
-    $posEmoji = switch ($position) { "NONE" { "⚪" } "LONG_SPREAD" { "🟢" } "SHORT_SPREAD" { "🔴" } }
-    Log "[#$iteration] $posEmoji Спот=$([Math]::Round($spotPrice,2)) Фьюч=$([Math]::Round($futPrice,2)) Базис=$([Math]::Round($basisAnnual,1))% Z=$([Math]::Round($zScore,2)) Поз=$position PnL=$totalPnL Сделок=$trades" Cyan
-    
-    # Торговая логика
-    if ($basisHistory.Count -lt $WINDOW) {
-        Log "  Прогрев: $($basisHistory.Count)/$WINDOW" Gray
-        Start-Sleep $CHECK_INTERVAL
-        continue
-    }
-    
-    # === НЕТ ПОЗИЦИИ ===
-    if ($position -eq "NONE") {
-        if ($zScore -gt $ENTRY_Z) {
-            Log "🟢 ВХОД: LONG SPREAD (Z=$([Math]::Round($zScore,2)) > $ENTRY_Z)" Green
-            Log "  Покупаем $SPOT_LOTS шт $SPOT_TICKER + Продаём $FUT_LOTS контр $FUT_TICKER" Green
-            
-            $r1 = PlaceOrder $spotIdObject $spotIdMarketBoard 1 $SPOT_LOTS "ARB LONG SPOT" $true
-            $r2 = PlaceOrder $futIdObject $futIdMarketBoard -1 $FUT_LOTS "ARB SHORT FUT" $false
-            
-            $position = "LONG_SPREAD"
-            $entrySpot = $spotPrice
-            $entryFut = $futPrice
-            $trades++
+    if($position-eq"NONE"){
+        if($z-gt$ENTRY_Z){
+            L ">> ENTER LONG SPREAD (Z=$([Math]::Round($z,2)))" Green
+            PO $spotIdObj $spotBoard 1 $SPOT_LOTS "ARB LONG SPOT" $true|Out-Null
+            PO $futIdObj $futBoard -1 $FUT_LOTS "ARB SHORT FUT" $false|Out-Null
+            $position="LONG_SPREAD";$eSpot=$sp;$eFut=$fp;$trades++
         }
-        elseif ($zScore -lt (-$ENTRY_Z)) {
-            Log "🔴 ВХОД: SHORT SPREAD (Z=$([Math]::Round($zScore,2)) < -$ENTRY_Z)" Red
-            Log "  Продаём $SPOT_LOTS шт $SPOT_TICKER + Покупаем $FUT_LOTS контр $FUT_TICKER" Red
-            
-            $r1 = PlaceOrder $spotIdObject $spotIdMarketBoard -1 $SPOT_LOTS "ARB SHORT SPOT" $true
-            $r2 = PlaceOrder $futIdObject $futIdMarketBoard 1 $FUT_LOTS "ARB LONG FUT" $false
-            
-            $position = "SHORT_SPREAD"
-            $entrySpot = $spotPrice
-            $entryFut = $futPrice
-            $trades++
+        elseif($z-lt(-$ENTRY_Z)){
+            L ">> ENTER SHORT SPREAD (Z=$([Math]::Round($z,2)))" Red
+            PO $spotIdObj $spotBoard -1 $SPOT_LOTS "ARB SHORT SPOT" $true|Out-Null
+            PO $futIdObj $futBoard 1 $FUT_LOTS "ARB LONG FUT" $false|Out-Null
+            $position="SHORT_SPREAD";$eSpot=$sp;$eFut=$fp;$trades++
         }
     }
-    # === LONG SPREAD ===
-    elseif ($position -eq "LONG_SPREAD") {
-        if ($zScore -le $EXIT_Z) {
-            $pnl = ($spotPrice - $entrySpot) * $SPOT_LOTS + ($entryFut - $futPrice) * $FUT_LOTS
-            $totalPnL += $pnl
-            Log "✅ ВЫХОД LONG SPREAD: Z=$([Math]::Round($zScore,2)) PnL=$([Math]::Round($pnl,0)) Итого=$totalPnL" Green
-            
-            PlaceOrder $spotIdObject $spotIdMarketBoard -1 $SPOT_LOTS "ARB CLOSE SPOT" $true | Out-Null
-            PlaceOrder $futIdObject $futIdMarketBoard 1 $FUT_LOTS "ARB CLOSE FUT" $false | Out-Null
-            
-            $position = "NONE"
-        }
-        elseif ($zScore -gt $STOP_Z) {
-            $pnl = ($spotPrice - $entrySpot) * $SPOT_LOTS + ($entryFut - $futPrice) * $FUT_LOTS
-            $totalPnL += $pnl
-            Log "🛑 СТОП LONG: Z=$([Math]::Round($zScore,2)) > $STOP_Z PnL=$([Math]::Round($pnl,0))" Red
-            
-            PlaceOrder $spotIdObject $spotIdMarketBoard -1 $SPOT_LOTS "ARB STOP SPOT" $true | Out-Null
-            PlaceOrder $futIdObject $futIdMarketBoard 1 $FUT_LOTS "ARB STOP FUT" $false | Out-Null
-            
-            $position = "NONE"
+    elseif($position-eq"LONG_SPREAD"){
+        if($z-le$EXIT_Z){
+            $pnl=($sp-$eSpot)*$SPOT_LOTS+($eFut-$fp)*$FUT_LOTS;$totalPnL+=$pnl
+            L "<< EXIT LONG Z=$([Math]::Round($z,2)) PnL=$([Math]::Round($pnl,0)) Total=$totalPnL" Green
+            PO $spotIdObj $spotBoard -1 $SPOT_LOTS "ARB CLOSE" $true|Out-Null
+            PO $futIdObj $futBoard 1 $FUT_LOTS "ARB CLOSE" $false|Out-Null
+            $position="NONE"
+        }elseif($z-gt$STOP_Z){
+            $pnl=($sp-$eSpot)*$SPOT_LOTS+($eFut-$fp)*$FUT_LOTS;$totalPnL+=$pnl
+            L "!! STOP LONG Z=$([Math]::Round($z,2)) PnL=$([Math]::Round($pnl,0))" Red
+            PO $spotIdObj $spotBoard -1 $SPOT_LOTS "ARB STOP" $true|Out-Null
+            PO $futIdObj $futBoard 1 $FUT_LOTS "ARB STOP" $false|Out-Null
+            $position="NONE"
         }
     }
-    # === SHORT SPREAD ===
-    elseif ($position -eq "SHORT_SPREAD") {
-        if ($zScore -ge (-$EXIT_Z)) {
-            $pnl = ($entrySpot - $spotPrice) * $SPOT_LOTS + ($futPrice - $entryFut) * $FUT_LOTS
-            $totalPnL += $pnl
-            Log "✅ ВЫХОД SHORT SPREAD: Z=$([Math]::Round($zScore,2)) PnL=$([Math]::Round($pnl,0)) Итого=$totalPnL" Green
-            
-            PlaceOrder $spotIdObject $spotIdMarketBoard 1 $SPOT_LOTS "ARB CLOSE SPOT" $true | Out-Null
-            PlaceOrder $futIdObject $futIdMarketBoard -1 $FUT_LOTS "ARB CLOSE FUT" $false | Out-Null
-            
-            $position = "NONE"
-        }
-        elseif ($zScore -lt (-$STOP_Z)) {
-            $pnl = ($entrySpot - $spotPrice) * $SPOT_LOTS + ($futPrice - $entryFut) * $FUT_LOTS
-            $totalPnL += $pnl
-            Log "🛑 СТОП SHORT: Z=$([Math]::Round($zScore,2)) < -$STOP_Z PnL=$([Math]::Round($pnl,0))" Red
-            
-            PlaceOrder $spotIdObject $spotIdMarketBoard 1 $SPOT_LOTS "ARB CLOSE SPOT" $true | Out-Null
-            PlaceOrder $futIdObject $futIdMarketBoard -1 $FUT_LOTS "ARB CLOSE FUT" $false | Out-Null
-            
-            $position = "NONE"
+    elseif($position-eq"SHORT_SPREAD"){
+        if($z-ge(-$EXIT_Z)){
+            $pnl=($eSpot-$sp)*$SPOT_LOTS+($fp-$eFut)*$FUT_LOTS;$totalPnL+=$pnl
+            L "<< EXIT SHORT Z=$([Math]::Round($z,2)) PnL=$([Math]::Round($pnl,0)) Total=$totalPnL" Green
+            PO $spotIdObj $spotBoard 1 $SPOT_LOTS "ARB CLOSE" $true|Out-Null
+            PO $futIdObj $futBoard -1 $FUT_LOTS "ARB CLOSE" $false|Out-Null
+            $position="NONE"
+        }elseif($z-lt(-$STOP_Z)){
+            $pnl=($eSpot-$sp)*$SPOT_LOTS+($fp-$eFut)*$FUT_LOTS;$totalPnL+=$pnl
+            L "!! STOP SHORT Z=$([Math]::Round($z,2)) PnL=$([Math]::Round($pnl,0))" Red
+            PO $spotIdObj $spotBoard 1 $SPOT_LOTS "ARB STOP" $true|Out-Null
+            PO $futIdObj $futBoard -1 $FUT_LOTS "ARB STOP" $false|Out-Null
+            $position="NONE"
         }
     }
-    
-    Start-Sleep $CHECK_INTERVAL
+    Start-Sleep $CHECK_SEC
 }
