@@ -46,7 +46,7 @@ namespace HedgeFund.AlfaBridge
                 Log($"[ERROR] {error}");
             };
 
-            // Логин/пароль: из аргументов, переменных окружения или ввод с клавиатуры
+            // Логин/пароль из аргументов или файла alfa_creds.txt
             string login = "";
             string password = "";
             
@@ -54,24 +54,35 @@ namespace HedgeFund.AlfaBridge
             {
                 login = args[0];
                 password = args[1];
-                Log($"   Логин из аргументов: {login}");
             }
             else
             {
-                login = Environment.GetEnvironmentVariable("ALFA_LOGIN") ?? "";
-                password = Environment.GetEnvironmentVariable("ALFA_PASSWORD") ?? "";
+                // Читаем из alfa_creds.txt рядом с exe
+                var credsPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "alfa_creds.txt");
+                if (!File.Exists(credsPath))
+                    credsPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Desktop), "alfa_creds.txt");
                 
-                if (string.IsNullOrEmpty(login))
+                if (File.Exists(credsPath))
                 {
-                    Console.Write("Логин Альфа-Директ: ");
-                    login = Console.ReadLine()?.Trim() ?? "";
-                    Console.Write("Пароль: ");
-                    password = ReadPassword();
-                    Console.WriteLine();
+                    var lines = File.ReadAllLines(credsPath);
+                    if (lines.Length >= 2)
+                    {
+                        login = lines[0].Trim();
+                        password = lines[1].Trim();
+                        Log($"   Логин из {credsPath}: {login}");
+                    }
                 }
                 else
                 {
-                    Log($"   Логин из переменной ALFA_LOGIN: {login}");
+                    Log("");
+                    Log("!!! Создайте файл alfa_creds.txt на рабочем столе:");
+                    Log("    Строка 1: логин");
+                    Log("    Строка 2: пароль");
+                    Log($"    Путь: {Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Desktop), "alfa_creds.txt")}");
+                    Log("");
+                    Log("    Или запустите: AlfaBridge.exe логин пароль");
+                    Log("");
+                    Log("Пробую подключиться без креденшлов (через терминал)...");
                 }
             }
             
