@@ -47,16 +47,64 @@ app.MapGet("/health", () => Results.Ok(new { status = "ok", time = DateTime.UtcN
 // === REST API для управления ===
 app.MapGet("/status", (TradingService svc) => Results.Ok(svc.GetStatus()));
 
-app.MapPost("/connect-broker", async (TradingService svc) =>
+app.MapPost("/connect-broker", async (TradingService svc, HttpRequest req) =>
 {
-    var token = Environment.GetEnvironmentVariable("FINAM_TOKEN");
+    // Токен: из тела запроса (JSON {token:"..."}) или из переменной окружения
+    string? token = null;
+    try
+    {
+        using var reader = new StreamReader(req.Body);
+        var body = await reader.ReadToEndAsync();
+        if (!string.IsNullOrWhiteSpace(body))
+        {
+            var json = System.Text.Json.JsonDocument.Parse(body);
+            if (json.RootElement.TryGetProperty("token", out var t))
+                token = t.GetString();
+        }
+    } catch { }
+    
+    token ??= Environment.GetEnvironmentVariable("FINAM_TOKEN");
     if (string.IsNullOrEmpty(token))
-        return Results.BadRequest(new { error = "FINAM_TOKEN не задан" });
+        return Results.BadRequest(new { error = "Токен не передан и FINAM_TOKEN не задан" });
 
-    var success = await svc.ConnectBrokerAsync(token);
-    return success
-        ? Results.Ok(new { status = "connected", broker = "Finam" })
-        : Results.Problem("Не удалось подключиться к Finam");
+    // Сохраняем для арбитража и других сервисов
+    Environment.SetEnvironmentVariable("FINAM_TOKEN", token);
+
+    // Подключаем с таймаутом 30 сек
+    var hub = app.Services.GetRequiredService<IHubContext<TradingHub>>();
+    await hub.Clients.All.SendAsync("OnLogMessage", DateTime.UtcNow.ToString("HH:mm:ss"), "INFO", "🔌 Подключаюсь к Финам...");
+    
+    try
+    {
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+        var connectTask = svc.ConnectBrokerAsync(token);
+        var completed = await Task.WhenAny(connectTask, Task.Delay(-1, cts.Token));
+        
+        if (completed == connectTask)
+        {
+            var success = await connectTask;
+            if (success)
+            {
+                await hub.Clients.All.SendAsync("OnLogMessage", DateTime.UtcNow.ToString("HH:mm:ss"), "INFO", "✅ Подключено к Финам!");
+                return Results.Ok(new { status = "connected", broker = "Finam" });
+            }
+            else
+            {
+                await hub.Clients.All.SendAsync("OnLogMessage", DateTime.UtcNow.ToString("HH:mm:ss"), "ERROR", "❌ Не удалось подключиться");
+                return Results.BadRequest(new { error = "Подключение не удалось. Проверьте токен." });
+            }
+        }
+        else
+        {
+            await hub.Clients.All.SendAsync("OnLogMessage", DateTime.UtcNow.ToString("HH:mm:ss"), "ERROR", "❌ Таймаут подключения (30 сек). Проверьте токен.");
+            return Results.BadRequest(new { error = "Таймаут подключения 30сек. Проверьте токен и доступность Finam API." });
+        }
+    }
+    catch (Exception ex)
+    {
+        await hub.Clients.All.SendAsync("OnLogMessage", DateTime.UtcNow.ToString("HH:mm:ss"), "ERROR", $"❌ Ошибка: {ex.Message}");
+        return Results.BadRequest(new { error = ex.Message });
+    }
 });
 
 app.MapPost("/send-log", async (IHubContext<TradingHub> hub, HttpRequest req) =>
@@ -157,11 +205,25 @@ app.MapGet("/arb/status", () =>
     return Results.Ok(new { status = "ok", detail = arbLauncher.GetStatus(), connected = arbLauncher.IsConnected });
 });
 
-app.MapPost("/arb/init", (HttpRequest req) =>
+app.MapPost("/arb/init", async (HttpRequest req) =>
 {
-    var token = Environment.GetEnvironmentVariable("FINAM_TOKEN");
+    // Токен: из тела запроса или из переменной окружения
+    string? token = null;
+    try
+    {
+        using var reader = new StreamReader(req.Body);
+        var body = await reader.ReadToEndAsync();
+        if (!string.IsNullOrWhiteSpace(body))
+        {
+            var json = System.Text.Json.JsonDocument.Parse(body);
+            if (json.RootElement.TryGetProperty("token", out var t))
+                token = t.GetString();
+        }
+    } catch { }
+    
+    token ??= Environment.GetEnvironmentVariable("FINAM_TOKEN");
     if (string.IsNullOrEmpty(token))
-        return Results.BadRequest(new { error = "FINAM_TOKEN не задан" });
+        return Results.BadRequest(new { error = "Токен не передан. Подключитесь на вкладке Торговля или задайте FINAM_TOKEN" });
 
     if (arbLauncher != null)
         return Results.Ok(new { status = "already_initialized", detail = arbLauncher.GetStatus() });

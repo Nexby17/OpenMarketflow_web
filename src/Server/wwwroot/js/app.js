@@ -104,9 +104,14 @@ async function connectBroker() {
         addLog(nowTime(), 'ERROR', '⚠ Токен Финам не указан. Укажите во вкладке Настройки.');
         return;
     }
-    addLog(nowTime(), 'INFO', '🔌 Подключение к Финам...');
+    addLog(nowTime(), 'INFO', '🔌 Подключение к Финам... (ожидание до 30 сек)');
+    el('brokerStatus').textContent = '⏳ Подключаюсь...';
     try {
-        const resp = await fetch('/connect-broker', { method: 'POST' });
+        const resp = await fetch('/connect-broker', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ token })
+        });
         const data = await resp.json();
         if (resp.ok) {
             isConnected = true;
@@ -115,9 +120,11 @@ async function connectBroker() {
             addLog(nowTime(), 'INFO', `✅ ${data.broker} подключён`);
             fetchStatus();
         } else {
+            el('brokerStatus').textContent = '❌ Ошибка';
             addLog(nowTime(), 'ERROR', `❌ ${data.error || 'Не удалось подключиться'}`);
         }
     } catch (e) {
+        el('brokerStatus').textContent = '❌ Ошибка';
         addLog(nowTime(), 'ERROR', `❌ ${e.message}`);
     }
 }
@@ -505,7 +512,12 @@ function fmtPnl(n) {
 // === Arbitrage ===
 async function arbInit() {
     try {
-        const resp = await fetch('/arb/init', { method: 'POST' });
+        const token = localStorage.getItem('finamToken') || '';
+        const resp = await fetch('/arb/init', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ token })
+        });
         const data = await resp.json();
         if (resp.ok) {
             el('arbStatusText').textContent = '✅ Инициализирован';
