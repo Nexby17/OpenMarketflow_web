@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>AlfaBridge</title>
+<style>
+body{background:#1a1a2e;color:#e0e0e0;font-family:system-ui;margin:0;padding:16px}
+.card{background:#16213e;border-radius:8px;padding:12px;margin:8px 0}
+.card h3{margin:0 0 8px;color:#00d4ff}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th,td{padding:4px 8px;text-align:left;border-bottom:1px solid #2d2d44}
+th{color:#9ca3af}
+.green{color:#22c55e}.red{color:#ef4444}.accent{color:#00d4ff}
+input,button{background:#0f3460;color:#e0e0e0;border:1px solid #2d2d44;padding:6px 12px;border-radius:4px}
+button{cursor:pointer}button:hover{background:#1a4a80}
+.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.metric{background:#0f3460;padding:8px 16px;border-radius:6px;text-align:center;min-width:100px}
+.metric .val{font-size:18px;font-weight:bold}
+.metric .lbl{font-size:11px;color:#9ca3af}
+#log{background:#0a0a1a;padding:8px;font-family:monospace;font-size:11px;max-height:200px;overflow-y:auto;border-radius:4px}
+</style></head><body>
+<h2>⚡ AlfaBridge — Альфа-Директ 5</h2>
+
+<div class="row" style="margin:12px 0">
+<div class="metric"><div class="lbl">Статус</div><div class="val" id="st">—</div></div>
+<div class="metric"><div class="lbl">Логин</div><div class="val" id="login">—</div></div>
+<div class="metric"><div class="lbl">Счёт</div><div class="val" id="acc">—</div></div>
+<div class="metric"><div class="lbl">Инструментов</div><div class="val" id="assets">—</div></div>
+<div class="metric"><div class="lbl">Подпись ЭЦП</div><div class="val" id="sign">—</div></div>
+</div>
+
+<div class="card"><h3>🔍 Поиск инструментов</h3>
+<div class="row"><input id="sq" placeholder="SBER, GAZP, ROSN, SBRF..." style="width:250px" onkeyup="if(event.key==='Enter')search()"><button onclick="search()">Найти</button>
+<button onclick="searchAll()">Найти всё для арбитража</button></div>
+<table><thead><tr><th>Тикер</th><th>Название</th><th>Группа</th><th>IdObject</th><th>IdFi</th><th>Рынок</th><th>Ликвид</th><th></th></tr></thead><tbody id="sr"></tbody></table>
+</div>
+
+<div class="card"><h3>📊 Котировки (обновляются автоматически)</h3>
+<table><thead><tr><th>Тикер</th><th>Last</th><th>Bid</th><th>Ask</th><th>High</th><th>Low</th><th>Volume</th></tr></thead><tbody id="qt"></tbody></table>
+</div>
+
+<div class="card"><h3>💼 Позиции</h3><div id="pos"><i>Загрузка...</i></div></div>
+<div class="card"><h3>📋 Баланс</h3><div id="bal"><i>Загрузка...</i></div></div>
+<div class="card"><h3>📝 Заявки</h3><div id="ord"><i>Загрузка...</i></div></div>
+<div class="card"><h3>Лог</h3><div id="log"></div></div>
+
+<script>
+var G={1:'Акции',2:'Облиг.',3:'Фонды',4:'Фьючерсы',5:'Опционы',7:'Валюта'};
+var quotes={};
+
+async function load(){
+ try{
+  var r=await(await fetch('/status')).json();
+  document.getElementById('st').innerHTML=r.authorized?'<span class="green">✅ Авторизован</span>':'<span class="red">❌</span>';
+  document.getElementById('acc').textContent=r.account||'—';
+  document.getElementById('assets').textContent=r.assetsLoaded||0;
+  document.getElementById('sign').textContent=r.authorized?'✅ Готова':'❌ Нет';
+  loadPos();loadBal();loadOrd();refreshQ();loadLog();
+ }catch(e){document.getElementById('st').innerHTML='<span class="red">❌ '+e.message+'</span>';}
+}
+
+async function search(){
+ var q=document.getElementById('sq').value.trim();
+ if(!q)return;
+ var r=await(await fetch('/instruments?name='+encodeURIComponent(q))).json();
+ renderSearch(r);
+}
+
+async function searchAll(){
+ var tickers=['SBER','GAZP','ROSN','TATN','ALRS','SBRF','GAZR','ROSN','TATN','ALRS'];
+ var all=[];
+ for(var t of tickers){
+  try{
+   var r=await(await fetch('/instruments?name='+t)).json();
+   if(Array.isArray(r))all=all.concat(r);
+  }catch{}
+ }
+ // Убираем дубли
+ var seen={};
+ all=all.filter(function(a){if(seen[a.ticker])return false;seen[a.ticker]=1;return true;});
+ // Сортируем: акции и фьючерсы первые
+ all.sort(function(a,b){
+  var ga=a.idObjectGroup===1||a.idObjectGroup===4?0:1;
+  var gb=b.idObjectGroup===1||b.idObjectGroup===4?0:1;
+  return ga-gb;
+ });
+ renderSearch(all);
+}
+
+function renderSearch(r){
+ if(!Array.isArray(r)){document.getElementById('sr').innerHTML='<tr><td colspan=8>'+JSON.stringify(r)+'</td></tr>';return;}
+ document.getElementById('sr').innerHTML=r.map(function(a){
+  var instrs=a.instruments||[];
+  var li=instrs.find(function(x){return x.isLiquid})||instrs[0]||{};
+  return '<tr><td><b>'+a.ticker+'</b></td><td>'+a.name+'</td><td>'+(G[a.idObjectGroup]||a.idObjectGroup)+
+   '</td><td>'+a.idObject+'</td><td><b>'+
+   instrs.map(function(i){return i.idFi+'('+i.rcode+(i.isLiquid?' ✅':'')+')';}).join(', ')+
+   '</b></td><td>'+(li.rcode||'')+'</td><td>'+(li.isLiquid?'✅':'')+'</td><td>'+
+   '<button onclick="getQ('+li.idFi+',\''+a.ticker+'\')">📊</button></td></tr>';
+ }).join('');
+}
+
+async function getQ(idFi,t){
+ var r=await(await fetch('/fininfo?idFi='+idFi)).json();
+ quotes[t]={last:r.last,bid:r.bid,ask:r.ask,high:r.high,low:r.low,volume:r.volume,t:t,idFi:idFi};
+ renderQ();
+}
+function renderQ(){
+ document.getElementById('qt').innerHTML=Object.keys(quotes).map(function(k){
+  var q=quotes[k];
+  return '<tr><td><b>'+q.t+'</b></td><td class="accent">'+(q.last||'—')+'</td><td class="green">'+
+   (q.bid||'—')+'</td><td class="red">'+(q.ask||'—')+'</td><td>'+(q.high||'—')+
+   '</td><td>'+(q.low||'—')+'</td><td>'+(q.volume||'—')+'</td></tr>';
+ }).join('');
+}
+async function refreshQ(){
+ for(var k in quotes){if(quotes[k].idFi)getQ(quotes[k].idFi,k);}
+}
+
+async function loadPos(){
+ try{
+  var r=await(await fetch('/positions')).json();
+  if(Array.isArray(r)&&r.length>0){
+   var h='<table><tr><th>Инструмент</th><th>Позиция</th><th>Покупки</th><th>Продажи</th><th>PnL</th></tr>';
+   r.forEach(function(p){h+='<tr><td>'+(p.IdObject||p.idObject||'')+'</td><td>'+(p.TorgPos||p.BackPos||p.backPos||'')+'</td><td>'+(p.DailyBuyQuantity||p.buyQty||'')+'</td><td>'+(p.DailySellQuantity||p.sellQty||'')+'</td><td>'+(p.DailyPL||p.trdPL||'')+'</td></tr>';});
+   document.getElementById('pos').innerHTML=h+'</table>';
+  }else document.getElementById('pos').innerHTML='<i>Нет позиций</i>';
+ }catch(e){document.getElementById('pos').textContent='Ошибка: '+e.message;}
+}
+
+async function loadBal(){
+ try{
+  var r=await(await fetch('/balance')).json();
+  document.getElementById('bal').innerHTML='<pre>'+JSON.stringify(r,null,2)+'</pre>';
+ }catch(e){document.getElementById('bal').textContent='Ошибка: '+e.message;}
+}
+
+async function loadOrd(){
+ try{
+  var r=await(await fetch('/orders')).json();
+  if(Array.isArray(r)&&r.length>0){
+   var h='<table><tr><th>#</th><th>Инструмент</th><th>Напр.</th><th>Кол-во</th><th>Цена</th><th>Остаток</th><th>Статус</th></tr>';
+   r.forEach(function(o){
+    var dir=(o.BuySell||o.buySell||0)==1?'<span class="green">Buy</span>':'<span class="red">Sell</span>';
+    h+='<tr><td>'+(o.NumEDocument||o.numEDocument||'')+'</td><td>'+(o.IdObject||o.idObject||'')+'</td><td>'+dir+'</td><td>'+(o.Quantity||o.quantity||'')+'</td><td>'+(o.LimitPrice||o.limitPrice||o.Price||o.price||'')+'</td><td>'+(o.Rest||o.rest||'')+'</td><td>'+(o.IdOrderStatus||o.status||'')+'</td></tr>';
+   });
+   document.getElementById('ord').innerHTML=h+'</table>';
+  }else document.getElementById('ord').innerHTML='<i>Нет заявок</i>';
+ }catch(e){document.getElementById('ord').textContent='Ошибка: '+e.message;}
+}
+
+async function loadLog(){
+ try{
+  var r=await(await fetch('/log')).json();
+  if(Array.isArray(r)&&r.length>0){
+   var d=document.getElementById('log');
+   r.forEach(function(l){d.innerHTML+=l+'<br>';});
+   d.scrollTop=d.scrollHeight;
+  }
+ }catch{}
+}
+
+load();
+setInterval(load,8000);
+</script></body></html>
