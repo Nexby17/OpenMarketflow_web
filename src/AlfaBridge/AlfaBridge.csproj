@@ -24,6 +24,12 @@
     <Reference Include="ADOrder">
       <HintPath>C:\Program Files (x86)\Alfa-Direct Pro\ADOrder.dll</HintPath>
     </Reference>
+    <Reference Include="ADir.DataCollections">
+      <HintPath>C:\Program Files (x86)\Alfa-Direct Pro\ADir.DataCollections.dll</HintPath>
+    </Reference>
+    <Reference Include="ADir.NetProtocol">
+      <HintPath>C:\Program Files (x86)\Alfa-Direct Pro\ADir.NetProtocol.dll</HintPath>
+    </Reference>
   </ItemGroup>
   
   <ItemGroup>
