@@ -49,18 +49,25 @@ function SR($ch,$pl,$t=10){
 }
 
 function RM{
-    $buf=[byte[]]::new(65536)
+    $buf=[byte[]]::new(1048576)  # 1MB buffer
+    $ms=[IO.MemoryStream]::new()
     while($ws.State-eq'Open'){
-        $seg=[ArraySegment[byte]]::new($buf)
-        $cts=[Threading.CancellationTokenSource]::new(100)
+        $seg=New-Object ArraySegment[byte] -ArgumentList @(,$buf)
+        $cts=[Threading.CancellationTokenSource]::new(200)
         try{
             $r=$ws.ReceiveAsync($seg,$cts.Token).GetAwaiter().GetResult()
+            if($r.MessageType-eq'Close'){break}
             if($r.MessageType-eq'Text'){
-                $txt=[Text.Encoding]::UTF8.GetString($buf,0,$r.Count)
-                HM $txt
+                $ms.Write($buf,0,$r.Count)
+                if($r.EndOfMessage){
+                    $txt=[Text.Encoding]::UTF8.GetString($ms.ToArray())
+                    $ms.SetLength(0)
+                    if($txt){HM $txt}
+                }
             }
         }catch{break}finally{$cts.Dispose()}
     }
+    $ms.Dispose()
 }
 
 function HM($raw){
@@ -170,14 +177,23 @@ SW @{Command="listen";Channel="#Data.Bus.SubAccountRazdelEntity"}
 SW @{Command="listen";Channel="#Data.Bus.AllowedOrderParamEntity"}
 SW @{Command="listen";Channel="#Data.Bus.OrderEntity"}
 
-SR "#Data.Query" @{Type="AssetInfoEntity";Init=$true} 15|Out-Null
-SR "#Data.Query" @{Type="ClientAccountEntity";Init=$true} 5|Out-Null
-SR "#Data.Query" @{Type="ClientSubAccountEntity";Init=$true} 5|Out-Null
-SR "#Data.Query" @{Type="SubAccountRazdelEntity";Init=$true} 5|Out-Null
-SR "#Data.Query" @{Type="AllowedOrderParamEntity";Init=$true} 5|Out-Null
+# Request only what we need (not all 19K assets at once)
+# First get accounts/razdels
+$null = SR "#Data.Query" @{Type="ClientAccountEntity";Init=$true} 5
+$null = SR "#Data.Query" @{Type="ClientSubAccountEntity";Init=$true} 5
+$null = SR "#Data.Query" @{Type="SubAccountRazdelEntity";Init=$true} 5
+$null = SR "#Data.Query" @{Type="AllowedOrderParamEntity";Init=$true} 5
 
+L "Waiting for account data..."
 Start-Sleep 3
 RM
+
+# Search specific instruments by name
+L "Searching for $SPOT_TICKER..."
+$null = SR "#Data.Query" @{Type="AssetInfoEntity";Init=$true} 30
+Start-Sleep 5
+RM
+L "Assets loaded: spot=$spotIdFi fut=$futIdFi"
 
 if($spotIdFi-eq0){L "FAIL: $SPOT_TICKER not found!" Red;Read-Host;exit}
 if($futIdFi-eq0){L "FAIL: $FUT_TICKER not found!" Red;Read-Host;exit}
