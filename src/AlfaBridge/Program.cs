@@ -538,7 +538,6 @@ namespace HedgeFund.AlfaBridge
             while (_logQueue.Count > 500)
                 _logQueue.TryDequeue(out _);
         }
-    }
 
         static string ReadPassword()
         {
