@@ -46,13 +46,42 @@ namespace HedgeFund.AlfaBridge
                 Log($"[ERROR] {error}");
             };
 
+            // Логин/пароль: из аргументов, переменных окружения или ввод с клавиатуры
+            string login = "";
+            string password = "";
+            
+            if (args.Length >= 2)
+            {
+                login = args[0];
+                password = args[1];
+                Log($"   Логин из аргументов: {login}");
+            }
+            else
+            {
+                login = Environment.GetEnvironmentVariable("ALFA_LOGIN") ?? "";
+                password = Environment.GetEnvironmentVariable("ALFA_PASSWORD") ?? "";
+                
+                if (string.IsNullOrEmpty(login))
+                {
+                    Console.Write("Логин Альфа-Директ: ");
+                    login = Console.ReadLine()?.Trim() ?? "";
+                    Console.Write("Пароль: ");
+                    password = ReadPassword();
+                    Console.WriteLine();
+                }
+                else
+                {
+                    Log($"   Логин из переменной ALFA_LOGIN: {login}");
+                }
+            }
+            
             Log("🔌 Подключение к Альфа-Директ...");
-            Log("   Connect('', '') — подключаемся через запущенный терминал...");
+            Log($"   Connect('{login}', '***') — подключаемся...");
             try
             {
                 var connectThread = new Thread(() =>
                 {
-                    try { _client.Connect("", ""); }
+                    try { _client.Connect(login, password); }
                     catch (Exception ex) { Log($"[CONNECT ERROR] {ex.Message}"); }
                 });
                 connectThread.IsBackground = true;
@@ -508,6 +537,28 @@ namespace HedgeFund.AlfaBridge
             _logQueue.Enqueue(line);
             while (_logQueue.Count > 500)
                 _logQueue.TryDequeue(out _);
+        }
+    }
+
+        static string ReadPassword()
+        {
+            var sb = new StringBuilder();
+            while (true)
+            {
+                var key = Console.ReadKey(true);
+                if (key.Key == ConsoleKey.Enter) break;
+                if (key.Key == ConsoleKey.Backspace && sb.Length > 0)
+                {
+                    sb.Remove(sb.Length - 1, 1);
+                    Console.Write("\b \b");
+                }
+                else if (key.KeyChar != 0)
+                {
+                    sb.Append(key.KeyChar);
+                    Console.Write("*");
+                }
+            }
+            return sb.ToString();
         }
     }
 
