@@ -29,6 +29,22 @@ namespace HedgeFund.AlfaBridge
         static void Main(string[] args)
         {
             Console.Title = "AlfaBridge — OpenMarketflow";
+            
+            // --diag режим: полная диагностика SDK
+            if (args.Length > 0 && args[0] == "--diag")
+            {
+                string dLogin = "", dPassword = "";
+                var credsPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Desktop), "alfa_creds.txt");
+                if (File.Exists(credsPath))
+                {
+                    var lines = File.ReadAllLines(credsPath);
+                    if (lines.Length >= 2) { dLogin = lines[0].Trim(); dPassword = lines[1].Trim(); }
+                }
+                if (args.Length >= 3) { dLogin = args[1]; dPassword = args[2]; }
+                Diagnostic.Run(dLogin, dPassword);
+                return;
+            }
+            
             Log("═══════════════════════════════════════");
             Log("  AlfaBridge v1.0 — Альфа-Директ ↔ OpenMarketflow");
             Log($"  HTTP: http://localhost:{HTTP_PORT}/");
