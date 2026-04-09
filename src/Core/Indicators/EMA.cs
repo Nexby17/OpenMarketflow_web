@@ -8,6 +8,7 @@ public class EMA : IIndicator
     private readonly int _period;
     private readonly double _multiplier;
     private double _value;
+    public double Value => _value;
     private int _count;
 
     public string Name => $"EMA({_period})";

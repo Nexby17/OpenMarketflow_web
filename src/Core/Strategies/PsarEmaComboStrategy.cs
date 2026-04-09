@@ -35,6 +35,15 @@ public class PsarEmaComboStrategy : IStrategy
         public double MinProfitPerLot { get; set; } = 28;  // 35 * 0.8
         public double Commission { get; set; } = 0.60;     // RT
         public int BaseLots { get; set; } = 1;
+
+        // ATR фильтр
+        public int AtrPeriod { get; set; } = 14;
+        public double AtrFilter { get; set; } = 2.0;       // мин расстояние SAR-цена в единицах ATR
+        public bool AtrFilterEnabled { get; set; } = true;
+
+        // Динамические лоты
+        public double LotStepProfit { get; set; } = 1000.0; // руб для повышения лота
+        public int MaxDynamicLots { get; set; } = 5;
     }
 
     public enum StrategyMode { Running, Paused, Stopped }
@@ -49,6 +58,7 @@ public class PsarEmaComboStrategy : IStrategy
     private readonly EMA _emaLong;
     private readonly ParabolicSAR _sarShort;
     private readonly EMA _emaShort;
+    private readonly ATR _atr;
 
     // Позиция
     private int _posDir;              // 0=flat, 1=long, -1=short
@@ -75,6 +85,14 @@ public class PsarEmaComboStrategy : IStrategy
     public int MaxLotsEver { get; private set; }
     public int PositionDirection => _posDir;
 
+    // Динамические лоты
+    private int _currentLotLevel;
+    private double _sessionProfit;
+    private int _consecutiveLosses;
+    public int CurrentLotLevel => _currentLotLevel;
+    public double SessionProfit => _sessionProfit;
+    public int ConsecutiveLosses => _consecutiveLosses;
+
     public PsarEmaComboStrategy(Config? config = null)
     {
         Params = config ?? new Config();
@@ -82,7 +100,9 @@ public class PsarEmaComboStrategy : IStrategy
         _emaLong = new EMA(Params.L_EmaPeriod);
         _sarShort = new ParabolicSAR(Params.S_SarStart, Params.S_SarStep, Params.S_SarMax);
         _emaShort = new EMA(Params.S_EmaPeriod);
+        _atr = new ATR(Params.AtrPeriod);
         _lots = new double[Params.MaxGrid];
+        _currentLotLevel = Params.BaseLots;
     }
 
     public Signal? OnCandle(Candle candle, string ticker)
@@ -92,6 +112,7 @@ public class PsarEmaComboStrategy : IStrategy
         double emaL = _emaLong.Update(candle);
         double sarS = _sarShort.Update(candle);
         double emaS = _emaShort.Update(candle);
+        double atrVal = _atr.Update(candle);
 
         if (double.IsNaN(sarL) || double.IsNaN(emaL) || double.IsNaN(sarS) || double.IsNaN(emaS)
             || !_prevValid)
@@ -154,7 +175,7 @@ public class PsarEmaComboStrategy : IStrategy
                 {
                     Timestamp = candle.Timestamp, Ticker = ticker,
                     Direction = d == 1 ? SignalDirection.Buy : SignalDirection.Sell,
-                    Source = SignalSource.Averaging, Volume = Params.BaseLots,
+                    Source = SignalSource.Averaging, Volume = _currentLotLevel,
                     StrategyName = Name, Price = c,
                     Comment = $"SigAvg #{_sigAvgCount}"
                 };
@@ -178,7 +199,7 @@ public class PsarEmaComboStrategy : IStrategy
                     {
                         Timestamp = candle.Timestamp, Ticker = ticker,
                         Direction = d == 1 ? SignalDirection.Buy : SignalDirection.Sell,
-                        Source = SignalSource.Averaging, Volume = Params.BaseLots,
+                        Source = SignalSource.Averaging, Volume = _currentLotLevel,
                         StrategyName = Name, Price = c,
                         Comment = $"Grid lvl {_nLots}"
                     };
@@ -203,7 +224,7 @@ public class PsarEmaComboStrategy : IStrategy
                         {
                             Timestamp = candle.Timestamp, Ticker = ticker,
                             Direction = d == 1 ? SignalDirection.Sell : SignalDirection.Buy,
-                            Source = SignalSource.Exit, Volume = Params.BaseLots,
+                            Source = SignalSource.Exit, Volume = _currentLotLevel,
                             StrategyName = Name, Price = c,
                             Comment = $"Grid тейк +{levelPnl:F0}"
                         };
@@ -242,33 +263,81 @@ public class PsarEmaComboStrategy : IStrategy
         {
             if (longEntry)
             {
+                // ATR фильтр
+                if (Params.AtrFilterEnabled && !double.IsNaN(atrVal) && atrVal > 0)
+                {
+                    double dist = Math.Abs(c - sarL);
+                    if (dist < Params.AtrFilter * atrVal)
+                    {
+                        LogMsg($"[{ticker}] LONG пропущен: dist={dist:F0} < {Params.AtrFilter}*ATR={atrVal:F0}");
+                        goto SkipEntry;
+                    }
+                }
                 _posDir = 1; _lots[0] = c; _nLots = 1; _maxLots = 1;
                 _closedGridProfit = 0; _sigAvgCount = 0; _gridOn = false;
-                LogMsg($"[{ticker}] LONG @ {c:F0}");
+                LogMsg($"[{ticker}] LONG @ {c:F0} (lots={_currentLotLevel})");
                 return new Signal
                 {
                     Timestamp = candle.Timestamp, Ticker = ticker,
                     Direction = SignalDirection.Buy, Source = SignalSource.Strategy,
-                    Volume = Params.BaseLots, StrategyName = Name, Price = c,
+                    Volume = _currentLotLevel, StrategyName = Name, Price = c,
                     Comment = "Long entry: SAR < EMA"
                 };
             }
             if (shortEntry)
             {
+                // ATR фильтр
+                if (Params.AtrFilterEnabled && !double.IsNaN(atrVal) && atrVal > 0)
+                {
+                    double dist = Math.Abs(c - sarS);
+                    if (dist < Params.AtrFilter * atrVal)
+                    {
+                        LogMsg($"[{ticker}] SHORT пропущен: dist={dist:F0} < {Params.AtrFilter}*ATR={atrVal:F0}");
+                        goto SkipEntry;
+                    }
+                }
                 _posDir = -1; _lots[0] = c; _nLots = 1; _maxLots = 1;
                 _closedGridProfit = 0; _sigAvgCount = 0; _gridOn = false;
-                LogMsg($"[{ticker}] SHORT @ {c:F0}");
+                LogMsg($"[{ticker}] SHORT @ {c:F0} (lots={_currentLotLevel})");
                 return new Signal
                 {
                     Timestamp = candle.Timestamp, Ticker = ticker,
                     Direction = SignalDirection.Sell, Source = SignalSource.Strategy,
-                    Volume = Params.BaseLots, StrategyName = Name, Price = c,
+                    Volume = _currentLotLevel, StrategyName = Name, Price = c,
                     Comment = "Short entry: SAR > EMA"
                 };
             }
+            SkipEntry:;
         }
 
         return null;
+    }
+
+    private void UpdateDynamicLots(double pnl)
+    {
+        if (pnl > 0)
+        {
+            _consecutiveLosses = 0;
+            _sessionProfit += pnl;
+            if (_sessionProfit >= Params.LotStepProfit)
+            {
+                _currentLotLevel = Math.Min(_currentLotLevel + 1, Params.MaxDynamicLots);
+                _sessionProfit = 0;
+                LogMsg($"[DYN] Лоты +1 → {_currentLotLevel}");
+            }
+        }
+        else
+        {
+            _consecutiveLosses++;
+            _currentLotLevel = Math.Max(_currentLotLevel - 1, 1);
+            if (_consecutiveLosses >= 2)
+            {
+                _currentLotLevel = Math.Max(_currentLotLevel - 1, 1);
+                _consecutiveLosses = 0;
+            }
+            _sessionProfit = 0;
+            LogMsg($"[DYN] Убыток, лоты → {_currentLotLevel}, consec={_consecutiveLosses}");
+        }
     }
 
     private Signal CloseAll(double price, string ticker, string reason)
@@ -281,13 +350,14 @@ public class PsarEmaComboStrategy : IStrategy
         LogMsg($"[{ticker}] CLOSE ALL: {reason} | lots={_nLots} | net={net:F0}");
         TotalTrades++;
         TotalPnL += net;
+        UpdateDynamicLots(net);
 
         var signal = new Signal
         {
             Timestamp = DateTime.UtcNow, Ticker = ticker,
             Direction = _posDir == 1 ? SignalDirection.Sell : SignalDirection.Buy,
             Source = SignalSource.Exit,
-            Volume = _nLots * Params.BaseLots,
+            Volume = _nLots * _currentLotLevel,
             StrategyName = Name, Price = price,
             Comment = reason
         };
@@ -302,9 +372,13 @@ public class PsarEmaComboStrategy : IStrategy
     {
         _sarLong.Reset(); _emaLong.Reset();
         _sarShort.Reset(); _emaShort.Reset();
+        _atr.Reset();
         _posDir = 0; _nLots = 0; _maxLots = 0;
         _closedGridProfit = 0; _sigAvgCount = 0; _gridOn = false;
         _prevValid = false;
+        _currentLotLevel = Params.BaseLots;
+        _sessionProfit = 0;
+        _consecutiveLosses = 0;
         _log.Clear();
     }
 

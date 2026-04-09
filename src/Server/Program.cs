@@ -175,9 +175,244 @@ app.MapGet("/api/orderbook", async (TradingService svc, string ticker) =>
     catch (Exception ex) { return Results.Ok(new { rows = Array.Empty<object>(), error = ex.Message }); }
 });
 
+// === REST API: Grid MM Regime ===
+GridMmRegimeLauncher gridMm = null;
+
+app.MapPost("/strategy/grid-mm/start", () =>
+{
+    try
+    {
+        var token = Environment.GetEnvironmentVariable("FINAM_TOKEN");
+        if (string.IsNullOrEmpty(token))
+            return Results.Json(new { error = "FINAM_TOKEN not set" }, statusCode: 400);
+        if (gridMm != null)
+            return Results.Json(new { status = "already_running", detail = gridMm.GetStatus() });
+        
+        gridMm = new GridMmRegimeLauncher(token, "SiM6");
+        return Results.Json(new { status = "initialized", detail = gridMm.GetStatus() });
+    }
+    catch (Exception ex)
+    {
+        return Results.Json(new { error = ex.Message }, statusCode: 500);
+    }
+});
+
+app.MapPost("/strategy/grid-mm/run", () =>
+{
+    if (gridMm == null) return Results.Json(new { error = "Not initialized. POST /strategy/grid-mm/start first" }, statusCode: 400);
+    gridMm.Start();
+    return Results.Json(new { status = "running", detail = gridMm.GetStatus() });
+});
+
+app.MapPost("/strategy/grid-mm/stop", () =>
+{
+    if (gridMm == null) return Results.Json(new { error = "Not initialized" }, statusCode: 400);
+    gridMm.StopTrading();
+    return Results.Json(new { status = "stopped", detail = gridMm.GetStatus() });
+});
+
+app.MapPost("/strategy/grid-mm/pause", () =>
+{
+    if (gridMm == null) return Results.Json(new { error = "Not initialized" }, statusCode: 400);
+    gridMm.Pause();
+    return Results.Json(new { status = "paused", detail = gridMm.GetStatus() });
+});
+
+app.MapGet("/strategy/grid-mm/status", () =>
+{
+    if (gridMm == null) return Results.Json(new { status = "not_initialized" });
+    return Results.Json(new { status = "ok", detail = gridMm.GetStatus(), connected = gridMm.IsConnected });
+});
+
+app.MapGet("/strategy/grid-mm/indicators", () =>
+{
+    if (gridMm == null) return Results.Json(new { error = "Not initialized" }, statusCode: 400);
+    var s = gridMm.Strategy;
+    return Results.Json(new {
+        sar = s.CurrentSar,
+        ema = s.CurrentEma,
+        rv = s.CurrentRv,
+        hv = s.CurrentHv,
+        rvHvRatio = s.CurrentHv > 0 ? s.CurrentRv / s.CurrentHv : 0,
+        isLowVol = s.IsRegimeLowVol,
+        regime = s.IsRegimeLowVol ? "LOW" : "HIGH",
+        posDir = s.PositionDirection,
+        entryPrice = s.EntryPrice,
+        lots = s.CurrentLotLevel,
+        totalLots = s.TotalEntryLots,
+        trades = s.Trades.Select(t => new { time = t.Time.ToString("o"), t.Ticker, t.Direction, t.Price, t.Lots, t.Comment })
+    });
+});
+
+app.MapGet("/strategy/grid-mm/trades", () =>
+{
+    if (gridMm == null) return Results.Json(new { error = "Not initialized" }, statusCode: 400);
+    return Results.Json(gridMm.Strategy.Trades.Select(t => new {
+        time = t.Time.ToString("o"),
+        t.Ticker,
+        dir = t.Direction == 1 ? "BUY" : "SELL",
+        t.Price,
+        t.Lots,
+        t.Comment
+    }));
+});
+
+app.MapGet("/strategy/grid-mm/chart-data", () =>
+{
+    if (gridMm == null) return Results.Json(new { error = "Not initialized" }, statusCode: 400);
+    var s = gridMm.Strategy;
+    var hist = s.IndicatorHistory;
+    var trades = s.Trades;
+    return Results.Json(new
+    {
+        indicators = hist.Select(p => new { time = p.Time.ToString("o"), sar = p.Sar, ema = p.Ema }),
+        trades = trades.Select(t => new { time = t.Time.ToString("o"), dir = t.Direction, price = t.Price, lots = t.Lots, comment = t.Comment }),
+        current = new
+        {
+            sar = s.CurrentSar,
+            ema = s.CurrentEma,
+            rv = s.CurrentRv,
+            hv = s.CurrentHv,
+            ratio = s.CurrentHv > 0 ? s.CurrentRv / s.CurrentHv : 0,
+            regime = s.IsRegimeLowVol ? "LOW" : "HIGH",
+            posDir = s.PositionDirection,
+            entryPrice = s.EntryPrice,
+            lots = s.CurrentLotLevel,
+            totalPnl = s.TotalPnL,
+            totalTrades = s.TotalTrades
+        }
+    });
+});
+
+// === REST API: PSAR Grid MM + RV/HV ===
+PsarGridLauncher psarGrid = null;
+
+app.MapPost("/strategy/psar-grid/start", () =>
+{
+    try
+    {
+        var token = Environment.GetEnvironmentVariable("FINAM_TOKEN");
+        if (string.IsNullOrEmpty(token))
+            return Results.Json(new { error = "FINAM_TOKEN not set" }, statusCode: 400);
+        if (psarGrid != null)
+            return Results.Json(new { status = "already_running", detail = psarGrid.GetStatus() });
+        
+        psarGrid = new PsarGridLauncher(token, "SiM6");
+        return Results.Json(new { status = "initialized", detail = psarGrid.GetStatus() });
+    }
+    catch (Exception ex)
+    {
+        return Results.Json(new { error = ex.Message }, statusCode: 500);
+    }
+});
+
+app.MapPost("/strategy/psar-grid/run", () =>
+{
+    if (psarGrid == null) return Results.Json(new { error = "Not initialized. POST /strategy/psar-grid/start first" }, statusCode: 400);
+    psarGrid.Start();
+    return Results.Json(new { status = "running", detail = psarGrid.GetStatus() });
+});
+
+app.MapPost("/strategy/psar-grid/stop", () =>
+{
+    if (psarGrid == null) return Results.Json(new { error = "Not initialized" }, statusCode: 400);
+    psarGrid.StopTrading();
+    return Results.Json(new { status = "stopped", detail = psarGrid.GetStatus() });
+});
+
+app.MapPost("/strategy/psar-grid/pause", () =>
+{
+    if (psarGrid == null) return Results.Json(new { error = "Not initialized" }, statusCode: 400);
+    psarGrid.Pause();
+    return Results.Json(new { status = "paused", detail = psarGrid.GetStatus() });
+});
+
+app.MapGet("/strategy/psar-grid/status", () =>
+{
+    if (psarGrid == null) return Results.Json(new { status = "not_initialized" });
+    return Results.Json(new { status = "ok", detail = psarGrid.GetStatus(), connected = psarGrid.IsConnected });
+});
+
+app.MapGet("/strategy/psar-grid/indicators", () =>
+{
+    if (psarGrid == null) return Results.Json(new { error = "Not initialized" }, statusCode: 400);
+    var s = psarGrid.Strategy;
+    return Results.Json(new {
+        sar = s.CurrentSar, ema = s.CurrentEma,
+        rv = s.CurrentRv, hv = s.CurrentHv,
+        isLowVol = s.IsLowVol,
+        regime = s.IsLowVol ? "LOW" : "HIGH",
+        posDir = s.PositionDirection,
+        lots = s.CurrentLotLevel,
+        gridPnl = s.CurrentGridPnL,
+        openGridLevels = s.OpenGridLevels
+    });
+});
+
+app.MapGet("/strategy/psar-grid/trades", () =>
+{
+    if (psarGrid == null) return Results.Json(new { error = "Not initialized" }, statusCode: 400);
+    return Results.Json(psarGrid.Strategy.Trades.Select(t => new {
+        time = t.Time.ToString("o"), t.Ticker,
+        dir = t.Direction == 1 ? "BUY" : "SELL",
+        t.Price, t.Lots, t.Comment
+    }));
+});
+
+// === REST API: PSAR+EMA Combo (LEGACY — disabled) ===
+// NOTE: Старая стратегия отключена. Используем Grid MM Regime.
+
+// PSAR Combo endpoints removed — replaced by Grid MM Regime
+
 // === REST API: Арбитраж ===
 ArbLauncher? arbLauncher = null;
 
+// === Volume Reversal (RTS) ===
+VolumeReversalLauncher volRev = null;
+
+app.MapPost("/strategy/vol-rev/start", () =>
+{
+    var token = Environment.GetEnvironmentVariable("FINAM_TOKEN");
+    if (string.IsNullOrEmpty(token)) return Results.Json(new { error = "FINAM_TOKEN not set" }, statusCode: 400);
+    if (volRev != null) return Results.Json(new { status = "already_running", detail = volRev.GetStatus() });
+    volRev = new VolumeReversalLauncher(token, "RIM6");
+    return Results.Json(new { status = "initialized", detail = volRev.GetStatus() });
+});
+
+app.MapPost("/strategy/vol-rev/run", () =>
+{
+    if (volRev == null) return Results.Json(new { error = "Not initialized. POST /strategy/vol-rev/start first" }, statusCode: 400);
+    volRev.Start();
+    return Results.Json(new { status = "running", detail = volRev.GetStatus() });
+});
+
+app.MapPost("/strategy/vol-rev/stop", () =>
+{
+    if (volRev == null) return Results.Json(new { error = "Not initialized" }, statusCode: 400);
+    volRev.StopTrading();
+    volRev.Strategy.ForceClose();
+    return Results.Json(new { status = "stopped", detail = volRev.GetStatus() });
+});
+
+app.MapPost("/strategy/vol-rev/pause", () =>
+{
+    if (volRev == null) return Results.Json(new { error = "Not initialized" }, statusCode: 400);
+    volRev.Pause();
+    return Results.Json(new { status = "paused", detail = volRev.GetStatus() });
+});
+
+app.MapGet("/strategy/vol-rev/status", () =>
+{
+    if (volRev == null) return Results.Json(new { status = "not_initialized" });
+    return Results.Json(new { status = "ok", detail = volRev.GetStatus(),
+        pos = volRev.Strategy.PositionDirection,
+        trades = volRev.Strategy.TotalTrades,
+        pnl = volRev.Strategy.TotalPnL,
+        avgVol = volRev.Strategy.CurrentAvgVolume
+    });
+});
+
+// === Arbitrage ===
 app.MapPost("/arb/start", () =>
 {
     if (arbLauncher == null) return Results.BadRequest(new { error = "Арбитраж не инициализирован. POST /arb/init" });
@@ -338,7 +573,7 @@ Console.WriteLine($"  OpenMarketflow Trading Server");
 Console.WriteLine($"  SignalR Hub: http://0.0.0.0:{port}/trading");
 Console.WriteLine($"  Health:     http://0.0.0.0:{port}/health");
 Console.WriteLine($"  Status:     http://0.0.0.0:{port}/status");
-Console.WriteLine($"  Арбитраж:   POST /arb/init → /arb/start");
+Console.WriteLine($"  Grid MM:   POST /strategy/grid-mm/start → /run");
 Console.WriteLine($"═══════════════════════════════════════════");
 
 // Автоподключение к Финам если токен задан

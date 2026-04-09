@@ -11,6 +11,8 @@ public enum SignalSource
 {
     Strategy,       // Сигнал от стратегии (вход)
     Averaging,      // Сигнал на усреднение (добавка при отрицательном PnL)
+    Grid,           // Grid fill (докупка/продажа уровня)
+    TakeProfit,     // Grid level TP
     Exit            // Сигнал на выход (PnL > 0)
 }
 

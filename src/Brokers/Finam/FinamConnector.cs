@@ -141,16 +141,18 @@ public class FinamConnector : IBrokerConnector
         var symbol = ToSymbol(ticker);
         var tf = TimeframeToGrpc(timeframe);
 
+        // Используем REST polling для свечей (gRPC SubscribeBars нестабилен)
+        _ = Task.Run(async () =>
+        {
+            Console.WriteLine($"[CANDLE] REST polling запущен для {symbol} TF={timeframe}");
+            try { await PollCandlesRestAsync(ticker, timeframe, onCandle, _globalCts!.Token); }
+            catch (Exception ex) { Console.WriteLine($"[CANDLE] REST polling ОШИБКА: {ex.Message}"); }
+        });
+        
+        // Также запускаем gRPC стрим параллельно как дублирующий источник
         if (_grpcClient?.IsConnected == true)
         {
-            // gRPC стрим — получаем свечи в реалтайме
             _ = Task.Run(() => _grpcClient.SubscribeBarsAsync(symbol, tf, onCandle, _globalCts!.Token));
-        }
-        else
-        {
-            // REST fallback: polling
-            OnError?.Invoke($"gRPC недоступен для {ticker}, используем REST polling");
-            _ = Task.Run(async () => await PollCandlesRestAsync(ticker, timeframe, onCandle, _globalCts!.Token));
         }
     }
 
@@ -403,6 +405,7 @@ public class FinamConnector : IBrokerConnector
     private async Task PollCandlesRestAsync(string ticker, TimeSpan timeframe,
         Action<Candle> onCandle, CancellationToken ct)
     {
+        int pollCount = 0;
         while (!ct.IsCancellationRequested)
         {
             try
@@ -412,8 +415,18 @@ public class FinamConnector : IBrokerConnector
                 var tfStr = TimeframeToString(timeframe);
 
                 var bars = await _restClient!.GetBarsAsync(ToSymbol(ticker), tfStr, from.ToString("o"), to.ToString("o"));
+                pollCount++;
                 if (bars?.Bars.Count > 0)
-                    onCandle(BarToCandle(bars.Bars[^1]));
+                {
+                    var candle = BarToCandle(bars.Bars[^1]);
+                    if (pollCount <= 3 || pollCount % 60 == 0)
+                        Console.WriteLine($"[CANDLE] REST poll #{pollCount}: {ticker} got {bars.Bars.Count} bars, last={candle.Timestamp:HH:mm:ss} C={candle.Close:F0}");
+                    onCandle(candle);
+                }
+                else
+                {
+                    if (pollCount <= 3) Console.WriteLine($"[CANDLE] REST poll #{pollCount}: {ticker} 0 bars (empty)");
+                }
             }
             catch (Exception ex)
             {

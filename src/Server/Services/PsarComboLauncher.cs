@@ -52,7 +52,14 @@ public class PsarComboLauncher : IDisposable
             MaxGrid = 30,
             MinProfitPerLot = 28,
             Commission = 0.60,
-            BaseLots = 1
+            BaseLots = 1,
+            // ATR фильтр
+            AtrPeriod = 14,
+            AtrFilter = 0.5,
+            AtrFilterEnabled = true,
+            // Динамические лоты
+            LotStepProfit = 1000.0,
+            MaxDynamicLots = 5
         });
 
         _broker.OnError += msg => Console.WriteLine($"[BROKER ERROR] {msg}");
@@ -117,7 +124,8 @@ public class PsarComboLauncher : IDisposable
         if (_strategy.CurrentLots > 0)
         {
             Console.WriteLine($"[STATE] Pos={_strategy.PositionDirection} Lots={_strategy.CurrentLots} " +
-                              $"Trades={_strategy.TotalTrades} PnL={_strategy.TotalPnL:F0}");
+                              $"Trades={_strategy.TotalTrades} PnL={_strategy.TotalPnL:F0} " +
+                              $"LotLevel={_strategy.CurrentLotLevel} SessProf={_strategy.SessionProfit:F0}");
         }
     }
 
@@ -172,7 +180,8 @@ public class PsarComboLauncher : IDisposable
         return $"Mode={_strategy.Mode} | Pos={_strategy.PositionDirection} | " +
                $"Lots={_strategy.CurrentLots} | MaxEver={_strategy.MaxLotsEver} | " +
                $"Trades={_strategy.TotalTrades} | PnL={_strategy.TotalPnL:F0} | " +
-               $"Connected={IsConnected}";
+               $"LotLevel={_strategy.CurrentLotLevel} | SessProfit={_strategy.SessionProfit:F0} | " +
+               $"ConsecLosses={_strategy.ConsecutiveLosses} | Connected={IsConnected}";
     }
 
     public void Dispose()

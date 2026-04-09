@@ -4,6 +4,9 @@ let connection = null;
 let chart = null;
 let candleSeries = null;
 let volumeSeries = null;
+let sarSeries = null;
+let emaSeries = null;
+let tradeMarkers = [];
 let equityChart = null;
 let equitySeries = null;
 let isConnected = false;
@@ -299,6 +302,25 @@ function initChart() {
     });
     volumeSeries.priceScale().applyOptions({ scaleMargins: { top: 0.8, bottom: 0 } });
 
+    // SAR line (dots)
+    sarSeries = chart.addLineSeries({
+        color: '#FFD700',
+        lineWidth: 1,
+        pointMarkersVisible: true,
+        priceLineVisible: false,
+        lastValueVisible: false,
+        title: 'SAR',
+    });
+
+    // EMA line
+    emaSeries = chart.addLineSeries({
+        color: '#00BFFF',
+        lineWidth: 2,
+        priceLineVisible: false,
+        lastValueVisible: false,
+        title: 'EMA',
+    });
+
     new ResizeObserver(() => {
         chart.applyOptions({ width: container.offsetWidth, height: container.offsetHeight || 400 });
     }).observe(container);
@@ -331,18 +353,24 @@ function loadCandles(ticker, tf) {
 
 function switchOrderBookInstrument() {
     const ticker = el('obInstrument').value;
-    const tf = el('obTimeframe').value;
+    // Стратегия работает на 1м — ставим 1м TF для графика
+    el('obTimeframe').value = '1';
+    const tf = '1';
     initChart();
     loadCandles(ticker, tf);
     loadQuote(ticker);
     loadOrderBook(ticker);
-    // Поллинг котировок + стакан
+    // Поллинг котировок + стакан + индикаторы
     if (window._quoteInterval) clearInterval(window._quoteInterval);
     window._quoteInterval = setInterval(() => {
         const t = el('obInstrument').value;
         loadQuote(t);
         loadOrderBook(t);
-    }, 500);
+        loadStrategyIndicators();
+    }, 2000);
+    
+    // Первая загрузка индикаторов
+    loadStrategyIndicators();
 }
 
 function loadQuote(ticker) {
@@ -395,6 +423,94 @@ function switchTimeframe() {
     const ticker = el('obInstrument').value;
     const tf = el('obTimeframe').value;
     loadCandles(ticker, tf);
+}
+
+// === Strategy Indicators on Chart ===
+function loadStrategyIndicators() {
+    fetch('/strategy/grid-mm/chart-data')
+        .then(r => r.json())
+        .then(data => {
+            if (data.error) return;
+            
+            // SAR/EMA series
+            if (data.indicators && data.indicators.length > 0) {
+                const sarData = data.indicators
+                    .filter(p => p.sar > 0 && !isNaN(p.sar))
+                    .map(p => ({ time: toChartTime(p.time), value: p.sar }));
+                const emaData = data.indicators
+                    .filter(p => p.ema > 0 && !isNaN(p.ema))
+                    .map(p => ({ time: toChartTime(p.time), value: p.ema }));
+                
+                if (sarSeries && sarData.length > 0) sarSeries.setData(sarData);
+                if (emaSeries && emaData.length > 0) emaSeries.setData(emaData);
+            }
+            
+            // Trade markers
+            if (data.trades && data.trades.length > 0 && candleSeries) {
+                const markers = data.trades.map(t => ({
+                    time: toChartTime(t.time),
+                    position: t.dir === 1 ? 'belowBar' : 'aboveBar',
+                    color: t.dir === 1 ? '#22C55E' : '#EF4444',
+                    shape: t.dir === 1 ? 'arrowUp' : 'arrowDown',
+                    text: `${t.dir === 1 ? 'B' : 'S'} ${t.lots}x@${t.price.toFixed(0)}`,
+                }));
+                markers.sort((a, b) => a.time > b.time ? 1 : -1);
+                candleSeries.setMarkers(markers);
+            }
+            
+            // Update metrics
+            if (data.current) updateIndicatorMetrics(data.current);
+        })
+        .catch(() => {});
+}
+
+function toChartTime(isoStr) {
+    // ISO 8601 → unix timestamp for lightweight-charts
+    const d = new Date(isoStr);
+    return Math.floor(d.getTime() / 1000);
+}
+
+function updateIndicatorMetrics(c) {
+    // Добавляем метрики RV/HV на страницу стакана если их ещё нет
+    let metricsRow = el('strategyMetrics');
+    if (!metricsRow) {
+        const parent = document.querySelector('#orderbook .metrics-row');
+        if (parent) {
+            metricsRow = document.createElement('div');
+            metricsRow.className = 'metrics-row';
+            metricsRow.id = 'strategyMetrics';
+            metricsRow.innerHTML = `
+                <div class="metric-card"><div class="metric-label">SAR</div><div id="mSar" class="metric-value" style="color:#FFD700">—</div></div>
+                <div class="metric-card"><div class="metric-label">EMA</div><div id="mEma" class="metric-value" style="color:#00BFFF">—</div></div>
+                <div class="metric-card"><div class="metric-label">RV/HV</div><div id="mRatio" class="metric-value">—</div></div>
+                <div class="metric-card"><div class="metric-label">Regime</div><div id="mRegime" class="metric-value">—</div></div>
+                <div class="metric-card"><div class="metric-label">Позиция</div><div id="mPos" class="metric-value">—</div></div>
+                <div class="metric-card"><div class="metric-label">PnL</div><div id="mPnl" class="metric-value">—</div></div>
+                <div class="metric-card"><div class="metric-label">Сделок</div><div id="mTrades" class="metric-value">—</div></div>
+            `;
+            parent.parentNode.insertBefore(metricsRow, parent.nextSibling);
+        }
+    }
+    if (el('mSar')) el('mSar').textContent = c.sar > 0 ? c.sar.toFixed(2) : '—';
+    if (el('mEma')) el('mEma').textContent = c.ema > 0 ? c.ema.toFixed(2) : '—';
+    if (el('mRatio')) {
+        el('mRatio').textContent = c.ratio > 0 ? c.ratio.toFixed(2) : '—';
+        el('mRatio').style.color = c.regime === 'LOW' ? 'var(--green)' : 'var(--red)';
+    }
+    if (el('mRegime')) {
+        el('mRegime').textContent = c.regime || '—';
+        el('mRegime').style.color = c.regime === 'LOW' ? 'var(--green)' : 'var(--red)';
+    }
+    if (el('mPos')) {
+        const posText = c.posDir === 0 ? 'Flat' : c.posDir === 1 ? 'LONG' : 'SHORT';
+        el('mPos').textContent = posText + (c.posDir !== 0 ? ` ×${c.lots}` : '');
+        el('mPos').style.color = c.posDir === 0 ? '' : c.posDir === 1 ? 'var(--green)' : 'var(--red)';
+    }
+    if (el('mPnl')) {
+        el('mPnl').textContent = c.totalPnl > 0 ? '+' + c.totalPnl.toFixed(0) : c.totalPnl.toFixed(0);
+        el('mPnl').style.color = c.totalPnl >= 0 ? 'var(--green)' : 'var(--red)';
+    }
+    if (el('mTrades')) el('mTrades').textContent = c.totalTrades;
 }
 
 // === Equity Chart ===
