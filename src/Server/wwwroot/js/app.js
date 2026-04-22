@@ -95,27 +95,45 @@ function initSignalR() {
         });
 }
 
+// === Connector Switch ===
+let _activeConnector = 'Finam';
+
+async function switchConnector(name) {
+    _activeConnector = name;
+    el('brokerStatus').textContent = '⚪ ' + name + ' выбран';
+}
+
+async function loadConnectorStatus() {
+    try {
+        const resp = await fetch('/api/connectors');
+        const data = await resp.json();
+        _activeConnector = data.active || 'Finam';
+        const sel = el('brokerSelect');
+        if (sel) sel.value = _activeConnector;
+    } catch (e) { console.error('[CONNECTOR]', e); }
+}
+
 // === Actions ===
 async function connectBroker() {
+    const connector = _activeConnector;
     const token = localStorage.getItem('finamToken') || '';
     if (!token) {
         addLog(nowTime(), 'ERROR', '⚠ Токен Финам не указан. Укажите во вкладке Настройки.');
         return;
     }
-    addLog(nowTime(), 'INFO', '🔌 Подключение к Финам... (ожидание до 30 сек)');
+    addLog(nowTime(), 'INFO', `🔌 Подключение к ${connector}...`);
     el('brokerStatus').textContent = '⏳ Подключаюсь...';
     try {
-        const resp = await fetch('/connect-broker', {
+        const resp = await fetch('/api/connectors/switch', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ token })
+            body: JSON.stringify({ connector, token })
         });
         const data = await resp.json();
         if (resp.ok) {
             isConnected = true;
-            el('brokerStatus').textContent = '✅ Подключён';
-            if (el('startBotBtn')) el('startBotBtn').disabled = false;
-            addLog(nowTime(), 'INFO', `✅ ${data.broker} подключён`);
+            el('brokerStatus').textContent = `✅ ${connector} подключён`;
+            addLog(nowTime(), 'INFO', `✅ ${connector} подключён`);
             fetchStatus();
         } else {
             el('brokerStatus').textContent = '❌ Ошибка';
@@ -1938,6 +1956,7 @@ function arbLog(level, msg) {
 // === Init ===
 document.addEventListener('DOMContentLoaded', () => {
     loadSettings();
+    loadConnectorStatus();
     initSignalR();
     // Default dates for backtest
     const today = new Date().toISOString().split('T')[0];

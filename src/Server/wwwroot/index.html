@@ -392,8 +392,10 @@
             <div class="card-header">🔌 Подключение</div>
             <div class="card-body" style="display:flex;flex-direction:column;gap:16px">
                 <div class="row gap-8" style="align-items:center">
-                    <select id="brokerSelect" class="select">
-                        <option>Финам (Trade API)</option>
+                    <select id="brokerSelect" class="select" onchange="switchConnector(this.value)">
+                        <option value="Finam">Финам (Trade API)</option>
+                        <option value="QUIK">QUIK (Lua Bridge)</option>
+                        <option value="Transaq" disabled>Transaq (недоступен)</option>
                     </select>
                     <button class="btn btn-secondary" onclick="connectBroker()">🔌 Подключиться</button>
                     <span id="brokerStatus" class="status-text">❌ Не подключён</span>
