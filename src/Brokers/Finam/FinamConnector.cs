@@ -130,30 +130,71 @@ public class FinamConnector : IBrokerConnector
         return Task.CompletedTask;
     }
 
-    // === Маркетдата: gRPC стриминг ===
+    // === Маркетдата: REST polling (надёжно, без разрывов) ===
+
+    private DateTime _lastCandleTime = DateTime.MinValue;
+    private bool _candlePollingActive = false;
 
     /// <summary>
-    /// Подписка на свечи через gRPC SubscribeBars (реалтайм, без polling).
+    /// Подписка на свечи через REST polling.
+    /// gRPC больше НЕ используется для данных — только для ордеров.
+    /// Polling каждые 5 сек для 5-мин TF, дедупликация по timestamp.
     /// </summary>
     public async Task SubscribeCandlesAsync(string ticker, TimeSpan timeframe, Action<Candle> onCandle)
     {
         EnsureConnected();
-        var symbol = ToSymbol(ticker);
-        var tf = TimeframeToGrpc(timeframe);
+        if (_candlePollingActive) return;
+        _candlePollingActive = true;
+        _lastCandleTime = DateTime.MinValue;
 
-        // Используем REST polling для свечей (gRPC SubscribeBars нестабилен)
         _ = Task.Run(async () =>
         {
-            Console.WriteLine($"[CANDLE] REST polling запущен для {symbol} TF={timeframe}");
-            try { await PollCandlesRestAsync(ticker, timeframe, onCandle, _globalCts!.Token); }
-            catch (Exception ex) { Console.WriteLine($"[CANDLE] REST polling ОШИБКА: {ex.Message}"); }
+            Console.WriteLine($"[CANDLE] 🔄 REST polling для {ticker} TF={timeframe}");
+            var symbol = ToSymbol(ticker);
+            var tfStr = TimeframeToString(timeframe);
+            int pollErrors = 0;
+
+            while (!(_globalCts?.IsCancellationRequested ?? true))
+            {
+                try
+                {
+                    // Запрашиваем последние 2 свечи
+                    var to = DateTime.UtcNow;
+                    var from = to.Subtract(timeframe * 3);
+                    var bars = await _restClient!.GetBarsAsync(symbol, tfStr, from.ToString("o"), to.ToString("o"));
+
+                    if (bars?.Bars?.Count > 0)
+                    {
+                        if (_lastCandleTime == DateTime.MinValue)
+                            Console.WriteLine($"[CANDLE] ✅ {ticker}: got {bars.Bars.Count} bars, last={bars.Bars[^1].Timestamp} C={bars.Bars[^1].Close?.ToDouble():F0}");
+                        // Отдаём только НОВЫЕ свечи (дедупликация по timestamp)
+                        foreach (var bar in bars.Bars)
+                        {
+                            var candle = BarToCandle(bar);
+                            if (candle.Timestamp > _lastCandleTime)
+                            {
+                                _lastCandleTime = candle.Timestamp;
+                                onCandle(candle);
+                            }
+                        }
+                    }
+                    pollErrors = 0; // сброс ошибок
+                }
+                catch (Exception ex)
+                {
+                    pollErrors++;
+                    if (pollErrors <= 3 || pollErrors % 20 == 0)
+                        Console.WriteLine($"[CANDLE] ⚠️ REST poll error #{pollErrors}: {ex.Message}");
+                }
+
+                // Polling interval: 5 сек для 5-мин TF, 10 сек для 1-мин
+                var delay = (int)timeframe.TotalMinutes <= 5 ? 5000 : 10000;
+                try { await Task.Delay(delay, _globalCts!.Token); }
+                catch { break; }
+            }
+            _candlePollingActive = false;
+            Console.WriteLine("[CANDLE] Polling остановлен");
         });
-        
-        // Также запускаем gRPC стрим параллельно как дублирующий источник
-        if (_grpcClient?.IsConnected == true)
-        {
-            _ = Task.Run(() => _grpcClient.SubscribeBarsAsync(symbol, tf, onCandle, _globalCts!.Token));
-        }
     }
 
     /// <summary>Подписка на котировки через gRPC</summary>
@@ -161,31 +202,14 @@ public class FinamConnector : IBrokerConnector
         CancellationToken ct = default)
     {
         EnsureConnected();
-        if (_grpcClient?.IsConnected == true)
-        {
-            var token = ct == default ? _globalCts!.Token : ct;
-            _ = Task.Run(() => _grpcClient.SubscribeQuoteAsync(
-                new[] { ToSymbol(ticker) },
-                (symbol, bid, ask, last) => onQuote(bid, ask, last),
-                token));
-        }
+        // Quotes через REST polling пока не реализованы — заглушка
+        // gRPC quote stream нестабилен
     }
 
     /// <summary>Подписка на стакан через gRPC</summary>
     public Task SubscribeLevel2Async(string ticker, Action<double, double> onBidAsk)
     {
-        EnsureConnected();
-        if (_grpcClient?.IsConnected == true)
-        {
-            _ = Task.Run(() => _grpcClient.SubscribeQuoteAsync(
-                new[] { ToSymbol(ticker) },
-                (symbol, bid, ask, last) => onBidAsk(bid, ask),
-                _globalCts!.Token));
-        }
-        else
-        {
-            OnError?.Invoke("Level2 требует gRPC. Недоступен.");
-        }
+        // Заглушка — стакан через REST пока не реализован
         return Task.CompletedTask;
     }
 
@@ -330,6 +354,13 @@ public class FinamConnector : IBrokerConnector
         }).ToArray();
     }
 
+    public async Task<(double equity, List<(string symbol, long qty, double avgPrice)>)> GetAccountInfoAsync()
+    {
+        if (_grpcClient?.IsConnected == true)
+            return await _grpcClient.GetAccountInfoAsync();
+        return (0, new());
+    }
+
     public async Task<Position[]> GetPositionsAsync()
     {
         EnsureConnected();
@@ -402,43 +433,7 @@ public class FinamConnector : IBrokerConnector
     }
 
     /// <summary>REST polling свечей как fallback</summary>
-    private async Task PollCandlesRestAsync(string ticker, TimeSpan timeframe,
-        Action<Candle> onCandle, CancellationToken ct)
-    {
-        int pollCount = 0;
-        while (!ct.IsCancellationRequested)
-        {
-            try
-            {
-                var to = DateTime.UtcNow;
-                var from = to.Subtract(timeframe * 2);
-                var tfStr = TimeframeToString(timeframe);
-
-                var bars = await _restClient!.GetBarsAsync(ToSymbol(ticker), tfStr, from.ToString("o"), to.ToString("o"));
-                pollCount++;
-                if (bars?.Bars.Count > 0)
-                {
-                    var candle = BarToCandle(bars.Bars[^1]);
-                    if (pollCount <= 3 || pollCount % 60 == 0)
-                        Console.WriteLine($"[CANDLE] REST poll #{pollCount}: {ticker} got {bars.Bars.Count} bars, last={candle.Timestamp:HH:mm:ss} C={candle.Close:F0}");
-                    onCandle(candle);
-                }
-                else
-                {
-                    if (pollCount <= 3) Console.WriteLine($"[CANDLE] REST poll #{pollCount}: {ticker} 0 bars (empty)");
-                }
-            }
-            catch (Exception ex)
-            {
-                OnError?.Invoke($"REST polling {ticker}: {ex.Message}");
-            }
-
-            var delay = timeframe < TimeSpan.FromMinutes(5)
-                ? TimeSpan.FromSeconds(10)
-                : TimeSpan.FromSeconds(30);
-            await Task.Delay(delay, ct);
-        }
-    }
+    // PollCandlesRestAsync удалён — заменён на SubscribeCandlesAsync с дедупликацией
 
     /// <summary>
     /// Определить биржу по тикеру:
@@ -497,7 +492,7 @@ public class FinamConnector : IBrokerConnector
         Close = bar.Close?.ToDouble() ?? 0,
         High = bar.High?.ToDouble() ?? 0,
         Low = bar.Low?.ToDouble() ?? 0,
-        Volume = bar.Volume
+        Volume = (long)(bar.Volume?.ToDouble() ?? 0)
     };
 
     private static OrderStatus MapOrderStatus(string status) => status switch

@@ -55,7 +55,7 @@ function initSignalR() {
     });
 
     connection.on('OnEquityUpdate', equity => {
-        el('monEquity').textContent = fmt(equity);
+        if (el('monEquity')) el('monEquity').textContent = fmt(equity);
     });
 
     connection.on('OnOrderBookUpdate', snapshot => {
@@ -119,7 +119,7 @@ async function connectBroker() {
         if (resp.ok) {
             isConnected = true;
             el('brokerStatus').textContent = '✅ Подключён';
-            el('startBotBtn').disabled = false;
+            if (el('startBotBtn')) el('startBotBtn').disabled = false;
             addLog(nowTime(), 'INFO', `✅ ${data.broker} подключён`);
             fetchStatus();
         } else {
@@ -129,6 +129,78 @@ async function connectBroker() {
     } catch (e) {
         el('brokerStatus').textContent = '❌ Ошибка';
         addLog(nowTime(), 'ERROR', `❌ ${e.message}`);
+    }
+}
+
+async function connectTransaq() {
+    const login = el('txLogin')?.value || '';
+    const password = el('txPassword')?.value || '';
+    const host = el('txHost')?.value || 'tr.finam.ru';
+    const port = parseInt(el('txPort')?.value) || 39000;
+    
+    if (!login || !password) {
+        addLog(nowTime(), 'ERROR', '⚠ Укажите логин и пароль Transaq');
+        return;
+    }
+    
+    // Save to localStorage
+    localStorage.setItem('txLogin', login);
+    localStorage.setItem('txHost', host);
+    localStorage.setItem('txPort', port);
+    
+    el('txStatus').textContent = '⏳ Подключаюсь...';
+    addLog(nowTime(), 'INFO', `📡 Подключение к Transaq ${host}:${port}...`);
+    
+    try {
+        const resp = await fetch('/transaq/connect', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ login, password, host, port })
+        });
+        const data = await resp.json();
+        if (resp.ok) {
+            el('txStatus').textContent = '🟢 Подключён';
+            addLog(nowTime(), 'INFO', `✅ Transaq подключён: ${data.broker}`);
+        } else {
+            el('txStatus').textContent = '🔴 Ошибка';
+            addLog(nowTime(), 'ERROR', `❌ Transaq: ${data.error}`);
+        }
+    } catch (e) {
+        el('txStatus').textContent = '🔴 Ошибка';
+        addLog(nowTime(), 'ERROR', `❌ Transaq: ${e.message}`);
+    }
+}
+
+async function disconnectTransaq() {
+    try {
+        await fetch('/transaq/disconnect', { method: 'POST' });
+        el('txStatus').textContent = '⚪ Не подключён';
+        addLog(nowTime(), 'INFO', '📡 Transaq отключён');
+    } catch (e) {
+        addLog(nowTime(), 'ERROR', `❌ ${e.message}`);
+    }
+}
+
+async function checkHealth() {
+    try {
+        const resp = await fetch('/transaq/health');
+        const data = await resp.json();
+        const report = el('healthReport');
+        if (report) {
+            const finamCls = data.finam?.status === 'connected' ? '🟢' : '🔴';
+            const txCls = data.transaq?.status === 'connected' ? '🟢' : '🔴';
+            const quikCls = data.quik?.status === 'connected' ? '🟢' : '🔴';
+            report.innerHTML = `${finamCls} <b>Finam gRPC:</b> ${data.finam?.status || 'N/A'} | ${txCls} <b>Transaq:</b> ${data.transaq?.status || 'N/A'}<br>${quikCls} <b>QUIK Bridge:</b> ${data.quik?.status || 'N/A'} ${data.quik?.age != null ? '(' + data.quik.age + 'с назад)' : ''}<br><small>${data.timestamp}</small>`;
+        }
+        // Update QUIK status badge
+        const quikEl = el('quikStatus');
+        if (quikEl) {
+            if (data.quik?.status === 'connected') quikEl.textContent = '🟢 QUIK подключён';
+            else quikEl.textContent = '⚪ QUIK не подключён';
+        }
+        addLog(nowTime(), 'INFO', `🏥 Health: Finam=${data.finam?.status}, Transaq=${data.transaq?.status}, QUIK=${data.quik?.status}`);
+    } catch (e) {
+        addLog(nowTime(), 'ERROR', `❌ Health check: ${e.message}`);
     }
 }
 
@@ -174,36 +246,138 @@ async function fetchStatus() {
         const resp = await fetch('/status');
         const status = await resp.json();
         updateStatus(status);
+        loadPositions();
+        loadOrders();
+        loadQuotes();
+        loadAccounts();
     } catch (e) { }
+}
+
+function loadPositions() {
+    fetch('/api/positions').then(r => r.json()).then(data => {
+        const tbody = el('positionsTable');
+        if (!tbody) return;
+        if (!data || data.error || !data.length) { tbody.innerHTML = '<tr><td colspan="9" style="color:var(--text-muted)">Нет позиций</td></tr>'; return; }
+        tbody.innerHTML = data.map(p => `<tr>
+            <td>1225953</td>
+            <td><b>${p.ticker}</b></td>
+            <td class="${p.dir === 'Buy' ? 'green' : 'red'}">${p.dir === 'Buy' ? 'Лонг' : 'Шорт'}</td>
+            <td>${p.qty || 0}</td>
+            <td>${p.entries?.[0]?.price?.toFixed(2) || p.avgPrice?.toFixed(2) || '—'}</td>
+            <td>${p.qty || 0}</td>
+        </tr>`).join('');
+    }).catch(() => {});
+}
+
+function loadOrders() {
+    fetch('/api/orders').then(r => r.json()).then(data => {
+        const tbody = el('ordersTable');
+        if (!tbody) return;
+        if (!data || data.error || !data.length) { tbody.innerHTML = '<tr><td colspan="8" style="color:var(--text-muted)">Нет заявок</td></tr>'; return; }
+        tbody.innerHTML = data.map(o => `<tr>
+            <td>${o.id?.slice(-6) || '—'}</td>
+            <td><b>${o.ticker}</b></td>
+            <td class="${o.dir === 'Buy' ? 'green' : 'red'}">${o.dir === 'Buy' ? 'Покупка' : 'Продажа'}</td>
+            <td>${o.qty || 0}</td>
+            <td>${o.price?.toFixed(2) || 'MKT'}</td>
+            <td>${o.filled || 0}/${o.qty || 0}</td>
+            <td>${o.status || '—'}</td>
+        </tr>`).join('');
+    }).catch(() => {});
+}
+
+function loadQuotes() {
+    const tickers = ['SiM6','SiU6','MXM6','GDM6','BRK6','RIU6'];
+    const tbody = el('quotesTable');
+    if (!tbody) return;
+    tbody.innerHTML = tickers.map(t => `<tr id="q_${t}"><td><b>${t}</b></td><td colspan="4" style="color:var(--text-muted)">—</td></tr>`).join('');
+    tickers.forEach(t => {
+        fetch(`/api/quote?ticker=${t}`).then(r => r.json()).then(q => {
+            if (q.error || !q.last) return;
+            const row = el(`q_${t}`);
+            if (!row) return;
+            row.innerHTML = `<td><b>${t}</b></td><td class="accent">${q.last?.toFixed(0) || '—'}</td><td class="green">${q.bid?.toFixed(0) || '—'}</td><td class="red">${q.ask?.toFixed(0) || '—'}</td><td>${q.volume || '—'}</td>`;
+        }).catch(() => {});
+    });
+}
+
+async function loadAccounts() {
+    try {
+        const resp = await fetch('/api/accounts');
+        const data = await resp.json();
+        // Таблица счетов
+        const tbody = el('accountsTable');
+        if (tbody && data?.accounts) {
+            tbody.innerHTML = data.accounts.map(a => {
+                const balance = a.balance || 0;
+                const free = a.free || 0;
+                const margin = a.margin || (balance - free);
+                const go = a.go || margin;
+                const pnlToday = a.pnlToday || 0;
+                const pnlTotal = a.pnlTotal || 0;
+                const fmt2 = v => v.toLocaleString('ru-RU',{maximumFractionDigits:2});
+                return `<tr>
+                    <td><b>${a.id}</b> ${a.name || ''}</td>
+                    <td class="accent">${fmt2(balance)} ₽</td>
+                    <td>${fmt2(free)} ₽</td>
+                    <td>${fmt2(margin)} ₽</td>
+                    <td>${fmt2(go)} ₽</td>
+                    <td class="${pnlToday >= 0 ? 'green' : 'red'}">${pnlToday >= 0 ? '+' : ''}${fmt2(pnlToday)} ₽</td>
+                    <td class="${pnlTotal >= 0 ? 'green' : 'red'}">${pnlTotal >= 0 ? '+' : ''}${fmt2(pnlTotal)} ₽</td>
+                </tr>`;
+            }).join('');
+        }
+        // Select в панели робота
+        const sel = el('robotAccount');
+        if (sel) {
+            sel.innerHTML = (data?.accounts || []).map(a => `<option value="${a.id}">${a.id} — ${a.name} (${(a.balance||0).toLocaleString('ru-RU')}₽)</option>`).join('');
+        }
+    } catch (e) {}
 }
 
 function updateStatus(s) {
     if (!s) return;
-    // Поддержка обоих форматов (camelCase и PascalCase)
     const v = (a, b) => s[a] ?? s[b] ?? 0;
     
-    el('balance').textContent = fmt(v('balance','Balance'));
-    el('monBalance').textContent = fmt(v('balance','Balance'));
-    el('monEquity').textContent = fmt(v('equity','Equity'));
+    // Баланс (теперь в таблице счетов через loadAccounts)
+    if (el('balance')) el('balance').textContent = fmt(v('balance','Balance'));
+    if (el('monBalance')) el('monBalance').textContent = fmt(v('balance','Balance'));
+    if (el('monEquity')) el('monEquity').textContent = fmt(v('equity','Equity'));
     
     const pnlToday = v('todayPnL','TodayPnL');
     const pnlTotal = v('totalPnL','TotalPnL');
-    el('monPnlToday').textContent = fmtPnl(pnlToday);
-    el('monPnlToday').className = 'metric-value ' + (pnlToday > 0 ? 'green' : pnlToday < 0 ? 'red' : '');
-    el('monPnlTotal').textContent = fmtPnl(pnlTotal);
-    el('monPnlTotal').className = 'metric-value ' + (pnlTotal > 0 ? 'green' : pnlTotal < 0 ? 'red' : '');
-    
-    el('monTrades').textContent = v('todayTrades','TodayTrades');
-    el('monPositions').textContent = v('openPositions','OpenPositions');
+    if (el('monPnlToday')) {
+        el('monPnlToday').textContent = fmtPnl(pnlToday);
+        el('monPnlToday').className = 'metric-value ' + (pnlToday > 0 ? 'green' : pnlToday < 0 ? 'red' : '');
+    }
+    if (el('monPnlTotal')) {
+        el('monPnlTotal').textContent = fmtPnl(pnlTotal);
+        el('monPnlTotal').className = 'metric-value ' + (pnlTotal > 0 ? 'green' : pnlTotal < 0 ? 'red' : '');
+    }
+    if (el('monTrades')) el('monTrades').textContent = v('todayTrades','TodayTrades');
+    if (el('monPositions')) el('monPositions').textContent = v('openPositions','OpenPositions');
     
     const brokerStatus = s.brokerStatus || s.BrokerStatus || '';
     const connected = s.isConnectedToBroker ?? s.IsConnectedToBroker ?? false;
+    
+    // Обновление данных роботов в реал-тайм
+    robots.forEach(r => {
+        if (r.status === 'running' || r.status === 'paused') {
+            r.pnlToday = pnlToday;
+            r.pnlTotal = pnlTotal;
+            r.exchangeStatus = connected ? 'Биржа OK' : 'Нет связи';
+            if (s.mode === 'Stopped') r.status = 'stopped';
+            else if (s.mode === 'Paused') r.status = 'paused';
+            else if (s.mode === 'Running') r.status = 'running';
+        }
+    });
+    if (typeof saveRobots === 'function') { saveRobots(); renderRobots(); }
     if (connected) {
         isConnected = true;
-        el('brokerStatus').textContent = '✅ Подключён';
-        el('startBotBtn').disabled = false;
-        el('statusIndicator').className = 'status-dot green';
-        el('statusText').textContent = `Подключён | ${brokerStatus}`;
+        if (el('brokerStatus')) el('brokerStatus').textContent = '✅ Подключён';
+        if (el('startBotBtn')) el('startBotBtn').disabled = false;
+        if (el('statusIndicator')) el('statusIndicator').className = 'status-dot green';
+        if (el('statusText')) el('statusText').textContent = `Подключён | ${brokerStatus}`;
     }
 }
 
@@ -261,17 +435,42 @@ function updateQuote(q) {
 }
 
 function updatePosition(pos) {
-    // Обновляем таблицу позиций
+    // Обновляем роботов
+    robots.forEach(r => {
+        if (r.status === 'running' || r.status === 'paused') {
+            r.position = (pos.direction || pos.Direction) === 'Long' ? 'Лонг' : (pos.direction || pos.Direction) === 'Short' ? 'Шорт' : '—';
+            r.lotsOpen = pos.volume || pos.Volume || 0;
+            r.go = (r.lotsOpen || 0) * 12000;
+        }
+    });
+    if (typeof saveRobots === 'function') { saveRobots(); renderRobots(); }
     const tbody = el('positionsTable');
+    if (!tbody) return;
+    
+    const ticker = pos.ticker || pos.Ticker || '';
+    const dir = pos.direction || pos.Direction || '';
+    const qty = pos.volume || pos.Volume || 0;
+    const entryPrice = pos.entryPrice || pos.EntryPrice || 0;
     const pnl = pos.pnL || pos.PnL || 0;
-    const cls = pnl > 0 ? 'pnl-positive' : pnl < 0 ? 'pnl-negative' : 'pnl-zero';
-    // Simplified: just replace all
+    const cls = pnl >= 0 ? 'green' : 'red';
+    const dirClass = dir === 'Long' || dir === 'Buy' ? 'green' : 'red';
+    const dirText = dir === 'Long' || dir === 'Buy' ? 'Лонг' : dir === 'Short' || dir === 'Sell' ? 'Шорт' : '—';
+    
+    if (!ticker || qty === 0) {
+        tbody.innerHTML = '<tr><td colspan="9" style="color:var(--text-muted)">Нет позиций</td></tr>';
+        return;
+    }
+    
     tbody.innerHTML = `<tr>
-        <td>${pos.ticker || pos.Ticker}</td>
-        <td>${pos.direction || pos.Direction}</td>
-        <td>${(pos.entryPrice || pos.EntryPrice || 0).toFixed(2)}</td>
-        <td>${pos.volume || pos.Volume}</td>
-        <td class="${cls}">${pnl.toFixed(2)}</td>
+        <td>1225953</td>
+        <td><b>${ticker}</b></td>
+        <td class="${dirClass}">${dirText}</td>
+        <td>${qty}</td>
+        <td>${entryPrice.toFixed(2)}</td>
+        <td>${qty}</td>
+        <td>${entryPrice.toFixed(2)}</td>
+        <td class="${cls}">${pnl >= 0 ? '+' : ''}${pnl.toFixed(2)} ₽</td>
+        <td class="${cls}">${pnl >= 0 ? '+' : ''}${pnl.toFixed(2)} ₽</td>
     </tr>`;
 }
 
@@ -283,6 +482,15 @@ function initChart() {
         setTimeout(initChart, 100);
         return;
     }
+    const msOffset = 3 * 3600000; // MSK = UTC+3
+    const fmtTime = d => {
+        const msk = new Date(d.getTime() + msOffset);
+        return msk.toISOString().slice(11, 16);
+    };
+    const fmtDate = d => {
+        const msk = new Date(d.getTime() + msOffset);
+        return msk.toISOString().slice(0, 10);
+    };
     chart = LightweightCharts.createChart(container, {
         width: container.offsetWidth,
         height: container.offsetHeight || 400,
@@ -290,6 +498,10 @@ function initChart() {
         grid: { vertLines: { color: '#2D2D44' }, horzLines: { color: '#2D2D44' } },
         crosshair: { mode: LightweightCharts.CrosshairMode.Normal },
         timeScale: { timeVisible: true, secondsVisible: false },
+        localization: {
+            timeFormatter: t => fmtTime(new Date(t * 1000)),
+            dateFormat: t => fmtDate(new Date(t * 1000)),
+        },
     });
     candleSeries = chart.addCandlestickSeries({
         upColor: '#22C55E', downColor: '#EF4444',
@@ -321,6 +533,12 @@ function initChart() {
         title: 'EMA',
     });
 
+    // Двойной клик по графику → меню индикаторов
+    container.addEventListener('dblclick', (e) => {
+        e.preventDefault();
+        showIndicatorMenu(e.clientX, e.clientY);
+    });
+
     new ResizeObserver(() => {
         chart.applyOptions({ width: container.offsetWidth, height: container.offsetHeight || 400 });
     }).observe(container);
@@ -328,7 +546,7 @@ function initChart() {
 
 function loadCandles(ticker, tf) {
     const tfMinutes = parseInt(tf) || 5;
-    const days = tfMinutes <= 5 ? 3 : tfMinutes <= 60 ? 7 : 30;
+    const days = tfMinutes <= 5 ? 10 : tfMinutes <= 60 ? 30 : 90;
 
     // Загружаем через Finam API (сервер)
     fetch(`/api/candles?ticker=${ticker}&tf=${tfMinutes}&days=${days}`)
@@ -345,29 +563,159 @@ function loadCandles(ticker, tf) {
 
             if (candleSeries) candleSeries.setData(candles);
             if (volumeSeries) volumeSeries.setData(volumes);
+
+            // Рассчитываем SAR и EMA на клиенте
+            const sarData = calcSAR(data, window._sarParams?.start || 0.009, window._sarParams?.step || 0.01, window._sarParams?.max || 0.2);
+            const emaData = calcEMA(data, window._emaPeriod || 30);
+
+            if (sarSeries && sarData.length > 0) sarSeries.setData(sarData);
+            if (emaSeries && emaData.length > 0) emaSeries.setData(emaData);
+
             el('obCandleCount').textContent = `${candles.length} свечей`;
-            addLog(nowTime(), 'INFO', `📊 ${ticker}: ${candles.length} свечей (${tfMinutes}м)`);
+            addLog(nowTime(), 'INFO', `📊 ${ticker}: ${candles.length} свечей (${tfMinutes}м) SAR=${sarData.length} EMA=${emaData.length}`);
         })
         .catch(e => addLog(nowTime(), 'ERROR', `Свечи: ${e.message}`));
 }
 
+// === Индикаторы: SAR и EMA на клиенте ===
+function calcSAR(bars, start, step, max) {
+    if (bars.length < 2) return [];
+    let af = start, isLong = bars[1].c > bars[0].c;
+    let sar = isLong ? bars[0].l : bars[0].h;
+    let ep = isLong ? bars[0].h : bars[0].l;
+    const result = [];
+    for (let i = 1; i < bars.length; i++) {
+        const prevSar = sar;
+        sar = prevSar + af * (ep - prevSar);
+        if (isLong) {
+            sar = Math.min(sar, bars[i-1].l, i >= 2 ? bars[i-2].l : bars[i-1].l);
+            if (bars[i].l < sar) {
+                isLong = false; sar = ep; ep = bars[i].l; af = start;
+            } else {
+                if (bars[i].h > ep) { ep = bars[i].h; af = Math.min(af + step, max); }
+            }
+        } else {
+            sar = Math.max(sar, bars[i-1].h, i >= 2 ? bars[i-2].h : bars[i-1].h);
+            if (bars[i].h > sar) {
+                isLong = true; sar = ep; ep = bars[i].h; af = start;
+            } else {
+                if (bars[i].l < ep) { ep = bars[i].l; af = Math.min(af + step, max); }
+            }
+        }
+        result.push({ time: bars[i].t, value: sar });
+    }
+    return result;
+}
+
+function calcEMA(bars, period) {
+    if (bars.length < period) return [];
+    const k = 2 / (period + 1);
+    let ema = 0;
+    for (let i = 0; i < period; i++) ema += bars[i].c;
+    ema /= period;
+    const result = [{ time: bars[period-1].t, value: ema }];
+    for (let i = period; i < bars.length; i++) {
+        ema = bars[i].c * k + ema * (1 - k);
+        result.push({ time: bars[i].t, value: ema });
+    }
+    return result;
+}
+
+// === Меню настроек индикаторов ===
+function showIndicatorMenu(x, y) {
+    const existing = el('indicatorMenu');
+    if (existing) { existing.remove(); return; }
+    
+    const div = document.createElement('div');
+    div.id = 'indicatorMenu';
+    div.style.cssText = `position:fixed;top:${Math.min(y, window.innerHeight - 200)}px;left:${Math.min(x, window.innerWidth - 320)}px;z-index:1000;background:#1A1A2E;border:1px solid #3B82F6;border-radius:8px;padding:16px;width:300px;box-shadow:0 4px 16px rgba(0,0,0,.5)`;
+    
+    // Текущие параметры
+    const sarInputs = document.querySelectorAll('#chartContainer');
+    div.innerHTML = `
+        <div style="display:flex;justify-content:space-between;margin-bottom:12px">
+            <span style="color:#F59E0B;font-weight:bold">⚙️ Индикаторы</span>
+            <button onclick="el('indicatorMenu').remove()" style="background:none;border:none;color:#9CA3AF;cursor:pointer;font-size:18px">✕</button>
+        </div>
+        <div style="margin-bottom:8px">
+            <div style="color:#FFD700;margin-bottom:4px;font-size:12px">● SAR (Parabolic)</div>
+            <div style="display:flex;gap:8px">
+                <div><label style="color:#9CA3AF;font-size:11px">Start</label><input id="indSarStart" class="input" type="number" step="0.001" value="${window._sarParams?.start || 0.009}" style="width:60px"></div>
+                <div><label style="color:#9CA3AF;font-size:11px">Step</label><input id="indSarStep" class="input" type="number" step="0.001" value="${window._sarParams?.step || 0.01}" style="width:60px"></div>
+                <div><label style="color:#9CA3AF;font-size:11px">Max</label><input id="indSarMax" class="input" type="number" step="0.01" value="${window._sarParams?.max || 0.2}" style="width:60px"></div>
+            </div>
+        </div>
+        <div style="margin-bottom:12px">
+            <div style="color:#00BFFF;margin-bottom:4px;font-size:12px">● EMA (Exponential MA)</div>
+            <div><label style="color:#9CA3AF;font-size:11px">Period</label><input id="indEmaPeriod" class="input" type="number" value="${window._emaPeriod || 30}" style="width:80px"></div>
+        </div>
+        <div style="display:flex;gap:8px">
+            <button class="btn btn-primary btn-sm" onclick="applyIndicatorParams()" style="flex:1">✅ Применить</button>
+            <button class="btn btn-secondary btn-sm" onclick="el('indicatorMenu').remove()" style="flex:1">Отмена</button>
+        </div>
+    `;
+    document.body.appendChild(div);
+}
+
+function applyIndicatorParams() {
+    const start = parseFloat(el('indSarStart')?.value) || 0.009;
+    const step = parseFloat(el('indSarStep')?.value) || 0.01;
+    const max = parseFloat(el('indSarMax')?.value) || 0.2;
+    const emaPeriod = parseInt(el('indEmaPeriod')?.value) || 30;
+    
+    window._sarParams = { start, step, max };
+    window._emaPeriod = emaPeriod;
+    
+    // Обновляем в стратегии
+    fetch('/strategy/grid-mm/config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sarStart: start, sarStep: step, sarMax: max, emaPeriod })
+    }).then(() => {
+        addLog(nowTime(), 'INFO', `⚙️ Параметры стратегии: SAR(${start}/${step}/${max}) EMA(${emaPeriod})`);
+    }).catch(e => addLog(nowTime(), 'ERROR', `Ошибка: ${e.message}`));
+    
+    // Пересчитываем на текущих данных графика
+    if (candleSeries && sarSeries && emaSeries) {
+        const candles = candleSeries.data();
+        if (candles && candles.length > 0) {
+            const bars = candles.map(c => ({ t: c.time, h: c.high, l: c.low, c: c.close }));
+            const sarData = calcSAR(bars, start, step, max);
+            const emaData = calcEMA(bars, emaPeriod);
+            if (sarData.length > 0) sarSeries.setData(sarData);
+            if (emaData.length > 0) emaSeries.setData(emaData);
+        }
+    }
+    el('indicatorMenu')?.remove();
+}
+
+// Инициализация параметров
+window._sarParams = { start: 0.009, step: 0.01, max: 0.2 };
+window._emaPeriod = 30;
+
 function switchOrderBookInstrument() {
     const ticker = el('obInstrument').value;
-    // Стратегия работает на 1м — ставим 1м TF для графика
-    el('obTimeframe').value = '1';
-    const tf = '1';
+    const tf = el('obTimeframe').value;
     initChart();
     loadCandles(ticker, tf);
     loadQuote(ticker);
     loadOrderBook(ticker);
-    // Поллинг котировок + стакан + индикаторы
+    // Реал-тайм: котировки + стакан + живой график
     if (window._quoteInterval) clearInterval(window._quoteInterval);
     window._quoteInterval = setInterval(() => {
         const t = el('obInstrument').value;
         loadQuote(t);
+        updateLivePrice(t);
+    }, 5000);  // Увеличил с 2000 до 5000 для стабильности
+    // Индикаторы и стакан — реже
+    if (window._slowInterval) clearInterval(window._slowInterval);
+    window._slowInterval = setInterval(() => {
+        const t = el('obInstrument').value;
         loadOrderBook(t);
-        loadStrategyIndicators();
-    }, 2000);
+        updateLiveCandle(t);
+        // Индикаторы стратегии только для SI фьючерсов
+        if (t.startsWith('Si')) loadStrategyIndicators();
+    }, 10000);
     
     // Первая загрузка индикаторов
     loadStrategyIndicators();
@@ -425,14 +773,75 @@ function switchTimeframe() {
     loadCandles(ticker, tf);
 }
 
+// === Живой график: обновляем последнюю свечу и добавляем новые ===
+let _lastCandleTime = 0;
+let _currentTf = 5;
+
+// Тик-баи-тик обновление через /api/quote (быстрый, каждые 500мс)
+function updateLivePrice(ticker) {
+    fetch(`/api/quote?ticker=${ticker}`)
+        .then(r => r.json())
+        .then(q => {
+            if (!q || q.error || !q.last || !candleSeries) return;
+            const now = Math.floor(Date.now() / 1000);
+            const tf = parseInt(el('obTimeframe').value) || 5;
+            const candleOpen = now - (now % (tf * 60)); // начало текущей свечи
+            const price = q.last;
+
+            // Обновляем/создаём текущую свечу
+            if (_lastCandleTime !== candleOpen) {
+                // Новая свеча
+                _lastCandleTime = candleOpen;
+                candleSeries.update({ time: candleOpen, open: price, high: price, low: price, close: price });
+            } else {
+                // Обновляем текущую — берём предыдущие OHLC из серии
+                const bars = candleSeries.data();
+                const last = bars.length > 0 ? bars[bars.length - 1] : null;
+                if (last && last.time === candleOpen) {
+                    candleSeries.update({
+                        time: candleOpen,
+                        open: last.open,
+                        high: Math.max(last.high, price),
+                        low: Math.min(last.low, price),
+                        close: price
+                    });
+                } else {
+                    candleSeries.update({ time: candleOpen, open: price, high: price, low: price, close: price });
+                }
+            }
+        })
+        .catch(() => {});
+}
+
+function updateLiveCandle(ticker) {
+    const tf = parseInt(el('obTimeframe').value) || 5;
+    _currentTf = tf;
+    fetch(`/api/candles?ticker=${ticker}&tf=${tf}&days=1`)
+        .then(r => r.json())
+        .then(data => {
+            if (!data || data.error || !data.length || !candleSeries) return;
+
+            // Только обновляем последнюю свечу
+            const last = data[data.length - 1];
+            candleSeries.update({ time: last.t, open: last.o, high: last.h, low: last.l, close: last.c });
+            if (volumeSeries) {
+                volumeSeries.update({ time: last.t, value: last.v || 0, color: last.c >= last.o ? 'rgba(34,197,94,0.3)' : 'rgba(239,68,68,0.3)' });
+            }
+        })
+        .catch(() => {});
+}
+
 // === Strategy Indicators on Chart ===
 function loadStrategyIndicators() {
+    const ticker = el('obInstrument')?.value || '';
+    // Only for SI futures — skip for stocks and other instruments
+    if (!ticker.startsWith('Si')) return;
+    
     fetch('/strategy/grid-mm/chart-data')
         .then(r => r.json())
         .then(data => {
             if (data.error) return;
             
-            // SAR/EMA series
             if (data.indicators && data.indicators.length > 0) {
                 const sarData = data.indicators
                     .filter(p => p.sar > 0 && !isNaN(p.sar))
@@ -445,7 +854,6 @@ function loadStrategyIndicators() {
                 if (emaSeries && emaData.length > 0) emaSeries.setData(emaData);
             }
             
-            // Trade markers
             if (data.trades && data.trades.length > 0 && candleSeries) {
                 const markers = data.trades.map(t => ({
                     time: toChartTime(t.time),
@@ -458,15 +866,15 @@ function loadStrategyIndicators() {
                 candleSeries.setMarkers(markers);
             }
             
-            // Update metrics
             if (data.current) updateIndicatorMetrics(data.current);
         })
         .catch(() => {});
 }
 
 function toChartTime(isoStr) {
-    // ISO 8601 → unix timestamp for lightweight-charts
+    if (!isoStr) return 0;
     const d = new Date(isoStr);
+    if (isNaN(d.getTime())) return 0;
     return Math.floor(d.getTime() / 1000);
 }
 
@@ -524,34 +932,43 @@ function initEquityChart() {
         grid: { vertLines: { color: '#2D2D44' }, horzLines: { color: '#2D2D44' } },
     });
     equitySeries = equityChart.addLineSeries({ color: '#22C55E', lineWidth: 2 });
+    loadEquityData();
     new ResizeObserver(() => {
         equityChart.applyOptions({ width: container.offsetWidth });
     }).observe(container);
 }
 
+function loadEquityData() {
+    fetch('/strategy/grid-mm/chart-data')
+        .then(r => r.json())
+        .then(data => {
+            if (data.error || !data.indicators || !equitySeries) return;
+            // Equity from EMA as proxy (shows strategy progress)
+            const eqData = data.indicators
+                .map(p => ({ time: toChartTime(p.time), value: p.sar }))
+                .filter(p => p.time > 0 && p.value > 0);
+            if (eqData.length > 0) equitySeries.setData(eqData);
+        })
+        .catch(() => {});
+}
+
 // === Settings ===
 function saveSettings() {
-    const finam = el('finamToken').value;
-    const alfa = el('alfaToken').value;
+    const finam = el('finamToken')?.value;
     if (finam) localStorage.setItem('finamToken', finam);
-    if (alfa) localStorage.setItem('alfaToken', alfa);
     el('settingsStatus').textContent = '✅ Сохранено';
     updateTokenStatus();
 }
 
 function loadSettings() {
     const finam = localStorage.getItem('finamToken');
-    const alfa = localStorage.getItem('alfaToken');
-    if (finam) el('finamToken').value = finam;
-    if (alfa) el('alfaToken').value = alfa;
+    if (finam && el('finamToken')) el('finamToken').value = finam;
     updateTokenStatus();
 }
 
 function updateTokenStatus() {
     const finam = localStorage.getItem('finamToken');
-    const alfa = localStorage.getItem('alfaToken');
-    el('finamTokenStatus').textContent = finam ? `✅ ${finam.slice(0,4)}...${finam.slice(-4)} (${finam.length} симв.)` : '❌ Не задан';
-    el('alfaTokenStatus').textContent = alfa ? `✅ ${alfa.slice(0,4)}...${alfa.slice(-4)} (${alfa.length} симв.)` : '❌ Не задан';
+    if (el('finamTokenStatus')) el('finamTokenStatus').textContent = finam ? `✅ ${finam.slice(0,4)}...${finam.slice(-4)} (${finam.length} симв.)` : '❌ Не задан';
 }
 
 // === Backtest ===
@@ -564,25 +981,1073 @@ async function runBacktest() {
 // === Strategy list ===
 function renderStrategies() {
     const strategies = [
-        { name: 'PSAR Grid MM (1 мин)', ticker: 'SiM6', state: 'stopped', pnl: 0, trades: 0 },
-        { name: 'PSAR+EMA Combo (5 мин)', ticker: 'SiM6', state: 'stopped', pnl: 0, trades: 0 },
-        { name: 'VStop Pure (30 сек, бумага)', ticker: 'SiM6', state: 'stopped', pnl: 0, trades: 0 },
+        { name: 'SAR×EMA Grid MM V6', ticker: 'SI', state: 'stopped', pnl: 0, trades: 0 },
     ];
     const list = el('strategyList');
+    if (!list) return;
     list.innerHTML = strategies.map(s => {
         const dotColor = s.state === 'running' ? 'var(--green)' : s.state === 'paused' ? 'var(--yellow)' : 'var(--red)';
         const pnlCls = s.pnl > 0 ? 'pnl-positive' : s.pnl < 0 ? 'pnl-negative' : 'pnl-zero';
         return `<div class="strategy-item">
             <div class="dot" style="background:${dotColor}"></div>
-            <div class="name">${s.name}</div>
+            <div class="name" style="cursor:pointer" ondblclick="toggleParams()">${s.name}</div>
             <div class="ticker">${s.ticker}</div>
             <div class="pnl ${pnlCls}">${s.pnl > 0 ? '+' : ''}${s.pnl.toFixed(0)} ₽</div>
             <div>${s.trades} сделок</div>
+            <button class="btn btn-secondary btn-sm" onclick="toggleParams()" title="Параметры">⚙️</button>
             <button class="btn btn-primary btn-sm" onclick="startStrategy('${s.name}')">▶</button>
             <button class="btn btn-secondary btn-sm" onclick="pauseStrategy('${s.name}')">⏸</button>
             <button class="btn btn-danger btn-sm" onclick="stopStrategy('${s.name}')">⏹</button>
         </div>`;
     }).join('');
+    loadStrategyConfig();
+}
+
+function toggleParams() {
+    const panel = el('strategyParams');
+    panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
+    if (panel.style.display === 'block') loadStrategyConfig();
+}
+
+function loadStrategyConfig() {
+    fetch('/strategy/grid-mm/config')
+        .then(r => r.json())
+        .then(c => {
+            if (c.error) return;
+            el('cfgSarStart').value = c.sarStart;
+            el('cfgSarStep').value = c.sarStep;
+            el('cfgSarMax').value = c.sarMax;
+            el('cfgEmaPeriod').value = c.emaPeriod;
+            el('cfgGridStep').value = c.gridStep;
+            el('cfgGridSpread').value = c.gridSpread;
+            el('cfgMaxGridLevels').value = c.maxGridLevels;
+            el('cfgMinProfitPerLot').value = c.minProfitPerLot;
+            el('cfgClosePct').value = c.closePct;
+            el('cfgCommission').value = c.commission;
+            el('cfgMaxLots').value = c.maxLots;
+            el('cfgLotStepProfit').value = c.lotStepProfit;
+        }).catch(() => {});
+}
+
+function saveStrategyConfig() {
+    const cfg = {
+        sarStart: parseFloat(el('cfgSarStart').value),
+        sarStep: parseFloat(el('cfgSarStep').value),
+        sarMax: parseFloat(el('cfgSarMax').value),
+        emaPeriod: parseInt(el('cfgEmaPeriod').value),
+        gridStep: parseFloat(el('cfgGridStep').value),
+        gridSpread: parseFloat(el('cfgGridSpread').value),
+        maxGridLevels: parseInt(el('cfgMaxGridLevels').value),
+        minProfitPerLot: parseFloat(el('cfgMinProfitPerLot').value),
+        closePct: parseFloat(el('cfgClosePct').value),
+        commission: parseFloat(el('cfgCommission').value),
+        maxLots: parseInt(el('cfgMaxLots').value),
+        lotStepProfit: parseFloat(el('cfgLotStepProfit').value),
+        forceEntryOnStart: el('cfgForceEntry').checked,
+    };
+    fetch('/strategy/grid-mm/config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(cfg)
+    })
+    .then(r => r.json())
+    .then(res => {
+        if (res.error) { addLog(nowTime(), 'ERROR', 'Config: ' + res.error); return; }
+        addLog(nowTime(), 'INFO', '⚙️ Параметры сохранены');
+    })
+    .catch(e => addLog(nowTime(), 'ERROR', 'Config: ' + e.message));
+}
+
+function getStratCfg() {
+    return {
+        sarStart: parseFloat(el('cfgSarStart').value),
+        sarStep: parseFloat(el('cfgSarStep').value),
+        sarMax: parseFloat(el('cfgSarMax').value),
+        emaPeriod: parseInt(el('cfgEmaPeriod').value),
+        gridStep: parseFloat(el('cfgGridStep').value),
+        gridSpread: parseFloat(el('cfgGridSpread').value),
+        maxGridLevels: parseInt(el('cfgMaxGridLevels').value),
+        minProfitPerLot: parseFloat(el('cfgMinProfitPerLot').value),
+        closePct: parseFloat(el('cfgClosePct').value),
+        commission: parseFloat(el('cfgCommission').value),
+        maxLots: parseInt(el('cfgMaxLots').value),
+        forceEntryOnStart: el('cfgForceEntry').checked,
+    };
+}
+
+function stratTest() {
+    // Открываем панель параметров
+    const panel = el('strategyParams');
+    panel.style.display = 'block';
+    loadStrategyConfig();
+}
+
+function startTest() {
+    // Переносим параметры на вкладку тестирования
+    const ticker = el('stratInstrument').value;
+    const cfg = getStratCfg();
+    if (el('testTicker')) el('testTicker').value = ticker;
+    if (el('tstSarStart')) el('tstSarStart').value = cfg.sarStart;
+    if (el('tstSarStep')) el('tstSarStep').value = cfg.sarStep;
+    if (el('tstSarMax')) el('tstSarMax').value = cfg.sarMax;
+    if (el('tstEma')) el('tstEma').value = cfg.emaPeriod;
+    if (el('tstGridStep')) el('tstGridStep').value = cfg.gridStep;
+    if (el('tstGridSpread')) el('tstGridSpread').value = cfg.gridSpread;
+    if (el('tstMaxGrid')) el('tstMaxGrid').value = cfg.maxGridLevels;
+    if (el('tstClosePct')) el('tstClosePct').value = cfg.closePct;
+    if (el('tstComm')) el('tstComm').value = cfg.commission;
+    if (el('tstLots')) el('tstLots').value = cfg.maxLots;
+    // Переключаем на вкладку тестирования и запускаем
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+    document.querySelector('[data-tab="testing"]').classList.add('active');
+    el('testing').classList.add('active');
+    addLog(nowTime(), 'INFO', `🧪 Запуск теста: ${ticker}`);
+    setTimeout(runBacktest, 300);
+}
+
+function setTestPeriod(days) {
+    const to = new Date();
+    const from = new Date();
+    from.setDate(from.getDate() - days);
+    const fmt = d => d.toISOString().slice(0, 10);
+    if (el('testFrom')) el('testFrom').value = fmt(from);
+    if (el('testTo')) el('testTo').value = fmt(to);
+    if (el('testCandles')) el('testCandles').value = '';
+}
+
+let btEquityChart = null, btCandleChart = null;
+
+async function runBacktest() {
+    const ticker = el('testTicker')?.value || 'SI';
+    const tf = parseInt(el('testTf')?.value) || 5;
+    const status = el('testStatus');
+    status.textContent = '⏳ Запуск бэктеста...';
+
+    const params = {
+        mode: 'backtest',
+        ticker, tf,
+        from: el('testFrom')?.value || undefined,
+        to: el('testTo')?.value || undefined,
+        sarStart: parseFloat(el('tstSarStart')?.value),
+        sarStep: parseFloat(el('tstSarStep')?.value),
+        sarMax: parseFloat(el('tstSarMax')?.value),
+        emaPeriod: parseInt(el('tstEma')?.value),
+        gridStep: parseFloat(el('tstGridStep')?.value),
+        gridSpread: parseFloat(el('tstGridSpread')?.value),
+        maxGrid: parseInt(el('tstMaxGrid')?.value),
+        commission: parseFloat(el('tstComm')?.value),
+        minProfit: parseFloat(el('tstMinProfit')?.value || 35),
+        closePct: parseFloat(el('tstClosePct')?.value),
+        lotStepProfit: parseFloat(el('tstLotStep')?.value || 1000),
+        maxLots: parseInt(el('tstLots')?.value),
+    };
+
+    try {
+        const resp = await fetch('/api/backtest', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(params),
+            signal: AbortSignal.timeout(120000)
+        });
+        const r = await resp.json();
+        if (r.error) { status.textContent = '❌ ' + r.error; return; }
+
+        // Render results
+        el('testResults').style.display = 'block';
+        const fmt = v => (v||0).toLocaleString('ru-RU', {maximumFractionDigits:0});
+        const cls = v => v >= 0 ? 'metric-value green' : 'metric-value red';
+        const setVal = (id, v, suffix='') => { const e = el(id); if(e) { e.textContent = (v>=0?'+':'') + fmt(v) + suffix; e.className = cls(v); } };
+        const setTxt = (id, v) => { const e = el(id); if(e) e.textContent = v; };
+
+        setVal('btPnl', r.pnl, ' ₽');
+        setVal('btPpd', r.ppd, ' ₽/д');
+        setTxt('btTrades', r.sessions);
+        setTxt('btRtpd', r.rtpd);
+        setTxt('btWR', r.winRate + '%');
+        setTxt('btPF', r.profitFactor);
+        setTxt('btSharpe', '—');
+        setVal('btAvgTrade', r.pnl / (r.sessions||1), ' ₽');
+        setVal('btAvgWin', r.avgWin, ' ₽');
+        setVal('btAvgLoss', r.avgLoss, ' ₽');
+        setVal('btMaxDD', -r.maxDD, ' ₽'); if(el('btMaxDD')) el('btMaxDD').className = 'metric-value red';
+        setTxt('btMaxDDpct', '—');
+        setTxt('btMaxDDdur', '—');
+        setTxt('btMaxPos', r.maxPosition);
+        setVal('btMaxGO', r.maxGO, ' ₽');
+        setTxt('btSessions', r.sessions);
+        setTxt('btSessionsWR', r.winRate + '%');
+        setTxt('btMedSession', '—');
+        setVal('btMaxWin', r.maxWin, ' ₽');
+        setVal('btMaxLoss', r.maxLoss, ' ₽');
+        setTxt('btMaxWinsStreak', r.maxWinStreak);
+        setTxt('btMaxLossStreak', r.maxLossStreak);
+        setVal('btCommission', -r.totalCommission, ' ₽'); if(el('btCommission')) el('btCommission').className = 'metric-value red';
+
+        // Equity chart
+        const ecEl = el('testEquityChart');
+        if (ecEl && r.equityCurve?.length > 0) {
+            if (btEquityChart) btEquityChart.remove();
+            const ew = ecEl.parentElement?.offsetWidth || ecEl.offsetWidth || 800;
+            btEquityChart = LightweightCharts.createChart(ecEl, {
+                width: ew, height: 300,
+                layout: { background: { color: '#1A1A2E' }, textColor: '#9CA3AF' },
+                grid: { vertLines: { color: '#2D2D44' }, horzLines: { color: '#2D2D44' } },
+                timeScale: { timeVisible: true },
+            });
+            const line = btEquityChart.addLineSeries({ color: '#22C55E', lineWidth: 2 });
+            const eqData = r.equityCurve.map(p => ({ time: p.time, value: p.value }));
+            line.setData(eqData);
+        }
+
+        // Candle chart with SAR + EMA + markers
+        const ccEl = el('testCandleChart');
+        if (ccEl && r.candles?.length > 0) {
+            if (btCandleChart) btCandleChart.remove();
+            const cw = ccEl.parentElement?.offsetWidth || ccEl.offsetWidth || 800;
+            btCandleChart = LightweightCharts.createChart(ccEl, {
+                width: cw, height: 400,
+                layout: { background: { color: '#1A1A2E' }, textColor: '#9CA3AF' },
+                grid: { vertLines: { color: '#2D2D44' }, horzLines: { color: '#2D2D44' } },
+                timeScale: { timeVisible: true, secondsVisible: false },
+                localization: { timeFormatter: t => { const d=new Date(t*1000); return d.getUTCDate()+'.'+(d.getUTCMonth()+1)+' '+d.getUTCHours()+':'+String(d.getUTCMinutes()).padStart(2,'0'); } },
+            });
+            const cs = btCandleChart.addCandlestickSeries({ upColor: '#22C55E', downColor: '#EF4444', borderUpColor: '#22C55E', borderDownColor: '#EF4444', wickUpColor: '#22C55E', wickDownColor: '#EF4444' });
+            cs.setData(r.candles.map(c => ({ time: c.t, open: c.o, high: c.h, low: c.l, close: c.c })));
+            if (r.sar?.length) { const s = btCandleChart.addLineSeries({ color: '#F59E0B', lineWidth: 1, priceLineVisible: false, lastValueVisible: false }); s.setData(r.sar); }
+            if (r.ema?.length) { const e = btCandleChart.addLineSeries({ color: '#3B82F6', lineWidth: 1, priceLineVisible: false, lastValueVisible: false }); e.setData(r.ema); }
+            // Trade markers on candles
+            if (r.markers?.length) {
+                const markers = r.markers.map(m => ({
+                    time: m.time,
+                    position: m.dir === 1 ? 'belowBar' : m.dir === -1 ? 'aboveBar' : m.dir === 2 ? 'belowBar' : 'aboveBar',
+                    color: (m.dir === 1 || m.dir === 2) ? '#22C55E' : '#EF4444',
+                    shape: m.dir === 1 ? 'arrowUp' : m.dir === -1 ? 'arrowDown' : 'circle',
+                    text: m.dir === 1 ? 'L' : m.dir === -1 ? 'S' : 'X'
+                })).sort((a, b) => a.time - b.time);
+                cs.setMarkers(markers);
+            }
+        }
+
+        // Trades table — show session details
+        const tbody = el('testTradesTable');
+        if (tbody) {
+            const sessions = r.sessionDetails || [];
+            if (!sessions.length) { tbody.innerHTML = '<tr><td colspan="8">Нет данных</td></tr>'; }
+            else {
+                tbody.innerHTML = sessions.slice(0, 100).map((s, i) => {
+                    const cls = s.pnl >= 0 ? 'green' : 'red';
+                    return `<tr><td>${i+1}</td><td class="${cls}">${s.pnl >= 0 ? '+' : ''}${Math.round(s.pnl).toLocaleString('ru-RU')} ₽</td><td>${s.peakLots}</td><td>${s.pnl >= 0 ? '✅' : '❌'}</td></tr>`;
+                }).join('');
+                // Fix thead
+                const thead = tbody.closest('table')?.querySelector('thead tr');
+                if (thead) thead.innerHTML = '<th>#</th><th>PnL сессии</th><th>Peak Lots</th><th>WR</th>';
+            }
+        }
+
+        status.textContent = `✅ ${r.tickers?.join(', ')} | ${r.totalDays} дней | ${r.sessions} сессий | PnL ${fmt(r.pnl)}₽`;
+    } catch (e) {
+        status.textContent = '❌ ' + e.message;
+    }
+}
+
+function simulateGridMM(candles, sarData, emaData, p) {
+    const trades = [];
+    let equity = 0, peakEquity = 0, maxDD = 0, maxDDstart = 0, maxDDdur = 0;
+    let posDir = 0, entryPrice = 0, lots = 0;
+    let pnl = 0, totalComm = 0;
+    let wins = 0, losses = 0, maxWin = 0, maxLoss = 0;
+    let winStreak = 0, lossStreak = 0, maxWinStreak = 0, maxLossStreak = 0;
+    let maxLots = 0, sessionCount = 0, sessionPnl = 0, sessionTrades = 0;
+    let profitableSessions = 0, sessionPnls = [];
+    let cumPnl = 0;
+    const equityCurve = [];
+    const emaMap = {};
+    emaData.forEach(e => emaMap[e.time] = e.value);
+    const sarMap = {};
+    sarData.forEach(s => sarMap[s.time] = s.value);
+
+    let prevSarAboveEma = null;
+    let gridActive = false;
+    let gridLevels = [];
+
+    for (let i = 1; i < candles.length; i++) {
+        const c = candles[i];
+        const sar = sarMap[c.t];
+        const ema = emaMap[c.t];
+        if (!sar || !ema) continue;
+
+        const prevC = candles[i-1];
+        const prevSar = sarMap[prevC.t];
+        const prevEma = emaMap[prevC.t];
+        if (!prevSar || !prevEma) continue;
+
+        const sarAboveEma = sar > ema;
+        const crossUp = !prevSarAboveEma && sarAboveEma; // SAR пересёк EMA вверх → short signal
+        const crossDown = prevSarAboveEma && !sarAboveEma; // SAR пересёк EMA вниз → long signal
+        prevSarAboveEma = sarAboveEma;
+
+        // Close on reverse cross
+        if (posDir !== 0) {
+            if ((posDir === 1 && crossUp) || (posDir === -1 && crossDown)) {
+                const closePnl = posDir * (c.c - entryPrice) * lots - p.commission * lots;
+                cumPnl += closePnl;
+                const isWin = closePnl > 0;
+                if (isWin) { wins++; winStreak++; lossStreak = 0; maxWinStreak = Math.max(maxWinStreak, winStreak); }
+                else { losses++; lossStreak++; winStreak = 0; maxLossStreak = Math.max(maxLossStreak, lossStreak); }
+                maxWin = Math.max(maxWin, closePnl);
+                maxLoss = Math.min(maxLoss, closePnl);
+                trades.push({ entryTime: candles[Math.max(0,i-1)].t, exitTime: c.t, dir: posDir, entryPrice, exitPrice: c.c, lots, pnl: closePnl, rt: lots });
+                sessionPnl += closePnl;
+                posDir = 0; lots = 0; gridActive = false; gridLevels = [];
+            }
+        }
+
+        // Entry on cross
+        if (posDir === 0) {
+            if (crossDown) {
+                posDir = 1; entryPrice = c.c; lots = p.lots;
+                maxLots = Math.max(maxLots, lots);
+                gridActive = true; gridLevels = [];
+                // Setup grid
+                for (let g = 1; g <= p.maxGrid; g++) {
+                    gridLevels.push(entryPrice - g * p.gridStep);
+                }
+                sessionCount++; sessionPnl = 0;
+            } else if (crossUp) {
+                posDir = -1; entryPrice = c.c; lots = p.lots;
+                maxLots = Math.max(maxLots, lots);
+                gridActive = true; gridLevels = [];
+                for (let g = 1; g <= p.maxGrid; g++) {
+                    gridLevels.push(entryPrice + g * p.gridStep);
+                }
+                sessionCount++; sessionPnl = 0;
+            }
+        }
+
+        // Grid fill simulation (simplified - check if price hit grid levels)
+        if (posDir !== 0 && gridActive) {
+            for (let g = 0; g < gridLevels.length; g++) {
+                const gPrice = gridLevels[g];
+                const filled = posDir === 1 ? (c.l <= gPrice) : (c.h >= gPrice);
+                if (filled && lots < p.lots * p.maxGrid) {
+                    lots += p.lots;
+                    maxLots = Math.max(maxLots, lots);
+                    // TP for this level
+                    const tpPrice = posDir === 1 ? gPrice + p.gridSpread : gPrice - p.gridSpread;
+                    const tpHit = posDir === 1 ? (c.h >= tpPrice) : (c.l <= tpPrice);
+                    if (tpHit) {
+                        const tpPnl = p.gridSpread * p.lots * posDir - p.commission * p.lots * 2;
+                        cumPnl += tpPnl;
+                        sessionPnl += tpPnl;
+                        totalComm += p.commission * p.lots * 2;
+                        if (tpPnl > 0) { wins++; winStreak++; lossStreak = 0; maxWinStreak = Math.max(maxWinStreak, winStreak); }
+                        trades.push({ entryTime: c.t, exitTime: c.t, dir: posDir, entryPrice: gPrice, exitPrice: tpPrice, lots: p.lots, pnl: tpPnl, rt: 1 });
+                        lots -= p.lots;
+                    }
+                }
+            }
+        }
+
+        // Close % check
+        if (posDir !== 0 && lots > 0) {
+            const unrealized = posDir * (c.c - entryPrice) * lots;
+            const peakLots = Math.max(lots, maxLots);
+            // Simplified: close if unrealized PnL per lot is good enough
+            if (trades.length > 0 && cumPnl > 0 && unrealized / lots >= p.gridSpread * p.closePct) {
+                // Could close here in full sim - simplified version just tracks
+            }
+        }
+
+        // Track equity
+        const unrealizedPnl = posDir !== 0 ? posDir * (c.c - entryPrice) * lots : 0;
+        const totalEquity = cumPnl + unrealizedPnl;
+        equityCurve.push({ time: c.t, value: totalEquity });
+        peakEquity = Math.max(peakEquity, totalEquity);
+        const dd = peakEquity - totalEquity;
+        if (dd > maxDD) { maxDD = dd; maxDDstart = i; }
+    }
+
+    // Close any remaining position at last price
+    if (posDir !== 0 && candles.length > 0) {
+        const lastC = candles[candles.length - 1];
+        const closePnl = posDir * (lastC.c - entryPrice) * lots - p.commission * lots;
+        cumPnl += closePnl;
+        trades.push({ entryTime: candles[candles.length-2]?.t || lastC.t, exitTime: lastC.t, dir: posDir, entryPrice, exitPrice: lastC.c, lots, pnl: closePnl, rt: lots });
+        sessionPnl += closePnl;
+    }
+
+    const totalTrades = trades.length;
+    const totalDays = candles.length > 0 ? (candles[candles.length-1].t - candles[0].t) / 86400 : 1;
+    const totalRT = trades.reduce((s, t) => s + (t.rt || 1), 0);
+    const avgTrade = totalTrades > 0 ? cumPnl / totalTrades : 0;
+    const avgWin = trades.filter(t => t.pnl > 0).reduce((s, t) => s + t.pnl, 0) / Math.max(1, wins) || 0;
+    const avgLoss = trades.filter(t => t.pnl < 0).reduce((s, t) => s + t.pnl, 0) / Math.max(1, losses) || 0;
+    const grossWin = trades.filter(t => t.pnl > 0).reduce((s, t) => s + t.pnl, 0);
+    const grossLoss = Math.abs(trades.filter(t => t.pnl < 0).reduce((s, t) => s + t.pnl, 0));
+    const pf = grossLoss > 0 ? grossWin / grossLoss : grossWin > 0 ? Infinity : 0;
+
+    return {
+        trades, equityCurve,
+        pnl: cumPnl, ppd: totalDays > 0 ? cumPnl / totalDays : 0,
+        totalTrades, rtpd: totalDays > 0 ? totalRT / totalDays : 0,
+        winRate: totalTrades > 0 ? wins / totalTrades : 0,
+        profitFactor: pf,
+        sharpe: 0, // simplified
+        avgTrade, avgWin, avgLoss,
+        maxDD, maxDDpct: peakEquity > 0 ? (maxDD / peakEquity * 100) : 0,
+        maxDDdur: 0,
+        maxLots, maxGO: maxLots * 12000,
+        sessions: sessionCount, sessionsWR: sessionCount > 0 ? profitableSessions / sessionCount : 0,
+        medSession: 0,
+        maxWin: trades.reduce((m, t) => Math.max(m, t.pnl), 0),
+        maxLoss: trades.reduce((m, t) => Math.min(m, t.pnl), 0),
+        maxWinStreak, maxLossStreak,
+        commission: totalComm
+    };
+}
+
+function renderBacktestResult(r, candles, sarData, emaData, p) {
+    el('testResults').style.display = 'block';
+    const fmt2 = v => (v||0).toLocaleString('ru-RU', {maximumFractionDigits:0});
+    const fmtPct = v => (v||0).toFixed(1) + '%';
+    const cls = v => v >= 0 ? 'metric-value green' : 'metric-value red';
+    const val = (id, v, suffix='') => { const e = el(id); if(e) { e.textContent = (v >= 0 ? '+' : '') + fmt2(v) + suffix; e.className = cls(v); } };
+
+    val('btPnl', r.pnl, ' ₽');
+    val('btPpd', r.ppd, ' ₽');
+    if(el('btTrades')) el('btTrades').textContent = r.totalTrades;
+    val('btRtpd', r.rtpd, ''); if(el('btRtpd')) el('btRtpd').textContent = (r.rtpd||0).toFixed(1);
+    if(el('btWR')) el('btWR').textContent = fmtPct(r.winRate * 100);
+    if(el('btPF')) el('btPF').textContent = (r.profitFactor||0).toFixed(2);
+    if(el('btSharpe')) el('btSharpe').textContent = (r.sharpe||0).toFixed(2);
+    val('btAvgTrade', r.avgTrade, ' ₽');
+    val('btAvgWin', r.avgWin, ' ₽');
+    val('btAvgLoss', r.avgLoss, ' ₽');
+    val('btMaxDD', -r.maxDD, ' ₽'); if(el('btMaxDD')) el('btMaxDD').className = 'metric-value red';
+    if(el('btMaxDDpct')) el('btMaxDDpct').textContent = (r.maxDDpct||0).toFixed(1) + '%';
+    if(el('btMaxDDdur')) el('btMaxDDdur').textContent = '—';
+    if(el('btMaxPos')) el('btMaxPos').textContent = r.maxLots;
+    val('btMaxGO', r.maxGO, ' ₽');
+    if(el('btSessions')) el('btSessions').textContent = r.sessions;
+    if(el('btSessionsWR')) el('btSessionsWR').textContent = fmtPct(r.sessionsWR * 100);
+    if(el('btMedSession')) el('btMedSession').textContent = '—';
+    val('btMaxWin', r.maxWin, ' ₽');
+    val('btMaxLoss', r.maxLoss, ' ₽');
+    if(el('btMaxWinsStreak')) el('btMaxWinsStreak').textContent = r.maxWinStreak;
+    if(el('btMaxLossStreak')) el('btMaxLossStreak').textContent = r.maxLossStreak;
+    val('btCommission', -r.commission, ' ₽'); if(el('btCommission')) el('btCommission').className = 'metric-value red';
+
+    // Equity chart
+    const ecEl = el('testEquityChart');
+    if (ecEl && r.equityCurve.length > 0) {
+        if (btEquityChart) btEquityChart.remove();
+        btEquityChart = LightweightCharts.createChart(ecEl, {
+            width: ecEl.offsetWidth, height: 280,
+            layout: { background: { color: '#1A1A2E' }, textColor: '#9CA3AF' },
+            grid: { vertLines: { color: '#2D2D44' }, horzLines: { color: '#2D2D44' } },
+            timeScale: { timeVisible: true, secondsVisible: false },
+        });
+        const lineSeries = btEquityChart.addLineSeries({ color: '#22C55E', lineWidth: 2 });
+        lineSeries.setData(r.equityCurve);
+    }
+
+    // Candle chart with trades + SAR + EMA
+    const ccEl = el('testCandleChart');
+    if (ccEl && candles.length > 0) {
+        if (btCandleChart) btCandleChart.remove();
+        btCandleChart = LightweightCharts.createChart(ccEl, {
+            width: ccEl.offsetWidth, height: 280,
+            layout: { background: { color: '#1A1A2E' }, textColor: '#9CA3AF' },
+            grid: { vertLines: { color: '#2D2D44' }, horzLines: { color: '#2D2D44' } },
+            timeScale: { timeVisible: true, secondsVisible: false },
+        });
+        const cs = btCandleChart.addCandlestickSeries({ upColor: '#22C55E', downColor: '#EF4444', borderUpColor: '#22C55E', borderDownColor: '#EF4444', wickUpColor: '#22C55E', wickDownColor: '#EF4444' });
+        cs.setData(candles.map(c => ({ time: c.t, open: c.o, high: c.h, low: c.l, close: c.c })));
+        // SAR
+        const sarSeries = btCandleChart.addLineSeries({ color: '#F59E0B', lineWidth: 1, priceLineVisible: false, lastValueVisible: false });
+        if (sarData.length > 0) sarSeries.setData(sarData);
+        // EMA
+        const emaSeries = btCandleChart.addLineSeries({ color: '#3B82F6', lineWidth: 1, priceLineVisible: false, lastValueVisible: false });
+        if (emaData.length > 0) emaSeries.setData(emaData);
+        // Trade markers
+        if (r.trades.length > 0) {
+            const markers = r.trades.map(t => ({
+                time: t.exitTime,
+                position: t.dir === 1 ? 'belowBar' : 'aboveBar',
+                color: t.pnl >= 0 ? '#22C55E' : '#EF4444',
+                shape: t.dir === 1 ? 'arrowUp' : 'arrowDown',
+                text: `${t.pnl >= 0 ? '+' : ''}${Math.round(t.pnl)}`,
+            })).sort((a, b) => a.time - b.time);
+            cs.setMarkers(markers);
+        }
+    }
+
+    // Trades table
+    const tbody = el('testTradesTable');
+    if (tbody) {
+        if (!r.trades.length) { tbody.innerHTML = '<tr><td colspan="8">Нет сделок</td></tr>'; return; }
+        tbody.innerHTML = r.trades.slice(-100).map(t => {
+            const d = new Date(t.entryTime * 1000);
+            const de = new Date(t.exitTime * 1000);
+            const fmtT = ts => ts.toLocaleString('ru-RU', { timeZone: 'UTC', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+            return `<tr>
+                <td>${fmtT(d)}</td>
+                <td>${fmtT(de)}</td>
+                <td class="${t.dir === 1 ? 'green' : 'red'}">${t.dir === 1 ? 'Лонг' : 'Шорт'}</td>
+                <td>${t.entryPrice?.toFixed(1)}</td>
+                <td>${t.exitPrice?.toFixed(1)}</td>
+                <td>${t.lots}</td>
+                <td class="${t.pnl >= 0 ? 'green' : 'red'}">${t.pnl >= 0 ? '+' : ''}${t.pnl?.toFixed(0)} ₽</td>
+                <td>${t.rt || 1}</td>
+            </tr>`;
+        }).join('');
+    }
+}
+
+function stratOptimize() {
+    // Открываем панель оптимизации
+    el('optimizePanel').style.display = 'block';
+}
+
+async function startOptimize() {
+    const ticker = el('stratInstrument')?.value || 'SI';
+    const tf = parseInt(el('testTf')?.value) || 5;
+    addLog(nowTime(), 'INFO', `⚡ Оптимизация ${ticker}...`);
+
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+    document.querySelector('[data-tab="testing"]').classList.add('active');
+    el('testing').classList.add('active');
+    el('testResults').style.display = 'block';
+    el('testStatus').textContent = '⏳ Запуск оптимизации...';
+
+    function getVal(id) { return parseFloat(el(id)?.value) || 0; }
+    function getInt(id) { return parseInt(el(id)?.value) || 0; }
+
+    const params = {
+        mode: 'optimize',
+        ticker, tf,
+        from: el('testFrom')?.value || undefined,
+        to: el('testTo')?.value || undefined,
+        sarMax: getVal('cfgSarMax'),
+        maxGrid: getInt('cfgMaxGridLevels'),
+        commission: getVal('cfgCommission'),
+        minProfit: getVal('cfgMinProfitPerLot'),
+        lotStepProfit: getVal('cfgLotStepProfit'),
+        maxLots: getInt('cfgMaxLots'),
+        // Ranges
+        sarStartFrom: getVal('optSarStartFrom'), sarStartTo: getVal('optSarStartTo'), sarStartStep: getVal('optSarStartStep'),
+        sarStepFrom: getVal('optSarStepFrom'), sarStepTo: getVal('optSarStepTo'), sarStepStep: getVal('optSarStepStep'),
+        emaPeriodFrom: getInt('optEmaFrom'), emaPeriodTo: getInt('optEmaTo'), emaPeriodStep: getInt('optEmaStep'),
+        gridStepFrom: getInt('optGridStepFrom'), gridStepTo: getInt('optGridStepTo'), gridStepStep: getInt('optGridStepStep'),
+        gridSpreadFrom: getInt('optGridSpreadFrom'), gridSpreadTo: getInt('optGridSpreadTo'), gridSpreadStep: getInt('optGridSpreadStep'),
+        closePctFrom: getVal('optClosePctFrom'), closePctTo: getVal('optClosePctTo'), closePctStep: getVal('optClosePctStep'),
+    };
+
+    try {
+        const resp = await fetch('/api/backtest', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(params)
+        });
+        const data = await resp.json();
+        if (data.error) { el('testStatus').textContent = '❌ ' + data.error; return; }
+
+        const top = data.results || [];
+        const tbody = el('testTradesTable');
+        if (tbody) {
+            const thead = tbody.closest('table')?.querySelector('thead tr');
+            if (thead) thead.innerHTML = '<th>#</th><th>SAR</th><th>EMA</th><th>Grid S/S</th><th>Close%</th><th>PnL</th><th>Сессий</th><th>WR</th><th>Max DD</th><th>Max Pos</th>';
+            tbody.innerHTML = top.map((r, i) => `<tr>
+                <td>${i+1}</td>
+                <td>${r.sarStart}/${r.sarStep}/${r.sarMax}</td>
+                <td>${r.emaPeriod}</td>
+                <td>${r.gridStep}/${r.gridSpread}</td>
+                <td>${r.closePct}</td>
+                <td class="${r.pnl >= 0 ? 'green' : 'red'}">${r.pnl >= 0 ? '+' : ''}${Math.round(r.pnl).toLocaleString('ru-RU')} ₽</td>
+                <td>${r.sessions}</td>
+                <td>${r.winRate}%</td>
+                <td>${Math.round(r.maxDD).toLocaleString('ru-RU')}</td>
+                <td>${r.maxPos}</td>
+            </tr>`).join('');
+        }
+
+        // Clear metrics
+        ['btPnl','btPpd','btTrades','btWR','btPF','btMaxDD'].forEach(id => { if(el(id)) el(id).textContent = '—'; });
+
+        el('testStatus').textContent = `✅ ${data.totalCombinations} комбинаций. Лучший: ${Math.round(top[0]?.pnl||0).toLocaleString('ru-RU')}₽`;
+        addLog(nowTime(), 'INFO', `⚡ Оптимизация: ${data.totalCombinations} комб. Лучший PnL=${Math.round(top[0]?.pnl||0).toLocaleString('ru-RU')}₽`);
+    } catch (e) {
+        el('testStatus').textContent = '❌ ' + e.message;
+    }
+}
+
+// === Роботы (мониторинг) ===
+let robots = JSON.parse(localStorage.getItem('hf_robots') || '[]');
+
+function stratCreateRobot() {
+    const cfg = getStratCfg();
+    if (el('robotTicker')) el('robotTicker').value = el('stratInstrument').value;
+    if (el('robotSarStart')) el('robotSarStart').value = cfg.sarStart;
+    if (el('robotSarStep')) el('robotSarStep').value = cfg.sarStep;
+    if (el('robotSarMax')) el('robotSarMax').value = cfg.sarMax;
+    if (el('robotEma')) el('robotEma').value = cfg.emaPeriod;
+    if (el('robotGridStep')) el('robotGridStep').value = cfg.gridStep;
+    if (el('robotGridSpread')) el('robotGridSpread').value = cfg.gridSpread;
+    if (el('robotMaxGrid')) el('robotMaxGrid').value = cfg.maxGridLevels;
+    if (el('robotClosePct')) el('robotClosePct').value = cfg.closePct;
+    if (el('robotMinProfit')) el('robotMinProfit').value = cfg.minProfit || 28;
+    if (el('robotComm')) el('robotComm').value = cfg.commission;
+    if (el('robotLots')) el('robotLots').value = cfg.maxLots;
+    if (el('robotForceEntry')) el('robotForceEntry').checked = cfg.forceEntry === 'true' || cfg.forceEntryOnStart === true;
+    el('robotPanel').style.display = 'block';
+}
+
+function confirmCreateRobot() {
+    const robot = {
+        id: Date.now(),
+        ticker: el('robotTicker')?.value || 'SiM6',
+        account: el('robotAccount')?.value || '',
+        accountName: el('robotAccount')?.selectedOptions?.[0]?.text || '',
+        strategy: 'SAR×EMA Grid MM v6',
+        sarStart: el('robotSarStart')?.value,
+        sarStep: el('robotSarStep')?.value,
+        sarMax: el('robotSarMax')?.value,
+        ema: el('robotEma')?.value,
+        gridStep: el('robotGridStep')?.value,
+        gridSpread: el('robotGridSpread')?.value,
+        maxGrid: el('robotMaxGrid')?.value,
+        closePct: el('robotClosePct')?.value,
+        minProfit: el('robotMinProfit')?.value,
+        forceEntry: el('robotForceEntry')?.checked ? 'true' : 'false',
+        commission: el('robotComm')?.value,
+        lots: el('robotLots')?.value,
+        status: 'stopped', // stopped, running, paused
+        position: '—',
+        pnlToday: 0,
+        pnlTotal: 0,
+        lotsOpen: 0,
+        go: 0,
+        exchangeStatus: '—'
+    };
+    robots.push(robot);
+    saveRobots();
+    el('robotPanel').style.display = 'none';
+    renderRobots();
+    // Switch to monitoring tab
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+    document.querySelector('[data-tab="monitoring"]').classList.add('active');
+    el('monitoring').classList.add('active');
+    addLog(nowTime(), 'INFO', `🤖 Робот создан: ${robot.ticker} ${robot.strategy}`);
+}
+
+function saveRobots() { localStorage.setItem('hf_robots', JSON.stringify(robots)); }
+
+async function renderRobots() {
+    const tbody = el('robotsTable');
+    const noMsg = el('noRobots');
+    if (!tbody) return;
+
+    // Загружаем активные стратегии с сервера
+    let serverStrategies = [];
+    try {
+        const resp = await fetch('/api/active-strategies');
+        const data = await resp.json();
+        if (data.strategies) {
+            serverStrategies = data.strategies.map(s => {
+                const posText = s.posDir > 0 ? 'Лонг' : s.posDir < 0 ? 'Шорт' : 'Флэт';
+                const modeText = s.mode === 'Running' ? '🟢 Работает' : s.mode === 'Paused' ? '🟡 Пауза' : '🔴 Остановлен';
+                const modeCls = s.mode === 'Running' ? 'green' : s.mode === 'Paused' ? 'yellow' : 'red';
+                const pnlCls = v => v >= 0 ? 'green' : 'red';
+                return `<tr style="background:#f0fdf4">
+                    <td><strong>${s.instrument}</strong></td>
+                    <td><strong>${s.name}</strong> <span class="badge">СЕРВЕР</span></td>
+                    <td>Финам</td>
+                    <td class="${s.posDir > 0 ? 'green' : s.posDir < 0 ? 'red' : ''}">${posText}${s.entryPrice > 0 ? ' @ ' + s.entryPrice.toFixed(0) : ''}</td>
+                    <td>—</td>
+                    <td class="${pnlCls(s.totalPnL)}">${s.totalPnL >= 0 ? '+' : ''}${s.totalPnL.toFixed(0)} ₽</td>
+                    <td>${s.openLots || s.lots || 0}</td>
+                    <td>—</td>
+                    <td>
+                        ${s.id === 'grid-mm' ? `
+                            <button class="btn btn-warning btn-sm" onclick="fetch('/strategy/grid-mm/pause',{method:'POST'})">⏸</button>
+                            <button class="btn btn-danger btn-sm" onclick="fetch('/strategy/grid-mm/stop',{method:'POST'})">⏹</button>
+                            <button class="btn btn-success btn-sm" onclick="fetch('/strategy/grid-mm/run',{method:'POST'})">▶</button>
+                        ` : ''}
+                        ${s.id === 'vol-rev' ? `
+                            <button class="btn btn-warning btn-sm" onclick="fetch('/strategy/vol-rev/pause',{method:'POST'})">⏸</button>
+                            <button class="btn btn-danger btn-sm" onclick="fetch('/strategy/vol-rev/stop',{method:'POST'})">⏹</button>
+                            <button class="btn btn-success btn-sm" onclick="fetch('/strategy/vol-rev/run',{method:'POST'})">▶</button>
+                        ` : ''}
+                    </td>
+                    <td class="${modeCls}">${modeText} ${s.connected ? '🔗' : '⚠️'}</td>
+                </tr>`;
+            });
+        }
+    } catch(e) { console.warn('active-strategies fetch failed:', e); }
+
+    // localStorage роботы
+    let localRows = robots.map((r, i) => {
+        const statusCls = r.status === 'running' ? 'green' : r.status === 'paused' ? 'yellow' : 'red';
+        const statusText = r.status === 'running' ? '🟢 Работает' : r.status === 'paused' ? '🟡 Пауза' : '🔴 Остановлен';
+        const posCls = r.position === 'Лонг' ? 'green' : r.position === 'Шорт' ? 'red' : '';
+        const pnlCls = v => v >= 0 ? 'green' : 'red';
+        return `<tr ondblclick="editRobot(${i})" style="cursor:pointer" title="Двойной клик — параметры">
+            <td><strong>${r.ticker}</strong></td>
+            <td>${r.strategy}</td>
+            <td>${r.accountName || r.account || '—'}</td>
+            <td class="${posCls}">${r.position}</td>
+            <td class="${pnlCls(r.pnlToday)}">${r.pnlToday >= 0 ? '+' : ''}${r.pnlToday.toLocaleString('ru-RU')} ₽</td>
+            <td class="${pnlCls(r.pnlTotal)}">${r.pnlTotal >= 0 ? '+' : ''}${r.pnlTotal.toLocaleString('ru-RU')} ₽</td>
+            <td>${r.lotsOpen}</td>
+            <td>${r.go.toLocaleString('ru-RU')}</td>
+            <td>
+                <button class="btn btn-success btn-sm" onclick="robotStart(${i})" ${r.status === 'running' ? 'disabled' : ''}>▶</button>
+                <button class="btn btn-warning btn-sm" onclick="robotPause(${i})" ${r.status !== 'running' ? 'disabled' : ''}>⏸</button>
+                <button class="btn btn-danger btn-sm" onclick="robotStop(${i})" ${r.status === 'stopped' ? 'disabled' : ''}>⏹</button>
+                <button class="btn btn-secondary btn-sm" onclick="robotRemove(${i})" title="Удалить">🗑</button>
+            </td>
+            <td class="${statusCls}">${statusText}</td>
+        </tr>`;
+    });
+
+    const allRows = [...serverStrategies, ...localRows];
+    if (!allRows.length) { tbody.innerHTML = ''; if (noMsg) noMsg.style.display = 'block'; return; }
+    if (noMsg) noMsg.style.display = 'none';
+    tbody.innerHTML = allRows.join('');
+}
+
+async function robotStart(i) {
+    const r = robots[i];
+    if (!r) return;
+    addLog(nowTime(), 'INFO', `▶ Запуск робота ${r.ticker}...`);
+    // Сначала сохраняем параметры стратегии
+    try {
+        await fetch('/strategy/grid-mm/config', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                sarStart: parseFloat(r.sarStart) || 0.009,
+                sarStep: parseFloat(r.sarStep) || 0.01,
+                sarMax: parseFloat(r.sarMax) || 0.2,
+                emaPeriod: parseInt(r.ema) || 30,
+                gridStep: parseFloat(r.gridStep) || 45,
+                gridSpread: parseFloat(r.gridSpread) || 50,
+                maxGridLevels: parseInt(r.maxGrid) || 70,
+                closePct: parseFloat(r.closePct) || 0.30,
+                minProfitPerLot: parseFloat(r.minProfit) || 28,
+                commission: parseFloat(r.commission) || 0.90,
+                maxLots: parseInt(r.lots) || 1,
+                forceEntryOnStart: r.forceEntry === 'true'
+            })
+        });
+    } catch (e) {}
+    
+    // Обновляем параметры для графика
+    window._sarParams = { 
+        start: parseFloat(r.sarStart) || 0.009, 
+        step: parseFloat(r.sarStep) || 0.01, 
+        max: parseFloat(r.sarMax) || 0.2 
+    };
+    window._emaPeriod = parseInt(r.ema) || 30;
+    
+    try {
+        const resp = await fetch('/strategy/grid-mm/start', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ ticker: r.ticker })
+        });
+        const data = await resp.json();
+        if (data.error) { addLog(nowTime(), 'ERROR', data.error); return; }
+        await fetch('/strategy/grid-mm/run', { method: 'POST' });
+        r.status = 'running';
+        r.exchangeStatus = 'Подключен';
+        saveRobots(); renderRobots();
+        addLog(nowTime(), 'INFO', `🤖 Робот ${r.ticker} запущен`);
+    } catch (e) { addLog(nowTime(), 'ERROR', e.message); }
+}
+
+async function robotPause(i) {
+    const r = robots[i];
+    if (!r) return;
+    try {
+        await fetch('/strategy/grid-mm/pause', { method: 'POST' });
+        r.status = 'paused';
+        saveRobots(); renderRobots();
+        addLog(nowTime(), 'INFO', `⏸ Робот ${r.ticker} на паузе`);
+    } catch (e) { addLog(nowTime(), 'ERROR', e.message); }
+}
+
+async function robotStop(i) {
+    const r = robots[i];
+    if (!r) return;
+    addLog(nowTime(), 'INFO', `⏹ Остановка робота ${r.ticker}, закрытие позиций...`);
+    try {
+        await fetch('/strategy/grid-mm/stop', { method: 'POST' });
+        r.status = 'stopped';
+        r.position = '—'; r.lotsOpen = 0; r.go = 0;
+        saveRobots(); renderRobots();
+        addLog(nowTime(), 'INFO', `⏹ Робот ${r.ticker} остановлен, позиции закрыты`);
+    } catch (e) { addLog(nowTime(), 'ERROR', e.message); }
+}
+
+function robotRemove(i) {
+    const r = robots[i];
+    if (r && r.status === 'running') { addLog(nowTime(), 'WARN', `Сначала остановите робота ${r.ticker}`); return; }
+    robots.splice(i, 1);
+    saveRobots(); renderRobots();
+    addLog(nowTime(), 'INFO', `🗑 Робот удалён`);
+}
+
+// Обновление данных роботов из стратегии
+async function updateRobotData() {
+    if (!robots.length) return;
+    try {
+        const resp = await fetch('/strategy/grid-mm/status');
+        const data = await resp.json();
+        if (data.status === 'not_initialized') return;
+        robots.forEach(r => {
+            if (r.status === 'running' || r.status === 'paused') {
+                r.pnlToday = data.pnl || 0;
+                r.pnlTotal = data.totalPnl || data.pnl || 0;
+                r.position = data.direction === 1 ? 'Лонг' : data.direction === -1 ? 'Шорт' : '—';
+                r.lotsOpen = data.openLots || 0;
+                r.go = data.margin || r.lotsOpen * 12000;
+                r.exchangeStatus = data.connected ? 'Биржа OK' : 'Нет связи';
+                if (data.mode === 'Stopped') r.status = 'stopped';
+                if (data.mode === 'Paused') r.status = 'paused';
+            }
+        });
+        saveRobots(); renderRobots();
+    } catch (e) {}
+}
+
+// Начальный рендер
+renderRobots();
+loadAccounts();
+// Автообновление активных стратегий каждые 5 сек
+setInterval(renderRobots, 5000);
+// Обновление данных роботов при необходимости (fallback)
+setInterval(updateRobotData, 30000);
+
+function editRobot(i) {
+    const r = robots[i];
+    if (!r) return;
+    const panel = el('robotEditPanel');
+    if (panel) { 
+        if (robotEditChartInstance) { robotEditChartInstance.remove(); robotEditChartInstance = null; }
+        panel.remove(); 
+    }
+    // Create floating edit panel
+    const div = document.createElement('div');
+    div.id = 'robotEditPanel';
+    div.className = 'card';
+    div.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);z-index:1000;width:900px;max-height:90vh;overflow-y:auto;box-shadow:0 8px 32px rgba(0,0,0,.5)';
+    div.innerHTML = `
+        <div class="card-header row gap-8">
+            🤖 Параметры: ${r.ticker}
+            <button class="btn btn-primary btn-sm" onclick="saveRobotEdit(${i})">💾 Сохранить</button>
+            <button class="btn btn-secondary btn-sm" onclick="if(robotEditChartInstance)robotEditChartInstance.remove();robotEditChartInstance=null;el('robotEditPanel')?.remove()">✕</button>
+        </div>
+        <div style="padding:12px">
+            <div class="metrics-row" style="flex-wrap:wrap;margin-bottom:16px">
+                <div class="metric-card"><div class="metric-label">Счёт</div><select id="editAccount" class="input" style="width:180px"><option value="${r.account}">${r.accountName || r.account}</option></select></div>
+                <div class="metric-card"><div class="metric-label">SAR Start</div><input id="editSarStart" class="input" type="number" step="0.001" value="${r.sarStart}" style="width:70px"></div>
+                <div class="metric-card"><div class="metric-label">SAR Step</div><input id="editSarStep" class="input" type="number" step="0.001" value="${r.sarStep}" style="width:70px"></div>
+                <div class="metric-card"><div class="metric-label">SAR Max</div><input id="editSarMax" class="input" type="number" step="0.01" value="${r.sarMax}" style="width:70px"></div>
+                <div class="metric-card"><div class="metric-label">EMA</div><input id="editEma" class="input" type="number" value="${r.ema}" style="width:60px"></div>
+                <div class="metric-card"><div class="metric-label">Grid Step</div><input id="editGridStep" class="input" type="number" value="${r.gridStep}" style="width:70px"></div>
+                <div class="metric-card"><div class="metric-label">Grid Spread</div><input id="editGridSpread" class="input" type="number" value="${r.gridSpread}" style="width:70px"></div>
+                <div class="metric-card"><div class="metric-label">Max Grid</div><input id="editMaxGrid" class="input" type="number" value="${r.maxGrid}" style="width:70px"></div>
+                <div class="metric-card"><div class="metric-label">Close %</div><input id="editClosePct" class="input" type="number" step="0.01" value="${r.closePct}" style="width:70px"></div>
+                <div class="metric-card"><div class="metric-label">Лоты</div><input id="editLots" class="input" type="number" value="${r.lots}" style="width:60px"></div>
+            </div>
+            <div id="robotEditChart" style="height:400px;border:1px solid #2D2D44;border-radius:8px;margin-bottom:12px"></div>
+            <div id="robotEditInfo" style="font-size:12px;color:#9CA3AF">Загрузка данных...</div>
+        </div>`;
+    document.body.appendChild(div);
+    // Load accounts into edit select
+    loadAccountsInto('editAccount', r.account);
+    // Load chart
+    loadRobotChart(r);
+}
+
+async function loadAccountsInto(selectId, currentVal) {
+    try {
+        const resp = await fetch('/api/accounts');
+        const data = await resp.json();
+        const sel = el(selectId);
+        if (!sel) return;
+        sel.innerHTML = (data.accounts || []).map(a => `<option value="${a.id}" ${a.id === currentVal ? 'selected' : ''}>${a.id} — ${a.name} (${(a.balance||0).toLocaleString('ru-RU')}₽)</option>`).join('');
+    } catch (e) {}
+}
+
+let robotEditChartInstance = null;
+
+async function loadRobotChart(robot) {
+    const container = el('robotEditChart');
+    const info = el('robotEditInfo');
+    if (!container) return;
+
+    try { if (robotEditChartInstance) { robotEditChartInstance.remove(); robotEditChartInstance = null; } } catch(e) {}
+
+    try {
+        // 1. Load candles
+        const resp = await fetch(`/api/candles?ticker=${robot.ticker}&tf=5&days=5`);
+        const raw = await resp.json();
+        const allCandles = Array.isArray(raw) ? raw : [];
+        if (!allCandles.length) { if (info) info.textContent = 'Нет данных'; return; }
+
+        // 2. Filter out non-trading (flat) candles
+        const candles = allCandles.filter(c => c.h > c.l);
+        if (!candles.length) { if (info) info.textContent = 'Нет торговых данных'; return; }
+
+        // 3. Take last 200 candles max — enough for chart + indicators
+        const data = candles.slice(-200);
+
+        // 4. Wait for container dimensions
+        await new Promise(r => setTimeout(r, 100));
+        const width = container.offsetWidth || 860;
+
+        // 5. Create chart — MSK timezone
+        const tzOffset = 3 * 3600; // UTC+3
+        robotEditChartInstance = LightweightCharts.createChart(container, {
+            width, height: 400,
+            layout: { background: { color: '#1A1A2E' }, textColor: '#9CA3AF' },
+            grid: { vertLines: { color: '#2D2D44' }, horzLines: { color: '#2D2D44' } },
+            timeScale: { timeVisible: true, secondsVisible: false },
+            localization: {
+                timeFormatter: t => {
+                    const d = new Date((t + tzOffset) * 1000);
+                    return d.toISOString().slice(11, 16);
+                },
+            },
+            crosshair: { mode: LightweightCharts.CrosshairMode.Normal },
+        });
+
+        // 6. Candlestick series
+        const candleSeries = robotEditChartInstance.addCandlestickSeries({
+            upColor: '#22C55E', downColor: '#EF4444',
+            borderUpColor: '#22C55E', borderDownColor: '#EF4444',
+            wickUpColor: '#22C55E', wickDownColor: '#EF4444',
+        });
+        candleSeries.setData(data.map(c => ({
+            time: c.t, open: c.o, high: c.h, low: c.l, close: c.c
+        })));
+
+        // 7. Volume as histogram
+        const volSeries = robotEditChartInstance.addHistogramSeries({
+            priceFormat: { type: 'volume' },
+            priceScaleId: 'vol',
+        });
+        volSeries.priceScale().applyOptions({ scaleMargins: { top: 0.85, bottom: 0 } });
+        volSeries.setData(data.map(c => ({
+            time: c.t, value: c.v || 0,
+            color: c.c >= c.o ? 'rgba(34,197,94,0.25)' : 'rgba(239,68,68,0.25)',
+        })));
+
+        // 8. SAR indicator
+        const sarStart = parseFloat(robot.sarStart) || 0.005;
+        const sarStep = parseFloat(robot.sarStep) || 0.01;
+        const sarMax = parseFloat(robot.sarMax) || 0.2;
+        const sarPoints = calcSAR(data, sarStart, sarStep, sarMax);
+        if (sarPoints.length) {
+            const sarLine = robotEditChartInstance.addLineSeries({
+                color: '#FFD700', lineWidth: 1, pointMarkersVisible: true,
+                priceLineVisible: false, lastValueVisible: false, title: 'SAR',
+            });
+            sarLine.setData(sarPoints);
+        }
+
+        // 9. EMA indicator
+        const emaPeriod = parseInt(robot.ema) || 30;
+        const emaPoints = calcEMA(data, emaPeriod);
+        if (emaPoints.length) {
+            const emaLine = robotEditChartInstance.addLineSeries({
+                color: '#00BFFF', lineWidth: 2,
+                priceLineVisible: false, lastValueVisible: false, title: 'EMA',
+            });
+            emaLine.setData(emaPoints);
+        }
+
+        // 10. Scroll to latest bars — show ~100 last candles with proper width
+        robotEditChartInstance.applyOptions({
+            timeScale: { barSpacing: 8, rightOffset: 5 }
+        });
+        robotEditChartInstance.timeScale().scrollToRealTime();
+
+        // 11. Resize handling
+        new ResizeObserver(() => {
+            const w = container.offsetWidth;
+            if (w > 0 && robotEditChartInstance) robotEditChartInstance.applyOptions({ width: w });
+        }).observe(container);
+
+        if (info) info.textContent = `${data.length} свечей · SAR(${sarStart}/${sarStep}/${sarMax}) · EMA(${emaPeriod})`;
+
+    } catch(e) {
+        console.error('[RobotChart]', e);
+        if (info) info.textContent = 'Ошибка: ' + e.message;
+    }
+}
+
+async function saveRobotEdit(i) {
+    const r = robots[i];
+    if (!r) return;
+    r.account = el('editAccount')?.value || r.account;
+    r.accountName = el('editAccount')?.selectedOptions?.[0]?.text || r.accountName;
+    r.sarStart = el('editSarStart')?.value || r.sarStart;
+    r.sarStep = el('editSarStep')?.value || r.sarStep;
+    r.sarMax = el('editSarMax')?.value || r.sarMax;
+    r.ema = el('editEma')?.value || r.ema;
+    r.gridStep = el('editGridStep')?.value || r.gridStep;
+    r.gridSpread = el('editGridSpread')?.value || r.gridSpread;
+    r.maxGrid = el('editMaxGrid')?.value || r.maxGrid;
+    r.closePct = el('editClosePct')?.value || r.closePct;
+    r.lots = el('editLots')?.value || r.lots;
+    
+    // Отправляем параметры в стратегию
+    try {
+        await fetch('/strategy/grid-mm/config', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                sarStart: parseFloat(r.sarStart),
+                sarStep: parseFloat(r.sarStep),
+                sarMax: parseFloat(r.sarMax),
+                emaPeriod: parseInt(r.ema),
+                gridStep: parseFloat(r.gridStep),
+                gridSpread: parseFloat(r.gridSpread),
+                maxGridLevels: parseInt(r.maxGrid),
+                closePct: parseFloat(r.closePct),
+                maxLots: parseInt(r.lots),
+                commission: parseFloat(r.commission) || 0.90
+            })
+        });
+        // Обновляем параметры для графика
+        window._sarParams = { start: parseFloat(r.sarStart), step: parseFloat(r.sarStep), max: parseFloat(r.sarMax) };
+        window._emaPeriod = parseInt(r.ema);
+        // Пересчитываем индикаторы на графике
+        if (candleSeries && sarSeries && emaSeries) {
+            const candles = candleSeries.data();
+            if (candles && candles.length > 0) {
+                const bars = candles.map(c => ({ t: c.time, h: c.high, l: c.low, c: c.close }));
+                const sarData = calcSAR(bars, window._sarParams.start, window._sarParams.step, window._sarParams.max);
+                const emaData = calcEMA(bars, window._emaPeriod);
+                if (sarData.length > 0) sarSeries.setData(sarData);
+                if (emaData.length > 0) emaSeries.setData(emaData);
+            }
+        }
+        addLog(nowTime(), 'INFO', `⚙️ Параметры стратегии обновлены: SAR(${r.sarStart}/${r.sarStep}/${r.sarMax}) EMA(${r.ema})`);
+    } catch (e) {
+        addLog(nowTime(), 'ERROR', `Ошибка обновления параметров: ${e.message}`);
+    }
+    
+    saveRobots(); renderRobots();
+    if (robotEditChartInstance) robotEditChartInstance.remove();
+    robotEditChartInstance = null;
+    el('robotEditPanel')?.remove();
 }
 
 async function startStrategy(name) {
@@ -828,132 +2293,6 @@ function arbLog(level, msg) {
     addLog(time, level, `[ARB] ${msg}`);
 }
 
-// === Alfa-Direct ===
-let alfaUrl = 'http://localhost:15200';
-let alfaQuotes = {};
-
-async function alfaConnect() {
-    alfaUrl = el('alfaBridgeUrl')?.value || 'http://localhost:15200';
-    el('alfaStatusText').textContent = '⏳ Подключаюсь...';
-    try {
-        const resp = await fetch(alfaUrl + '/status');
-        const data = await resp.json();
-        el('alfaStatusText').textContent = data.connected ? '✅ Подключён' : '❌ Нет связи';
-        el('alfaStatusText').style.color = data.connected ? 'var(--green)' : 'var(--red)';
-        el('alfaAuthStatus').textContent = data.authorized ? '✅ Авторизован' : '❌';
-        el('alfaAuthStatus').className = 'metric-value ' + (data.authorized ? 'green' : 'red');
-        el('alfaAccount').textContent = data.account || '—';
-        el('alfaAssets').textContent = data.assetsLoaded || 0;
-        el('alfaSign').textContent = data.authorized ? 'Готова' : 'Нет';
-        if (data.connected) {
-            alfaLoadPositions();
-            alfaLoadOrders();
-            if (!window._alfaInterval) window._alfaInterval = setInterval(alfaRefresh, 5000);
-        }
-    } catch (e) {
-        el('alfaStatusText').textContent = '❌ ' + e.message;
-        el('alfaStatusText').style.color = 'var(--red)';
-    }
-}
-
-async function alfaSearch() {
-    const q = el('alfaSearchInput')?.value?.trim();
-    if (!q) return;
-    try {
-        const resp = await fetch(alfaUrl + '/instruments?name=' + encodeURIComponent(q));
-        const data = await resp.json();
-        const tbody = el('alfaSearchBody');
-        if (!Array.isArray(data)) { tbody.innerHTML = '<tr><td colspan=8>' + JSON.stringify(data) + '</td></tr>'; return; }
-        const groups = {1:'Акции',2:'Облигации',3:'Фонды',4:'Фьючерсы',5:'Опционы'};
-        tbody.innerHTML = data.map(a => {
-            const instrs = (a.instruments || []).map(i => 
-                `<div>idFi=<b>${i.idFi}</b> board=${i.idMarketBoard} ${i.rcode} ${i.isLiquid ? '✅' : ''}</div>`
-            ).join('');
-            const liquidFi = (a.instruments || []).find(i => i.isLiquid);
-            const idFi = liquidFi ? liquidFi.idFi : (a.instruments?.[0]?.idFi || 0);
-            return `<tr>
-                <td><b>${a.ticker}</b></td>
-                <td>${a.name}</td>
-                <td>${groups[a.idObjectGroup] || a.idObjectGroup}</td>
-                <td>${a.idObject}</td>
-                <td>${instrs}</td>
-                <td>${liquidFi?.rcode || ''}</td>
-                <td>${liquidFi?.isLiquid ? '✅' : ''}</td>
-                <td><button class="btn btn-secondary btn-sm" onclick="alfaGetQuote(${idFi},'${a.ticker}')">📊</button></td>
-            </tr>`;
-        }).join('');
-    } catch (e) { el('alfaSearchBody').innerHTML = '<tr><td colspan=8>Ошибка: ' + e.message + '</td></tr>'; }
-}
-
-async function alfaGetQuote(idFi, ticker) {
-    try {
-        const resp = await fetch(alfaUrl + '/fininfo?idFi=' + idFi);
-        const data = await resp.json();
-        alfaQuotes[ticker] = { ...data, ticker, idFi };
-        alfaRenderQuotes();
-    } catch (e) { console.error(e); }
-}
-
-function alfaRenderQuotes() {
-    const tbody = el('alfaQuotesBody');
-    tbody.innerHTML = Object.values(alfaQuotes).map(q => `<tr>
-        <td><b>${q.ticker}</b></td>
-        <td>${q.idFi}</td>
-        <td class="accent">${q.last || '—'}</td>
-        <td class="green">${q.bid || '—'}</td>
-        <td class="red">${q.ask || '—'}</td>
-        <td>${q.high || '—'}</td>
-        <td>${q.low || '—'}</td>
-        <td>${q.volume || '—'}</td>
-    </tr>`).join('');
-}
-
-async function alfaLoadPositions() {
-    try {
-        const resp = await fetch(alfaUrl + '/positions');
-        const data = await resp.json();
-        if (Array.isArray(data) && data.length > 0) {
-            let html = '<table class="data-table"><thead><tr><th>Инструмент</th><th>Позиция</th><th>Покупки</th><th>Продажи</th><th>PnL</th></tr></thead><tbody>';
-            data.forEach(p => {
-                html += `<tr><td>${p.IdObject || p.idObject || ''}</td><td>${p.TorgPos || p.BackPos || ''}</td><td>${p.DailyBuyQuantity || p.BuyQty || ''}</td><td>${p.DailySellQuantity || p.SellQty || ''}</td><td>${p.DailyPL || p.TrdPL || ''}</td></tr>`;
-            });
-            html += '</tbody></table>';
-            el('alfaPositions').innerHTML = html;
-        } else {
-            el('alfaPositions').innerHTML = '<i>Нет открытых позиций</i>';
-        }
-    } catch (e) { el('alfaPositions').innerHTML = 'Ошибка: ' + e.message; }
-}
-
-async function alfaLoadOrders() {
-    try {
-        const resp = await fetch(alfaUrl + '/orders');
-        const data = await resp.json();
-        if (Array.isArray(data) && data.length > 0) {
-            let html = '<table class="data-table"><thead><tr><th>#</th><th>Инструмент</th><th>Напр.</th><th>Кол-во</th><th>Цена</th><th>Статус</th></tr></thead><tbody>';
-            data.forEach(o => {
-                const dir = (o.BuySell || o.buySell) == 1 ? 'Buy' : 'Sell';
-                html += `<tr><td>${o.NumEDocument || o.numEDocument || ''}</td><td>${o.IdObject || o.idObject || ''}</td><td>${dir}</td><td>${o.Quantity || o.quantity || ''}</td><td>${o.LimitPrice || o.limitPrice || o.Price || ''}</td><td>${o.IdOrderStatus || o.status || ''}</td></tr>`;
-            });
-            html += '</tbody></table>';
-            el('alfaOrders').innerHTML = html;
-        } else {
-            el('alfaOrders').innerHTML = '<i>Нет заявок</i>';
-        }
-    } catch (e) { el('alfaOrders').innerHTML = 'Ошибка: ' + e.message; }
-}
-
-async function alfaRefresh() {
-    try {
-        // Обновляем котировки
-        for (const [ticker, q] of Object.entries(alfaQuotes)) {
-            if (q.idFi) alfaGetQuote(q.idFi, ticker);
-        }
-        alfaLoadPositions();
-        alfaLoadOrders();
-    } catch { }
-}
-
 // === Init ===
 document.addEventListener('DOMContentLoaded', () => {
     loadSettings();
@@ -970,9 +2309,20 @@ document.addEventListener('DOMContentLoaded', () => {
     setInterval(fetchStatus, 10000);
     setInterval(arbRefreshStatus, 5000);
 
-    // Автозагрузка свечей для дефолтного инструмента
-    setTimeout(() => {
-        initChart();
-        switchOrderBookInstrument();
-    }, 500);
+    // Автоподключение брокера если есть токен
+    const savedToken = localStorage.getItem('finamToken');
+    if (savedToken) {
+        setTimeout(connectBroker, 1000);
+    }
+    
+    // Загрузка сохранённых настроек Transaq
+    const txLogin = localStorage.getItem('txLogin');
+    if (txLogin && el('txLogin')) {
+        el('txLogin').value = txLogin;
+        el('txHost').value = localStorage.getItem('txHost') || 'tr.finam.ru';
+        el('txPort').value = localStorage.getItem('txPort') || '39000';
+    }
+    
+    // Проверка здоровья каждые 5 сек
+    setInterval(checkHealth, 5000);
 });

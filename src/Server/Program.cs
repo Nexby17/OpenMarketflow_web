@@ -2,6 +2,9 @@ using Microsoft.AspNetCore.SignalR;
 using HedgeFund.Server.Hubs;
 using HedgeFund.Server.Services;
 using HedgeFund.Core.Strategies;
+using System.Text.Json;
+using Microsoft.AspNetCore.Http.Extensions;
+using System.Collections.Generic;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -40,6 +43,46 @@ app.UseStaticFiles();
 
 // === Маппинг SignalR Hub ===
 app.MapHub<TradingHub>("/trading");
+
+// === QUIK Bridge State ===
+var quikData = new Dictionary<string, object>();
+var quikCommands = new List<Dictionary<string, object>>();
+var quikConnected = false;
+DateTime quikLastHeartbeat = DateTime.MinValue;
+
+// === Candle Aggregator from QUIK ticks ===
+var candleBuilderLock = new object();
+GridMmRegimeLauncher? gridMm = null;
+var candleBuilderCurrent = (double[]?)null;
+var candleBuilderHistory = new List<double[]>();
+const int CANDLE_TF_MINUTES = 5;
+const int MAX_CANDLES = 500;
+
+bool IsQuikAlive() => quikConnected && (DateTime.UtcNow - quikLastHeartbeat).TotalSeconds < 10;
+
+void AggregateCandleTick(double price, double volume, long ts)
+{
+    lock (candleBuilderLock)
+    {
+        var candleStart = ts - (ts % (CANDLE_TF_MINUTES * 60));
+        if (candleBuilderCurrent != null && (long)candleBuilderCurrent[0] == candleStart)
+        {
+            candleBuilderCurrent[2] = Math.Max(candleBuilderCurrent[2], price); // H
+            candleBuilderCurrent[3] = Math.Min(candleBuilderCurrent[3], price); // L
+            candleBuilderCurrent[4] = price; // C
+            candleBuilderCurrent[5] += volume; // V
+        }
+        else
+        {
+            if (candleBuilderCurrent != null)
+            {
+                candleBuilderHistory.Add(candleBuilderCurrent);
+                if (candleBuilderHistory.Count > MAX_CANDLES) candleBuilderHistory.RemoveAt(0);
+            }
+            candleBuilderCurrent = new double[] { candleStart, price, price, price, price, volume };
+        }
+    }
+}
 
 // === Health-check endpoint ===
 app.MapGet("/health", () => Results.Ok(new { status = "ok", time = DateTime.UtcNow }));
@@ -138,45 +181,421 @@ app.MapGet("/api/candles", async (TradingService svc, string ticker, int tf, int
     catch (Exception ex) { return Results.BadRequest(new { error = ex.Message }); }
 });
 
+// === QUIK Bridge Endpoints ===
+app.MapPost("/quik/data", (HttpRequest req) =>
+{
+    quikLastHeartbeat = DateTime.UtcNow;
+    quikConnected = true;
+    try
+    {
+        using var sr = new StreamReader(req.Body);
+        var body = sr.ReadToEndAsync().Result;
+        
+        // Логирование для отладки (только первые 200 символов)
+        if (body.Length > 0 && !body.Contains("\"quotes\":[]"))
+            Console.WriteLine($"[QUIK] Data: {body.Substring(0, Math.Min(200, body.Length))}...");
+        
+        using var doc = System.Text.Json.JsonDocument.Parse(body);
+        
+        // Store in quikData as plain string JSON for easy serialization
+        var rawJson = body;
+        lock (quikData)
+        {
+            quikData["raw"] = rawJson;
+            quikData["quotes"] = doc.RootElement.TryGetProperty("quotes", out var q) ? q.ToString() : "[]";
+            quikData["pos"] = doc.RootElement.TryGetProperty("pos", out var p) ? p.ToString() : "[]";
+            quikData["orders"] = doc.RootElement.TryGetProperty("orders", out var o) ? o.ToString() : "[]";
+            quikData["bal"] = doc.RootElement.TryGetProperty("bal", out var b) ? b.GetDouble() : 0.0;
+            quikData["free"] = doc.RootElement.TryGetProperty("free", out var f) ? f.GetDouble() : 0.0;
+            quikData["acc"] = doc.RootElement.TryGetProperty("acc", out var a) ? a.GetString() : "";
+            quikData["ob"] = doc.RootElement.TryGetProperty("ob", out var ob) ? ob.ToString() : "[]";
+            // Также сохраняем orderbook из QUIK bridge (формат: {ticker, bids, asks})
+            if (doc.RootElement.TryGetProperty("orderbook", out var orderbook))
+                quikData["ob"] = orderbook.ToString();
+            quikData["ts"] = doc.RootElement.TryGetProperty("ts", out var t) ? t.GetInt64() : 0;
+        }
+        
+        // Aggregate candles from quotes
+        if (doc.RootElement.TryGetProperty("quotes", out var quotesArr))
+        {
+            foreach (var qEl in quotesArr.EnumerateArray())
+            {
+                var last = qEl.TryGetProperty("l", out var lp) ? lp.GetDouble() : 0;
+                var vol = qEl.TryGetProperty("v", out var vp) ? vp.GetDouble() : 0;
+                var ts = doc.RootElement.TryGetProperty("ts", out var tsEl) ? tsEl.GetInt64() : DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+                if (last > 0) AggregateCandleTick(last, vol, ts);
+            }
+        }
+        
+        // Broadcast via SignalR
+        var hub = app.Services.GetRequiredService<IHubContext<TradingHub>>();
+        if (doc.RootElement.TryGetProperty("quotes", out var quotes))
+            _ = hub.Clients.All.SendAsync("OnQuoteUpdate", quotes.ToString());
+        if (doc.RootElement.TryGetProperty("pos", out var pos) && pos.GetArrayLength() > 0)
+            _ = hub.Clients.All.SendAsync("OnPositionUpdate", pos.ToString());
+        if (doc.RootElement.TryGetProperty("orders", out var orders) && orders.GetArrayLength() > 0)
+            _ = hub.Clients.All.SendAsync("OnOrderUpdate", orders.ToString());
+        if (doc.RootElement.TryGetProperty("bal", out var bal))
+            _ = hub.Clients.All.SendAsync("OnBalanceUpdate", new { balance = bal.GetDouble(), free = doc.RootElement.TryGetProperty("free", out var fr) ? fr.GetDouble() : bal.GetDouble(), account = doc.RootElement.TryGetProperty("acc", out var ac) ? ac.GetString() : "", ts = doc.RootElement.TryGetProperty("ts", out var t2) ? t2.GetInt64() : 0 });
+    }
+    catch (Exception ex)
+    {
+        Console.WriteLine($"[QUIK] Error processing data: {ex.Message}");
+    }
+    return Results.Json(new { status = "ok" });
+});
+
+app.MapGet("/quik/status", () =>
+{
+    var age = DateTime.UtcNow - quikLastHeartbeat;
+    var alive = quikConnected && age.TotalSeconds < 10;
+    return Results.Json(new
+    {
+        connected = alive,
+        lastHeartbeat = quikLastHeartbeat.ToString("o"),
+        age = (int)age.TotalSeconds
+    });
+});
+
+app.MapGet("/quik/latest", () =>
+{
+    lock (quikData)
+    {
+        if (quikData.ContainsKey("raw"))
+            return Results.Json(new { source = "QUIK", data = quikData["raw"], quotes = quikData["quotes"], pos = quikData["pos"], orders = quikData["orders"], ob = quikData.ContainsKey("ob") ? quikData["ob"] : "[]", bal = quikData["bal"], free = quikData["free"], acc = quikData["acc"] });
+        return Results.Json(new { error = "no data" });
+    }
+});
+
+app.MapGet("/quik/commands", () =>
+{
+    lock (quikCommands)
+    {
+        var cmds = quikCommands.ToList();
+        quikCommands.Clear();
+        return Results.Json(cmds);
+    }
+});
+
+// === Backtest API (Python) ===
+app.MapPost("/api/backtest", async (HttpRequest req) =>
+{
+    try {
+        using var reader = new StreamReader(req.Body);
+        var body = await reader.ReadToEndAsync();
+        var scriptPath = "/root/.openclaw/workspace/HedgeFund/backtest/src/backtest_api.py";
+        if (!File.Exists(scriptPath)) return Results.Json(new { error = "backtest_api.py not found" }, statusCode: 404);
+        var psi = new System.Diagnostics.ProcessStartInfo {
+            FileName = "python3",
+            Arguments = $"\"{scriptPath}\"",
+            RedirectStandardInput = true,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false,
+            CreateNoWindow = true
+        };
+        using var proc = System.Diagnostics.Process.Start(psi);
+        if (proc == null) return Results.Json(new { error = "Failed to start python" }, statusCode: 500);
+        await proc.StandardInput.WriteAsync(body);
+        proc.StandardInput.Close();
+        var output = await proc.StandardOutput.ReadToEndAsync();
+        var err = await proc.StandardError.ReadToEndAsync();
+        await proc.WaitForExitAsync();
+        if (proc.ExitCode != 0) return Results.Json(new { error = err.Length > 500 ? err[..500] : err }, statusCode: 500);
+        return Results.Text(output, "application/json");
+    } catch (Exception ex) { return Results.Json(new { error = ex.Message }, statusCode: 500); }
+});
+
+// === Unified Data Provider API ===
+app.MapGet("/transaq/health", (TradingService svc) =>
+{
+    var quikAge = DateTime.UtcNow - quikLastHeartbeat;
+    var quikAlive = quikConnected && quikAge.TotalSeconds < 10;
+    var finamOk = svc.Connector?.IsConnected == true;
+    return Results.Json(new
+    {
+        finam = new { status = finamOk ? "connected" : "not_connected", broker = "Finam Trade API (gRPC)" },
+        transaq = new { status = "not_connected", broker = "Transaq (not configured)" },
+        quik = new { status = quikAlive ? "connected" : "not_connected", broker = "QUIK Bridge (Lua)", lastHeartbeat = quikLastHeartbeat.ToString("o"), age = (int)quikAge.TotalSeconds },
+        dataSource = quikAlive ? "QUIK" : (finamOk ? "Finam" : "none"),
+        timestamp = DateTime.UtcNow.ToString("o")
+    });
+});
+
+app.MapGet("/api/quotes", () =>
+{
+    if (IsQuikAlive())
+    {
+        lock (quikData)
+        {
+            if (quikData.ContainsKey("quotes"))
+                return Results.Json(new { source = "QUIK", data = quikData["quotes"] });
+        }
+    }
+    return Results.Json(new { source = "Finam", data = "[]", note = "QUIK offline, use /api/quote?ticker=..." });
+});
+
+app.MapGet("/api/balance", () =>
+{
+    if (IsQuikAlive())
+    {
+        lock (quikData)
+        {
+            if (quikData.ContainsKey("bal"))
+            {
+                return Results.Json(new { source = "QUIK", balance = quikData["bal"], free = quikData["free"], account = quikData["acc"] });
+            }
+        }
+    }
+    return Results.Json(new { source = "Finam", note = "QUIK offline, use /api/accounts" });
+});
+
+app.MapGet("/api/orderbook/{ticker}", (string ticker) =>
+{
+    if (IsQuikAlive())
+    {
+        lock (quikData)
+        {
+            if (quikData.ContainsKey("ob"))
+                return Results.Json(new { source = "QUIK", ticker, data = quikData["ob"] });
+        }
+    }
+    return Results.Json(new { source = "Finam", note = "QUIK offline, use /api/orderbook?ticker=..." });
+});
+
+app.MapGet("/api/ohlcv", (string? ticker) =>
+{
+    lock (candleBuilderLock)
+    {
+        var candles = candleBuilderHistory.ToList();
+        if (candleBuilderCurrent != null) candles.Add(candleBuilderCurrent);
+        return Results.Json(new { tf = CANDLE_TF_MINUTES, count = candles.Count, candles = candles.Select(c => new { t = (long)c[0], o = c[1], h = c[2], l = c[3], c = c[4], v = c[5] }) });
+    }
+});
+
+// === QUIK candles for Grid MM (ISO format) ===
+app.MapGet("/quik/candles", () =>
+{
+    lock (candleBuilderLock)
+    {
+        var candles = candleBuilderHistory.ToList();
+        if (candleBuilderCurrent != null) candles.Add(candleBuilderCurrent);
+        return Results.Json(candles.Select(c => new 
+        {
+            Timestamp = DateTimeOffset.FromUnixTimeSeconds((long)c[0]).ToString("o"),
+            Open = c[1],
+            High = c[2],
+            Low = c[3],
+            Close = c[4],
+            Volume = c[5]
+        }));
+    }
+});
+
+// === QUIK current price (for Grid MM signals) ===
+app.MapGet("/quik/price", () =>
+{
+    lock (quikData)
+    {
+        if (quikData.TryGetValue("quotes", out var quotesJson))
+        {
+            var doc = JsonDocument.Parse(quotesJson.ToString());
+            if (doc.RootElement.GetArrayLength() > 0)
+            {
+                var first = doc.RootElement[0];
+                if (first.TryGetProperty("l", out var last))
+                    return Results.Json(new { price = last.GetDouble(), timestamp = DateTime.UtcNow.ToString("o") });
+            }
+        }
+        return Results.Json(new { price = 0.0, timestamp = DateTime.UtcNow.ToString("o") });
+    }
+});
+
 // === REST: котировки через Finam API ===
-app.MapGet("/api/quote", async (TradingService svc, string ticker) =>
+// === Accounts API (Finam) ===
+app.MapGet("/api/accounts", async (TradingService svc) =>
 {
     try
     {
-        var connector = svc.Connector;
-        if (connector?.IsConnected != true) return Results.Ok(new { error = "not connected" });
-        var grpc = connector.GrpcClient;
-        if (grpc == null) return Results.Ok(new { error = "no grpc" });
-        var (bid, ask, last) = await grpc.GetLastQuoteAsync(
-            ticker.Contains('@') ? ticker : (new[] {"Si","BR","GD","MX","RI","GOLD","ED","Eu","SBRF","GAZR"}.Any(p => ticker.StartsWith(p, StringComparison.OrdinalIgnoreCase)) ? $"{ticker}@RTSX" : $"{ticker}@MISX"));
-        return Results.Ok(new { bid, ask, last, spread = ask - bid });
+        if (svc.Connector?.IsConnected != true) return Results.Json(new { error = "not connected" });
+        var info = await svc.Connector.GetAccountInfoAsync();
+        return Results.Json(new {
+            accounts = new[] {
+                new { id = "1225953", name = "Main", balance = info.equity, free = info.equity, margin = 0.0, go = 0.0, pnlToday = 0.0, pnlTotal = 0.0 },
+                new { id = "1225953-EDP", name = "EDP", balance = 0.0, free = 0.0, margin = 0.0, go = 0.0, pnlToday = 0.0, pnlTotal = 0.0 }
+            }
+        });
     }
-    catch (Exception ex) { return Results.Ok(new { bid = 0.0, ask = 0.0, last = 0.0, error = ex.Message }); }
+    catch (Exception ex) { return Results.Json(new { error = ex.Message }); }
 });
 
-// === REST: стакан (snapshot) через Finam REST API ===
-app.MapGet("/api/orderbook", async (TradingService svc, string ticker) =>
+// === Positions API (unified) ===
+app.MapGet("/api/positions", async (TradingService svc) =>
 {
-    try
+    if (IsQuikAlive())
     {
-        var connector = svc.Connector;
-        if (connector?.IsConnected != true) return Results.Ok(new { rows = Array.Empty<object>() });
-        var restClient = connector.RestClient;
-        if (restClient == null) return Results.Ok(new { rows = Array.Empty<object>() });
-
-        var futPrefixes = new[] {"Si","BR","GD","MX","RI","GOLD","ED","Eu","SBRF","GAZR"};
-        var symbol = ticker.Contains('@') ? ticker 
-            : (futPrefixes.Any(p => ticker.StartsWith(p, StringComparison.OrdinalIgnoreCase)) ? $"{ticker}@RTSX" : $"{ticker}@MISX");
-
-        // Вызываем Finam REST: GET /v1/instruments/{symbol}/orderbook
-        var ob = await restClient.GetOrderBookAsync(symbol);
-        return Results.Ok(ob);
+        lock (quikData)
+        {
+            if (quikData.ContainsKey("pos"))
+            {
+                try {
+                    var posJson = quikData["pos"].ToString();
+                    var doc = System.Text.Json.JsonDocument.Parse(posJson);
+                    var arr = doc.RootElement.EnumerateArray().Select(p => new {
+                        ticker = p.TryGetProperty("t", out var t) ? t.GetString() : "",
+                        dir = p.TryGetProperty("l", out var l) ? (l.GetInt32() > 0 ? "Buy" : "Sell") : "",
+                        qty = p.TryGetProperty("l", out var l2) ? Math.Abs(l2.GetInt32()) : 0,
+                        avgPrice = p.TryGetProperty("p", out var p2) ? p2.GetDouble() : 0,
+                        pnlToday = p.TryGetProperty("tb", out var tb) ? tb.GetDouble() : 0
+                    }).ToList();
+                    if (arr.Count > 0) return Results.Json(arr);
+                } catch {}
+            }
+        }
     }
-    catch (Exception ex) { return Results.Ok(new { rows = Array.Empty<object>(), error = ex.Message }); }
+    // Fallback: return empty
+    return Results.Json(new object[] {});
 });
 
-// === REST API: Grid MM Regime ===
-GridMmRegimeLauncher gridMm = null;
+// === Orders API (unified) ===
+app.MapGet("/api/orders", async (TradingService svc) =>
+{
+    if (IsQuikAlive())
+    {
+        lock (quikData)
+        {
+            if (quikData.ContainsKey("orders"))
+            {
+                try {
+                    var ordJson = quikData["orders"].ToString();
+                    var doc = System.Text.Json.JsonDocument.Parse(ordJson);
+                    if (doc.RootElement.GetArrayLength() > 0)
+                        return Results.Text(ordJson, "application/json");
+                } catch {}
+            }
+        }
+    }
+    return Results.Json(new object[] {});
+});
+
+app.MapGet("/api/quote", (string ticker) =>
+{
+    lock (quikData)
+    {
+        if (!quikData.TryGetValue("quotes", out var quotesJson))
+            return Results.Ok(new { bid = 0.0, ask = 0.0, last = 0.0, source = "QUIK (no data)" });
+        
+        try
+        {
+            var doc = JsonDocument.Parse(quotesJson.ToString());
+            if (doc.RootElement.GetArrayLength() == 0)
+                return Results.Ok(new { bid = 0.0, ask = 0.0, last = 0.0, source = "QUIK (empty)" });
+            
+            var first = doc.RootElement[0];
+            var bid = first.TryGetProperty("b", out var b) ? b.GetDouble() : 0.0;
+            var ask = first.TryGetProperty("a", out var a) ? a.GetDouble() : 0.0;
+            var last = first.TryGetProperty("l", out var l) ? l.GetDouble() : 0.0;
+            var spread = ask > 0 && bid > 0 ? ask - bid : 0.0;
+            return Results.Ok(new { bid, ask, last, spread, source = "QUIK" });
+        }
+        catch
+        {
+            return Results.Ok(new { bid = 0.0, ask = 0.0, last = 0.0, source = "QUIK (error)" });
+        }
+    }
+});
+// === QUICK ORDERBOOK (из QUIK данных) ===
+app.MapGet("/api/orderbook", async (string ticker) =>
+{
+    // Сначала пробуем QUIK
+    lock (quikData)
+    {
+        if (quikData.TryGetValue("ob", out var obJson) && obJson.ToString() != "[]")
+        {
+            try
+            {
+                var doc = JsonDocument.Parse(obJson.ToString());
+                var rows = new List<object>();
+                
+                // Формат: {ticker, bids: [{price, qty}], asks: [{price, qty}]}
+                var bids = doc.RootElement.TryGetProperty("bids", out var bArr) ? bArr : default;
+                var asks = doc.RootElement.TryGetProperty("asks", out var aArr) ? aArr : default;
+                
+                if (bids.ValueKind == JsonValueKind.Array || asks.ValueKind == JsonValueKind.Array)
+                {
+                    var priceMap = new Dictionary<double, double[]>();
+                    
+                    if (bids.ValueKind == JsonValueKind.Array)
+                    {
+                        foreach (var b in bids.EnumerateArray())
+                        {
+                            var price = b.TryGetProperty("price", out var p) ? p.GetDouble() : 0;
+                            var qty = b.TryGetProperty("qty", out var q) ? q.GetDouble() : 0;
+                            if (price > 0)
+                            {
+                                if (!priceMap.ContainsKey(price)) priceMap[price] = new double[2];
+                                priceMap[price][0] = qty;
+                            }
+                        }
+                    }
+                    if (asks.ValueKind == JsonValueKind.Array)
+                    {
+                        foreach (var a in asks.EnumerateArray())
+                        {
+                            var price = a.TryGetProperty("price", out var p) ? p.GetDouble() : 0;
+                            var qty = a.TryGetProperty("qty", out var q) ? q.GetDouble() : 0;
+                            if (price > 0)
+                            {
+                                if (!priceMap.ContainsKey(price)) priceMap[price] = new double[2];
+                                priceMap[price][1] = qty;
+                            }
+                        }
+                    }
+                    
+                    foreach (var kv in priceMap.OrderByDescending(x => x.Key))
+                        rows.Add(new { price = kv.Key, bid = kv.Value[0], ask = kv.Value[1] });
+                }
+                
+                if (rows.Count > 0)
+                    return Results.Ok(new { rows, source = "QUIK" });
+            }
+            catch { }
+        }
+        
+        // Фолбэк: Генерируем стакан из котировок (если QUIK не отправляет стакан)
+        try
+        {
+            if (quikData.TryGetValue("quotes", out var quotesJson))
+            {
+                var doc = JsonDocument.Parse(quotesJson.ToString());
+                if (doc.RootElement.GetArrayLength() > 0)
+                {
+                    var quote = doc.RootElement[0];
+                    var bid = quote.TryGetProperty("b", out var b) ? b.GetDouble() : 0;
+                    var ask = quote.TryGetProperty("a", out var a) ? a.GetDouble() : 0;
+                    var last = quote.TryGetProperty("l", out var l) ? l.GetDouble() : 0;
+                    
+                    if (bid > 0 && ask > 0)
+                    {
+                        var rows = new List<object>();
+                        // Генерируем 10 уровней
+                        for (int i = 0; i < 10; i++)
+                        {
+                            var bidPrice = bid - i * 0.1;
+                            var askPrice = ask + i * 0.1;
+                            rows.Add(new { price = bidPrice, bid = 100, ask = 0 });
+                            rows.Add(new { price = askPrice, bid = 0, ask = 100 });
+                        }
+                        return Results.Ok(new { rows, source = "Generated from quotes" });
+                    }
+                }
+            }
+        }
+        catch { }
+    }
+    
+    return Results.Ok(new { rows = Array.Empty<object>(), source = "No data" });
+});
 
 app.MapPost("/strategy/grid-mm/start", () =>
 {
@@ -188,7 +607,7 @@ app.MapPost("/strategy/grid-mm/start", () =>
         if (gridMm != null)
             return Results.Json(new { status = "already_running", detail = gridMm.GetStatus() });
         
-        gridMm = new GridMmRegimeLauncher(token, "SiM6");
+        gridMm = new GridMmRegimeLauncher(token, "SiM6", useQuikData: true);
         return Results.Json(new { status = "initialized", detail = gridMm.GetStatus() });
     }
     catch (Exception ex)
@@ -222,6 +641,38 @@ app.MapGet("/strategy/grid-mm/status", () =>
 {
     if (gridMm == null) return Results.Json(new { status = "not_initialized" });
     return Results.Json(new { status = "ok", detail = gridMm.GetStatus(), connected = gridMm.IsConnected });
+});
+
+app.MapPost("/strategy/grid-mm/config", async (HttpRequest req) =>
+{
+    if (gridMm == null) return Results.Json(new { error = "Not initialized" }, statusCode: 400);
+    try
+    {
+        using var reader = new StreamReader(req.Body);
+        var body = await reader.ReadToEndAsync();
+        var doc = JsonDocument.Parse(body);
+        var root = doc.RootElement;
+        
+        if (root.TryGetProperty("sarStart", out var sarStart)) gridMm.Strategy.Params.SarStart = sarStart.GetDouble();
+        if (root.TryGetProperty("sarStep", out var sarStep)) gridMm.Strategy.Params.SarStep = sarStep.GetDouble();
+        if (root.TryGetProperty("sarMax", out var sarMax)) gridMm.Strategy.Params.SarMax = sarMax.GetDouble();
+        if (root.TryGetProperty("emaPeriod", out var emaPeriod)) gridMm.Strategy.Params.EmaPeriod = emaPeriod.GetInt32();
+        if (root.TryGetProperty("gridStep", out var gridStep)) gridMm.Strategy.Params.GridStep = gridStep.GetDouble();
+        if (root.TryGetProperty("gridSpread", out var gridSpread)) gridMm.Strategy.Params.GridSpread = gridSpread.GetDouble();
+        if (root.TryGetProperty("maxGridLevels", out var maxGrid)) gridMm.Strategy.Params.MaxGridLevels = maxGrid.GetInt32();
+        if (root.TryGetProperty("minProfitPerLot", out var minProfit)) gridMm.Strategy.Params.MinProfitPerLot = minProfit.GetDouble();
+        if (root.TryGetProperty("closePct", out var closePct)) gridMm.Strategy.Params.ClosePct = closePct.GetDouble();
+        if (root.TryGetProperty("commission", out var comm)) gridMm.Strategy.Params.Commission = comm.GetDouble();
+        if (root.TryGetProperty("maxLots", out var maxLots)) gridMm.Strategy.Params.MaxLots = maxLots.GetInt32();
+        if (root.TryGetProperty("forceEntryOnStart", out var forceEntry)) gridMm.Strategy.Params.ForceEntryOnStart = forceEntry.GetBoolean();
+        
+        Console.WriteLine($"[CONFIG] Updated: ForceEntry={gridMm.Strategy.Params.ForceEntryOnStart}");
+        return Results.Ok(new { status = "ok" });
+    }
+    catch (Exception ex)
+    {
+        return Results.BadRequest(new { error = ex.Message });
+    }
 });
 
 app.MapGet("/strategy/grid-mm/indicators", () =>
@@ -284,21 +735,22 @@ app.MapGet("/strategy/grid-mm/chart-data", () =>
     });
 });
 
-// === REST API: PSAR Grid MM + RV/HV ===
-PsarGridLauncher psarGrid = null;
+// === REST API: Grid MM NoSignal — ОТКЛЮЧЕНО (сломан) ===
+/*
+GridMmNoSignalLauncher gridMmNoSignal = null;
 
-app.MapPost("/strategy/psar-grid/start", () =>
+app.MapPost("/strategy/grid-mm-nosig/start", () =>
 {
     try
     {
         var token = Environment.GetEnvironmentVariable("FINAM_TOKEN");
         if (string.IsNullOrEmpty(token))
             return Results.Json(new { error = "FINAM_TOKEN not set" }, statusCode: 400);
-        if (psarGrid != null)
-            return Results.Json(new { status = "already_running", detail = psarGrid.GetStatus() });
+        if (gridMmNoSignal != null)
+            return Results.Json(new { status = "already_running", detail = gridMmNoSignal.GetStatus() });
         
-        psarGrid = new PsarGridLauncher(token, "SiM6");
-        return Results.Json(new { status = "initialized", detail = psarGrid.GetStatus() });
+        gridMmNoSignal = new GridMmNoSignalLauncher(token, "SiM6");
+        return Results.Json(new { status = "initialized", detail = gridMmNoSignal.GetStatus() });
     }
     catch (Exception ex)
     {
@@ -306,58 +758,98 @@ app.MapPost("/strategy/psar-grid/start", () =>
     }
 });
 
-app.MapPost("/strategy/psar-grid/run", () =>
+app.MapPost("/strategy/grid-mm-nosig/run", () =>
 {
-    if (psarGrid == null) return Results.Json(new { error = "Not initialized. POST /strategy/psar-grid/start first" }, statusCode: 400);
-    psarGrid.Start();
-    return Results.Json(new { status = "running", detail = psarGrid.GetStatus() });
+    if (gridMmNoSignal == null) return Results.Json(new { error = "Not initialized. POST /strategy/grid-mm-nosig/start first" }, statusCode: 400);
+    gridMmNoSignal.Start();
+    return Results.Json(new { status = "running", detail = gridMmNoSignal.GetStatus() });
 });
 
-app.MapPost("/strategy/psar-grid/stop", () =>
+app.MapPost("/strategy/grid-mm-nosig/stop", async () =>
 {
-    if (psarGrid == null) return Results.Json(new { error = "Not initialized" }, statusCode: 400);
-    psarGrid.StopTrading();
-    return Results.Json(new { status = "stopped", detail = psarGrid.GetStatus() });
+    if (gridMmNoSignal == null) return Results.Json(new { error = "Not initialized" }, statusCode: 400);
+    await gridMmNoSignal.StopAsync();
+    return Results.Json(new { status = "stopped", detail = gridMmNoSignal.GetStatus() });
 });
 
-app.MapPost("/strategy/psar-grid/pause", () =>
+app.MapPost("/strategy/grid-mm-nosig/pause", () =>
 {
-    if (psarGrid == null) return Results.Json(new { error = "Not initialized" }, statusCode: 400);
-    psarGrid.Pause();
-    return Results.Json(new { status = "paused", detail = psarGrid.GetStatus() });
+    if (gridMmNoSignal == null) return Results.Json(new { error = "Not initialized" }, statusCode: 400);
+    gridMmNoSignal.Pause();
+    return Results.Json(new { status = "paused", detail = gridMmNoSignal.GetStatus() });
 });
 
-app.MapGet("/strategy/psar-grid/status", () =>
+app.MapGet("/strategy/grid-mm-nosig/status", () =>
 {
-    if (psarGrid == null) return Results.Json(new { status = "not_initialized" });
-    return Results.Json(new { status = "ok", detail = psarGrid.GetStatus(), connected = psarGrid.IsConnected });
+    if (gridMmNoSignal == null) return Results.Json(new { status = "not_initialized" });
+    return Results.Json(new { status = "ok", detail = gridMmNoSignal.GetStatus(), connected = gridMmNoSignal.IsConnected });
 });
 
-app.MapGet("/strategy/psar-grid/indicators", () =>
+app.MapGet("/strategy/grid-mm-nosig/indicators", () =>
 {
-    if (psarGrid == null) return Results.Json(new { error = "Not initialized" }, statusCode: 400);
-    var s = psarGrid.Strategy;
+    if (gridMmNoSignal == null) return Results.Json(new { error = "Not initialized" }, statusCode: 400);
+    var s = gridMmNoSignal.Strategy;
     return Results.Json(new {
-        sar = s.CurrentSar, ema = s.CurrentEma,
-        rv = s.CurrentRv, hv = s.CurrentHv,
-        isLowVol = s.IsLowVol,
-        regime = s.IsLowVol ? "LOW" : "HIGH",
+        sar = s.CurrentSar,
+        ema = s.CurrentEma,
+        rv = s.CurrentRv,
+        hv = s.CurrentHv,
+        rvHvRatio = s.CurrentHv > 0 ? s.CurrentRv / s.CurrentHv : 0,
+        isLowVol = s.IsRegimeLowVol,
+        regime = s.IsRegimeLowVol ? "LOW" : "HIGH",
         posDir = s.PositionDirection,
+        entryPrice = s.EntryPrice,
         lots = s.CurrentLotLevel,
-        gridPnl = s.CurrentGridPnL,
-        openGridLevels = s.OpenGridLevels
+        totalLots = s.TotalEntryLots,
+        trades = s.Trades.Select(t => new { time = t.Time.ToString("o"), t.Ticker, t.Direction, t.Price, t.Lots, t.Comment })
     });
 });
 
-app.MapGet("/strategy/psar-grid/trades", () =>
+app.MapGet("/strategy/grid-mm-nosig/trades", () =>
 {
-    if (psarGrid == null) return Results.Json(new { error = "Not initialized" }, statusCode: 400);
-    return Results.Json(psarGrid.Strategy.Trades.Select(t => new {
-        time = t.Time.ToString("o"), t.Ticker,
+    if (gridMmNoSignal == null) return Results.Json(new { error = "Not initialized" }, statusCode: 400);
+    return Results.Json(gridMmNoSignal.Strategy.Trades.Select(t => new {
+        time = t.Time.ToString("o"),
+        t.Ticker,
         dir = t.Direction == 1 ? "BUY" : "SELL",
-        t.Price, t.Lots, t.Comment
+        t.Price,
+        t.Lots,
+        t.Comment
     }));
 });
+
+app.MapGet("/strategy/grid-mm-nosig/chart-data", () =>
+{
+    if (gridMmNoSignal == null) return Results.Json(new { error = "Not initialized" }, statusCode: 400);
+    var s = gridMmNoSignal.Strategy;
+    var hist = s.IndicatorHistory;
+    var trades = s.Trades;
+    return Results.Json(new
+    {
+        indicators = hist.Select(p => new { time = p.Time.ToString("o"), sar = p.Sar, ema = p.Ema }),
+        trades = trades.Select(t => new { time = t.Time.ToString("o"), dir = t.Direction, price = t.Price, lots = t.Lots, comment = t.Comment }),
+        current = new
+        {
+            sar = s.CurrentSar,
+            ema = s.CurrentEma,
+            posDir = s.PositionDirection,
+            entryPrice = s.EntryPrice,
+            lots = s.CurrentLotLevel
+        }
+    });
+});
+*/
+// === Конец NoSignal block ===
+
+// === PSAR Grid MM — DISABLED (class removed) ===
+// PsarGridLauncher removed from project. Endpoints return not_initialized.
+app.MapPost("/strategy/psar-grid/start", () => Results.Json(new { error = "PsarGridLauncher removed" }, statusCode: 400));
+app.MapPost("/strategy/psar-grid/run", () => Results.Json(new { error = "PsarGridLauncher removed" }, statusCode: 400));
+app.MapPost("/strategy/psar-grid/stop", () => Results.Json(new { error = "PsarGridLauncher removed" }, statusCode: 400));
+app.MapPost("/strategy/psar-grid/pause", () => Results.Json(new { error = "PsarGridLauncher removed" }, statusCode: 400));
+app.MapGet("/strategy/psar-grid/status", () => Results.Json(new { status = "not_initialized" }));
+app.MapGet("/strategy/psar-grid/indicators", () => Results.Json(new { error = "not_initialized" }, statusCode: 400));
+app.MapGet("/strategy/psar-grid/trades", () => Results.Json(new { error = "not_initialized" }, statusCode: 400));
 
 // === REST API: PSAR+EMA Combo (LEGACY — disabled) ===
 // NOTE: Старая стратегия отключена. Используем Grid MM Regime.
@@ -367,15 +859,56 @@ app.MapGet("/strategy/psar-grid/trades", () =>
 // === REST API: Арбитраж ===
 ArbLauncher? arbLauncher = null;
 
+
 // === Volume Reversal (RTS) ===
 VolumeReversalLauncher volRev = null;
 
-app.MapPost("/strategy/vol-rev/start", () =>
+// === Единый endpoint: все активные стратегии ===
+app.MapGet("/api/active-strategies", () =>
+{
+    var strategies = new List<object>();
+    if (gridMm != null)
+    {
+        var s = gridMm.Strategy;
+        strategies.Add(new {
+            id = "grid-mm", name = "Grid MM v6", instrument = "SiM6", tf = "5 мин",
+            mode = s.Mode.ToString(), posDir = s.PositionDirection, entryPrice = s.EntryPrice,
+            lots = s.CurrentLotLevel, openLots = s.OpenLots, filledGrid = s.FilledGridLevels,
+            totalTrades = s.TotalTrades, totalPnL = s.TotalPnL,
+            sar = s.CurrentSar, ema = s.CurrentEma, connected = gridMm.IsConnected,
+            detail = gridMm.GetStatus()
+        });
+    }
+    if (volRev != null)
+    {
+        var s = volRev.Strategy;
+        strategies.Add(new {
+            id = "vol-rev", name = "Volume Reversal", instrument = "SiM6", tf = "5 мин",
+            mode = s.PositionDirection != 0 ? "Running" : "Waiting",
+            posDir = s.PositionDirection, entryPrice = 0.0, lots = 0, openLots = 0, filledGrid = 0,
+            totalTrades = s.TotalTrades, totalPnL = s.TotalPnL,
+            sar = 0.0, ema = 0.0, connected = false, detail = volRev.GetStatus()
+        });
+    }
+    if (arbLauncher != null)
+    {
+        strategies.Add(new {
+            id = "arb", name = "Arbitrage", instrument = "Multi", tf = "—",
+            mode = "Running", posDir = 0, entryPrice = 0.0, lots = 0, openLots = 0, filledGrid = 0,
+            totalTrades = 0, totalPnL = 0.0, sar = 0.0, ema = 0.0,
+            connected = arbLauncher.IsConnected, detail = arbLauncher.GetStatus()
+        });
+    }
+    return Results.Json(new { strategies, count = strategies.Count });
+});
+
+app.MapPost("/strategy/vol-rev/start", (TradingService svc) =>
 {
     var token = Environment.GetEnvironmentVariable("FINAM_TOKEN");
     if (string.IsNullOrEmpty(token)) return Results.Json(new { error = "FINAM_TOKEN not set" }, statusCode: 400);
     if (volRev != null) return Results.Json(new { status = "already_running", detail = volRev.GetStatus() });
-    volRev = new VolumeReversalLauncher(token, "RIM6");
+    if (svc.Connector == null) return Results.Json(new { error = "Broker not connected" }, statusCode: 400);
+    volRev = new VolumeReversalLauncher(svc.Connector, "RIM6");
     return Results.Json(new { status = "initialized", detail = volRev.GetStatus() });
 });
 

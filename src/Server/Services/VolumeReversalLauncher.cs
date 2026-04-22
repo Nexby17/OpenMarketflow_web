@@ -1,4 +1,3 @@
-using HedgeFund.Core;
 using HedgeFund.Core.Models;
 using HedgeFund.Core.Strategies;
 using HedgeFund.Brokers.Finam;
@@ -6,9 +5,9 @@ using HedgeFund.Brokers.Finam;
 namespace HedgeFund.Server.Services;
 
 /// <summary>
-/// Лаунчер Volume Reversal стратегии на Финам.
+/// Лаунчер Volume Reversal стратегии.
+/// Использует общий FinamConnector из TradingService.
 /// TF: 1 мин. Инструмент: RIM6 (RTS фьючерс).
-/// Управление: Start() / Stop() / Pause()
 /// WF OOS: 2/2 wins, +43,310, 1338 trades
 /// </summary>
 public class VolumeReversalLauncher : IDisposable
@@ -17,15 +16,15 @@ public class VolumeReversalLauncher : IDisposable
     private readonly VolumeReversalStrategy _strategy;
     private readonly string _ticker;
     private readonly TimeSpan _timeframe = TimeSpan.FromMinutes(1);
-    private CancellationTokenSource? _cts;
 
     public VolumeReversalStrategy Strategy => _strategy;
     public bool IsConnected => _broker.IsConnected;
+    public bool IsInitialized { get; private set; }
 
-    public VolumeReversalLauncher(string finamToken, string ticker = "RIM6", string accountId = "")
+    public VolumeReversalLauncher(FinamConnector broker, string ticker = "RIM6")
     {
         _ticker = ticker;
-        _broker = new FinamConnector();
+        _broker = broker;
         _strategy = new VolumeReversalStrategy(new VolumeReversalStrategy.Config
         {
             NBars = 2,
@@ -37,25 +36,28 @@ public class VolumeReversalLauncher : IDisposable
             Commission = 0.90
         });
 
-        _broker.OnError += msg => Console.WriteLine($"[VR BROKER ERROR] {msg}");
-        _broker.OnTrade += trade => Console.WriteLine($"[VR TRADE] {trade.Direction} {trade.Volume}x @ {trade.Price:F0}");
-
-        _ = ConnectAndWarm(finamToken, accountId);
+        _ = InitAsync();
     }
 
-    private async Task ConnectAndWarm(string token, string accountId)
+    private async Task InitAsync()
     {
-        Console.WriteLine($"[VR] Подключение к Финам...");
-        bool ok = await _broker.ConnectAsync(token, accountId);
-        if (!ok)
+        if (!_broker.IsConnected)
         {
-            Console.WriteLine("[VR] ❌ Не удалось подключиться к Финам!");
-            return;
+            Console.WriteLine("[VR] ⏳ Ожидание подключения к Финам...");
+            int wait = 0;
+            while (!_broker.IsConnected && wait < 60)
+            {
+                await Task.Delay(1000);
+                wait++;
+            }
+            if (!_broker.IsConnected)
+            {
+                Console.WriteLine("[VR] ❌ Финам не подключён");
+                return;
+            }
         }
-        Console.WriteLine($"[VR] ✅ Подключён.");
 
-        // Прогрев: 1-мин свечи за последние 3 дня (для volume average)
-        Console.WriteLine($"[VR] 📐 Прогрев индикаторов ({_ticker}, 1-мин)...");
+        Console.WriteLine("[VR] ✅ Финам подключён. Прогрев...");
         var from = DateTime.UtcNow.AddDays(-3);
         var to = DateTime.UtcNow;
         var history = await _broker.GetHistoricalCandlesAsync(_ticker, _timeframe, from, to);
@@ -63,28 +65,22 @@ public class VolumeReversalLauncher : IDisposable
         if (history.Length > 0)
         {
             Console.WriteLine($"[VR] Загружено {history.Length} исторических свечей");
-            try
+            for (int i = 0; i < history.Length; i++)
             {
-                for (int i = 0; i < history.Length; i++)
-                {
-                    _strategy.OnCandle(history[i], _ticker);
-                    if (i % 1000 == 999) Console.WriteLine($"[VR] Прогрев: {i + 1}/{history.Length}...");
-                }
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"[VR] ❌ ОШИБКА ПРОГРЕВА: {ex.Message}");
+                _strategy.OnCandle(history[i], _ticker);
+                if (i % 1000 == 999) Console.WriteLine($"[VR] Прогрев: {i + 1}/{history.Length}...");
             }
             Console.WriteLine($"[VR] ✅ Прогрето. AvgVol={_strategy.CurrentAvgVolume:F0}");
         }
         else
         {
-            Console.WriteLine($"[VR] ⚠️ Нет исторических данных");
+            Console.WriteLine("[VR] ⚠️ Нет исторических данных");
         }
 
         Console.WriteLine($"[VR] 📡 Подписка на {_ticker} 1-мин...");
         await _broker.SubscribeCandlesAsync(_ticker, _timeframe, OnNewCandle);
         Console.WriteLine($"[VR] 📡 Подписка активна");
+        IsInitialized = true;
     }
 
     private int _candleCount = 0;
@@ -93,8 +89,8 @@ public class VolumeReversalLauncher : IDisposable
         _candleCount++;
         if (_candleCount % 60 == 1)
         {
-            string pos = _strategy.PositionDirection != 0 
-                ? $"Pos={_strategy.PositionDirection} SL={_strategy.StopLoss:F0} TP={_strategy.TakeProfit:F0}" 
+            string pos = _strategy.PositionDirection != 0
+                ? $"Pos={_strategy.PositionDirection} SL={_strategy.StopLoss:F0} TP={_strategy.TakeProfit:F0}"
                 : "Flat";
             Console.WriteLine($"[VR] 🕯️ #{_candleCount}: {candle.Timestamp:HH:mm:ss} O={candle.Open:F0} H={candle.High:F0} L={candle.Low:F0} C={candle.Close:F0} V={candle.Volume:F0} | {pos}");
         }
@@ -137,13 +133,14 @@ public class VolumeReversalLauncher : IDisposable
     public void Start()
     {
         _strategy.Mode = VolumeReversalStrategy.StrategyMode.Running;
-        Console.WriteLine("[VR CMD] ▶️ СТАРТ — Volume Reversal торгует");
+        Console.WriteLine("[VR CMD] ▶️ СТАРТ");
     }
 
     public void StopTrading()
     {
         _strategy.Mode = VolumeReversalStrategy.StrategyMode.Stopped;
-        Console.WriteLine("[VR CMD] ⏹️ СТОП — закрытие позиций");
+        _strategy.ForceClose();
+        Console.WriteLine("[VR CMD] ⏹️ СТОП");
     }
 
     public void Pause()
@@ -157,13 +154,12 @@ public class VolumeReversalLauncher : IDisposable
         string pos = _strategy.PositionDirection != 0
             ? $"Pos={_strategy.PositionDirection} SL={_strategy.StopLoss:F0} TP={_strategy.TakeProfit:F0} Bars={_strategy.BarsInPosition}"
             : "Pos=0 (Flat)";
-            
+
         return $"Mode={_strategy.Mode} | {pos} | Trades={_strategy.TotalTrades} | PnL={_strategy.TotalPnL:F0} | AvgVol={_strategy.CurrentAvgVolume:F0} | Connected={IsConnected}";
     }
 
     public void Dispose()
     {
-        _cts?.Cancel();
-        _broker.Dispose();
+        // Don't dispose broker — it's shared from TradingService
     }
 }

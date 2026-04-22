@@ -318,6 +318,7 @@ public class FinamGrpcClient : IDisposable
             order.Comment = comment;
 
         var response = await _ordersClient!.PlaceOrderAsync(order, CreateAuthHeaders());
+        Log($"📋 PlaceOrder: symbol={symbol} side={side} type={orderType} qty={quantity} price={limitPrice} → orderId={response.OrderId} status={response.Status}");
         return response.OrderId;
     }
 

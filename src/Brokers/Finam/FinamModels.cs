@@ -224,7 +224,7 @@ public class Bar
     public DecimalValue? Low { get; set; }
     
     [JsonPropertyName("volume")]
-    public long Volume { get; set; }
+    public DecimalValue? Volume { get; set; }
 }
 
 // === Orders ===

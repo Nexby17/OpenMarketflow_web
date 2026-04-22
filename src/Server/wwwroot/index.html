@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>OpenMarketflow</title>
-    <link rel="stylesheet" href="/css/style.css">
+    <link rel="stylesheet" href="/css/style.css?v=19">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/microsoft-signalr/8.0.0/signalr.min.js"></script>
     <script src="https://unpkg.com/lightweight-charts@4.1.1/dist/lightweight-charts.standalone.production.js"></script>
 </head>
@@ -29,64 +29,46 @@
         <button class="tab" data-tab="testing">🧪 Тестирование</button>
         <button class="tab" data-tab="arbitrage">🔄 Арбитраж</button>
         <button class="tab" data-tab="strategies">⚙️ Стратегии</button>
-        <button class="tab" data-tab="alfa">🌍 Альфа-Директ</button>
-        <button class="tab" data-tab="settings">🔧 Настройки</button>
+        <button class="tab" data-tab="settings">🔧 Настройки подключения</button>
     </nav>
 
     <!-- ==================== ТОРГОВЛЯ ==================== -->
     <div id="trading" class="tab-content active">
-        <div class="panel-row">
-            <div class="card flex-1">
-                <div class="card-header">Подключение</div>
-                <div class="card-body row gap-8">
-                    <select id="brokerSelect" class="select">
-                        <option>Финам (Trade API)</option>
-                    </select>
-                    <button class="btn btn-secondary" onclick="connectBroker()">🔌 Подключиться</button>
-                    <span id="brokerStatus" class="status-text">❌ Не подключён</span>
-                </div>
-            </div>
-        </div>
 
-        <div class="panel-row">
-            <div class="card flex-1">
-                <div class="card-header">Робот</div>
-                <div class="card-body row gap-8">
-                    <select id="instrumentSelect" class="select">
-                        <option>SiM6</option><option>SiU6</option><option>SBER</option>
-                        <option>GAZP</option><option>BRM6</option><option>GDM6</option>
-                    </select>
-                    <select id="strategySelect" class="select">
-                        <option>PSAR Grid MM (1 мин)</option>
-                        <option>PSAR+EMA Combo (5 мин)</option>
-                        <option>VStop Pure (30 сек, бумага)</option>
-                    </select>
-                    <button class="btn btn-primary" onclick="startBot()" id="startBotBtn" disabled>🤖 Запустить бота</button>
-                    <button class="btn btn-danger" onclick="stopBot()" id="stopBotBtn" disabled>⏹ Стоп</button>
-                </div>
-            </div>
-            <div class="card" style="min-width:200px">
-                <div class="card-header">Баланс</div>
-                <div class="card-body">
-                    <span id="balance" class="big-number accent">—</span>
-                    <span class="currency">₽</span>
-                </div>
-            </div>
+        <!-- Состояние счёта -->
+        <div class="card" style="margin-bottom:20px">
+            <div class="card-header">💰 Состояние счёта</div>
+            <table class="data-table">
+                <thead><tr><th>Счёт</th><th>Баланс</th><th>Свободные средства</th><th>Маржа</th><th>ГО</th><th>PnL за сегодня</th><th>PnL за всё время</th></tr></thead>
+                <tbody id="accountsTable"></tbody>
+            </table>
         </div>
 
         <!-- Позиции -->
-        <div class="card">
-            <div class="card-header">Открытые позиции</div>
+        <div class="card" style="margin-bottom:20px">
+            <div class="card-header">📊 Сделки</div>
             <table class="data-table">
-                <thead><tr><th>Тикер</th><th>Направление</th><th>Ср. цена</th><th>Объём</th><th>PnL</th></tr></thead>
+                <thead><tr><th>Счёт</th><th>Тикер</th><th>Направление</th><th>Количество</th><th>Цена</th><th>Объём</th></tr></thead>
                 <tbody id="positionsTable"></tbody>
             </table>
         </div>
 
-        <!-- Лог -->
-        <div class="card">
-            <div class="card-header">Лог событий</div>
-            <div id="logContainer" class="log-container"></div>
+        <!-- Заявки -->
+        <div class="card" style="margin-bottom:20px">
+            <div class="card-header">📝 Заявки</div>
+            <table class="data-table">
+                <thead><tr><th>#</th><th>Тикер</th><th>Направление</th><th>Кол-во</th><th>Цена</th><th>Объём</th><th>Статус</th></tr></thead>
+                <tbody id="ordersTable"></tbody>
+            </table>
+        </div>
+
+        <!-- Котировки -->
+        <div class="card" style="margin-bottom:20px">
+            <div class="card-header">💹 Котировки</div>
+            <table class="data-table">
+                <thead><tr><th>Тикер</th><th>Last</th><th>Bid</th><th>Ask</th><th>Объём</th></tr></thead>
+                <tbody id="quotesTable"></tbody>
+            </table>
         </div>
     </div>
 
@@ -94,7 +76,7 @@
     <div id="orderbook" class="tab-content">
         <div class="panel-row">
             <!-- Левая панель: стакан -->
-            <div class="card" style="width:380px; flex-shrink:0">
+            <div class="card" style="width:380px; flex-shrink:0; display:flex; flex-direction:column">
                 <div class="card-header row gap-8">
                     <select id="obInstrument" class="select" onchange="switchOrderBookInstrument()">
                         <option>SiM6</option><option>SiU6</option><option>SBER</option>
@@ -102,7 +84,7 @@
                     </select>
                     <button class="btn btn-secondary btn-sm" onclick="switchOrderBookInstrument()">🔄</button>
                 </div>
-                <div id="orderbookLadder" class="orderbook-ladder"></div>
+                <div id="orderbookLadder" class="orderbook-ladder" style="flex:1"></div>
             </div>
 
             <!-- Правая панель: котировки + график -->
@@ -126,7 +108,7 @@
                 </div>
 
                 <!-- График -->
-                <div class="card flex-1" style="min-height:400px">
+                <div class="card flex-1" style="flex:1; min-height:300px">
                     <div id="chartContainer" style="width:100%;height:100%"></div>
                 </div>
             </div>
@@ -135,96 +117,205 @@
 
     <!-- ==================== МОНИТОРИНГ ==================== -->
     <div id="monitoring" class="tab-content">
-        <div class="metrics-row">
-            <div class="metric-card"><div class="metric-label">Баланс</div><div id="monBalance" class="metric-value">—</div></div>
-            <div class="metric-card"><div class="metric-label">Equity</div><div id="monEquity" class="metric-value accent">—</div></div>
-            <div class="metric-card"><div class="metric-label">PnL сегодня</div><div id="monPnlToday" class="metric-value">—</div></div>
-            <div class="metric-card"><div class="metric-label">PnL всего</div><div id="monPnlTotal" class="metric-value">—</div></div>
-            <div class="metric-card"><div class="metric-label">Win Rate</div><div id="monWinRate" class="metric-value green">—</div></div>
-        </div>
-        <div class="metrics-row">
-            <div class="metric-card"><div class="metric-label">Profit Factor</div><div id="monPF" class="metric-value">—</div></div>
-            <div class="metric-card"><div class="metric-label">Sharpe</div><div id="monSharpe" class="metric-value">—</div></div>
-            <div class="metric-card"><div class="metric-label">Позиций</div><div id="monPositions" class="metric-value yellow">0</div></div>
-            <div class="metric-card"><div class="metric-label">Сделок сегодня</div><div id="monTrades" class="metric-value">0</div></div>
-        </div>
-
-        <!-- Equity curve -->
         <div class="card">
-            <div class="card-header">Кривая доходности</div>
-            <div id="equityChart" style="width:100%;height:250px"></div>
-        </div>
-
-        <!-- Позиции -->
-        <div class="card">
-            <div class="card-header">Открытые позиции</div>
+            <div class="card-header">📈 Активные стратегии</div>
             <table class="data-table">
-                <thead><tr><th>Тикер</th><th>Направление</th><th>Ср. цена</th><th>Объём</th><th>PnL</th></tr></thead>
-                <tbody id="monPositionsTable"></tbody>
+                <thead><tr><th>Инструмент</th><th>Стратегия</th><th>Счёт</th><th>Позиция</th><th>PnL сегодня</th><th>PnL всего</th><th>Лоты</th><th>ГО (₽)</th><th>Управление</th><th>Статус</th></tr></thead>
+                <tbody id="robotsTable"></tbody>
             </table>
+            <div id="noRobots" class="card-body text-secondary" style="text-align:center;padding:32px">Нет активных роботов. Создайте робота на вкладке «Стратегии».</div>
         </div>
     </div>
 
     <!-- ==================== ТЕСТИРОВАНИЕ ==================== -->
     <div id="testing" class="tab-content">
-        <div class="panel-row">
-            <div class="card" style="width:280px;flex-shrink:0">
-                <div class="card-header">Параметры теста</div>
-                <div class="card-body" style="display:flex;flex-direction:column;gap:8px">
-                    <label>Стратегия</label>
-                    <select id="testStrategy" class="select">
-                        <option>Momentum Breakout</option><option>RSI Scalp</option>
-                        <option>Bollinger Bounce</option><option>VWAP Reversion</option>
-                    </select>
-                    <label>Инструмент</label>
-                    <select id="testTicker" class="select">
-                        <option>SiM6</option><option>SiU6</option><option>SBER</option>
-                        <option>GAZP</option><option>BRM6</option><option>GDM6</option>
-                    </select>
-                    <label>Таймфрейм</label>
-                    <select id="testTf" class="select">
-                        <option value="1">1 мин</option><option value="5" selected>5 мин</option>
-                        <option value="60">1 час</option><option value="24">День</option>
-                    </select>
-                    <label>Дата от</label>
-                    <input type="date" id="testFrom" class="input">
-                    <label>Дата до</label>
-                    <input type="date" id="testTo" class="input">
-                    <button class="btn btn-primary" onclick="runBacktest()">▶ Запустить тест</button>
-                    <div id="testStatus" class="text-secondary"></div>
+        <!-- Верхняя панель: параметры + кнопка -->
+        <div class="card" style="margin-bottom:16px">
+            <div class="card-header row gap-8">
+                🧪 Параметры теста
+                <button class="btn btn-primary" onclick="runBacktest()" id="btnRunTest">▶ Запустить</button>
+                <span id="testStatus" class="text-secondary"></span>
+            </div>
+            <div class="card-body">
+                <div class="metrics-row" style="flex-wrap:wrap">
+                    <div class="metric-card" style="min-width:180px"><div class="metric-label">Инструмент</div><input id="testTicker" class="input" value="SiM6" list="tickerList2" style="width:120px"><datalist id="tickerList2"><option value="SiM6"><option value="SiU6"><option value="SiH7"><option value="MXM6"><option value="GDM6"><option value="BRK6"><option value="RIU6"><option value="SBRF"><option value="GAZP"><option value="LKOH"></datalist></div>
+                    <div class="metric-card" style="min-width:100px"><div class="metric-label">Таймфрейм</div>
+                        <select id="testTf" class="input" style="width:80px">
+                            <option value="1">1 мин</option><option value="5" selected>5 мин</option>
+                            <option value="15">15 мин</option><option value="60">1 час</option><option value="1440">День</option>
+                        </select>
+                    </div>
+                    <div class="metric-card" style="min-width:140px"><div class="metric-label">Дата с</div><input type="date" id="testFrom" class="input"></div>
+                    <div class="metric-card" style="min-width:140px"><div class="metric-label">Дата по</div><input type="date" id="testTo" class="input"></div>
+                    <div class="metric-card" style="min-width:100px"><div class="metric-label">Или свечей</div><input type="number" id="testCandles" class="input" placeholder="напр. 5000" style="width:100px"></div>
+                    <div class="metric-card" style="min-width:80px"><div class="metric-label">SAR Start</div><input id="tstSarStart" class="input" type="number" step="0.001" value="0.005" style="width:70px"></div>
+                    <div class="metric-card" style="min-width:80px"><div class="metric-label">SAR Step</div><input id="tstSarStep" class="input" type="number" step="0.001" value="0.01" style="width:70px"></div>
+                    <div class="metric-card" style="min-width:80px"><div class="metric-label">SAR Max</div><input id="tstSarMax" class="input" type="number" step="0.01" value="0.2" style="width:70px"></div>
+                    <div class="metric-card" style="min-width:80px"><div class="metric-label">EMA</div><input id="tstEma" class="input" type="number" value="30" style="width:60px"></div>
+                    <div class="metric-card" style="min-width:80px"><div class="metric-label">Grid Step</div><input id="tstGridStep" class="input" type="number" value="30" style="width:60px"></div>
+                    <div class="metric-card" style="min-width:80px"><div class="metric-label">Grid Spread</div><input id="tstGridSpread" class="input" type="number" value="40" style="width:60px"></div>
+                    <div class="metric-card" style="min-width:80px"><div class="metric-label">Max Levels</div><input id="tstMaxGrid" class="input" type="number" value="50" style="width:60px"></div>
+                    <div class="metric-card" style="min-width:80px"><div class="metric-label">Min Profit</div><input id="tstMinProfit" class="input" type="number" value="28" style="width:60px"></div>
+                    <div class="metric-card" style="min-width:80px"><div class="metric-label">Close %</div><input id="tstClosePct" class="input" type="number" step="0.01" value="0.50" style="width:60px"></div>
+                    <div class="metric-card" style="min-width:80px"><div class="metric-label">Комиссия</div><input id="tstComm" class="input" type="number" step="0.1" value="0.9" style="width:60px"></div>
+                    <div class="metric-card" style="min-width:60px"><div class="metric-label">Лоты</div><input id="tstLots" class="input" type="number" value="3" style="width:50px"></div>
                 </div>
             </div>
-            <div class="flex-1">
-                <div class="metrics-row">
-                    <div class="metric-card"><div class="metric-label">PnL</div><div id="testPnl" class="metric-value">—</div></div>
-                    <div class="metric-card"><div class="metric-label">Сделок</div><div id="testTrades" class="metric-value">—</div></div>
-                    <div class="metric-card"><div class="metric-label">Win Rate</div><div id="testWinRate" class="metric-value">—</div></div>
-                    <div class="metric-card"><div class="metric-label">Sharpe</div><div id="testSharpe" class="metric-value">—</div></div>
-                    <div class="metric-card"><div class="metric-label">Max DD</div><div id="testMaxDD" class="metric-value">—</div></div>
+        </div>
+
+        <!-- Результаты -->
+        <div id="testResults" style="display:none">
+            <!-- Метрики -->
+            <div class="card" style="margin-bottom:16px">
+                <div class="card-header">📊 Результаты</div>
+                <div class="card-body">
+                    <div class="metrics-row" style="flex-wrap:wrap">
+                        <div class="metric-card"><div class="metric-label">PnL</div><div id="btPnl" class="metric-value">—</div></div>
+                        <div class="metric-card"><div class="metric-label">PnL / день</div><div id="btPpd" class="metric-value">—</div></div>
+                        <div class="metric-card"><div class="metric-label">Сделок</div><div id="btTrades" class="metric-value">—</div></div>
+                        <div class="metric-card"><div class="metric-label">RT / день</div><div id="btRtpd" class="metric-value">—</div></div>
+                        <div class="metric-card"><div class="metric-label">Win Rate</div><div id="btWR" class="metric-value">—</div></div>
+                        <div class="metric-card"><div class="metric-label">Profit Factor</div><div id="btPF" class="metric-value">—</div></div>
+                        <div class="metric-card"><div class="metric-label">Sharpe</div><div id="btSharpe" class="metric-value">—</div></div>
+                        <div class="metric-card"><div class="metric-label">Avg сделка</div><div id="btAvgTrade" class="metric-value">—</div></div>
+                        <div class="metric-card"><div class="metric-label">Avg выигрыш</div><div id="btAvgWin" class="metric-value green">—</div></div>
+                        <div class="metric-card"><div class="metric-label">Avg проигрыш</div><div id="btAvgLoss" class="metric-value red">—</div></div>
+                        <div class="metric-card"><div class="metric-label">Max DD (₽)</div><div id="btMaxDD" class="metric-value red">—</div></div>
+                        <div class="metric-card"><div class="metric-label">Max DD (%)</div><div id="btMaxDDpct" class="metric-value red">—</div></div>
+                        <div class="metric-card"><div class="metric-label">Max DD длит.</div><div id="btMaxDDdur" class="metric-value">—</div></div>
+                        <div class="metric-card"><div class="metric-label">Max позиция</div><div id="btMaxPos" class="metric-value">—</div></div>
+                        <div class="metric-card"><div class="metric-label">Max ГО</div><div id="btMaxGO" class="metric-value">—</div></div>
+                        <div class="metric-card"><div class="metric-label">Сессий всего</div><div id="btSessions" class="metric-value">—</div></div>
+                        <div class="metric-card"><div class="metric-label">Сессий прибыльных</div><div id="btSessionsWR" class="metric-value">—</div></div>
+                        <div class="metric-card"><div class="metric-label">Медиана сессии</div><div id="btMedSession" class="metric-value">—</div></div>
+                        <div class="metric-card"><div class="metric-label">Макс выигрыш</div><div id="btMaxWin" class="metric-value green">—</div></div>
+                        <div class="metric-card"><div class="metric-label">Макс проигрыш</div><div id="btMaxLoss" class="metric-value red">—</div></div>
+                        <div class="metric-card"><div class="metric-label">Подряд выигрышей</div><div id="btMaxWinsStreak" class="metric-value">—</div></div>
+                        <div class="metric-card"><div class="metric-label">Подряд проигрышей</div><div id="btMaxLossStreak" class="metric-value">—</div></div>
+                        <div class="metric-card"><div class="metric-label">Комиссия всего</div><div id="btCommission" class="metric-value">—</div></div>
+                    </div>
                 </div>
-                <div class="card">
-                    <div class="card-header">Equity Curve</div>
-                    <div id="testEquityChart" style="width:100%;height:220px"></div>
+            </div>
+
+            <!-- Графики -->
+            <div class="panel-row">
+                <div class="card" style="flex:1; min-height:300px">
+                    <div class="card-header">📈 Equity Curve</div>
+                    <div id="testEquityChart" style="width:100%;min-height:300px;background:#1A1A2E"></div>
                 </div>
-                <div class="card">
-                    <div class="card-header">Сделки</div>
-                    <table class="data-table">
-                        <thead><tr><th>Вход</th><th>Выход</th><th>Напр.</th><th>Цена вх.</th><th>Цена вых.</th><th>PnL</th></tr></thead>
-                        <tbody id="testTradesTable"></tbody>
-                    </table>
+                <div class="card" style="flex:1; min-height:300px">
+                    <div class="card-header">🕯️ Свечи + Сделки + Индикаторы</div>
+                    <div id="testCandleChart" style="width:100%;min-height:400px;background:#1A1A2E"></div>
                 </div>
+            </div>
+
+            <!-- Таблица сделок -->
+            <div class="card" style="margin-top:16px">
+                <div class="card-header">📋 Сделки</div>
+                <table class="data-table">
+                    <thead><tr><th>Время входа</th><th>Время выхода</th><th>Напр.</th><th>Цена вх.</th><th>Цена вых.</th><th>Лоты</th><th>PnL</th><th>RT</th></tr></thead>
+                    <tbody id="testTradesTable"></tbody>
+                </table>
             </div>
         </div>
     </div>
 
     <!-- ==================== СТРАТЕГИИ ==================== -->
     <div id="strategies" class="tab-content">
-        <div class="metrics-row">
-            <div class="metric-card"><div class="metric-label">Активных</div><div id="stratRunning" class="metric-value green">0</div></div>
-            <div class="metric-card"><div class="metric-label">Общий PnL</div><div id="stratPnl" class="metric-value">0</div></div>
-            <div class="metric-card"><div class="metric-label">Сделок</div><div id="stratTrades" class="metric-value">0</div></div>
+        <!-- Одна строка: название + инструмент + параметры + кнопки -->
+        <div class="strategy-item" style="padding:16px; gap:12px; align-items:center; flex-wrap:wrap">
+            <div style="font-weight:700; font-size:1.1em; color:var(--accent)">🎯 SAR×EMA Grid MM V6</div>
+            <select id="stratInstrument" class="input" style="width:160px">
+                <option value="SiM6">SI — SiM6</option>
+                <option value="SiU6">SI — SiU6</option>
+                <option value="MXM6">MX — MXM6</option>
+                <option value="GDM6">GD — GDM6</option>
+                <option value="BRK6">BR — BRK6</option>
+                <option value="RIU6">RI — RIU6</option>
+            </select>
+            <button class="btn btn-secondary btn-sm" onclick="toggleParams()">⚙️ Параметры ▾</button>
+            <button class="btn btn-primary btn-sm" onclick="stratTest()">🧪 Тестировать</button>
+            <button class="btn btn-secondary btn-sm" onclick="stratOptimize()">⚡ Оптимизировать</button>
+            <button class="btn btn-success btn-sm" onclick="stratCreateRobot()">🤖 Создать робота</button>
         </div>
-        <div id="strategyList" class="strategy-list"></div>
+
+        <!-- Панель параметров стратегии -->
+        <div id="strategyParams" class="card" style="margin-top:12px">
+            <div class="card-header row gap-8">
+                ⚙️ Параметры
+                <button class="btn btn-primary btn-sm" onclick="startTest()">▶ Начать тестирование</button>
+                <button class="btn btn-secondary btn-sm" onclick="toggleParams()">Скрыть</button>
+                <button class="btn btn-secondary btn-sm" onclick="saveStrategyConfig()">💾 Сохранить</button>
+            </div>
+            <div id="paramsBody" style="padding:12px">
+                <div class="metrics-row" style="flex-wrap:wrap">
+                    <div class="metric-card" style="min-width:140px"><div class="metric-label">SAR Start</div><input id="cfgSarStart" class="input" type="number" step="0.001" value="0.009" style="width:80px"></div>
+                    <div class="metric-card" style="min-width:140px"><div class="metric-label">SAR Step</div><input id="cfgSarStep" class="input" type="number" step="0.001" value="0.01" style="width:80px"></div>
+                    <div class="metric-card" style="min-width:140px"><div class="metric-label">SAR Max</div><input id="cfgSarMax" class="input" type="number" step="0.01" value="0.2" style="width:80px"></div>
+                    <div class="metric-card" style="min-width:140px"><div class="metric-label">EMA Period</div><input id="cfgEmaPeriod" class="input" type="number" step="1" value="30" style="width:80px"></div>
+                </div>
+                <div class="metrics-row" style="flex-wrap:wrap; margin-top:8px">
+                    <div class="metric-card" style="min-width:140px"><div class="metric-label">Grid Step (пт)</div><input id="cfgGridStep" class="input" type="number" step="1" value="45" style="width:80px"></div>
+                    <div class="metric-card" style="min-width:140px"><div class="metric-label">Grid Spread (пт)</div><input id="cfgGridSpread" class="input" type="number" step="1" value="50" style="width:80px"></div>
+                    <div class="metric-card" style="min-width:140px"><div class="metric-label">Max Grid Levels</div><input id="cfgMaxGridLevels" class="input" type="number" step="1" value="70" style="width:80px"></div>
+                    <div class="metric-card" style="min-width:140px"><div class="metric-label">Min Profit/lot (пт)</div><input id="cfgMinProfitPerLot" class="input" type="number" step="1" value="35" style="width:80px"></div>
+                </div>
+                <div class="metrics-row" style="flex-wrap:wrap; margin-top:8px">
+                    <div class="metric-card" style="min-width:140px"><div class="metric-label">Close % (RT)</div><input id="cfgClosePct" class="input" type="number" step="0.01" value="0.30" style="width:80px"></div>
+                    <div class="metric-card" style="min-width:140px"><div class="metric-label">Комиссия (₽ RT)</div><input id="cfgCommission" class="input" type="number" step="0.01" value="0.90" style="width:80px"></div>
+                    <div class="metric-card" style="min-width:140px"><div class="metric-label">Max Лотов</div><input id="cfgMaxLots" class="input" type="number" step="1" value="1" style="width:80px"></div>
+                    <div class="metric-card" style="min-width:140px"><div class="metric-label">Lot Step Profit (₽)</div><input id="cfgLotStepProfit" class="input" type="number" step="100" value="9999999" style="width:100px"></div>
+                    <div class="metric-card" style="min-width:160px"><div class="metric-label">Старт без сигнала</div><input id="cfgForceEntry" type="checkbox" style="width:20px;height:20px;vertical-align:middle"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Панель оптимизации -->
+        <div id="optimizePanel" class="card" style="display:none; margin-top:12px">
+            <div class="card-header row gap-8">
+                ⚡ Оптимизация — диапазоны параметров
+                <button class="btn btn-primary btn-sm" onclick="startOptimize()">▶ Запустить оптимизацию</button>
+                <button class="btn btn-secondary btn-sm" onclick="el('optimizePanel').style.display='none'">Скрыть</button>
+            </div>
+            <div style="padding:12px">
+                <div class="metrics-row" style="flex-wrap:wrap">
+                    <div class="metric-card" style="min-width:200px"><div class="metric-label">SAR Start (от — до / шаг)</div><input id="optSarStartFrom" class="input" type="number" step="0.001" value="0.005" style="width:60px"> — <input id="optSarStartTo" class="input" type="number" step="0.001" value="0.02" style="width:60px"> / <input id="optSarStartStep" class="input" type="number" step="0.001" value="0.005" style="width:60px"></div>
+                    <div class="metric-card" style="min-width:200px"><div class="metric-label">SAR Step (от — до / шаг)</div><input id="optSarStepFrom" class="input" type="number" step="0.001" value="0.005" style="width:60px"> — <input id="optSarStepTo" class="input" type="number" step="0.001" value="0.02" style="width:60px"> / <input id="optSarStepStep" class="input" type="number" step="0.001" value="0.005" style="width:60px"></div>
+                    <div class="metric-card" style="min-width:200px"><div class="metric-label">EMA Period (от — до / шаг)</div><input id="optEmaFrom" class="input" type="number" value="10" style="width:60px"> — <input id="optEmaTo" class="input" type="number" value="50" style="width:60px"> / <input id="optEmaStep" class="input" type="number" value="10" style="width:60px"></div>
+                    <div class="metric-card" style="min-width:200px"><div class="metric-label">Grid Step (от — до / шаг)</div><input id="optGridStepFrom" class="input" type="number" value="20" style="width:60px"> — <input id="optGridStepTo" class="input" type="number" value="60" style="width:60px"> / <input id="optGridStepStep" class="input" type="number" value="10" style="width:60px"></div>
+                    <div class="metric-card" style="min-width:200px"><div class="metric-label">Grid Spread (от — до / шаг)</div><input id="optGridSpreadFrom" class="input" type="number" value="30" style="width:60px"> — <input id="optGridSpreadTo" class="input" type="number" value="60" style="width:60px"> / <input id="optGridSpreadStep" class="input" type="number" value="5" style="width:60px"></div>
+                    <div class="metric-card" style="min-width:200px"><div class="metric-label">Close % (от — до / шаг)</div><input id="optClosePctFrom" class="input" type="number" step="0.05" value="0.20" style="width:60px"> — <input id="optClosePctTo" class="input" type="number" step="0.05" value="0.40" style="width:60px"> / <input id="optClosePctStep" class="input" type="number" step="0.05" value="0.10" style="width:60px"></div>
+                </div>
+                <div class="text-secondary" style="margin-top:8px; font-size:12px">SAR Max, Max Grid Levels, Комиссия и Лоты берутся из текущих значений выше. Оптимизация перебирает все комбинации и показывает топ-20 по PnL.</div>
+            </div>
+        </div>
+
+        <!-- Панель создания робота -->
+        <div id="robotPanel" class="card" style="display:none; margin-top:12px">
+            <div class="card-header row gap-8">
+                🤖 Параметры робота
+                <button class="btn btn-success btn-sm" onclick="confirmCreateRobot()">✅ Подтвердить</button>
+                <button class="btn btn-secondary btn-sm" onclick="el('robotPanel').style.display='none'">Скрыть</button>
+            </div>
+            <div style="padding:12px">
+                <div class="metrics-row" style="flex-wrap:wrap">
+                    <div class="metric-card" style="min-width:180px"><div class="metric-label">Инструмент</div><input id="robotTicker" class="input" value="SiM6" list="tickerList" style="width:120px"><datalist id="tickerList"><option value="SiM6"><option value="SiU6"><option value="SiH7"><option value="MXM6"><option value="GDM6"><option value="BRK6"><option value="RIU6"><option value="SBRF"><option value="GAZP"><option value="LKOH"></datalist></div>
+                    <div class="metric-card" style="min-width:200px"><div class="metric-label">Торговый счёт</div><select id="robotAccount" class="input" style="width:190px"><option value="">Загрузка...</option></select></div>
+                    <div class="metric-card" style="min-width:80px"><div class="metric-label">SAR Start</div><input id="robotSarStart" class="input" type="number" step="0.001" value="0.009" style="width:70px"></div>
+                    <div class="metric-card" style="min-width:80px"><div class="metric-label">SAR Step</div><input id="robotSarStep" class="input" type="number" step="0.001" value="0.01" style="width:70px"></div>
+                    <div class="metric-card" style="min-width:80px"><div class="metric-label">SAR Max</div><input id="robotSarMax" class="input" type="number" step="0.01" value="0.2" style="width:70px"></div>
+                    <div class="metric-card" style="min-width:80px"><div class="metric-label">EMA</div><input id="robotEma" class="input" type="number" value="30" style="width:60px"></div>
+                    <div class="metric-card" style="min-width:80px"><div class="metric-label">Grid Step</div><input id="robotGridStep" class="input" type="number" value="45" style="width:70px"></div>
+                    <div class="metric-card" style="min-width:80px"><div class="metric-label">Grid Spread</div><input id="robotGridSpread" class="input" type="number" value="50" style="width:70px"></div>
+                    <div class="metric-card" style="min-width:80px"><div class="metric-label">Max Grid</div><input id="robotMaxGrid" class="input" type="number" value="70" style="width:70px"></div>
+                    <div class="metric-card" style="min-width:80px"><div class="metric-label">Close %</div><input id="robotClosePct" class="input" type="number" step="0.01" value="0.30" style="width:70px"></div>
+                    <div class="metric-card" style="min-width:80px"><div class="metric-label">Min Profit/lot (пт)</div><input id="robotMinProfit" class="input" type="number" value="28" style="width:70px"></div>
+                    <div class="metric-card" style="min-width:80px"><div class="metric-label">Комиссия</div><input id="robotComm" class="input" type="number" step="0.01" value="0.90" style="width:70px"></div>
+                    <div class="metric-card" style="min-width:80px"><div class="metric-label">Лоты</div><input id="robotLots" class="input" type="number" value="1" style="width:60px"></div>
+                    <div class="metric-card" style="min-width:120px"><div class="metric-label">Старт без сигнала</div><input id="robotForceEntry" type="checkbox" style="width:20px;height:20px;vertical-align:middle"></div>
+                </div>
+            </div>
+        </div>
     </div>
 
     <!-- ==================== АРБИТРАЖ ==================== -->
@@ -293,96 +384,87 @@
     </div>
 
     <!-- ==================== АЛЬФА-ДИРЕКТ ==================== -->
-    <div id="alfa" class="tab-content">
-        <div class="panel-row">
-            <div class="card flex-1">
-                <div class="card-header">🌍 Альфа-Директ 5 — WebSocket PRO API</div>
-                <div class="card-body row gap-8">
-                    <span>AlfaBridge:</span>
-                    <input id="alfaBridgeUrl" class="input" value="http://localhost:15200" style="width:250px">
-                    <button class="btn btn-primary" onclick="alfaConnect()">🔌 Подключить</button>
-                    <span id="alfaStatusText" class="status-text">Не подключён</span>
+    <!-- ==================== НАСТРОЙКИ ==================== -->
+    <div id="settings" class="tab-content">
+        <!-- Подключение -->
+        <div class="card" style="max-width:600px">
+            <div class="card-header">🔌 Подключение</div>
+            <div class="card-body" style="display:flex;flex-direction:column;gap:16px">
+                <div class="row gap-8" style="align-items:center">
+                    <select id="brokerSelect" class="select">
+                        <option>Финам (Trade API)</option>
+                    </select>
+                    <button class="btn btn-secondary" onclick="connectBroker()">🔌 Подключиться</button>
+                    <span id="brokerStatus" class="status-text">❌ Не подключён</span>
                 </div>
             </div>
         </div>
 
-        <div class="metrics-row">
-            <div class="metric-card"><div class="metric-label">Статус</div><div id="alfaAuthStatus" class="metric-value">—</div></div>
-            <div class="metric-card"><div class="metric-label">Счёт</div><div id="alfaAccount" class="metric-value">—</div></div>
-            <div class="metric-card"><div class="metric-label">Инструментов</div><div id="alfaAssets" class="metric-value">—</div></div>
-            <div class="metric-card"><div class="metric-label">Подпись</div><div id="alfaSign" class="metric-value">—</div></div>
-        </div>
-
-        <!-- Поиск инструментов -->
-        <div class="card">
-            <div class="card-header row gap-8">
-                🔍 Поиск инструментов
-                <input id="alfaSearchInput" class="input" placeholder="SBER, GAZP, ROSN..." style="width:200px" onkeyup="if(event.key==='Enter')alfaSearch()">
-                <button class="btn btn-secondary btn-sm" onclick="alfaSearch()">Найти</button>
-            </div>
-            <table class="data-table" id="alfaSearchResults">
-                <thead><tr><th>Тикер</th><th>Название</th><th>Группа</th><th>IdObject</th><th>IdFi</th><th>Рынок</th><th>Ликвид</th><th>Котировки</th></tr></thead>
-                <tbody id="alfaSearchBody"></tbody>
-            </table>
-        </div>
-
-        <!-- Котировки -->
-        <div class="card">
-            <div class="card-header">📊 Котировки</div>
-            <table class="data-table">
-                <thead><tr><th>Тикер</th><th>IdFi</th><th>Last</th><th>Bid</th><th>Ask</th><th>High</th><th>Low</th><th>Volume</th></tr></thead>
-                <tbody id="alfaQuotesBody"></tbody>
-            </table>
-        </div>
-
-        <!-- Позиции -->
-        <div class="card">
-            <div class="card-header">💼 Позиции</div>
-            <div id="alfaPositions" class="card-body"><i>Нажмите "Подключить"</i></div>
-        </div>
-
-        <!-- Заявки -->
-        <div class="card">
-            <div class="card-header">📝 Заявки</div>
-            <div id="alfaOrders" class="card-body"><i>Нажмите "Подключить"</i></div>
-        </div>
-
-        <!-- Лог -->
-        <div class="card">
-            <div class="card-header">Лог AlfaBridge</div>
-            <div id="alfaLogContainer" class="log-container"></div>
-        </div>
-    </div>
-
-    <!-- ==================== НАСТРОЙКИ ==================== -->
-    <div id="settings" class="tab-content">
-        <div class="card" style="max-width:600px">
-            <div class="card-header">🔑 Токены брокеров</div>
+        <div class="card" style="max-width:600px; margin-top:12px">
+            <div class="card-header">🔑 Токен</div>
             <div class="card-body" style="display:flex;flex-direction:column;gap:16px">
                 <div>
                     <label>Финам Trade API</label>
                     <input type="password" id="finamToken" class="input" placeholder="Вставьте токен Финам">
                     <div id="finamTokenStatus" class="text-secondary" style="margin-top:4px"></div>
                 </div>
-                <div>
-                    <label>Альфа-Инвестиции</label>
-                    <input type="password" id="alfaToken" class="input" placeholder="Вставьте токен Альфа">
-                    <div id="alfaTokenStatus" class="text-secondary" style="margin-top:4px"></div>
-                </div>
                 <div class="row gap-8">
                     <button class="btn btn-primary" onclick="saveSettings()">💾 Сохранить</button>
                     <span id="settingsStatus" class="text-secondary"></span>
                 </div>
                 <div class="info-box">
-                    <b>ℹ️ Как получить токены:</b><br>
-                    <b>Финам:</b> api.finam.ru → Токены → Создать новый токен<br>
-                    <b>Альфа:</b> ЛК Альфа-Инвестиций → Настройки → API-токены<br><br>
-                    Токены сохраняются в localStorage браузера.
+                    <b>ℹ️ Как получить токен:</b><br>
+                    api.finam.ru → Токены → Создать новый токен<br><br>
+                    Токен сохраняется в localStorage браузера.
                 </div>
             </div>
         </div>
+
+        <!-- Transaq -->
+        <div class="card" style="max-width:600px; margin-top:12px">
+            <div class="card-header">📡 Transaq (резервный канал)</div>
+            <div class="card-body" style="display:flex;flex-direction:column;gap:16px">
+                <div class="row gap-8">
+                    <input type="text" id="txLogin" class="input" placeholder="Логин Transaq" style="flex:1">
+                    <input type="password" id="txPassword" class="input" placeholder="Пароль" style="flex:1">
+                </div>
+                <div class="row gap-8">
+                    <input type="text" id="txHost" class="input" value="tr.finam.ru" placeholder="Сервер" style="flex:1">
+                    <input type="number" id="txPort" class="input" value="39000" placeholder="Порт" style="width:100px">
+                    <button class="btn btn-secondary" onclick="connectTransaq()">🔌 Подключить</button>
+                    <button class="btn btn-danger btn-sm" onclick="disconnectTransaq()">Отключить</button>
+                </div>
+                <div class="row gap-8" style="align-items:center">
+                    <span id="txStatus" class="status-text">⚪ Не подключён</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- QUIK Bridge -->
+        <div class="card" style="max-width:600px; margin-top:12px">
+            <div class="card-header">🖥️ QUIK Bridge (резервный канал)</div>
+            <div class="card-body" style="display:flex;flex-direction:column;gap:12px">
+                <div class="info-box">
+                    <b>Инструкция:</b><br>
+                    1. Скопируйте <code>quik_bridge_v2.lua</code> на Windows машину с QUIK<br>
+                    2. В QUIK → Сервисы → Lua скрипты → Добавить → Запустить<br>
+                    3. Скрипт автоматически подключится к серверу
+                </div>
+                <div class="row gap-8" style="align-items:center">
+                    <span id="quikStatus" class="status-text">⚪ QUIK не подключён</span>
+                    <button class="btn btn-secondary btn-sm" onclick="checkHealth()">🏥 Проверить здоровье</button>
+                </div>
+                <div id="healthReport" style="font-size:13px;color:#9CA3AF"></div>
+            </div>
+        </div>
+
+        <!-- Лог событий -->
+        <div class="card" style="margin-top:12px">
+            <div class="card-header">📋 Лог событий</div>
+            <div id="logContainer" class="log-container"></div>
+        </div>
     </div>
 
-    <script src="/js/app.js"></script>
+    <script src="/js/app.js?v=22"></script>
 </body>
 </html>

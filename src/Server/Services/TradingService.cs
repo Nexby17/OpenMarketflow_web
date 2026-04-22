@@ -54,6 +54,7 @@ public class TradingService : IDisposable
     public bool IsPaused { get { lock (_lock) return _isPaused; } }
     public bool IsConnectedToBroker { get { lock (_lock) return _connector?.IsConnected ?? false; } }
     public FinamConnector? Connector => _connector;
+    public FinamConnector? FinamBroker => _connector;
 
     // === Управление ===
 

@@ -27,9 +27,10 @@ public class FinamApiClient : IDisposable
     public FinamApiClient(string accessToken)
     {
         _accessToken = accessToken;
-        _http = new HttpClient { BaseAddress = new Uri(BaseUrl) };
+        _http = new HttpClient(new SocketsHttpHandler(), false) { BaseAddress = new Uri(BaseUrl) };
         _http.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
         _http.Timeout = TimeSpan.FromSeconds(30);
+        _http.DefaultRequestVersion = System.Net.HttpVersion.Version11;
 
         _jsonOptions = new JsonSerializerOptions
         {
@@ -52,9 +53,13 @@ public class FinamApiClient : IDisposable
             var request = new AuthRequest { Secret = _accessToken };
             var json = JsonSerializer.Serialize(request, _jsonOptions);
             var content = new StringContent(json, System.Text.Encoding.UTF8, "application/json");
+            content.Headers.ContentType.CharSet = null; // Финам не принимает charset в Content-Type
 
             var response = await _http.PostAsync("/v1/sessions", content);
             var responseContent = await response.Content.ReadAsStringAsync();
+
+            Console.WriteLine($"[FINAM-AUTH] Body first 80: {json[..Math.Min(80, json.Length)]}");
+            Console.WriteLine($"[FINAM-AUTH] POST /v1/sessions → {(int)response.StatusCode} | Body sent: {json.Length} chars | Response: {responseContent[..Math.Min(200, responseContent.Length)]}");
 
             if (!response.IsSuccessStatusCode)
                 throw new FinamApiException(response.StatusCode, responseContent);
@@ -163,7 +168,7 @@ public class FinamApiClient : IDisposable
     }
 
     public async Task<BarsResponse?> GetBarsAsync(string symbol, string timeframe, string from, string to)
-        => await GetAsync<BarsResponse>($"/v1/marketdata/bars?symbol={symbol}&timeframe={timeframe}&interval.start_time={from}&interval.end_time={to}");
+        => await GetAsync<BarsResponse>($"/v1/instruments/{symbol}/bars?timeframe={timeframe}&interval.start_time={from}&interval.end_time={to}");
 
     // === Orders Service ===
 

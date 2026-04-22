@@ -1,14 +1,13 @@
 --[[
-  OpenMarketflow — QUIK Bridge v2 (HTTP)
+  OpenMarketflow QUIK Bridge v2 (HTTP)
   
-  Обмен через HTTP с сервером OpenMarketflow.
-  QUIK Lua скрипт работает как HTTP клиент:
-  - Раз в секунду шлёт котировки, стакан, сделки, позиции
-  - Получает команды (ордера) от сервера
+  HTTP-based bridge between QUIK and OpenMarketflow server.
+  - Pushes quotes, orderbook, trades, positions every second
+  - Receives trading commands from server
   
-  Запуск: В QUIK → Сервисы → Lua скрипты → Добавить → quik_bridge.lua → Запустить
+  Usage: QUIK -> Services -> Lua Scripts -> Add -> Run
   
-  НАСТРОЙКИ: изменить SERVER_URL на адрес вашего сервера
+  SETTINGS: change SERVER_URL to your server address
 ]]
 
 -- ============ НАСТРОЙКИ ============
@@ -358,13 +357,13 @@ end
 -- ============ ОСНОВНОЙ ЦИКЛ ============
 
 function main()
-    message("[OpenMarketflow] QUIK Bridge v2 (HTTP) запущен")
-    message("[OpenMarketflow] Сервер: " .. SERVER_URL)
+    message("[OpenMarketflow] QUIK Bridge v2 started")
+    message("[OpenMarketflow] Server: " .. SERVER_URL)
     
     -- Проверка curl
     local f = io.popen("curl --version 2>&1", "r")
     if not f then
-        message("[OpenMarketflow] ❌ curl не найден! Скачайте curl для Windows")
+        message("[OpenMarketflow] ERROR curl not found")
         return
     end
     local ver = f:read("*a")
@@ -372,7 +371,7 @@ function main()
     if ver and #ver > 0 then
         message("[OpenMarketflow] curl OK")
     else
-        message("[OpenMarketflow] ❌ curl не работает")
+        message("[OpenMarketflow] curl error")
         return
     end
     
@@ -382,12 +381,12 @@ function main()
         local r = f2:read("*a")
         f2:close()
         if r and #r > 0 then
-            message("[OpenMarketflow] ✅ Сервер доступен")
+            message("[OpenMarketflow] Server OK")
         else
-            message("[OpenMarketflow] ⚠️ Сервер не ответил")
+            message("[OpenMarketflow] Server no response")
         end
     else
-        message("[OpenMarketflow] ❌ Не удалось подключиться к серверу")
+        message("[OpenMarketflow] Cannot connect to server")
         return
     end
     
@@ -398,9 +397,9 @@ function main()
         instruments = SUBSCRIBED
     })
     if reg then
-        message("[OpenMarketflow] ✅ Зарегистрирован на сервере")
+        message("[OpenMarketflow] Registered OK")
     else
-        message("[OpenMarketflow] ⚠️ Сервер недоступен, повтор...")
+        message("[OpenMarketflow] Server unavailable")
     end
     
     while is_running do
@@ -427,7 +426,7 @@ function main()
         sleep(100)
     end
     
-    message("[OpenMarketflow] QUIK Bridge остановлен")
+    message("[OpenMarketflow] QUIK Bridge stopped")
 end
 
 function OnStop()

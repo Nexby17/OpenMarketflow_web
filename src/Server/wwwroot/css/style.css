@@ -29,15 +29,17 @@ header { display: flex; justify-content: space-between; align-items: center; pad
 /* Tab content */
 .tab-content { display: none; padding: 12px; }
 .tab-content.active { display: block; }
+.tab-content.active#orderbook { height: calc(100vh - 60px); }
 
 /* Layout */
 .panel-row { display: flex; gap: 12px; margin-bottom: 12px; }
+#orderbook > .panel-row { height: calc(100vh - 100px); }
 .flex-1 { flex: 1; }
 .row { display: flex; align-items: center; }
 .gap-8 { gap: 8px; }
 
 /* Cards */
-.card { background: var(--surface); border-radius: var(--radius); margin-bottom: 12px; overflow: hidden; }
+.card { background: var(--surface); border-radius: var(--radius); margin-bottom: 16px; overflow: hidden; }
 .card-header { padding: 10px 14px; font-size: 13px; font-weight: 600; color: var(--text2); border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 8px; }
 .card-body { padding: 12px 14px; }
 
@@ -63,6 +65,7 @@ header { display: flex; justify-content: space-between; align-items: center; pad
 .btn-primary { background: var(--accent); color: white; }
 .btn-secondary { background: var(--surface2); color: var(--text); }
 .btn-danger { background: var(--red); color: white; }
+.btn-success { background: #22C55E; color: white; }
 .btn-sm { padding: 4px 10px; font-size: 12px; }
 
 /* Inputs */
@@ -71,9 +74,9 @@ header { display: flex; justify-content: space-between; align-items: center; pad
 label { font-size: 12px; color: var(--text2); margin-bottom: 2px; display: block; }
 
 /* Table */
-.data-table { width: 100%; border-collapse: collapse; font-size: 13px; }
-.data-table th { text-align: left; padding: 8px 12px; color: var(--text2); font-weight: 500; border-bottom: 1px solid var(--border); }
-.data-table td { padding: 6px 12px; border-bottom: 1px solid var(--border); }
+.data-table { width: 100%; border-collapse: collapse; font-size: 14px; }
+.data-table th { text-align: left; padding: 10px 16px; color: var(--text2); font-weight: 500; border-bottom: 1px solid var(--border); }
+.data-table td { padding: 10px 16px; border-bottom: 1px solid var(--border); }
 .data-table tr:hover { background: rgba(255,255,255,0.03); }
 
 /* Log */
@@ -85,7 +88,7 @@ label { font-size: 12px; color: var(--text2); margin-bottom: 2px; display: block
 .log-trade { color: var(--green); }
 
 /* Orderbook */
-.orderbook-ladder { max-height: 600px; overflow-y: auto; font-family: 'Consolas', monospace; font-size: 12px; }
+.orderbook-ladder { height: calc(100vh - 100px); overflow-y: auto; font-family: 'Consolas', monospace; font-size: 12px; }
 .ob-row { display: grid; grid-template-columns: 1fr 80px 1fr; padding: 1px 4px; position: relative; }
 .ob-row:hover { background: rgba(255,255,255,0.05); }
 .ob-row.spread-row { background: rgba(255,255,255,0.08); }
@@ -120,3 +123,4 @@ label { font-size: 12px; color: var(--text2); margin-bottom: 2px; display: block
 .pnl-positive { color: var(--green); }
 .pnl-negative { color: var(--red); }
 .pnl-zero { color: var(--text2); }
+.badge{display:inline-block;padding:1px 6px;font-size:10px;background:#3b82f6;color:#fff;border-radius:8px;vertical-align:middle;margin-left:4px}

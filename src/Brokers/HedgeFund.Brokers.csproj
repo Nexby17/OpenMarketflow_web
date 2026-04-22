@@ -11,12 +11,29 @@
     <ProjectReference Include="..\Core\HedgeFund.Core.csproj" />
   </ItemGroup>
 
-  <!-- gRPC / Protobuf -->
+  <!-- ============================================== -->
+  <!-- gRPC / Protobuf (существующий FinamConnector)   -->
+  <!-- ============================================== -->
   <ItemGroup>
     <PackageReference Include="Google.Protobuf" Version="3.28.*" />
     <PackageReference Include="Google.Api.CommonProtos" Version="2.15.*" />
     <PackageReference Include="Grpc.Net.Client" Version="2.67.*" />
     <PackageReference Include="Grpc.Tools" Version="2.67.*" PrivateAssets="All" />
+  </ItemGroup>
+
+  <!-- ============================================== -->
+  <!-- StockSharp: аналитика + готовый Finam коннектор -->
+  <!-- Версия 5.0.222 поддерживает net6.0 (совместим с net8.0) -->
+  <!-- ============================================== -->
+  <ItemGroup>
+    <!-- Ядро: алгоритмы, стратегии, коннекторы -->
+    <PackageReference Include="StockSharp.Algo" Version="5.0.222" />
+    <!-- Сущности: Security, Order, Trade, Portfolio -->
+    <PackageReference Include="StockSharp.BusinessEntities" Version="5.0.216" />
+    <!-- Сообщения: базовый слой коммуникации -->
+    <PackageReference Include="StockSharp.Messages" Version="5.0.222" />
+    <!-- Готовый Finam коннектор (БЕСПЛАТНО) -->
+    <PackageReference Include="StockSharp.Finam" Version="5.0.198" />
   </ItemGroup>
 
   <ItemGroup>
