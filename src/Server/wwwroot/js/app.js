@@ -953,6 +953,22 @@ function readStratCfg() {
     };
 }
 
+// Автосохранение параметров при изменении (debounce 800ms)
+let _cfgSaveTimer = null;
+function autoSaveConfig() {
+    if (_cfgSaveTimer) clearTimeout(_cfgSaveTimer);
+    _cfgSaveTimer = setTimeout(() => {
+        saveStrategyConfig();
+    }, 800);
+}
+// Навешиваем на все cfg-поля
+setTimeout(() => {
+    document.querySelectorAll('#paramsBody input').forEach(inp => {
+        inp.addEventListener('input', autoSaveConfig);
+        inp.addEventListener('change', autoSaveConfig);
+    });
+}, 500);
+
 function saveStrategyConfig() {
     const cfg = readStratCfg();
     fetch('/strategy/grid-mm/config', {
@@ -963,7 +979,8 @@ function saveStrategyConfig() {
     .then(r => r.json())
     .then(res => {
         if (res.error) { addLog(nowTime(), 'ERROR', 'Config: ' + res.error); return; }
-        addLog(nowTime(), 'INFO', '⚙️ Параметры сохранены');
+        const saved = el('cfgSaved');
+        if (saved) { saved.style.display = 'inline'; setTimeout(() => saved.style.display = 'none', 2000); }
     })
     .catch(e => addLog(nowTime(), 'ERROR', 'Config: ' + e.message));
 }

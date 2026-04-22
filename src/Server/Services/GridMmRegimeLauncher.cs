@@ -39,6 +39,7 @@ public class GridMmRegimeLauncher : IDisposable
         public double Price;
         public int Volume;
         public bool IsBuy;      // true = buy, false = sell
+        public double OriginalPrice; // цена grid_buy для recycling
     }
     private readonly Dictionary<string, TrackedOrder> _trackedOrders = new();
     private readonly object _orderLock = new();
@@ -66,21 +67,21 @@ public class GridMmRegimeLauncher : IDisposable
         if (useQuikData)
             _quikProvider = new QuikCandleProvider();
 
-        // Синхронизировано с Python бэктест (EMA=300, step=30, spread=40)
+        // Параметры синхронизированы с TOOLS.md (v6 SAR 0.009/0.01/0.2, EMA30, 5мин)
         _strategy = new GridMmRegimeStrategy(new GridMmRegimeStrategy.Config
         {
-            SarStart = 0.005,
+            SarStart = 0.009,
             SarStep = 0.01,
             SarMax = 0.2,
             EmaPeriod = 30,
-            GridStep = 30.0,
-            GridSpread = 40.0,
-            MaxGridLevels = 50,
-            MinProfitPerLot = 28.0,
-            ClosePct = 0.50,
+            GridStep = 45.0,
+            GridSpread = 50.0,
+            MaxGridLevels = 70,
+            MinProfitPerLot = 35.0,
+            ClosePct = 0.30,
             Commission = 0.90,
-            LotStepProfit = 1000.0,
-            MaxLots = 30
+            LotStepProfit = 9999999.0,
+            MaxLots = 1
         });
 
         // Обработка заполнения ордеров
@@ -392,7 +393,8 @@ public class GridMmRegimeLauncher : IDisposable
                     LevelIndex = j,
                     Price = price,
                     Volume = _gridConfig.Volume,
-                    IsBuy = dir == 1
+                    IsBuy = dir == 1,
+                    OriginalPrice = price
                     };
             }
             _strategy.SetGridOrderIds(j, result.BrokerOrderId, null);
@@ -419,7 +421,8 @@ public class GridMmRegimeLauncher : IDisposable
                     LevelIndex = levelIndex,
                     Price = gridOrder.Price,
                     Volume = volume,
-                    IsBuy = dir == 1
+                    IsBuy = dir == 1,
+                    OriginalPrice = gridOrder.Price
                 };
             }
             
@@ -495,7 +498,11 @@ public class GridMmRegimeLauncher : IDisposable
                 Console.WriteLine($"[CLOSE] Позиция уже закрыта");
             }
             
-            _strategy.OnCloseAllComplete(0); // PnL посчитаем по позициям
+            // PnL: используем (entryPrice - entryPrice) как approximation,
+            // реальный PnL будет из OnTrade callback
+            double approxPnl = _strategy.EntryPrice > 0 ? _strategy.CalcGridPnL(_strategy.EntryPrice) : 0;
+            _strategy.OnCloseAllComplete(approxPnl);
+            _strategy.ResetPosition();
             await BroadcastTrade("Close", 0, 0, "Close All");
             await BroadcastStatus();
         }
@@ -610,16 +617,15 @@ public class GridMmRegimeLauncher : IDisposable
                 dir = _strategy.PositionDirection;
                 if (dir != 0 && !_closingAll)
                 {
-                double recyclePrice = tracked.Price;
-                double recycleBuyPrice = tracked.IsBuy 
-                    ? recyclePrice - _strategy.Params.GridSpread
-                    : recyclePrice + _strategy.Params.GridSpread;
+                // Recycle: ставим grid_buy обратно на оригинальной цене
+                double recycleBuyPrice = tracked.OriginalPrice > 0 ? tracked.OriginalPrice : tracked.Price;
                     recycleBuyPrice = Math.Round(recycleBuyPrice);
+                    bool recycleIsBuy = dir == 1; // Long→buy, Short→sell
                     
                     var recycleOrder = new Order
                     {
                         Ticker = _ticker,
-                        Direction = tracked.IsBuy ? SignalDirection.Buy : SignalDirection.Sell,
+                        Direction = recycleIsBuy ? SignalDirection.Buy : SignalDirection.Sell,
                         Type = OrderType.Limit,
                         Price = recycleBuyPrice,
                         Volume = tracked.Volume,
@@ -640,7 +646,8 @@ public class GridMmRegimeLauncher : IDisposable
                                     LevelIndex = tracked.LevelIndex,
                                     Price = recycleBuyPrice,
                                     Volume = tracked.Volume,
-                                    IsBuy = tracked.IsBuy
+                                    IsBuy = recycleIsBuy,
+                                    OriginalPrice = recycleBuyPrice
                                 };
                             }
                             _strategy.SetGridOrderIds(tracked.LevelIndex, result.BrokerOrderId, null);
@@ -918,7 +925,7 @@ public class GridMmRegimeLauncher : IDisposable
                 Direction = positionDir == 1 ? SignalDirection.Buy : SignalDirection.Sell,
                 Type = OrderType.Limit,
                 Price = levelPrice,
-                Volume = cfg.MaxLots,
+                Volume = _strategy.CurrentLotLevel,
                 Comment = $"grid_level_{i}"
             };
             
@@ -929,11 +936,12 @@ public class GridMmRegimeLauncher : IDisposable
                 _trackedOrders[result.BrokerOrderId] = new TrackedOrder
                 {
                     BrokerOrderId = result.BrokerOrderId,
-                    Type = "grid_limit",
+                    Type = "grid_buy",
                     LevelIndex = i,
                     Price = levelPrice,
-                    Volume = cfg.MaxLots,
-                    IsBuy = positionDir == 1
+                    Volume = _strategy.CurrentLotLevel,
+                    IsBuy = positionDir == 1,
+                    OriginalPrice = levelPrice
                 };
             }
             

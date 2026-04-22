@@ -87,6 +87,7 @@ public class GridMmRegimeStrategy : IStrategy
     private int _currentLotLevel;
     private double _cumProfit;
     private double _portfolioValue; // устанавливается из Launcher
+    private int _riskAdjMaxLots = 1; // макс лотов с учётом risk manager
     
     // История
     public int TotalTrades { get; private set; }
@@ -239,7 +240,7 @@ public class GridMmRegimeStrategy : IStrategy
         {
             double volEstimate = RiskManager.EstimateVolFromRange(candle.High, candle.Low, candle.Close);
             int riskAdjLots = RiskManager.CalculateMaxLots(_portfolioValue, c, 12000.0, volEstimate);
-            Params.MaxLots = Math.Max(1, Math.Min(riskAdjLots, 30)); // не больше 30
+            _riskAdjMaxLots = Math.Max(1, Math.Min(riskAdjLots, 30)); // не больше 30
         }
         
         // STOP MODE — закрываем если в позиции
@@ -328,6 +329,8 @@ public class GridMmRegimeStrategy : IStrategy
         _sessionRealized = 0;
         _peakLots = _currentLotLevel;
         
+        _trades.Add(new TradeRecord { Time = DateTime.UtcNow, Ticker = "SI", Direction = dir, Price = price, Lots = _currentLotLevel, Comment = "Entry" });
+        
         // Считаем grid уровни
         double[] prices = new double[Params.MaxGridLevels];
         double[] tpPrices = new double[Params.MaxGridLevels];
@@ -381,6 +384,7 @@ public class GridMmRegimeStrategy : IStrategy
 
     private void EmitCloseAll(string reason)
     {
+        _trades.Add(new TradeRecord { Time = DateTime.UtcNow, Ticker = "SI", Direction = -_posDir, Price = _entryPrice, Lots = OpenLots, Comment = reason });
         _pendingEvents.Add(new StrategyEvent
         {
             Type = StrategyEvent.EventType.CloseAllMarket,
@@ -391,27 +395,14 @@ public class GridMmRegimeStrategy : IStrategy
         });
         
         // Закрываем позицию в стратегии
-        double pnl = CalcGridPnL(_entryPrice); // approximate
         TotalTrades++;
-        
-        // Dynamic lots
-        if (pnl < 0)
-        {
-            _currentLotLevel = Math.Max(1, _currentLotLevel - 1);
-            _cumProfit = 0;
-        }
-        else
-        {
-            _cumProfit += pnl;
-            if (_cumProfit >= Params.LotStepProfit && _currentLotLevel < Params.MaxLots)
-            {
-                _currentLotLevel++;
-                _cumProfit = 0;
-            }
-        }
-        
-        LogMsg($"CLOSE: {reason} | approx PnL={pnl:F0}");
-        
+    }
+
+    /// <summary>
+    /// Сброс состояния позиции (вызывается из Launcher после закрытия)
+    /// </summary>
+    public void ResetPosition()
+    {
         _posDir = 0;
         _entryPrice = 0;
         _entryOpen = false;
@@ -492,9 +483,9 @@ public class GridMmRegimeStrategy : IStrategy
         else
         {
             _cumProfit += realizedPnL;
-            if (_cumProfit >= Params.LotStepProfit && _currentLotLevel < Params.MaxLots)
+            if (_cumProfit >= Params.LotStepProfit && _currentLotLevel < Math.Min(Params.MaxLots, _riskAdjMaxLots))
             {
-                _currentLotLevel++;
+                _currentLotLevel = Math.Min(_currentLotLevel + 1, Math.Min(Params.MaxLots, _riskAdjMaxLots));
                 _cumProfit = 0;
                 LogMsg($"[DYN] +{Params.LotStepProfit:F0} руб, lots → {_currentLotLevel}");
             }
