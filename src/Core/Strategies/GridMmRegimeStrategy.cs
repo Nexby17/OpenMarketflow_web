@@ -168,8 +168,8 @@ public class GridMmRegimeStrategy : IStrategy
     }
 
     // Лог
-    private readonly List<string> _log = new();
-    public IReadOnlyList<string> Log => _log;
+    private readonly LinkedList<string> _log = new();
+    public IReadOnlyList<string> Log => _log.ToList();
 
     public GridMmRegimeStrategy(Config? config = null)
     {
@@ -178,6 +178,18 @@ public class GridMmRegimeStrategy : IStrategy
         _ema = new EMA(Params.EmaPeriod);
         _grid = new GridLevel[Params.MaxGridLevels];
         _currentLotLevel = 1;
+    }
+
+    public void ResizeGrid()
+    {
+        if (_grid == null || _grid.Length != Params.MaxGridLevels)
+        {
+            var old = _grid;
+            _grid = new GridLevel[Params.MaxGridLevels];
+            if (old != null)
+                for (int i = 0; i < Math.Min(old.Length, _grid.Length); i++)
+                    _grid[i] = old[i];
+        }
     }
 
     /// <summary>
@@ -218,8 +230,8 @@ public class GridMmRegimeStrategy : IStrategy
         // Сохраняем в историю для графика
         if (!double.IsNaN(sar) && !double.IsNaN(ema))
         {
-            _indicatorHistory.Add(new IndicatorPoint { Time = candle.Timestamp, Sar = sar, Ema = ema });
-            if (_indicatorHistory.Count > 5000) _indicatorHistory.RemoveAt(0);
+            _indicatorHistory.AddLast(new IndicatorPoint { Time = candle.Timestamp, Sar = sar, Ema = ema });
+            while (_indicatorHistory.Count > 5000) _indicatorHistory.RemoveFirst();
         }
         
         // Динамический sizing — обновляем MaxLots на основе волатильности
@@ -530,8 +542,8 @@ public class GridMmRegimeStrategy : IStrategy
         public double Sar { get; set; }
         public double Ema { get; set; }
     }
-    private readonly List<IndicatorPoint> _indicatorHistory = new();
-    public IReadOnlyList<IndicatorPoint> IndicatorHistory => _indicatorHistory;
+    private readonly LinkedList<IndicatorPoint> _indicatorHistory = new();
+    public IReadOnlyList<IndicatorPoint> IndicatorHistory => _indicatorHistory.ToList();
 
     public void SetPortfolioValue(double value) => _portfolioValue = value;
 
@@ -558,7 +570,7 @@ public class GridMmRegimeStrategy : IStrategy
         _entryOpen = true;
         _currentLotLevel = lots;
         _peakLots = Math.Max(_peakLots, lots);
-        _log.Add($"[RESTORE] Position restored: {direction} {lots}x @ {entryPrice:F0}");
+        _log.AddLast($"[RESTORE] Position restored: {direction} {lots}x @ {entryPrice:F0}");
     }
     
     /// <summary>
@@ -570,7 +582,7 @@ public class GridMmRegimeStrategy : IStrategy
         _entryPrice = 0;
         _entryOpen = false;
         _grid = new GridLevel[Params.MaxGridLevels];
-        _log.Add("[CLEAR] Position cleared");
+        _log.AddLast("[CLEAR] Position cleared");
     }
 
 
@@ -585,7 +597,7 @@ public class GridMmRegimeStrategy : IStrategy
 
     private void LogMsg(string msg)
     {
-        _log.Add($"[{DateTime.UtcNow:HH:mm:ss}] {msg}");
-        if (_log.Count > 1000) _log.RemoveAt(0);
+        _log.AddLast($"[{DateTime.UtcNow:HH:mm:ss}] {msg}");
+        while (_log.Count > 1000) _log.RemoveFirst();
     }
 }

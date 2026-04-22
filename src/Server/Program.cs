@@ -46,7 +46,6 @@ app.MapHub<TradingHub>("/trading");
 
 // === QUIK Bridge State ===
 var quikData = new Dictionary<string, object>();
-var quikCommands = new List<Dictionary<string, object>>();
 var quikConnected = false;
 DateTime quikLastHeartbeat = DateTime.MinValue;
 
@@ -182,14 +181,14 @@ app.MapGet("/api/candles", async (TradingService svc, string ticker, int tf, int
 });
 
 // === QUIK Bridge Endpoints ===
-app.MapPost("/quik/data", (HttpRequest req) =>
+app.MapPost("/quik/data", async (HttpRequest req) =>
 {
     quikLastHeartbeat = DateTime.UtcNow;
     quikConnected = true;
     try
     {
         using var sr = new StreamReader(req.Body);
-        var body = sr.ReadToEndAsync().Result;
+        var body = await sr.ReadToEndAsync();
         
         // Логирование для отладки (только первые 200 символов)
         if (body.Length > 0 && !body.Contains("\"quotes\":[]"))
@@ -264,16 +263,6 @@ app.MapGet("/quik/latest", () =>
         if (quikData.ContainsKey("raw"))
             return Results.Json(new { source = "QUIK", data = quikData["raw"], quotes = quikData["quotes"], pos = quikData["pos"], orders = quikData["orders"], ob = quikData.ContainsKey("ob") ? quikData["ob"] : "[]", bal = quikData["bal"], free = quikData["free"], acc = quikData["acc"] });
         return Results.Json(new { error = "no data" });
-    }
-});
-
-app.MapGet("/quik/commands", () =>
-{
-    lock (quikCommands)
-    {
-        var cmds = quikCommands.ToList();
-        quikCommands.Clear();
-        return Results.Json(cmds);
     }
 });
 
@@ -659,7 +648,7 @@ app.MapPost("/strategy/grid-mm/config", async (HttpRequest req) =>
         if (root.TryGetProperty("emaPeriod", out var emaPeriod)) gridMm.Strategy.Params.EmaPeriod = emaPeriod.GetInt32();
         if (root.TryGetProperty("gridStep", out var gridStep)) gridMm.Strategy.Params.GridStep = gridStep.GetDouble();
         if (root.TryGetProperty("gridSpread", out var gridSpread)) gridMm.Strategy.Params.GridSpread = gridSpread.GetDouble();
-        if (root.TryGetProperty("maxGridLevels", out var maxGrid)) gridMm.Strategy.Params.MaxGridLevels = maxGrid.GetInt32();
+        if (root.TryGetProperty("maxGridLevels", out var maxGrid)) { gridMm.Strategy.Params.MaxGridLevels = maxGrid.GetInt32(); gridMm.Strategy.ResizeGrid(); }
         if (root.TryGetProperty("minProfitPerLot", out var minProfit)) gridMm.Strategy.Params.MinProfitPerLot = minProfit.GetDouble();
         if (root.TryGetProperty("closePct", out var closePct)) gridMm.Strategy.Params.ClosePct = closePct.GetDouble();
         if (root.TryGetProperty("commission", out var comm)) gridMm.Strategy.Params.Commission = comm.GetDouble();
@@ -735,126 +724,7 @@ app.MapGet("/strategy/grid-mm/chart-data", () =>
     });
 });
 
-// === REST API: Grid MM NoSignal — ОТКЛЮЧЕНО (сломан) ===
-/*
-GridMmNoSignalLauncher gridMmNoSignal = null;
-
-app.MapPost("/strategy/grid-mm-nosig/start", () =>
-{
-    try
-    {
-        var token = Environment.GetEnvironmentVariable("FINAM_TOKEN");
-        if (string.IsNullOrEmpty(token))
-            return Results.Json(new { error = "FINAM_TOKEN not set" }, statusCode: 400);
-        if (gridMmNoSignal != null)
-            return Results.Json(new { status = "already_running", detail = gridMmNoSignal.GetStatus() });
-        
-        gridMmNoSignal = new GridMmNoSignalLauncher(token, "SiM6");
-        return Results.Json(new { status = "initialized", detail = gridMmNoSignal.GetStatus() });
-    }
-    catch (Exception ex)
-    {
-        return Results.Json(new { error = ex.Message }, statusCode: 500);
-    }
-});
-
-app.MapPost("/strategy/grid-mm-nosig/run", () =>
-{
-    if (gridMmNoSignal == null) return Results.Json(new { error = "Not initialized. POST /strategy/grid-mm-nosig/start first" }, statusCode: 400);
-    gridMmNoSignal.Start();
-    return Results.Json(new { status = "running", detail = gridMmNoSignal.GetStatus() });
-});
-
-app.MapPost("/strategy/grid-mm-nosig/stop", async () =>
-{
-    if (gridMmNoSignal == null) return Results.Json(new { error = "Not initialized" }, statusCode: 400);
-    await gridMmNoSignal.StopAsync();
-    return Results.Json(new { status = "stopped", detail = gridMmNoSignal.GetStatus() });
-});
-
-app.MapPost("/strategy/grid-mm-nosig/pause", () =>
-{
-    if (gridMmNoSignal == null) return Results.Json(new { error = "Not initialized" }, statusCode: 400);
-    gridMmNoSignal.Pause();
-    return Results.Json(new { status = "paused", detail = gridMmNoSignal.GetStatus() });
-});
-
-app.MapGet("/strategy/grid-mm-nosig/status", () =>
-{
-    if (gridMmNoSignal == null) return Results.Json(new { status = "not_initialized" });
-    return Results.Json(new { status = "ok", detail = gridMmNoSignal.GetStatus(), connected = gridMmNoSignal.IsConnected });
-});
-
-app.MapGet("/strategy/grid-mm-nosig/indicators", () =>
-{
-    if (gridMmNoSignal == null) return Results.Json(new { error = "Not initialized" }, statusCode: 400);
-    var s = gridMmNoSignal.Strategy;
-    return Results.Json(new {
-        sar = s.CurrentSar,
-        ema = s.CurrentEma,
-        rv = s.CurrentRv,
-        hv = s.CurrentHv,
-        rvHvRatio = s.CurrentHv > 0 ? s.CurrentRv / s.CurrentHv : 0,
-        isLowVol = s.IsRegimeLowVol,
-        regime = s.IsRegimeLowVol ? "LOW" : "HIGH",
-        posDir = s.PositionDirection,
-        entryPrice = s.EntryPrice,
-        lots = s.CurrentLotLevel,
-        totalLots = s.TotalEntryLots,
-        trades = s.Trades.Select(t => new { time = t.Time.ToString("o"), t.Ticker, t.Direction, t.Price, t.Lots, t.Comment })
-    });
-});
-
-app.MapGet("/strategy/grid-mm-nosig/trades", () =>
-{
-    if (gridMmNoSignal == null) return Results.Json(new { error = "Not initialized" }, statusCode: 400);
-    return Results.Json(gridMmNoSignal.Strategy.Trades.Select(t => new {
-        time = t.Time.ToString("o"),
-        t.Ticker,
-        dir = t.Direction == 1 ? "BUY" : "SELL",
-        t.Price,
-        t.Lots,
-        t.Comment
-    }));
-});
-
-app.MapGet("/strategy/grid-mm-nosig/chart-data", () =>
-{
-    if (gridMmNoSignal == null) return Results.Json(new { error = "Not initialized" }, statusCode: 400);
-    var s = gridMmNoSignal.Strategy;
-    var hist = s.IndicatorHistory;
-    var trades = s.Trades;
-    return Results.Json(new
-    {
-        indicators = hist.Select(p => new { time = p.Time.ToString("o"), sar = p.Sar, ema = p.Ema }),
-        trades = trades.Select(t => new { time = t.Time.ToString("o"), dir = t.Direction, price = t.Price, lots = t.Lots, comment = t.Comment }),
-        current = new
-        {
-            sar = s.CurrentSar,
-            ema = s.CurrentEma,
-            posDir = s.PositionDirection,
-            entryPrice = s.EntryPrice,
-            lots = s.CurrentLotLevel
-        }
-    });
-});
-*/
-// === Конец NoSignal block ===
-
-// === PSAR Grid MM — DISABLED (class removed) ===
-// PsarGridLauncher removed from project. Endpoints return not_initialized.
-app.MapPost("/strategy/psar-grid/start", () => Results.Json(new { error = "PsarGridLauncher removed" }, statusCode: 400));
-app.MapPost("/strategy/psar-grid/run", () => Results.Json(new { error = "PsarGridLauncher removed" }, statusCode: 400));
-app.MapPost("/strategy/psar-grid/stop", () => Results.Json(new { error = "PsarGridLauncher removed" }, statusCode: 400));
-app.MapPost("/strategy/psar-grid/pause", () => Results.Json(new { error = "PsarGridLauncher removed" }, statusCode: 400));
-app.MapGet("/strategy/psar-grid/status", () => Results.Json(new { status = "not_initialized" }));
-app.MapGet("/strategy/psar-grid/indicators", () => Results.Json(new { error = "not_initialized" }, statusCode: 400));
-app.MapGet("/strategy/psar-grid/trades", () => Results.Json(new { error = "not_initialized" }, statusCode: 400));
-
-// === REST API: PSAR+EMA Combo (LEGACY — disabled) ===
-// NOTE: Старая стратегия отключена. Используем Grid MM Regime.
-
-// PSAR Combo endpoints removed — replaced by Grid MM Regime
+// NOTE: NoSignal и PSAR Grid — удалены. Используем Grid MM Regime.
 
 // === REST API: Арбитраж ===
 ArbLauncher? arbLauncher = null;

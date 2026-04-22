@@ -744,8 +744,12 @@ public class GridMmRegimeLauncher : IDisposable
             await _hub.Clients.All.SendAsync("OnStatusUpdate", new { detail = status });
             await BroadcastPosition();
             // Account balance
-            var balance = await _broker.GetBalanceAsync();
-            await _hub.Clients.All.SendAsync("OnEquityUpdate", balance);
+            try {
+                if (_broker.IsConnected) {
+                    var balance = await _broker.GetBalanceAsync();
+                    await _hub.Clients.All.SendAsync("OnEquityUpdate", balance);
+                }
+            } catch { }
         } catch { }
     }
 
@@ -875,7 +879,7 @@ public class GridMmRegimeLauncher : IDisposable
         else // Short
             isGridLimit = !isBuy; // Sell = против позиции
         
-        return isGridLimit ? "grid_limit" : "grid_tp";
+        return isGridLimit ? "grid_buy" : "grid_tp";
     }
     
     /// <summary>
@@ -892,7 +896,7 @@ public class GridMmRegimeLauncher : IDisposable
         lock (_orderLock)
         {
             existingLevels = _trackedOrders.Values
-                .Where(o => o.Type == "grid_limit")
+                .Where(o => o.Type == "grid_buy")
                 .Select(o => o.LevelIndex)
                 .ToHashSet();
         }
