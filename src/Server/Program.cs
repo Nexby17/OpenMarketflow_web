@@ -38,6 +38,8 @@ var port = builder.Configuration.GetValue<int>("Port", 5050);
 builder.WebHost.UseUrls($"http://0.0.0.0:{port}");
 
 var app = builder.Build();
+var httpClient = new HttpClient();
+httpClient.Timeout = TimeSpan.FromSeconds(3);
 
 app.UseCors();
 app.UseDefaultFiles();
@@ -535,31 +537,62 @@ app.MapGet("/api/orders", async (TradingService svc) =>
     return Results.Json(new object[] {});
 });
 
-app.MapGet("/api/quote", (string ticker) =>
+app.MapGet("/api/quote", async (string ticker) =>
 {
+    // 1. Попробуем QUIK — найти нужный тикер
     lock (quikData)
     {
-        if (!quikData.TryGetValue("quotes", out var quotesJson))
-            return Results.Ok(new { bid = 0.0, ask = 0.0, last = 0.0, source = "QUIK (no data)" });
-        
-        try
+        if (quikData.TryGetValue("quotes", out var quotesJson))
         {
-            var doc = JsonDocument.Parse(quotesJson.ToString());
-            if (doc.RootElement.GetArrayLength() == 0)
-                return Results.Ok(new { bid = 0.0, ask = 0.0, last = 0.0, source = "QUIK (empty)" });
-            
-            var first = doc.RootElement[0];
-            var bid = first.TryGetProperty("b", out var b) ? b.GetDouble() : 0.0;
-            var ask = first.TryGetProperty("a", out var a) ? a.GetDouble() : 0.0;
-            var last = first.TryGetProperty("l", out var l) ? l.GetDouble() : 0.0;
-            var spread = ask > 0 && bid > 0 ? ask - bid : 0.0;
-            return Results.Ok(new { bid, ask, last, spread, source = "QUIK" });
-        }
-        catch
-        {
-            return Results.Ok(new { bid = 0.0, ask = 0.0, last = 0.0, source = "QUIK (error)" });
+            try
+            {
+                var doc = JsonDocument.Parse(quotesJson.ToString());
+                foreach (var q in doc.RootElement.EnumerateArray())
+                {
+                    var sym = q.TryGetProperty("s", out var s) ? s.GetString() : null;
+                    if (sym == ticker || (string.IsNullOrEmpty(sym) && doc.RootElement.GetArrayLength() == 1))
+                    {
+                        var bid = q.TryGetProperty("b", out var b) ? b.GetDouble() : 0.0;
+                        var ask = q.TryGetProperty("a", out var a) ? a.GetDouble() : 0.0;
+                        var last = q.TryGetProperty("l", out var l) ? l.GetDouble() : 0.0;
+                        if (bid > 0 || ask > 0 || last > 0)
+                            return Results.Ok(new { bid, ask, last, spread = ask > 0 && bid > 0 ? ask - bid : 0.0, source = "QUIK" });
+                    }
+                }
+            }
+            catch { }
         }
     }
+    
+    // 2. Fallback: Finam REST orderbook
+    try
+    {
+        var finamToken = Environment.GetEnvironmentVariable("FINAM_TOKEN");
+        if (!string.IsNullOrEmpty(finamToken))
+        {
+            using var req = new HttpRequestMessage(HttpMethod.Get, $"https://trade-api.finam.ru/api/v1/instruments/{ticker}/orderbook?depth=1");
+            req.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", finamToken);
+            var obResp = await httpClient.SendAsync(req);
+            if (obResp.IsSuccessStatusCode)
+            {
+                var obDoc = JsonDocument.Parse(await obResp.Content.ReadAsStringAsync());
+                var root = obDoc.RootElement;
+                double bid = 0, ask = 0, last = 0;
+                if (root.TryGetProperty("data", out var data))
+                {
+                    if (data.TryGetProperty("bids", out var bids) && bids.GetArrayLength() > 0)
+                        bid = bids[0].TryGetProperty("price", out var bp) ? bp.GetDouble() : 0;
+                    if (data.TryGetProperty("asks", out var asks) && asks.GetArrayLength() > 0)
+                        ask = asks[0].TryGetProperty("price", out var ap) ? ap.GetDouble() : 0;
+                }
+                if (bid > 0 || ask > 0)
+                    return Results.Ok(new { bid, ask, last, spread = ask > 0 && bid > 0 ? ask - bid : 0.0, source = "Finam" });
+            }
+        }
+    }
+    catch { }
+    
+    return Results.Ok(new { bid = 0.0, ask = 0.0, last = 0.0, source = "none" });
 });
 // === QUICK ORDERBOOK (из QUIK данных) ===
 app.MapGet("/api/orderbook", async (string ticker) =>
