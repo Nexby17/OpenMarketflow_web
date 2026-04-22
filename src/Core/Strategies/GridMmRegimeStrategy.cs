@@ -117,7 +117,7 @@ public class GridMmRegimeStrategy : IStrategy
         get
         {
             int c = 0;
-            for (int j = 0; j < Params.MaxGridLevels; j++)
+            for (int j = 0; j < Math.Min(Params.MaxGridLevels, _grid.Length); j++)
                 if (_grid[j].Filled) c++;
             return c;
         }
@@ -130,7 +130,7 @@ public class GridMmRegimeStrategy : IStrategy
         double ur = 0;
         if (_entryOpen)
             ur += _posDir == 1 ? (currentPrice - _entryPrice) : (_entryPrice - currentPrice);
-        for (int j = 0; j < Params.MaxGridLevels; j++)
+        for (int j = 0; j < Math.Min(Params.MaxGridLevels, _grid.Length); j++)
         {
             if (_grid[j].Filled)
                 ur += _posDir == 1 ? (currentPrice - _grid[j].Price) : (_grid[j].Price - currentPrice);
@@ -147,7 +147,6 @@ public class GridMmRegimeStrategy : IStrategy
             EntryMarket,          // Вход маркетом 1 лот
             GridLimitOrders,      // Расставить grid лимитки
             CloseAllMarket,       // Закрыть всё маркетом + отменить все лимитки
-            CancelAllLimits,      // Отменить все лимитки (перед close)
         }
         public EventType Type { get; set; }
         public int Direction { get; set; }   // 1=long, -1=short
@@ -335,7 +334,7 @@ public class GridMmRegimeStrategy : IStrategy
         double[] prices = new double[Params.MaxGridLevels];
         double[] tpPrices = new double[Params.MaxGridLevels];
         
-        for (int j = 0; j < Params.MaxGridLevels; j++)
+        for (int j = 0; j < Math.Min(Params.MaxGridLevels, _grid.Length); j++)
         {
             double levelPrice = dir == 1 
                 ? price - Params.GridStep * (j + 1) 
@@ -411,7 +410,7 @@ public class GridMmRegimeStrategy : IStrategy
         _peakLots = 0;
         
         // Очищаем grid
-        for (int j = 0; j < Params.MaxGridLevels; j++)
+        for (int j = 0; j < Math.Min(Params.MaxGridLevels, _grid.Length); j++)
         {
             _grid[j] = new GridLevel();
         }
@@ -508,11 +507,7 @@ public class GridMmRegimeStrategy : IStrategy
 
     public double CurrentSar { get; private set; }
     public double CurrentEma { get; private set; }
-    public double CurrentRv => 0.0;
-    public double CurrentHv => 0.0;
-    public bool IsRegimeLowVol => true;
     public int TotalEntryLots => OpenLots;
-    public double RvHvRatio => 0.0;
     
     // Legacy compatibility
     public class TradeRecord

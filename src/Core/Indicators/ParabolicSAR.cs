@@ -22,8 +22,6 @@ public class ParabolicSAR
     public int PrevTrend => _prevTrend;
 
     /// <summary>SAR flip: тренд изменился на текущем баре</summary>
-    public bool FlippedUp => _prevTrend == -1 && _trend == 1;
-    public bool FlippedDown => _prevTrend == 1 && _trend == -1;
 
     public ParabolicSAR(double afStart, double afStep, double afMax)
     {

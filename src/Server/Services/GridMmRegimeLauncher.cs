@@ -98,7 +98,9 @@ public class GridMmRegimeLauncher : IDisposable
 
     private async Task ConnectAndWarm(string token, string accountId)
     {
-        if (_useQuikData)
+        try
+        {
+            if (_useQuikData)
         {
             Console.WriteLine("[GRID-MM-v6] 📡 Используем QUIK данные...");
         }
@@ -189,6 +191,11 @@ public class GridMmRegimeLauncher : IDisposable
             Console.WriteLine($"[GRID-MM-v6] 📡 Активна. Ждём сигналов.");
         }
     }
+    catch (Exception ex)
+    {
+        Console.WriteLine($"[GRID-MM-v6] ❌ ConnectAndWarm error: {ex.Message}");
+    }
+    }
 
     private async Task QuikPollLoop(CancellationToken ct)
     {
@@ -230,7 +237,7 @@ public class GridMmRegimeLauncher : IDisposable
 
     private int _candleCount = 0;
     
-    private void OnNewCandle(Candle candle)
+    private async void OnNewCandle(Candle candle)
     {
         // === ЗАЩИТА: после прогрева игнорируем все старые свечи ===
         if (!_warmedUp) return; // Прогрев ещё не завершён
@@ -251,8 +258,9 @@ public class GridMmRegimeLauncher : IDisposable
                               $"| SAR={_strategy.CurrentSar:F0} EMA={_strategy.CurrentEma:F0}");
         }
         
-        // Передаём свече стратегии
-        _strategy.SetPortfolioValue(1000000.0); // TODO: получать из брокера
+        // Получаем текущий баланс от брокера
+        double portfolioValue = _broker.IsConnected ? (await _broker.GetAccountInfoAsync()).equity : 1000000.0;
+        _strategy.SetPortfolioValue(portfolioValue);
         _strategy.OnCandle(candle, _ticker);
         
         // Обновляем статус в UI (каждую свечу)
@@ -406,33 +414,6 @@ public class GridMmRegimeLauncher : IDisposable
         }
     }
 
-    private async Task PlaceGridLevelAsync(Order gridOrder, int levelIndex, double tpPrice, int dir, int volume)
-    {
-        try
-        {
-            var result = await _broker.PlaceOrderAsync(gridOrder);
-            
-            lock (_orderLock)
-            {
-                _trackedOrders[result.BrokerOrderId] = new TrackedOrder
-                {
-                    BrokerOrderId = result.BrokerOrderId,
-                    Type = "grid_buy",
-                    LevelIndex = levelIndex,
-                    Price = gridOrder.Price,
-                    Volume = volume,
-                    IsBuy = dir == 1,
-                    OriginalPrice = gridOrder.Price
-                };
-            }
-            
-            _strategy.SetGridOrderIds(levelIndex, result.BrokerOrderId, null);
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"[GRID] ❌ Level {levelIndex} failed: {ex.Message}");
-        }
-    }
 
     /// <summary>
     /// Закрытие: отменяем ВСЕ лимитки, затем маркетом закрываем позицию.

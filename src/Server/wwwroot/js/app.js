@@ -234,7 +234,7 @@ function loadPositions() {
             <td>${p.entries?.[0]?.price?.toFixed(2) || p.avgPrice?.toFixed(2) || '—'}</td>
             <td>${p.qty || 0}</td>
         </tr>`).join('');
-    }).catch(() => {});
+    }).catch(e => console.error("[ERROR]", e));
 }
 
 function loadOrders() {
@@ -251,7 +251,7 @@ function loadOrders() {
             <td>${o.filled || 0}/${o.qty || 0}</td>
             <td>${o.status || '—'}</td>
         </tr>`).join('');
-    }).catch(() => {});
+    }).catch(e => console.error("[ERROR]", e));
 }
 
 function loadQuotes() {
@@ -265,7 +265,7 @@ function loadQuotes() {
             const row = el(`q_${t}`);
             if (!row) return;
             row.innerHTML = `<td><b>${t}</b></td><td class="accent">${q.last?.toFixed(0) || '—'}</td><td class="green">${q.bid?.toFixed(0) || '—'}</td><td class="red">${q.ask?.toFixed(0) || '—'}</td><td>${q.volume || '—'}</td>`;
-        }).catch(() => {});
+        }).catch(e => console.error("[ERROR]", e));
     });
 }
 
@@ -696,7 +696,7 @@ function loadQuote(ticker) {
             if (q.ask > 0) el('obAsk').textContent = q.ask.toFixed(2);
             if (q.spread > 0) el('obSpread').textContent = q.spread.toFixed(2);
         })
-        .catch(() => {});
+        .catch(e => console.error("[ERROR]", e));
 }
 
 function loadOrderBook(ticker) {
@@ -730,7 +730,7 @@ function loadOrderBook(ticker) {
             }
             el('orderbookLadder').innerHTML = html;
         })
-        .catch(() => {});
+        .catch(e => console.error("[ERROR]", e));
 }
 
 function switchTimeframe() {
@@ -776,7 +776,7 @@ function updateLivePrice(ticker) {
                 }
             }
         })
-        .catch(() => {});
+        .catch(e => console.error("[ERROR]", e));
 }
 
 function updateLiveCandle(ticker) {
@@ -794,7 +794,7 @@ function updateLiveCandle(ticker) {
                 volumeSeries.update({ time: last.t, value: last.v || 0, color: last.c >= last.o ? 'rgba(34,197,94,0.3)' : 'rgba(239,68,68,0.3)' });
             }
         })
-        .catch(() => {});
+        .catch(e => console.error("[ERROR]", e));
 }
 
 // === Strategy Indicators on Chart ===
@@ -834,7 +834,7 @@ function loadStrategyIndicators() {
             
             if (data.current) updateIndicatorMetrics(data.current);
         })
-        .catch(() => {});
+        .catch(e => console.error("[ERROR]", e));
 }
 
 function toChartTime(isoStr) {
@@ -931,7 +931,7 @@ function loadStrategyConfig() {
             el('cfgCommission').value = c.commission;
             el('cfgMaxLots').value = c.maxLots;
             el('cfgLotStepProfit').value = c.lotStepProfit;
-        }).catch(() => {});
+        }).catch(e => console.error("[ERROR]", e));
 }
 
 // Unified config reader from DOM elements

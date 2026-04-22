@@ -21,14 +21,7 @@ public class EMA : IIndicator
         _count = 0;
     }
 
-    public double[] Calculate(Candle[] candles)
-    {
-        Reset();
-        var result = new double[candles.Length];
-        for (int i = 0; i < candles.Length; i++)
-            result[i] = Update(candles[i]);
-        return result;
-    }
+    public double[] Calculate(Candle[] candles) { Reset(); var r = new double[candles.Length]; for (int i = 0; i < candles.Length; i++) r[i] = Update(candles[i]); return r; }
 
     public double Update(Candle candle)
     {

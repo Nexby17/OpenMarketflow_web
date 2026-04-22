@@ -48,16 +48,21 @@ app.MapHub<TradingHub>("/trading");
 var quikData = new Dictionary<string, object>();
 var quikConnected = false;
 DateTime quikLastHeartbeat = DateTime.MinValue;
+object _quikStateLock = new object();
 
 // === Candle Aggregator from QUIK ticks ===
 var candleBuilderLock = new object();
 GridMmRegimeLauncher? gridMm = null;
 var candleBuilderCurrent = (double[]?)null;
-var candleBuilderHistory = new List<double[]>();
+var candleBuilderHistory = new LinkedList<double[]>();
 const int CANDLE_TF_MINUTES = 5;
 const int MAX_CANDLES = 500;
 
-bool IsQuikAlive() => quikConnected && (DateTime.UtcNow - quikLastHeartbeat).TotalSeconds < 10;
+bool IsQuikAlive()
+{
+    lock (_quikStateLock)
+        return quikConnected && (DateTime.UtcNow - quikLastHeartbeat).TotalSeconds < 10;
+}
 
 void AggregateCandleTick(double price, double volume, long ts)
 {
@@ -75,8 +80,8 @@ void AggregateCandleTick(double price, double volume, long ts)
         {
             if (candleBuilderCurrent != null)
             {
-                candleBuilderHistory.Add(candleBuilderCurrent);
-                if (candleBuilderHistory.Count > MAX_CANDLES) candleBuilderHistory.RemoveAt(0);
+                candleBuilderHistory.AddLast(candleBuilderCurrent);
+                if (candleBuilderHistory.Count > MAX_CANDLES) candleBuilderHistory.RemoveFirst();
             }
             candleBuilderCurrent = new double[] { candleStart, price, price, price, price, volume };
         }
@@ -183,8 +188,11 @@ app.MapGet("/api/candles", async (TradingService svc, string ticker, int tf, int
 // === QUIK Bridge Endpoints ===
 app.MapPost("/quik/data", async (HttpRequest req) =>
 {
-    quikLastHeartbeat = DateTime.UtcNow;
-    quikConnected = true;
+    lock (_quikStateLock)
+    {
+        quikLastHeartbeat = DateTime.UtcNow;
+        quikConnected = true;
+    }
     try
     {
         using var sr = new StreamReader(req.Body);
@@ -246,12 +254,19 @@ app.MapPost("/quik/data", async (HttpRequest req) =>
 
 app.MapGet("/quik/status", () =>
 {
-    var age = DateTime.UtcNow - quikLastHeartbeat;
-    var alive = quikConnected && age.TotalSeconds < 10;
+    DateTime lastHeartbeat;
+    bool connected;
+    lock (_quikStateLock)
+    {
+        lastHeartbeat = quikLastHeartbeat;
+        connected = quikConnected;
+    }
+    var age = DateTime.UtcNow - lastHeartbeat;
+    var alive = connected && age.TotalSeconds < 10;
     return Results.Json(new
     {
         connected = alive,
-        lastHeartbeat = quikLastHeartbeat.ToString("o"),
+        lastHeartbeat = lastHeartbeat.ToString("o"),
         age = (int)age.TotalSeconds
     });
 });
@@ -298,14 +313,21 @@ app.MapPost("/api/backtest", async (HttpRequest req) =>
 // === Unified Data Provider API ===
 app.MapGet("/transaq/health", (TradingService svc) =>
 {
-    var quikAge = DateTime.UtcNow - quikLastHeartbeat;
-    var quikAlive = quikConnected && quikAge.TotalSeconds < 10;
+    DateTime lastHeartbeat;
+    bool connected;
+    lock (_quikStateLock)
+    {
+        lastHeartbeat = quikLastHeartbeat;
+        connected = quikConnected;
+    }
+    var quikAge = DateTime.UtcNow - lastHeartbeat;
+    var quikAlive = connected && quikAge.TotalSeconds < 10;
     var finamOk = svc.Connector?.IsConnected == true;
     return Results.Json(new
     {
         finam = new { status = finamOk ? "connected" : "not_connected", broker = "Finam Trade API (gRPC)" },
         transaq = new { status = "not_connected", broker = "Transaq (not configured)" },
-        quik = new { status = quikAlive ? "connected" : "not_connected", broker = "QUIK Bridge (Lua)", lastHeartbeat = quikLastHeartbeat.ToString("o"), age = (int)quikAge.TotalSeconds },
+        quik = new { status = quikAlive ? "connected" : "not_connected", broker = "QUIK Bridge (Lua)", lastHeartbeat = lastHeartbeat.ToString("o"), age = (int)quikAge.TotalSeconds },
         dataSource = quikAlive ? "QUIK" : (finamOk ? "Finam" : "none"),
         timestamp = DateTime.UtcNow.ToString("o")
     });
@@ -671,11 +693,6 @@ app.MapGet("/strategy/grid-mm/indicators", () =>
     return Results.Json(new {
         sar = s.CurrentSar,
         ema = s.CurrentEma,
-        rv = s.CurrentRv,
-        hv = s.CurrentHv,
-        rvHvRatio = s.CurrentHv > 0 ? s.CurrentRv / s.CurrentHv : 0,
-        isLowVol = s.IsRegimeLowVol,
-        regime = s.IsRegimeLowVol ? "LOW" : "HIGH",
         posDir = s.PositionDirection,
         entryPrice = s.EntryPrice,
         lots = s.CurrentLotLevel,
@@ -711,10 +728,6 @@ app.MapGet("/strategy/grid-mm/chart-data", () =>
         {
             sar = s.CurrentSar,
             ema = s.CurrentEma,
-            rv = s.CurrentRv,
-            hv = s.CurrentHv,
-            ratio = s.CurrentHv > 0 ? s.CurrentRv / s.CurrentHv : 0,
-            regime = s.IsRegimeLowVol ? "LOW" : "HIGH",
             posDir = s.PositionDirection,
             entryPrice = s.EntryPrice,
             lots = s.CurrentLotLevel,
