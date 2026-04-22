@@ -1,7 +1,9 @@
 using Microsoft.AspNetCore.SignalR;
 using HedgeFund.Server.Hubs;
 using HedgeFund.Server.Services;
+using HedgeFund.Server.Connectors;
 using HedgeFund.Core.Strategies;
+using HedgeFund.Core.Connectors;
 using System.Text.Json;
 using Microsoft.AspNetCore.Http.Extensions;
 using System.Collections.Generic;
@@ -40,6 +42,50 @@ var app = builder.Build();
 app.UseCors();
 app.UseDefaultFiles();
 app.UseStaticFiles();
+
+// === Connector Manager ===
+var connectorMgr = new HedgeFund.Core.Connectors.ConnectorManager();
+
+// Текущий коннектор по умолчанию: Finam
+var _activeConnectorName = "Finam";
+
+app.MapGet("/api/connectors", () => Results.Json(new
+{
+    active = _activeConnectorName,
+    available = connectorMgr.AvailableConnectors,
+    connected = connectorMgr.IsConnected
+}));
+
+app.MapPost("/api/connectors/switch", async (HttpRequest req) =>
+{
+    using var sr = new StreamReader(req.Body);
+    var body = await sr.ReadToEndAsync();
+    var doc = JsonDocument.Parse(body);
+    var name = doc.RootElement.GetProperty("connector").GetString();
+    var token = doc.RootElement.TryGetProperty("token", out var t) ? t.GetString() : "";
+    
+    if (name == null || !connectorMgr.AvailableConnectors.Contains(name))
+        return Results.BadRequest(new { error = "Unknown connector" });
+    
+    IConnector connector = name switch
+    {
+        "Finam" => new HedgeFund.Server.Connectors.FinamConnectorAdapter(),
+        "QUIK" => new HedgeFund.Server.Connectors.QuikConnectorAdapter(),
+        "Transaq" => new HedgeFund.Server.Connectors.TransaqConnectorAdapter(),
+        _ => throw new InvalidOperationException()
+    };
+    
+    try
+    {
+        bool ok = await connector.ConnectAsync(token ?? "");
+        if (!ok) { connector.Dispose(); return Results.Json(new { error = "Connection failed" }, statusCode: 400); }
+        await connectorMgr.DisconnectAsync();
+        connectorMgr.Active = connector;
+        _activeConnectorName = name;
+        return Results.Ok(new { status = "connected", connector = name });
+    }
+    catch (Exception ex) { connector.Dispose(); return Results.Json(new { error = ex.Message }, statusCode: 500); }
+});
 
 // === Маппинг SignalR Hub ===
 app.MapHub<TradingHub>("/trading");
