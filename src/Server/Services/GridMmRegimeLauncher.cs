@@ -21,6 +21,10 @@ namespace HedgeFund.Server.Services;
 /// </summary>
 public class GridMmRegimeLauncher : IDisposable
 {
+    // Callback для записи сделок во внешнее хранилище
+    public static Action<string, int, double, string>? OnTradeRecorded;
+    public static Action<string, string, double, int, string>? OnOrderRecorded;
+    
     private readonly FinamConnector _broker;
     private readonly QuikCandleProvider? _quikProvider;
     private readonly bool _useQuikData;
@@ -323,6 +327,7 @@ public class GridMmRegimeLauncher : IDisposable
                 Comment = evt.Reason
             };
             var result = await _broker.PlaceOrderAsync(entryOrder);
+            OnOrderRecorded?.Invoke(_ticker, evt.Direction == 1 ? "Buy" : "Sell", evt.Price, evt.Volume, "Entry");
             Console.WriteLine("[EXEC] ✅ Entry {0} {1}x {2} → order={3}", evt.Direction, evt.Volume, _ticker, result.BrokerOrderId);
             
             // Broadcast trade + position
@@ -382,7 +387,9 @@ public class GridMmRegimeLauncher : IDisposable
         var gridOrder = new Order
         {
             Ticker = _ticker,
-            Direction = dir == 1 ? SignalDirection.Buy : SignalDirection.Sell,
+            // Для LONG позиции (dir==1) сетка должна быть SELL для закрытия
+            // Для SHORT позиции (dir==-1) сетка должна быть BUY для закрытия
+            Direction = dir == 1 ? SignalDirection.Sell : SignalDirection.Buy,
             Type = OrderType.Limit,
             Price = price,
             Volume = _gridConfig.Volume,
@@ -397,11 +404,11 @@ public class GridMmRegimeLauncher : IDisposable
                 _trackedOrders[result.BrokerOrderId] = new TrackedOrder
                 {
                     BrokerOrderId = result.BrokerOrderId,
-                    Type = "grid_buy",
+                    Type = dir == 1 ? "grid_sell" : "grid_buy",
                     LevelIndex = j,
                     Price = price,
                     Volume = _gridConfig.Volume,
-                    IsBuy = dir == 1,
+                    IsBuy = dir == -1,  // Для SELL это false, для BUY это true
                     OriginalPrice = price
                     };
             }
@@ -689,6 +696,7 @@ public class GridMmRegimeLauncher : IDisposable
                 Comment = comment
             };
             await _hub.Clients.All.SendAsync("OnTradeExecuted", tradeEvent);
+            OnTradeRecorded?.Invoke(direction, volume, price, comment);
         } catch { }
     }
 
@@ -884,7 +892,7 @@ public class GridMmRegimeLauncher : IDisposable
         lock (_orderLock)
         {
             existingLevels = _trackedOrders.Values
-                .Where(o => o.Type == "grid_buy")
+                .Where(o => o.Type == "grid_buy" || o.Type == "grid_sell")
                 .Select(o => o.LevelIndex)
                 .ToHashSet();
         }
@@ -895,15 +903,18 @@ public class GridMmRegimeLauncher : IDisposable
             if (existingLevels.Contains(i)) continue;
             
             // Рассчитываем цену уровня
+            // LONG позиция (dir==1) → SELL лимитка ВЫШЕ для закрытия
+            // SHORT позиция (dir==-1) → BUY лимитка НИЖЕ для закрытия
             double levelPrice = positionDir == 1
-                ? entryPrice - i * step  // Long: buy ниже
-                : entryPrice + i * step; // Short: sell выше
+                ? entryPrice + i * step  // Long: sell выше
+                : entryPrice - i * step; // Short: buy ниже
             
             // Ставим лимитку
             var order = new Order
             {
                 Ticker = _ticker,
-                Direction = positionDir == 1 ? SignalDirection.Buy : SignalDirection.Sell,
+                // Direction: LONG→SELL, SHORT→BUY
+                Direction = positionDir == 1 ? SignalDirection.Sell : SignalDirection.Buy,
                 Type = OrderType.Limit,
                 Price = levelPrice,
                 Volume = _strategy.CurrentLotLevel,
@@ -917,11 +928,11 @@ public class GridMmRegimeLauncher : IDisposable
                 _trackedOrders[result.BrokerOrderId] = new TrackedOrder
                 {
                     BrokerOrderId = result.BrokerOrderId,
-                    Type = "grid_buy",
+                    Type = positionDir == 1 ? "grid_sell" : "grid_buy",
                     LevelIndex = i,
                     Price = levelPrice,
                     Volume = _strategy.CurrentLotLevel,
-                    IsBuy = positionDir == 1,
+                    IsBuy = positionDir == -1,  // SELL=false, BUY=true
                     OriginalPrice = levelPrice
                 };
             }

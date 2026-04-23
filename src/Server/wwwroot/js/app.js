@@ -16,7 +16,7 @@ document.querySelectorAll('.tab').forEach(tab => {
         document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
         tab.classList.add('active');
         document.getElementById(tab.dataset.tab).classList.add('active');
-        if (tab.dataset.tab === 'orderbook') { switchOrderBookInstrument(); }
+        if (tab.dataset.tab === 'orderbook') initChart();
     });
 });
 
@@ -54,13 +54,11 @@ function initSignalR() {
     });
 
     connection.on('OnOrderBookUpdate', snapshot => {
-        // Отключено — используем REST polling для стакана
-        // renderOrderBook(snapshot);
+        renderOrderBook(snapshot);
     });
 
     connection.on('OnQuoteUpdate', quote => {
-        // Отключено — используем REST polling для котировок
-        // updateQuote(quote);
+        updateQuote(quote);
     });
 
     connection.on('OnError', msg => {
@@ -97,45 +95,27 @@ function initSignalR() {
         });
 }
 
-// === Connector Switch ===
-let _activeConnector = 'Finam';
-
-async function switchConnector(name) {
-    _activeConnector = name;
-    el('brokerStatus').textContent = '⚪ ' + name + ' выбран';
-}
-
-async function loadConnectorStatus() {
-    try {
-        const resp = await fetch('/api/connectors');
-        const data = await resp.json();
-        _activeConnector = data.active || 'Finam';
-        const sel = el('brokerSelect');
-        if (sel) sel.value = _activeConnector;
-    } catch (e) { console.error('[CONNECTOR]', e); }
-}
-
 // === Actions ===
 async function connectBroker() {
-    const connector = _activeConnector;
     const token = localStorage.getItem('finamToken') || '';
     if (!token) {
         addLog(nowTime(), 'ERROR', '⚠ Токен Финам не указан. Укажите во вкладке Настройки.');
         return;
     }
-    addLog(nowTime(), 'INFO', `🔌 Подключение к ${connector}...`);
+    addLog(nowTime(), 'INFO', '🔌 Подключение к Финам... (ожидание до 30 сек)');
     el('brokerStatus').textContent = '⏳ Подключаюсь...';
     try {
-        const resp = await fetch('/api/connectors/switch', {
+        const resp = await fetch('/connect-broker', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ connector, token })
+            body: JSON.stringify({ token })
         });
         const data = await resp.json();
         if (resp.ok) {
             isConnected = true;
-            el('brokerStatus').textContent = `✅ ${connector} подключён`;
-            addLog(nowTime(), 'INFO', `✅ ${connector} подключён`);
+            el('brokerStatus').textContent = '✅ Подключён';
+            if (el('startBotBtn')) el('startBotBtn').disabled = false;
+            addLog(nowTime(), 'INFO', `✅ ${data.broker} подключён`);
             fetchStatus();
         } else {
             el('brokerStatus').textContent = '❌ Ошибка';
@@ -197,8 +177,26 @@ async function disconnectTransaq() {
 }
 
 async function checkHealth() {
-    // QUIK Bridge блок удалён — health check только фоновый
-    try { await fetch('/transaq/health'); } catch (e) {}
+    try {
+        const resp = await fetch('/transaq/health');
+        const data = await resp.json();
+        const report = el('healthReport');
+        if (report) {
+            const finamCls = data.finam?.status === 'connected' ? '🟢' : '🔴';
+            const txCls = data.transaq?.status === 'connected' ? '🟢' : '🔴';
+            const quikCls = data.quik?.status === 'connected' ? '🟢' : '🔴';
+            report.innerHTML = `${finamCls} <b>Finam gRPC:</b> ${data.finam?.status || 'N/A'} | ${txCls} <b>Transaq:</b> ${data.transaq?.status || 'N/A'}<br>${quikCls} <b>QUIK Bridge:</b> ${data.quik?.status || 'N/A'} ${data.quik?.age != null ? '(' + data.quik.age + 'с назад)' : ''}<br><small>${data.timestamp}</small>`;
+        }
+        // Update QUIK status badge
+        const quikEl = el('quikStatus');
+        if (quikEl) {
+            if (data.quik?.status === 'connected') quikEl.textContent = '🟢 QUIK подключён';
+            else quikEl.textContent = '⚪ QUIK не подключён';
+        }
+        addLog(nowTime(), 'INFO', `🏥 Health: Finam=${data.finam?.status}, Transaq=${data.transaq?.status}, QUIK=${data.quik?.status}`);
+    } catch (e) {
+        addLog(nowTime(), 'ERROR', `❌ Health check: ${e.message}`);
+    }
 }
 
 async function emergencyStop() {
@@ -218,6 +216,8 @@ async function fetchStatus() {
         updateStatus(status);
         loadPositions();
         loadOrders();
+        loadTrades();
+        loadTodayOrders();
         loadQuotes();
         loadAccounts();
     } catch (e) { }
@@ -227,7 +227,28 @@ function loadPositions() {
     fetch('/api/positions').then(r => r.json()).then(data => {
         const tbody = el('positionsTable');
         if (!tbody) return;
-        if (!data || data.error || !data.length) { tbody.innerHTML = '<tr><td colspan="9" style="color:var(--text-muted)">Нет позиций</td></tr>'; return; }
+        // Если Finam пуст, пробуем QUIK
+        if (!data || data.error || !data.length) {
+            fetch('/quik/latest').then(r => r.json()).then(qdata => {
+                const quikPos = qdata.data?.pos || [];
+                if (quikPos.length > 0) {
+                    const p = quikPos[0];  // QUIK возвращает массив
+                    tbody.innerHTML = `<tr>
+                        <td>QUIK</td>
+                        <td><b>${p.ticker || 'SiM6'}</b></td>
+                        <td class="${p.dir === 'Long' || p.dir === 'Buy' ? 'green' : 'red'}">${p.dir === 'Long' || p.dir === 'Buy' ? 'Лонг' : p.dir === 'Short' || p.dir === 'Sell' ? 'Шорт' : '—'}</td>
+                        <td>${p.qty || p.volume || 0}</td>
+                        <td>${p.price || p.entryPrice || p.avgPrice || '—'}</td>
+                        <td>${p.qty || p.volume || 0}</td>
+                    </tr>`;
+                } else {
+                    tbody.innerHTML = '<tr><td colspan="9" style="color:var(--text-muted)">Нет позиций</td></tr>';
+                }
+            }).catch(() => {
+                tbody.innerHTML = '<tr><td colspan="9" style="color:var(--text-muted)">Нет позиций</td></tr>';
+            });
+            return;
+        }
         tbody.innerHTML = data.map(p => `<tr>
             <td>1225953</td>
             <td><b>${p.ticker}</b></td>
@@ -243,7 +264,28 @@ function loadOrders() {
     fetch('/api/orders').then(r => r.json()).then(data => {
         const tbody = el('ordersTable');
         if (!tbody) return;
-        if (!data || data.error || !data.length) { tbody.innerHTML = '<tr><td colspan="8" style="color:var(--text-muted)">Нет заявок</td></tr>'; return; }
+        // Если Finam пуст, пробуем QUIK
+        if (!data || data.error || !data.length) {
+            fetch('/quik/latest').then(r => r.json()).then(qdata => {
+                const quikOrders = qdata.data?.orders || [];
+                if (quikOrders.length > 0) {
+                    tbody.innerHTML = quikOrders.map(o => `<tr>
+                        <td>${o.id?.slice(-6) || o.order_num?.toString().slice(-6) || '—'}</td>
+                        <td><b>${o.ticker || 'SiM6'}</b></td>
+                        <td class="${o.dir === 'Buy' || o.direction === 'B' ? 'green' : 'red'}">${o.dir === 'Buy' || o.direction === 'B' ? 'Покупка' : 'Продажа'}</td>
+                        <td>${o.qty || o.volume || 0}</td>
+                        <td>${o.price?.toFixed(2) || o.limit_price?.toFixed(2) || 'MKT'}</td>
+                        <td>${o.filled || o.qty || 0}/${o.qty || o.volume || 0}</td>
+                        <td>${o.status || o.order_type || '—'}</td>
+                    </tr>`).join('');
+                } else {
+                    tbody.innerHTML = '<tr><td colspan="8" style="color:var(--text-muted)">Нет заявок</td></tr>';
+                }
+            }).catch(() => {
+                tbody.innerHTML = '<tr><td colspan="8" style="color:var(--text-muted)">Нет заявок</td></tr>';
+            });
+            return;
+        }
         tbody.innerHTML = data.map(o => `<tr>
             <td>${o.id?.slice(-6) || '—'}</td>
             <td><b>${o.ticker}</b></td>
@@ -251,6 +293,39 @@ function loadOrders() {
             <td>${o.qty || 0}</td>
             <td>${o.price?.toFixed(2) || 'MKT'}</td>
             <td>${o.filled || 0}/${o.qty || 0}</td>
+            <td>${o.status || '—'}</td>
+        </tr>`).join('');
+    }).catch(e => console.error("[ERROR]", e));
+}
+
+function loadTrades() {
+    fetch('/api/trades').then(r => r.json()).then(data => {
+        const tbody = el('tradesTable');
+        if (!tbody) return;
+        if (!data || !data.length) { tbody.innerHTML = '<tr><td colspan="6" style="color:var(--text-muted)">Нет сделок за сегодня</td></tr>'; return; }
+        tbody.innerHTML = data.map(t => `<tr>
+            <td>${t.time || '—'}</td>
+            <td><b>${t.ticker || '—'}</b></td>
+            <td class="${t.direction === 'Buy' ? 'green' : 'red'}">${t.direction === 'Buy' ? 'Покупка' : t.direction === 'Sell' ? 'Продажа' : t.direction}</td>
+            <td>${t.volume || 0}</td>
+            <td>${t.price ? Number(t.price).toFixed(2) : 'MKT'}</td>
+            <td>${t.comment || '—'}</td>
+        </tr>`).join('');
+    }).catch(e => console.error("[ERROR]", e));
+}
+
+function loadTodayOrders() {
+    fetch('/api/today-orders').then(r => r.json()).then(data => {
+        const tbody = el('todayOrdersTable');
+        if (!tbody) return;
+        if (!data || !data.length) { tbody.innerHTML = '<tr><td colspan="7" style="color:var(--text-muted)">Нет заявок за сегодня</td></tr>'; return; }
+        tbody.innerHTML = data.map(o => `<tr>
+            <td>${o.time || '—'}</td>
+            <td><b>${o.ticker || '—'}</b></td>
+            <td class="${o.direction === 'Buy' ? 'green' : 'red'}">${o.direction === 'Buy' ? 'Покупка' : 'Продажа'}</td>
+            <td>${o.volume || 0}</td>
+            <td>${o.price ? Number(o.price).toFixed(2) : 'MKT'}</td>
+            <td>${o.type || '—'}</td>
             <td>${o.status || '—'}</td>
         </tr>`).join('');
     }).catch(e => console.error("[ERROR]", e));
@@ -359,12 +434,11 @@ function renderOrderBook(snapshot) {
     if (entries.length === 0) return;
 
     const lastPrice = snapshot.lastPrice || snapshot.LastPrice || 0;
-    const bestBid = snapshot.bestBid || snapshot.BestBid || 0;
-    const bestAsk = snapshot.bestAsk || snapshot.BestAsk || 0;
-    if (lastPrice > 0) el('obLast').textContent = lastPrice.toFixed(2);
-    if (bestBid > 0) el('obBid').textContent = bestBid.toFixed(2);
-    if (bestAsk > 0) el('obAsk').textContent = bestAsk.toFixed(2);
-    if (bestBid > 0 && bestAsk > 0) el('obSpread').textContent = (bestAsk - bestBid).toFixed(2);
+    el('obLast').textContent = lastPrice.toFixed(2);
+    el('obBid').textContent = (snapshot.bestBid || snapshot.BestBid || 0).toFixed(2);
+    el('obAsk').textContent = (snapshot.bestAsk || snapshot.BestAsk || 0).toFixed(2);
+    const spread = (snapshot.bestAsk || snapshot.BestAsk || 0) - (snapshot.bestBid || snapshot.BestBid || 0);
+    el('obSpread').textContent = spread.toFixed(2);
 
     const maxVol = Math.max(...entries.map(e => Math.max(e.bidVolume || e.BidVolume || 0, e.askVolume || e.AskVolume || 0)), 1);
 
@@ -396,13 +470,11 @@ function renderOrderBook(snapshot) {
 
 function updateQuote(q) {
     if (!q) return;
-    const last = q.last || q.Last || 0;
-    const bid = q.bid || q.Bid || 0;
-    const ask = q.ask || q.Ask || 0;
-    if (last > 0) el('obLast').textContent = last.toFixed(2);
-    if (bid > 0) el('obBid').textContent = bid.toFixed(2);
-    if (ask > 0) el('obAsk').textContent = ask.toFixed(2);
-    if (bid > 0 && ask > 0) el('obSpread').textContent = (ask - bid).toFixed(2);
+    el('obLast').textContent = (q.last || q.Last || 0).toFixed(2);
+    el('obBid').textContent = (q.bid || q.Bid || 0).toFixed(2);
+    el('obAsk').textContent = (q.ask || q.Ask || 0).toFixed(2);
+    const spread = (q.ask || q.Ask || 0) - (q.bid || q.Bid || 0);
+    el('obSpread').textContent = spread.toFixed(2);
 }
 
 function updatePosition(pos) {
@@ -667,8 +739,9 @@ window._emaPeriod = 30;
 function switchOrderBookInstrument() {
     const ticker = el('obInstrument')?.value;
     const tf = el('obTimeframe')?.value;
-    loadQuote(ticker);
+    initChart();
     loadCandles(ticker, tf);
+    loadQuote(ticker);
     loadOrderBook(ticker);
     // Реал-тайм: котировки + стакан + живой график
     if (window._quoteInterval) clearInterval(window._quoteInterval);
@@ -676,26 +749,22 @@ function switchOrderBookInstrument() {
         const t = el('obInstrument')?.value;
         loadQuote(t);
         updateLivePrice(t);
-    }, 2000);  // Реал-тайм котировки каждые 2с
+    }, 5000);  // Увеличил с 2000 до 5000 для стабильности
     // Индикаторы и стакан — реже
     if (window._slowInterval) clearInterval(window._slowInterval);
     window._slowInterval = setInterval(() => {
         const t = el('obInstrument')?.value;
         loadOrderBook(t);
         updateLiveCandle(t);
-        if (t && t.startsWith('Si')) loadStrategyIndicators();
-    }, 3000);  // Стакан + свечи каждые 3с
+        // Индикаторы стратегии только для SI фьючерсов
+        if (t.startsWith('Si')) loadStrategyIndicators();
+    }, 10000);
     
     // Первая загрузка индикаторов
     loadStrategyIndicators();
-    
-    // Инициализация графика с ретраем (контейнер может быть ещё скрыт)
-    initChart();
-    if (!chart) setTimeout(() => { initChart(); loadCandles(ticker, tf); }, 300);
 }
 
 function loadQuote(ticker) {
-    if (!ticker) return;
     fetch(`/api/quote?ticker=${ticker}`)
         .then(r => r.json())
         .then(q => {
@@ -708,7 +777,6 @@ function loadQuote(ticker) {
 }
 
 function loadOrderBook(ticker) {
-    if (!ticker) return;
     fetch(`/api/orderbook?ticker=${ticker}`)
         .then(r => r.json())
         .then(data => {
@@ -754,7 +822,6 @@ let _currentTf = 5;
 
 // Тик-баи-тик обновление через /api/quote (быстрый, каждые 500мс)
 function updateLivePrice(ticker) {
-    if (!ticker) return;
     fetch(`/api/quote?ticker=${ticker}`)
         .then(r => r.json())
         .then(q => {
@@ -790,7 +857,6 @@ function updateLivePrice(ticker) {
 }
 
 function updateLiveCandle(ticker) {
-    if (!ticker) return;
     const tf = parseInt(el('obTimeframe')?.value) || 5;
     _currentTf = tf;
     fetch(`/api/candles?ticker=${ticker}&tf=${tf}&days=1`)
@@ -1949,7 +2015,6 @@ function arbLog(level, msg) {
 // === Init ===
 document.addEventListener('DOMContentLoaded', () => {
     loadSettings();
-    loadConnectorStatus();
     initSignalR();
     // Default dates for backtest
     const today = new Date().toISOString().split('T')[0];
