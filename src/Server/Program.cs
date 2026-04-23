@@ -236,8 +236,15 @@ app.MapPost("/quik/data", async (HttpRequest req) =>
         
         // Broadcast via SignalR
         var hub = app.Services.GetRequiredService<IHubContext<TradingHub>>();
-        if (doc.RootElement.TryGetProperty("quotes", out var quotes))
-            _ = hub.Clients.All.SendAsync("OnQuoteUpdate", quotes.ToString());
+        if (doc.RootElement.TryGetProperty("quotes", out var quotes) && quotes.GetArrayLength() > 0)
+        {
+            var first = quotes[0];
+            _ = hub.Clients.All.SendAsync("OnQuoteUpdate", new {
+                last = first.TryGetProperty("l", out var l) ? l.GetDouble() : 0,
+                bid = first.TryGetProperty("b", out var b) ? b.GetDouble() : 0,
+                ask = first.TryGetProperty("a", out var a) ? a.GetDouble() : 0
+            });
+        }
         if (doc.RootElement.TryGetProperty("pos", out var pos) && pos.GetArrayLength() > 0)
             _ = hub.Clients.All.SendAsync("OnPositionUpdate", pos.ToString());
         if (doc.RootElement.TryGetProperty("orders", out var orders) && orders.GetArrayLength() > 0)
