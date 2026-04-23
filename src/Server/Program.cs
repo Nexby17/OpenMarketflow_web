@@ -724,7 +724,9 @@ app.MapGet("/api/quote", async (string ticker) =>
                 var bid = q.TryGetProperty("bid", out var bEl) && bEl.TryGetProperty("value", out var bv) ? double.Parse(bv.GetString() ?? "0") : 0.0;
                 var ask = q.TryGetProperty("ask", out var aEl) && aEl.TryGetProperty("value", out var av) ? double.Parse(av.GetString() ?? "0") : 0.0;
                 var last = q.TryGetProperty("last", out var lEl) && lEl.TryGetProperty("value", out var lv) ? double.Parse(lv.GetString() ?? "0") : 0.0;
-                return Results.Ok(new { bid, ask, last, spread = ask > 0 && bid > 0 ? ask - bid : 0.0, source = "Finam" });
+                var volume = q.TryGetProperty("volume", out var vEl) && vEl.TryGetProperty("value", out var vv) ? double.Parse(vv.GetString() ?? "0") : 0.0;
+                var change = q.TryGetProperty("change", out var cEl) && cEl.TryGetProperty("value", out var cv2) ? double.Parse(cv2.GetString() ?? "0") : 0.0;
+                return Results.Ok(new { bid, ask, last, volume, change, spread = ask > 0 && bid > 0 ? ask - bid : 0.0, source = "Finam" });
             }
         }
     }

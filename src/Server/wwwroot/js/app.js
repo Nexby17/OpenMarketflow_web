@@ -260,14 +260,21 @@ function loadQuotes() {
     const tickers = ['SiM6','SiU6','MXM6','GDM6','BRK6','RIU6'];
     const tbody = el('quotesTable');
     if (!tbody) return;
-    tbody.innerHTML = tickers.map(t => `<tr id="q_${t}"><td><b>${t}</b></td><td colspan="4" style="color:var(--text-muted)">—</td></tr>`).join('');
+    // Создаём строки только если их ещё нет
+    if (!tbody.children.length || tbody.dataset.tickerv !== tickers.join(',')) {
+        tbody.innerHTML = tickers.map(t => `<tr id="q_${t}"><td><b>${t}</b></td><td class="q_last" style="color:var(--text-muted)">—</td><td class="q_bid" style="color:var(--text-muted)">—</td><td class="q_ask" style="color:var(--text-muted)">—</td><td class="q_vol" style="color:var(--text-muted)">—</td></tr>`).join('');
+        tbody.dataset.tickerv = tickers.join(',');
+    }
     tickers.forEach(t => {
         fetch(`/api/quote?ticker=${t}`).then(r => r.json()).then(q => {
-            if (q.error || !q.last) return;
             const row = el(`q_${t}`);
             if (!row) return;
-            row.innerHTML = `<td><b>${t}</b></td><td class="accent">${q.last?.toFixed(0) || '—'}</td><td class="green">${q.bid?.toFixed(0) || '—'}</td><td class="red">${q.ask?.toFixed(0) || '—'}</td><td>${q.volume || '—'}</td>`;
-        }).catch(e => console.error("[ERROR]", e));
+            const cells = row.children;
+            if (q.last) cells[1].textContent = q.last.toFixed(0);
+            if (q.bid) cells[2].textContent = q.bid.toFixed(0);
+            if (q.ask) cells[3].textContent = q.ask.toFixed(0);
+            cells[4].textContent = q.volume ? (q.volume >= 1e6 ? (q.volume/1e6).toFixed(1)+'M' : q.volume >= 1e3 ? (q.volume/1e3).toFixed(0)+'K' : q.volume.toFixed(0)) : '—';
+        }).catch(() => {});
     });
 }
 

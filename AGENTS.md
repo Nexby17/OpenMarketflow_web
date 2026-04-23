@@ -158,6 +158,11 @@ After every session where something went wrong:
 - **HARD REVERT to old git commit does NOT guarantee everything works** — data/state may differ
 - **One change at a time. Verify. Then next change.** Multiple simultaneous changes = guaranteed breakage.
 - **Ask user what "doesn't work" means specifically** before touching code. "Doesn't work" is not actionable.
+- `api.finam.ru` REST needs FINAM_API_KEY (not JWT) via /v1/sessions. Symbol format: SiM6@RTSX (futures), SBER@MISX (stocks)
+- Finam REST JWT expires 15 min — refresh with 1 min margin
+- .env at src/.env loaded at startup for FINAM_API_KEY + FINAM_ACCOUNT_ID
+- `api.finam.ru/v1/accounts/` needs trailing slash or returns 308 redirect to website
+- **Always ask for missing credentials BEFORE coding**, not after
 
 ---
 
