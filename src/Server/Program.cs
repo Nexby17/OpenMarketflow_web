@@ -549,7 +549,7 @@ app.MapGet("/api/quote", async (string ticker) =>
                 var doc = JsonDocument.Parse(quotesJson.ToString());
                 foreach (var q in doc.RootElement.EnumerateArray())
                 {
-                    var sym = q.TryGetProperty("s", out var s) ? s.GetString() : null;
+                    var sym = q.TryGetProperty("t", out var s) ? s.GetString() : (q.TryGetProperty("s", out var s2) ? s2.GetString() : null);
                     if (sym == ticker || (string.IsNullOrEmpty(sym) && doc.RootElement.GetArrayLength() == 1))
                     {
                         var bid = q.TryGetProperty("b", out var b) ? b.GetDouble() : 0.0;

@@ -759,10 +759,14 @@ function updateLivePrice(ticker) {
         .then(r => r.json())
         .then(q => {
             if (!q || q.error || !q.last || !candleSeries) return;
+            const price = q.last;
+            // Защита от чужой цены: если цена отличается от последней свечи > 5% — не обновлять
+            const bars = candleSeries.data();
+            const last = bars.length > 0 ? bars[bars.length - 1] : null;
+            if (last && last.close > 0 && Math.abs(price - last.close) / last.close > 0.05) return;
             const now = Math.floor(Date.now() / 1000);
             const tf = parseInt(el('obTimeframe')?.value) || 5;
             const candleOpen = now - (now % (tf * 60)); // начало текущей свечи
-            const price = q.last;
 
             // Обновляем/создаём текущую свечу
             if (_lastCandleTime !== candleOpen) {
@@ -771,8 +775,6 @@ function updateLivePrice(ticker) {
                 candleSeries.update({ time: candleOpen, open: price, high: price, low: price, close: price });
             } else {
                 // Обновляем текущую — берём предыдущие OHLC из серии
-                const bars = candleSeries.data();
-                const last = bars.length > 0 ? bars[bars.length - 1] : null;
                 if (last && last.time === candleOpen) {
                     candleSeries.update({
                         time: candleOpen,
