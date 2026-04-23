@@ -469,17 +469,51 @@ app.MapGet("/transaq/health", (TradingService svc) =>
     });
 });
 
-app.MapGet("/api/quotes", () =>
+app.MapGet("/api/quotes", async () =>
 {
-    if (IsQuikAlive())
+    if (_activeConnectorName == "QUIK")
     {
         lock (quikData)
         {
             if (quikData.ContainsKey("quotes"))
                 return Results.Json(new { source = "QUIK", data = quikData["quotes"] });
         }
+        return Results.Json(new { source = "QUIK", data = "[]", note = "no data" });
     }
-    return Results.Json(new { source = "Finam", data = "[]", note = "QUIK offline, use /api/quote?ticker=..." });
+    // Finam: batch all tickers
+    try
+    {
+        var jwt = await GetFinamJwt();
+        if (string.IsNullOrEmpty(jwt)) return Results.Json(new { source = "Finam", data = "[]" });
+        var tickers = new[] { "SiM6", "SiU6", "MXM6", "GDM6", "BRK6", "RIU6" };
+        var result = new List<object>();
+        foreach (var t in tickers)
+        {
+            try
+            {
+                var sym = ToFinamSymbol(t);
+                using var req = new HttpRequestMessage(HttpMethod.Get, $"https://api.finam.ru/v1/instruments/{sym}/quotes/latest");
+                req.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", jwt);
+                var resp = await finamRest.SendAsync(req);
+                if (resp.IsSuccessStatusCode)
+                {
+                    var qDoc = JsonDocument.Parse(await resp.Content.ReadAsStringAsync());
+                    if (qDoc.RootElement.TryGetProperty("quote", out var q))
+                    {
+                        var bid = q.TryGetProperty("bid", out var bEl) && bEl.TryGetProperty("value", out var bv) ? double.Parse(bv.GetString() ?? "0") : 0.0;
+                        var ask = q.TryGetProperty("ask", out var aEl) && aEl.TryGetProperty("value", out var av) ? double.Parse(av.GetString() ?? "0") : 0.0;
+                        var last = q.TryGetProperty("last", out var lEl) && lEl.TryGetProperty("value", out var lv) ? double.Parse(lv.GetString() ?? "0") : 0.0;
+                        var volume = q.TryGetProperty("volume", out var vEl) && vEl.TryGetProperty("value", out var vv) ? double.Parse(vv.GetString() ?? "0") : 0.0;
+                        result.Add(new { ticker = t, bid, ask, last, volume });
+                    }
+                }
+            }
+            catch { }
+        }
+        return Results.Json(new { source = "Finam", data = result });
+    }
+    catch { }
+    return Results.Json(new { source = "Finam", data = "[]" });
 });
 
 app.MapGet("/api/balance", () =>
