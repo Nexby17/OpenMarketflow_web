@@ -892,8 +892,11 @@ app.MapPost("/strategy/grid-mm/run", () =>
 app.MapPost("/strategy/grid-mm/stop", () =>
 {
     if (gridMm == null) return Results.Json(new { error = "Not initialized" }, statusCode: 400);
+    var status = gridMm.GetStatus();
     gridMm.StopTrading();
-    return Results.Json(new { status = "stopped", detail = gridMm.GetStatus() });
+    gridMm.Dispose();
+    gridMm = null;
+    return Results.Json(new { status = "stopped", detail = status });
 });
 
 app.MapPost("/strategy/grid-mm/pause", () =>
