@@ -312,9 +312,24 @@ public class GridMmRegimeStrategy : IStrategy
         }
         else
         {
-            // SAR == EMA (индикаторы не прогреты) — вход в LONG по умолчанию
-            dir = 1;
-            Console.WriteLine($"[FORCE ENTRY] SAR == EMA (no data), defaulting to LONG @ {currentPrice:F0}");
+            // SAR == EMA (индикаторы не прогреты) — определяем по SAR vs цена
+            // SAR > price = downtrend → SHORT, SAR < price = uptrend → LONG
+            if (CurrentSar > 0 && CurrentSar > currentPrice)
+            {
+                dir = -1;
+                Console.WriteLine($"[FORCE ENTRY] SAR==EMA, but SAR={CurrentSar:F0} > price={currentPrice:F0} → SHORT");
+            }
+            else if (CurrentSar > 0 && CurrentSar < currentPrice)
+            {
+                dir = 1;
+                Console.WriteLine($"[FORCE ENTRY] SAR==EMA, but SAR={CurrentSar:F0} < price={currentPrice:F0} → LONG");
+            }
+            else
+            {
+                // SAR=0, нет вообще никаких данных — LONG по умолчанию
+                dir = 1;
+                Console.WriteLine($"[FORCE ENTRY] No indicator data, defaulting to LONG @ {currentPrice:F0}");
+            }
         }
         
         EmitEntry(dir, currentPrice);

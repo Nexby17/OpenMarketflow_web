@@ -663,47 +663,74 @@ public class GridMmRegimeLauncher : IDisposable
     {
         try
         {
+            // Получаем цену из Finam REST (QUIK может быть устаревшим)
             double price = 0;
-            if (_quikProvider != null)
+            var jwtResp = await new HttpClient().PostAsync("https://api.finam.ru/v1/sessions",
+                new StringContent($"{{\"secret\": \"{Environment.GetEnvironmentVariable("FINAM_API_KEY")}\"}}", System.Text.Encoding.UTF8, "application/json"));
+            if (!jwtResp.IsSuccessStatusCode) { Console.WriteLine("[FORCE] ❌ Cannot get JWT"); return; }
+            var jwtDoc = System.Text.Json.JsonDocument.Parse(await jwtResp.Content.ReadAsStringAsync());
+            var token = jwtDoc.RootElement.GetProperty("token").GetString();
+            
+            using var quoteReq = new HttpRequestMessage(HttpMethod.Get, "https://api.finam.ru/v1/instruments/SiM6@RTSX/quotes/latest");
+            quoteReq.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
+            var quoteResp = await new HttpClient().SendAsync(quoteReq);
+            if (quoteResp.IsSuccessStatusCode)
             {
-                var qp = await _quikProvider.GetCurrentPriceAsync();
-                if (qp.HasValue) price = qp.Value;
-            }
-            // Fallback: Finam REST quote
-            if (price <= 0)
-            {
-                var jwt = await new HttpClient().PostAsync("https://api.finam.ru/v1/sessions",
-                    new StringContent($"{{\"secret\": \"{Environment.GetEnvironmentVariable("FINAM_API_KEY")}\"}}", System.Text.Encoding.UTF8, "application/json"));
-                if (jwt.IsSuccessStatusCode)
-                {
-                    var jwtDoc = System.Text.Json.JsonDocument.Parse(await jwt.Content.ReadAsStringAsync());
-                    var token = jwtDoc.RootElement.GetProperty("token").GetString();
-                    using var req = new HttpRequestMessage(HttpMethod.Get, "https://api.finam.ru/v1/instruments/SiM6@RTSX/quotes/latest");
-                    req.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
-                    var qResp = await new HttpClient().SendAsync(req);
-                    if (qResp.IsSuccessStatusCode)
-                    {
-                        var qDoc = System.Text.Json.JsonDocument.Parse(await qResp.Content.ReadAsStringAsync());
-                        if (qDoc.RootElement.TryGetProperty("quote", out var q) && q.TryGetProperty("last", out var lEl) && lEl.TryGetProperty("value", out var lv))
-                            price = double.Parse(lv.GetString() ?? "0");
-                    }
-                }
+                var qDoc = System.Text.Json.JsonDocument.Parse(await quoteResp.Content.ReadAsStringAsync());
+                if (qDoc.RootElement.TryGetProperty("quote", out var q) && q.TryGetProperty("last", out var lEl))
+                    price = double.Parse(lEl.GetProperty("value").GetString() ?? "0");
             }
             
-            if (price > 0)
+            if (price <= 0)
             {
-                Console.WriteLine($"[GRID-MM-v6] 🚀 Force entry on START @ {price}");
-                _strategy.ForceEntry(price);
-                while (_strategy.HasPendingEvents)
-                {
-                    var evt = _strategy.GetNextEvent();
-                    if (evt.Type == GridMmRegimeStrategy.StrategyEvent.EventType.EntryMarket)
-                        await ExecuteEntryAsync(evt);
-                }
+                Console.WriteLine("[GRID-MM-v6] ⚠️ Force entry: no price from Finam REST");
+                return;
             }
-            else
+            
+            // Прогреваем индикаторы из Finam REST свечей если ещё нет
+            if (_strategy.CurrentEma == 0 && _strategy.CurrentSar == 0)
             {
-                Console.WriteLine("[GRID-MM-v6] ⚠️ Force entry: no price available");
+                Console.WriteLine("[FORCE] Warming indicators from REST candles...");
+                try
+                {
+                    var from = DateTime.UtcNow.AddDays(-5);
+                    var to = DateTime.UtcNow;
+                    var barsReq = new HttpRequestMessage(HttpMethod.Get,
+                        $"https://api.finam.ru/v1/instruments/SiM6@RTSX/bars?timeframe=TIME_FRAME_M5&interval.start_time={from:yyyy-MM-ddTHH:mm:ssZ}&interval.end_time={to:yyyy-MM-ddTHH:mm:ssZ}");
+                    barsReq.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
+                    var barsResp = await new HttpClient().SendAsync(barsReq);
+                    if (barsResp.IsSuccessStatusCode)
+                    {
+                        var barsDoc = System.Text.Json.JsonDocument.Parse(await barsResp.Content.ReadAsStringAsync());
+                        if (barsDoc.RootElement.TryGetProperty("bars", out var bars))
+                        {
+                            int count = 0;
+                            foreach (var b in bars.EnumerateArray())
+                            {
+                                double Open(string n) => double.Parse(b.TryGetProperty(n, out var x) ? x.GetProperty("value").GetString() ?? "0" : "0");
+                                var c = new Candle { Open = Open("open"), High = Open("high"), Low = Open("low"), Close = Open("close") };
+                                _strategy.OnCandle(c, "SiM6");
+                                count++;
+                            }
+                            Console.WriteLine($"[FORCE] Warmed with {count} candles: SAR={_strategy.CurrentSar:F0} EMA={_strategy.CurrentEma:F0}");
+                        }
+                    }
+                }
+                catch (Exception ex) { Console.WriteLine($"[FORCE] Warmup failed: {ex.Message}"); }
+            }
+            
+            Console.WriteLine($"[GRID-MM-v6] 🚀 Force entry @ {price:F0} (SAR={_strategy.CurrentSar:F0} EMA={_strategy.CurrentEma:F0})");
+            _strategy.ForceEntry(price);
+            while (_strategy.HasPendingEvents)
+            {
+                var evt = _strategy.GetNextEvent();
+                if (evt.Type == GridMmRegimeStrategy.StrategyEvent.EventType.EntryMarket)
+                    await ExecuteEntryAsync(evt);
+                else if (evt.Type == GridMmRegimeStrategy.StrategyEvent.EventType.GridLimitOrders)
+                {
+                    Console.WriteLine($"[FORCE ENTRY] 📊 Placing grid: {evt.GridPrices.Length} levels");
+                    await PlaceGridLimitsAsync(evt);
+                }
             }
         }
         catch (Exception ex)
