@@ -102,19 +102,20 @@ public class GridMmRegimeLauncher : IDisposable
         {
             if (_useQuikData)
         {
-            Console.WriteLine("[GRID-MM-v6] 📡 Используем QUIK данные...");
+            Console.WriteLine("[GRID-MM-v6] 📡 QUIK данные + Finam для ордеров...");
         }
         else
         {
             Console.WriteLine($"[GRID-MM-v6] Подключение к Финам...");
-            bool ok = await _broker.ConnectAsync(token, accountId);
-            if (!ok)
-            {
-                Console.WriteLine("[GRID-MM-v6] ❌ Не удалось подключиться!");
-                return;
-            }
-            Console.WriteLine($"[GRID-MM-v6] ✅ Подключён.");
         }
+        // Всегда подключаем Finam (ордера идут через gRPC)
+        bool ok = await _broker.ConnectAsync(token, accountId);
+        if (!ok)
+        {
+            Console.WriteLine("[GRID-MM-v6] ❌ Finam gRPC не подключился!");
+            return;
+        }
+        Console.WriteLine($"[GRID-MM-v6] ✅ Finam подключён (ордера).");
 
         // Прогрев: 5-мин свечи
         Console.WriteLine($"[GRID-MM-v6] 📐 Прогрев индикаторов ({_ticker}, 5-мин)...");
@@ -650,6 +651,65 @@ public class GridMmRegimeLauncher : IDisposable
     {
         _strategy.Mode = GridMmRegimeStrategy.StrategyMode.Running;
         Console.WriteLine("[CMD] ▶️ СТАРТ — Grid MM v6 торгует (лимитные ордера)");
+        
+        // Force entry если включено и ещё нет позиции
+        if (_strategy.Params.ForceEntryOnStart && _strategy.PositionDirection == 0 && _broker != null)
+        {
+            _ = ForceEntryAsync();
+        }
+    }
+    
+    private async Task ForceEntryAsync()
+    {
+        try
+        {
+            double price = 0;
+            if (_quikProvider != null)
+            {
+                var qp = await _quikProvider.GetCurrentPriceAsync();
+                if (qp.HasValue) price = qp.Value;
+            }
+            // Fallback: Finam REST quote
+            if (price <= 0)
+            {
+                var jwt = await new HttpClient().PostAsync("https://api.finam.ru/v1/sessions",
+                    new StringContent($"{{\"secret\": \"{Environment.GetEnvironmentVariable("FINAM_API_KEY")}\"}}", System.Text.Encoding.UTF8, "application/json"));
+                if (jwt.IsSuccessStatusCode)
+                {
+                    var jwtDoc = System.Text.Json.JsonDocument.Parse(await jwt.Content.ReadAsStringAsync());
+                    var token = jwtDoc.RootElement.GetProperty("token").GetString();
+                    using var req = new HttpRequestMessage(HttpMethod.Get, "https://api.finam.ru/v1/instruments/SiM6@RTSX/quotes/latest");
+                    req.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
+                    var qResp = await new HttpClient().SendAsync(req);
+                    if (qResp.IsSuccessStatusCode)
+                    {
+                        var qDoc = System.Text.Json.JsonDocument.Parse(await qResp.Content.ReadAsStringAsync());
+                        if (qDoc.RootElement.TryGetProperty("quote", out var q) && q.TryGetProperty("last", out var lEl) && lEl.TryGetProperty("value", out var lv))
+                            price = double.Parse(lv.GetString() ?? "0");
+                    }
+                }
+            }
+            
+            if (price > 0)
+            {
+                Console.WriteLine($"[GRID-MM-v6] 🚀 Force entry on START @ {price}");
+                _strategy.ForceEntry(price);
+                while (_strategy.HasPendingEvents)
+                {
+                    var evt = _strategy.GetNextEvent();
+                    if (evt.Type == GridMmRegimeStrategy.StrategyEvent.EventType.EntryMarket)
+                        await ExecuteEntryAsync(evt);
+                }
+            }
+            else
+            {
+                Console.WriteLine("[GRID-MM-v6] ⚠️ Force entry: no price available");
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[GRID-MM-v6] ⚠️ Force entry failed: {ex.Message}");
+        }
     }
 
     public void StopTrading()

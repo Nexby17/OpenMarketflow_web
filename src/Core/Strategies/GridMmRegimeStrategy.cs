@@ -312,8 +312,9 @@ public class GridMmRegimeStrategy : IStrategy
         }
         else
         {
-            Console.WriteLine("[FORCE ENTRY] SAR == EMA, cannot determine direction. Waiting for signal.");
-            return;
+            // SAR == EMA (индикаторы не прогреты) — вход в LONG по умолчанию
+            dir = 1;
+            Console.WriteLine($"[FORCE ENTRY] SAR == EMA (no data), defaulting to LONG @ {currentPrice:F0}");
         }
         
         EmitEntry(dir, currentPrice);
