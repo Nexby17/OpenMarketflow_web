@@ -8,6 +8,16 @@ using System.Text.Json;
 using Microsoft.AspNetCore.Http.Extensions;
 using System.Collections.Generic;
 
+// Load .env file
+var envPath = "/root/.openclaw/workspace/HedgeFund/src/.env";
+if (File.Exists(envPath))
+    foreach (var line in File.ReadLines(envPath))
+    {
+        var eq = line.IndexOf('=');
+        if (eq > 0 && !line.StartsWith('#'))
+            Environment.SetEnvironmentVariable(line[..eq].Trim(), line[(eq+1)..].Trim());
+    }
+
 var builder = WebApplication.CreateBuilder(args);
 
 // === SignalR ===
@@ -50,6 +60,53 @@ var connectorMgr = new HedgeFund.Core.Connectors.ConnectorManager();
 
 // Текущий коннектор по умолчанию: Finam
 var _activeConnectorName = "Finam";
+
+// === Маппинг тикеров для Finam REST API ===
+var _tickerToFinam = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+{
+    ["SiM6"] = "SiM6@RTSX", ["SiU6"] = "SiU6@RTSX", ["SiH6"] = "SiH6@RTSX", ["SiZ5"] = "SiZ5@RTSX",
+    ["BRM6"] = "BRM6@RTSX", ["BRK6"] = "BRK6@RTSX",
+    ["GDM6"] = "GDM6@RTSX", ["GDH6"] = "GDH6@RTSX",
+    ["MXM6"] = "MXM6@RTSX",
+    ["RIU6"] = "RIU6@RTSX",
+    ["SBER"] = "SBER@MISX", ["GAZP"] = "GAZP@MISX",
+    ["LKOH"] = "LKOH@MISX", ["GMKN"] = "GMKN@MISX", ["NVTK"] = "NVTK@MISX",
+    ["ROSN"] = "ROSN@MISX", ["SNGS"] = "SNGS@MISX", ["YNDX"] = "YNDX@MISX",
+};
+string ToFinamSymbol(string ticker) => _tickerToFinam.GetValueOrDefault(ticker, ticker.Contains('@') ? ticker : ticker + "@RTSX");
+
+// === Finam REST JWT (auto-refresh, 15 min TTL) ===
+string _finamApiKey = Environment.GetEnvironmentVariable("FINAM_API_KEY") ?? "";
+string _finamAccountId = Environment.GetEnvironmentVariable("FINAM_ACCOUNT_ID") ?? "1225953";
+string _finamJwt = "";
+DateTime _finamJwtExpiry = DateTime.MinValue;
+object _finamJwtLock = new object();
+
+async Task<string> GetFinamJwt()
+{
+    lock (_finamJwtLock)
+    {
+        if (!string.IsNullOrEmpty(_finamJwt) && DateTime.UtcNow < _finamJwtExpiry.AddMinutes(-1))
+            return _finamJwt;
+    }
+    try
+    {
+        var resp = await new HttpClient().PostAsync("https://api.finam.ru/v1/sessions",
+            new StringContent($"{{\"secret\": \"{_finamApiKey}\"}}", System.Text.Encoding.UTF8, "application/json"));
+        var json = await resp.Content.ReadAsStringAsync();
+        var doc = JsonDocument.Parse(json);
+        var token = doc.RootElement.GetProperty("token").GetString() ?? "";
+        lock (_finamJwtLock)
+        {
+            _finamJwt = token;
+            _finamJwtExpiry = DateTime.UtcNow.AddMinutes(14);
+        }
+        return token;
+    }
+    catch { return ""; }
+}
+
+var finamRest = new HttpClient { Timeout = TimeSpan.FromSeconds(5) };
 
 app.MapGet("/api/connectors", () => Results.Json(new
 {
@@ -539,152 +596,132 @@ app.MapGet("/api/orders", async (TradingService svc) =>
 
 app.MapGet("/api/quote", async (string ticker) =>
 {
-    // 1. Попробуем QUIK — найти нужный тикер
-    lock (quikData)
+    // === Connector isolation ===
+    if (_activeConnectorName == "QUIK")
     {
-        if (quikData.TryGetValue("quotes", out var quotesJson))
+        lock (quikData)
         {
-            try
+            if (quikData.TryGetValue("quotes", out var quotesJson))
             {
-                var doc = JsonDocument.Parse(quotesJson.ToString());
-                foreach (var q in doc.RootElement.EnumerateArray())
+                try
                 {
-                    var sym = q.TryGetProperty("t", out var s) ? s.GetString() : (q.TryGetProperty("s", out var s2) ? s2.GetString() : null);
-                    if (sym == ticker || (string.IsNullOrEmpty(sym) && doc.RootElement.GetArrayLength() == 1))
+                    var doc = JsonDocument.Parse(quotesJson.ToString());
+                    foreach (var q in doc.RootElement.EnumerateArray())
                     {
-                        var bid = q.TryGetProperty("b", out var b) ? b.GetDouble() : 0.0;
-                        var ask = q.TryGetProperty("a", out var a) ? a.GetDouble() : 0.0;
-                        var last = q.TryGetProperty("l", out var l) ? l.GetDouble() : 0.0;
-                        if (bid > 0 || ask > 0 || last > 0)
-                            return Results.Ok(new { bid, ask, last, spread = ask > 0 && bid > 0 ? ask - bid : 0.0, source = "QUIK" });
+                        var sym = q.TryGetProperty("t", out var s) ? s.GetString() : null;
+                        if (sym == ticker || (string.IsNullOrEmpty(sym) && doc.RootElement.GetArrayLength() == 1))
+                        {
+                            var bid = q.TryGetProperty("b", out var b) ? b.GetDouble() : 0.0;
+                            var ask = q.TryGetProperty("a", out var a) ? a.GetDouble() : 0.0;
+                            var last = q.TryGetProperty("l", out var l) ? l.GetDouble() : 0.0;
+                            if (bid > 0 || ask > 0 || last > 0)
+                                return Results.Ok(new { bid, ask, last, spread = ask > 0 && bid > 0 ? ask - bid : 0.0, source = "QUIK" });
+                        }
                     }
                 }
+                catch { }
             }
-            catch { }
         }
+        return Results.Ok(new { bid = 0.0, ask = 0.0, last = 0.0, source = "QUIK (no data)" });
     }
     
-    // 2. Fallback: Finam REST orderbook
+    // Finam REST
     try
     {
-        var finamToken = Environment.GetEnvironmentVariable("FINAM_TOKEN");
-        if (!string.IsNullOrEmpty(finamToken))
+        var jwt = await GetFinamJwt();
+        if (string.IsNullOrEmpty(jwt)) return Results.Ok(new { bid = 0.0, ask = 0.0, last = 0.0, source = "Finam (no JWT)" });
+        var sym = ToFinamSymbol(ticker);
+        var resp = await finamRest.GetAsync($"https://api.finam.ru/v1/instruments/{sym}/quotes/latest");
+        resp.Headers.Add("Authorization", jwt);
+        using var req = new HttpRequestMessage(HttpMethod.Get, $"https://api.finam.ru/v1/instruments/{sym}/quotes/latest");
+        req.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", jwt);
+        var qResp = await finamRest.SendAsync(req);
+        if (qResp.IsSuccessStatusCode)
         {
-            using var req = new HttpRequestMessage(HttpMethod.Get, $"https://trade-api.finam.ru/api/v1/instruments/{ticker}/orderbook?depth=1");
-            req.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", finamToken);
-            var obResp = await httpClient.SendAsync(req);
-            if (obResp.IsSuccessStatusCode)
+            var qDoc = JsonDocument.Parse(await qResp.Content.ReadAsStringAsync());
+            if (qDoc.RootElement.TryGetProperty("quote", out var q))
             {
-                var obDoc = JsonDocument.Parse(await obResp.Content.ReadAsStringAsync());
-                var root = obDoc.RootElement;
-                double bid = 0, ask = 0, last = 0;
-                if (root.TryGetProperty("data", out var data))
-                {
-                    if (data.TryGetProperty("bids", out var bids) && bids.GetArrayLength() > 0)
-                        bid = bids[0].TryGetProperty("price", out var bp) ? bp.GetDouble() : 0;
-                    if (data.TryGetProperty("asks", out var asks) && asks.GetArrayLength() > 0)
-                        ask = asks[0].TryGetProperty("price", out var ap) ? ap.GetDouble() : 0;
-                }
-                if (bid > 0 || ask > 0)
-                    return Results.Ok(new { bid, ask, last, spread = ask > 0 && bid > 0 ? ask - bid : 0.0, source = "Finam" });
+                var bid = q.TryGetProperty("bid", out var bEl) && bEl.TryGetProperty("value", out var bv) ? double.Parse(bv.GetString() ?? "0") : 0.0;
+                var ask = q.TryGetProperty("ask", out var aEl) && aEl.TryGetProperty("value", out var av) ? double.Parse(av.GetString() ?? "0") : 0.0;
+                var last = q.TryGetProperty("last", out var lEl) && lEl.TryGetProperty("value", out var lv) ? double.Parse(lv.GetString() ?? "0") : 0.0;
+                return Results.Ok(new { bid, ask, last, spread = ask > 0 && bid > 0 ? ask - bid : 0.0, source = "Finam" });
             }
         }
     }
     catch { }
-    
-    return Results.Ok(new { bid = 0.0, ask = 0.0, last = 0.0, source = "none" });
+    return Results.Ok(new { bid = 0.0, ask = 0.0, last = 0.0, source = "Finam (error)" });
 });
 // === QUICK ORDERBOOK (из QUIK данных) ===
 app.MapGet("/api/orderbook", async (string ticker) =>
 {
-    // Сначала пробуем QUIK
-    lock (quikData)
+    if (_activeConnectorName == "QUIK")
     {
-        if (quikData.TryGetValue("ob", out var obJson) && obJson.ToString() != "[]")
+        lock (quikData)
         {
-            try
+            if (quikData.TryGetValue("ob", out var obJson) && obJson.ToString() != "[]")
             {
-                var doc = JsonDocument.Parse(obJson.ToString());
-                var rows = new List<object>();
-                
-                // Формат: {ticker, bids: [{price, qty}], asks: [{price, qty}]}
-                var bids = doc.RootElement.TryGetProperty("bids", out var bArr) ? bArr : default;
-                var asks = doc.RootElement.TryGetProperty("asks", out var aArr) ? aArr : default;
-                
-                if (bids.ValueKind == JsonValueKind.Array || asks.ValueKind == JsonValueKind.Array)
+                try
                 {
-                    var priceMap = new Dictionary<double, double[]>();
-                    
-                    if (bids.ValueKind == JsonValueKind.Array)
+                    var doc = JsonDocument.Parse(obJson.ToString());
+                    var rows = new List<object>();
+                    var bids = doc.RootElement.TryGetProperty("bids", out var bArr) ? bArr : default;
+                    var asks = doc.RootElement.TryGetProperty("asks", out var aArr) ? aArr : default;
+                    if (bids.ValueKind == JsonValueKind.Array || asks.ValueKind == JsonValueKind.Array)
                     {
-                        foreach (var b in bids.EnumerateArray())
-                        {
-                            var price = b.TryGetProperty("price", out var p) ? p.GetDouble() : 0;
-                            var qty = b.TryGetProperty("qty", out var q) ? q.GetDouble() : 0;
-                            if (price > 0)
+                        var priceMap = new Dictionary<double, double[]>();
+                        if (bids.ValueKind == JsonValueKind.Array)
+                            foreach (var b in bids.EnumerateArray())
                             {
-                                if (!priceMap.ContainsKey(price)) priceMap[price] = new double[2];
-                                priceMap[price][0] = qty;
+                                var price = b.TryGetProperty("price", out var p) ? p.GetDouble() : 0;
+                                var qty = b.TryGetProperty("qty", out var q) ? q.GetDouble() : 0;
+                                if (price > 0) { if (!priceMap.ContainsKey(price)) priceMap[price] = new double[2]; priceMap[price][0] = qty; }
                             }
-                        }
-                    }
-                    if (asks.ValueKind == JsonValueKind.Array)
-                    {
-                        foreach (var a in asks.EnumerateArray())
-                        {
-                            var price = a.TryGetProperty("price", out var p) ? p.GetDouble() : 0;
-                            var qty = a.TryGetProperty("qty", out var q) ? q.GetDouble() : 0;
-                            if (price > 0)
+                        if (asks.ValueKind == JsonValueKind.Array)
+                            foreach (var a in asks.EnumerateArray())
                             {
-                                if (!priceMap.ContainsKey(price)) priceMap[price] = new double[2];
-                                priceMap[price][1] = qty;
+                                var price = a.TryGetProperty("price", out var p) ? p.GetDouble() : 0;
+                                var qty = a.TryGetProperty("qty", out var q) ? q.GetDouble() : 0;
+                                if (price > 0) { if (!priceMap.ContainsKey(price)) priceMap[price] = new double[2]; priceMap[price][1] = qty; }
                             }
-                        }
+                        foreach (var kv in priceMap.OrderByDescending(x => x.Key))
+                            rows.Add(new { price = kv.Key, bid = kv.Value[0], ask = kv.Value[1] });
                     }
-                    
-                    foreach (var kv in priceMap.OrderByDescending(x => x.Key))
-                        rows.Add(new { price = kv.Key, bid = kv.Value[0], ask = kv.Value[1] });
+                    if (rows.Count > 0) return Results.Ok(new { rows, source = "QUIK" });
                 }
-                
-                if (rows.Count > 0)
-                    return Results.Ok(new { rows, source = "QUIK" });
-            }
-            catch { }
-        }
-        
-        // Фолбэк: Генерируем стакан из котировок (если QUIK не отправляет стакан)
-        try
-        {
-            if (quikData.TryGetValue("quotes", out var quotesJson))
-            {
-                var doc = JsonDocument.Parse(quotesJson.ToString());
-                if (doc.RootElement.GetArrayLength() > 0)
-                {
-                    var quote = doc.RootElement[0];
-                    var bid = quote.TryGetProperty("b", out var b) ? b.GetDouble() : 0;
-                    var ask = quote.TryGetProperty("a", out var a) ? a.GetDouble() : 0;
-                    var last = quote.TryGetProperty("l", out var l) ? l.GetDouble() : 0;
-                    
-                    if (bid > 0 && ask > 0)
-                    {
-                        var rows = new List<object>();
-                        // Генерируем 10 уровней
-                        for (int i = 0; i < 10; i++)
-                        {
-                            var bidPrice = bid - i * 0.1;
-                            var askPrice = ask + i * 0.1;
-                            rows.Add(new { price = bidPrice, bid = 100, ask = 0 });
-                            rows.Add(new { price = askPrice, bid = 0, ask = 100 });
-                        }
-                        return Results.Ok(new { rows, source = "Generated from quotes" });
-                    }
-                }
+                catch { }
             }
         }
-        catch { }
+        return Results.Ok(new { rows = Array.Empty<object>(), source = "QUIK (no data)" });
     }
     
-    return Results.Ok(new { rows = Array.Empty<object>(), source = "No data" });
+    // Finam REST
+    try
+    {
+        var jwt = await GetFinamJwt();
+        if (string.IsNullOrEmpty(jwt)) return Results.Ok(new { rows = Array.Empty<object>(), source = "Finam (no JWT)" });
+        var sym = ToFinamSymbol(ticker);
+        using var req = new HttpRequestMessage(HttpMethod.Get, $"https://api.finam.ru/v1/instruments/{sym}/orderbook");
+        req.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", jwt);
+        var resp = await finamRest.SendAsync(req);
+        if (resp.IsSuccessStatusCode)
+        {
+            var obDoc = JsonDocument.Parse(await resp.Content.ReadAsStringAsync());
+            if (obDoc.RootElement.TryGetProperty("orderbook", out var ob) && ob.TryGetProperty("rows", out var obRows))
+            {
+                var rows = new List<object>();
+                foreach (var r in obRows.EnumerateArray())
+                {
+                    var price = r.TryGetProperty("price", out var pEl) && pEl.TryGetProperty("value", out var pv) ? double.Parse(pv.GetString() ?? "0") : 0;
+                    var bidVol = r.TryGetProperty("buy_size", out var bsEl) && bsEl.TryGetProperty("value", out var bsv) ? double.Parse(bsv.GetString() ?? "0") : 0;
+                    var askVol = r.TryGetProperty("sell_size", out var ssEl) && ssEl.TryGetProperty("value", out var ssv) ? double.Parse(ssv.GetString() ?? "0") : 0;
+                    if (price > 0) rows.Add(new { price, bid = bidVol, ask = askVol });
+                }
+                if (rows.Count > 0) return Results.Ok(new { rows, source = "Finam" });
+            }
+        }
+    }
+    catch { }
+    return Results.Ok(new { rows = Array.Empty<object>(), source = "Finam (error)" });
 });
 
 app.MapPost("/strategy/grid-mm/start", () =>
