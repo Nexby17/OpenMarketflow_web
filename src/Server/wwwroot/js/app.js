@@ -58,7 +58,7 @@ function initSignalR() {
     });
 
     connection.on('OnQuoteUpdate', quote => {
-        updateQuote(quote);
+        if (quote && (quote.last || quote.bid || quote.ask)) updateQuote(quote);
     });
 
     connection.on('OnError', msg => {

@@ -36,6 +36,10 @@ var port = builder.Configuration.GetValue<int>("Port", 5050);
 builder.WebHost.UseUrls($"http://0.0.0.0:{port}");
 
 var app = builder.Build();
+var httpClient = new HttpClient();
+httpClient.Timeout = TimeSpan.FromSeconds(3);
+var httpFinamToken = Environment.GetEnvironmentVariable("FINAM_TOKEN");
+if (!string.IsNullOrEmpty(httpFinamToken)) httpClient.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", httpFinamToken);
 
 app.UseCors();
 app.UseDefaultFiles();
@@ -236,8 +240,15 @@ app.MapPost("/quik/data", async (HttpRequest req) =>
         
         // Broadcast via SignalR
         var hub = app.Services.GetRequiredService<IHubContext<TradingHub>>();
-        if (doc.RootElement.TryGetProperty("quotes", out var quotes))
-            _ = hub.Clients.All.SendAsync("OnQuoteUpdate", quotes.ToString());
+        if (doc.RootElement.TryGetProperty("quotes", out var quotes) && quotes.GetArrayLength() > 0)
+        {
+            var q0 = quotes[0];
+            _ = hub.Clients.All.SendAsync("OnQuoteUpdate", new {
+                last = q0.TryGetProperty("l", out var ql) ? ql.GetDouble() : 0,
+                bid = q0.TryGetProperty("b", out var qb) ? qb.GetDouble() : 0,
+                ask = q0.TryGetProperty("a", out var qa) ? qa.GetDouble() : 0
+            });
+        }
         if (doc.RootElement.TryGetProperty("pos", out var pos) && pos.GetArrayLength() > 0)
             _ = hub.Clients.All.SendAsync("OnPositionUpdate", pos.ToString());
         if (doc.RootElement.TryGetProperty("orders", out var orders) && orders.GetArrayLength() > 0)
@@ -491,29 +502,73 @@ app.MapGet("/api/orders", async (TradingService svc) =>
 
 app.MapGet("/api/quote", (string ticker) =>
 {
+    double qBid = 0, qAsk = 0, qLast = 0;
+    bool quikOk = false;
     lock (quikData)
     {
-        if (!quikData.TryGetValue("quotes", out var quotesJson))
-            return Results.Ok(new { bid = 0.0, ask = 0.0, last = 0.0, source = "QUIK (no data)" });
-        
-        try
+        if (quikData.TryGetValue("quotes", out var quotesJson))
         {
-            var doc = JsonDocument.Parse(quotesJson.ToString());
-            if (doc.RootElement.GetArrayLength() == 0)
-                return Results.Ok(new { bid = 0.0, ask = 0.0, last = 0.0, source = "QUIK (empty)" });
-            
-            var first = doc.RootElement[0];
-            var bid = first.TryGetProperty("b", out var b) ? b.GetDouble() : 0.0;
-            var ask = first.TryGetProperty("a", out var a) ? a.GetDouble() : 0.0;
-            var last = first.TryGetProperty("l", out var l) ? l.GetDouble() : 0.0;
-            var spread = ask > 0 && bid > 0 ? ask - bid : 0.0;
-            return Results.Ok(new { bid, ask, last, spread, source = "QUIK" });
-        }
-        catch
-        {
-            return Results.Ok(new { bid = 0.0, ask = 0.0, last = 0.0, source = "QUIK (error)" });
+            try
+            {
+                var doc = JsonDocument.Parse(quotesJson.ToString());
+                if (doc.RootElement.GetArrayLength() > 0)
+                {
+                    var first = doc.RootElement[0];
+                    qBid = first.TryGetProperty("b", out var b) ? b.GetDouble() : 0.0;
+                    qAsk = first.TryGetProperty("a", out var a) ? a.GetDouble() : 0.0;
+                    qLast = first.TryGetProperty("l", out var l) ? l.GetDouble() : 0.0;
+                    quikOk = qBid > 0 || qAsk > 0;
+                }
+            }
+            catch { }
         }
     }
+    
+    // Получаем последнюю свечу из candleBuilderHistory
+    double candleClose = 0;
+    try
+    {
+        lock (candleBuilderHistory)
+        {
+            if (candleBuilderHistory.Count > 0)
+                candleClose = candleBuilderHistory.Last.Value[4]; // close
+        }
+    }
+    catch { }
+    
+    // Если candleBuilder пуст — пробуем из свечных файлов
+    if (candleClose <= 0)
+    {
+        try
+        {
+            var dataDir = "/root/.openclaw/workspace/HedgeFund/backtest/data";
+            var files = Directory.GetFiles(dataDir, "*SiM6*apr*")
+                .Concat(Directory.GetFiles(dataDir, "*SiM6_5min*.csv"));
+            var f = files.FirstOrDefault();
+            if (f != null)
+            {
+                var lastLine = File.ReadLines(f).LastOrDefault();
+                if (lastLine != null)
+                {
+                    var parts = lastLine.Split(',');
+                    if (parts.Length > 4) candleClose = double.Parse(parts[4], System.Globalization.CultureInfo.InvariantCulture);
+                }
+            }
+        }
+        catch { }
+    }
+    
+    // Если свеча есть и QUIK устарел (>100pt)
+    if (candleClose > 0 && quikOk && Math.Abs(qLast - candleClose) > 100)
+        return Results.Ok(new { bid = candleClose - 1, ask = candleClose + 1, last = candleClose, spread = 2.0, source = "Candle (QUIK stale)" });
+    
+    if (quikOk)
+        return Results.Ok(new { bid = qBid, ask = qAsk, last = qLast, spread = qAsk > 0 && qBid > 0 ? qAsk - qBid : 0.0, source = "QUIK" });
+    
+    if (candleClose > 0)
+        return Results.Ok(new { bid = candleClose - 1, ask = candleClose + 1, last = candleClose, spread = 2.0, source = "Candle" });
+    
+    return Results.Ok(new { bid = 0.0, ask = 0.0, last = 0.0, source = "none" });
 });
 // === QUICK ORDERBOOK (из QUIK данных) ===
 app.MapGet("/api/orderbook", async (string ticker) =>
