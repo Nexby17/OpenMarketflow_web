@@ -392,8 +392,10 @@
             <div class="card-header">🔌 Подключение</div>
             <div class="card-body" style="display:flex;flex-direction:column;gap:16px">
                 <div class="row gap-8" style="align-items:center">
-                    <select id="brokerSelect" class="select">
-                        <option>Финам (Trade API)</option>
+                    <select id="brokerSelect" class="select" onchange="switchConnector(this.value)">
+                        <option value="Finam">Финам (Trade API)</option>
+                        <option value="QUIK">QUIK (Lua Bridge)</option>
+                        <option value="Transaq" disabled>Transaq (недоступен)</option>
                     </select>
                     <button class="btn btn-secondary" onclick="connectBroker()">🔌 Подключиться</button>
                     <span id="brokerStatus" class="status-text">❌ Не подключён</span>
@@ -441,24 +443,6 @@
             </div>
         </div>
 
-        <!-- QUIK Bridge -->
-        <div class="card" style="max-width:600px; margin-top:12px">
-            <div class="card-header">🖥️ QUIK Bridge (резервный канал)</div>
-            <div class="card-body" style="display:flex;flex-direction:column;gap:12px">
-                <div class="info-box">
-                    <b>Инструкция:</b><br>
-                    1. Скопируйте <code>quik_bridge_v2.lua</code> на Windows машину с QUIK<br>
-                    2. В QUIK → Сервисы → Lua скрипты → Добавить → Запустить<br>
-                    3. Скрипт автоматически подключится к серверу
-                </div>
-                <div class="row gap-8" style="align-items:center">
-                    <span id="quikStatus" class="status-text">⚪ QUIK не подключён</span>
-                    <button class="btn btn-secondary btn-sm" onclick="checkHealth()">🏥 Проверить здоровье</button>
-                </div>
-                <div id="healthReport" style="font-size:13px;color:#9CA3AF"></div>
-            </div>
-        </div>
-
         <!-- Лог событий -->
         <div class="card" style="margin-top:12px">
             <div class="card-header">📋 Лог событий</div>
@@ -466,6 +450,6 @@
         </div>
     </div>
 
-    <script src="/js/app.js?v=22"></script>
+    <script src="/js/app.js?v=23"></script>
 </body>
 </html>

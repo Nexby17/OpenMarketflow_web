@@ -1,7 +1,9 @@
 using Microsoft.AspNetCore.SignalR;
 using HedgeFund.Server.Hubs;
 using HedgeFund.Server.Services;
+using HedgeFund.Server.Connectors;
 using HedgeFund.Core.Strategies;
+using HedgeFund.Core.Connectors;
 using System.Text.Json;
 using Microsoft.AspNetCore.Http.Extensions;
 using System.Collections.Generic;
@@ -38,12 +40,54 @@ builder.WebHost.UseUrls($"http://0.0.0.0:{port}");
 var app = builder.Build();
 var httpClient = new HttpClient();
 httpClient.Timeout = TimeSpan.FromSeconds(3);
-var httpFinamToken = Environment.GetEnvironmentVariable("FINAM_TOKEN");
-if (!string.IsNullOrEmpty(httpFinamToken)) httpClient.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", httpFinamToken);
 
 app.UseCors();
 app.UseDefaultFiles();
 app.UseStaticFiles();
+
+// === Connector Manager ===
+var connectorMgr = new HedgeFund.Core.Connectors.ConnectorManager();
+
+// Текущий коннектор по умолчанию: Finam
+var _activeConnectorName = "Finam";
+
+app.MapGet("/api/connectors", () => Results.Json(new
+{
+    active = _activeConnectorName,
+    available = connectorMgr.AvailableConnectors,
+    connected = connectorMgr.IsConnected
+}));
+
+app.MapPost("/api/connectors/switch", async (HttpRequest req) =>
+{
+    using var sr = new StreamReader(req.Body);
+    var body = await sr.ReadToEndAsync();
+    var doc = JsonDocument.Parse(body);
+    var name = doc.RootElement.GetProperty("connector").GetString();
+    var token = doc.RootElement.TryGetProperty("token", out var t) ? t.GetString() : "";
+    
+    if (name == null || !connectorMgr.AvailableConnectors.Contains(name))
+        return Results.BadRequest(new { error = "Unknown connector" });
+    
+    IConnector connector = name switch
+    {
+        "Finam" => new HedgeFund.Server.Connectors.FinamConnectorAdapter(),
+        "QUIK" => new HedgeFund.Server.Connectors.QuikConnectorAdapter(),
+        "Transaq" => new HedgeFund.Server.Connectors.TransaqConnectorAdapter(),
+        _ => throw new InvalidOperationException()
+    };
+    
+    try
+    {
+        bool ok = await connector.ConnectAsync(token ?? "");
+        if (!ok) { connector.Dispose(); return Results.Json(new { error = "Connection failed" }, statusCode: 400); }
+        await connectorMgr.DisconnectAsync();
+        connectorMgr.Active = connector;
+        _activeConnectorName = name;
+        return Results.Ok(new { status = "connected", connector = name });
+    }
+    catch (Exception ex) { connector.Dispose(); return Results.Json(new { error = ex.Message }, statusCode: 500); }
+});
 
 // === Маппинг SignalR Hub ===
 app.MapHub<TradingHub>("/trading");
@@ -240,15 +284,8 @@ app.MapPost("/quik/data", async (HttpRequest req) =>
         
         // Broadcast via SignalR
         var hub = app.Services.GetRequiredService<IHubContext<TradingHub>>();
-        if (doc.RootElement.TryGetProperty("quotes", out var quotes) && quotes.GetArrayLength() > 0)
-        {
-            var q0 = quotes[0];
-            _ = hub.Clients.All.SendAsync("OnQuoteUpdate", new {
-                last = q0.TryGetProperty("l", out var ql) ? ql.GetDouble() : 0,
-                bid = q0.TryGetProperty("b", out var qb) ? qb.GetDouble() : 0,
-                ask = q0.TryGetProperty("a", out var qa) ? qa.GetDouble() : 0
-            });
-        }
+        if (doc.RootElement.TryGetProperty("quotes", out var quotes))
+            _ = hub.Clients.All.SendAsync("OnQuoteUpdate", quotes.ToString());
         if (doc.RootElement.TryGetProperty("pos", out var pos) && pos.GetArrayLength() > 0)
             _ = hub.Clients.All.SendAsync("OnPositionUpdate", pos.ToString());
         if (doc.RootElement.TryGetProperty("orders", out var orders) && orders.GetArrayLength() > 0)
@@ -500,10 +537,9 @@ app.MapGet("/api/orders", async (TradingService svc) =>
     return Results.Json(new object[] {});
 });
 
-app.MapGet("/api/quote", (string ticker) =>
+app.MapGet("/api/quote", async (string ticker) =>
 {
-    double qBid = 0, qAsk = 0, qLast = 0;
-    bool quikOk = false;
+    // 1. Попробуем QUIK — найти нужный тикер
     lock (quikData)
     {
         if (quikData.TryGetValue("quotes", out var quotesJson))
@@ -511,62 +547,50 @@ app.MapGet("/api/quote", (string ticker) =>
             try
             {
                 var doc = JsonDocument.Parse(quotesJson.ToString());
-                if (doc.RootElement.GetArrayLength() > 0)
+                foreach (var q in doc.RootElement.EnumerateArray())
                 {
-                    var first = doc.RootElement[0];
-                    qBid = first.TryGetProperty("b", out var b) ? b.GetDouble() : 0.0;
-                    qAsk = first.TryGetProperty("a", out var a) ? a.GetDouble() : 0.0;
-                    qLast = first.TryGetProperty("l", out var l) ? l.GetDouble() : 0.0;
-                    quikOk = qBid > 0 || qAsk > 0;
+                    var sym = q.TryGetProperty("s", out var s) ? s.GetString() : null;
+                    if (sym == ticker || (string.IsNullOrEmpty(sym) && doc.RootElement.GetArrayLength() == 1))
+                    {
+                        var bid = q.TryGetProperty("b", out var b) ? b.GetDouble() : 0.0;
+                        var ask = q.TryGetProperty("a", out var a) ? a.GetDouble() : 0.0;
+                        var last = q.TryGetProperty("l", out var l) ? l.GetDouble() : 0.0;
+                        if (bid > 0 || ask > 0 || last > 0)
+                            return Results.Ok(new { bid, ask, last, spread = ask > 0 && bid > 0 ? ask - bid : 0.0, source = "QUIK" });
+                    }
                 }
             }
             catch { }
         }
     }
     
-    // Получаем последнюю свечу из candleBuilderHistory
-    double candleClose = 0;
+    // 2. Fallback: Finam REST orderbook
     try
     {
-        lock (candleBuilderHistory)
+        var finamToken = Environment.GetEnvironmentVariable("FINAM_TOKEN");
+        if (!string.IsNullOrEmpty(finamToken))
         {
-            if (candleBuilderHistory.Count > 0)
-                candleClose = candleBuilderHistory.Last.Value[4]; // close
+            using var req = new HttpRequestMessage(HttpMethod.Get, $"https://trade-api.finam.ru/api/v1/instruments/{ticker}/orderbook?depth=1");
+            req.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", finamToken);
+            var obResp = await httpClient.SendAsync(req);
+            if (obResp.IsSuccessStatusCode)
+            {
+                var obDoc = JsonDocument.Parse(await obResp.Content.ReadAsStringAsync());
+                var root = obDoc.RootElement;
+                double bid = 0, ask = 0, last = 0;
+                if (root.TryGetProperty("data", out var data))
+                {
+                    if (data.TryGetProperty("bids", out var bids) && bids.GetArrayLength() > 0)
+                        bid = bids[0].TryGetProperty("price", out var bp) ? bp.GetDouble() : 0;
+                    if (data.TryGetProperty("asks", out var asks) && asks.GetArrayLength() > 0)
+                        ask = asks[0].TryGetProperty("price", out var ap) ? ap.GetDouble() : 0;
+                }
+                if (bid > 0 || ask > 0)
+                    return Results.Ok(new { bid, ask, last, spread = ask > 0 && bid > 0 ? ask - bid : 0.0, source = "Finam" });
+            }
         }
     }
     catch { }
-    
-    // Если candleBuilder пуст — пробуем из свечных файлов
-    if (candleClose <= 0)
-    {
-        try
-        {
-            var dataDir = "/root/.openclaw/workspace/HedgeFund/backtest/data";
-            var files = Directory.GetFiles(dataDir, "*SiM6*apr*")
-                .Concat(Directory.GetFiles(dataDir, "*SiM6_5min*.csv"));
-            var f = files.FirstOrDefault();
-            if (f != null)
-            {
-                var lastLine = File.ReadLines(f).LastOrDefault();
-                if (lastLine != null)
-                {
-                    var parts = lastLine.Split(',');
-                    if (parts.Length > 4) candleClose = double.Parse(parts[4], System.Globalization.CultureInfo.InvariantCulture);
-                }
-            }
-        }
-        catch { }
-    }
-    
-    // Если свеча есть и QUIK устарел (>100pt)
-    if (candleClose > 0 && quikOk && Math.Abs(qLast - candleClose) > 100)
-        return Results.Ok(new { bid = candleClose - 1, ask = candleClose + 1, last = candleClose, spread = 2.0, source = "Candle (QUIK stale)" });
-    
-    if (quikOk)
-        return Results.Ok(new { bid = qBid, ask = qAsk, last = qLast, spread = qAsk > 0 && qBid > 0 ? qAsk - qBid : 0.0, source = "QUIK" });
-    
-    if (candleClose > 0)
-        return Results.Ok(new { bid = candleClose - 1, ask = candleClose + 1, last = candleClose, spread = 2.0, source = "Candle" });
     
     return Results.Ok(new { bid = 0.0, ask = 0.0, last = 0.0, source = "none" });
 });
