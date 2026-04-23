@@ -163,6 +163,8 @@ After every session where something went wrong:
 - .env at src/.env loaded at startup for FINAM_API_KEY + FINAM_ACCOUNT_ID
 - `api.finam.ru/v1/accounts/` needs trailing slash or returns 308 redirect to website
 - **Always ask for missing credentials BEFORE coding**, not after
+- CDN links (unpkg, cdnjs) cause 30s load times from VPS — always use local JS files
+- `/api/quotes` batch is faster than 6 individual `/api/quote` calls (500ms vs 600ms+ sequential)
 
 ---
 

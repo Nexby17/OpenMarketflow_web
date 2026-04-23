@@ -1386,7 +1386,7 @@ async function renderRobots() {
                 const modeText = s.mode === 'Running' ? '🟢 Работает' : s.mode === 'Paused' ? '🟡 Пауза' : '🔴 Остановлен';
                 const modeCls = s.mode === 'Running' ? 'green' : s.mode === 'Paused' ? 'yellow' : 'red';
                 const pnlCls = v => v >= 0 ? 'green' : 'red';
-                return `<tr style="background:#f0fdf4">
+                return `<tr>
                     <td><strong>${s.instrument}</strong></td>
                     <td><strong>${s.name}</strong> <span class="badge">СЕРВЕР</span></td>
                     <td>Финам</td>
