@@ -46,10 +46,19 @@
 
         <!-- Позиции -->
         <div class="card" style="margin-bottom:20px">
-            <div class="card-header">📊 Сделки</div>
+            <div class="card-header">📊 Позиции</div>
             <table class="data-table">
-                <thead><tr><th>Счёт</th><th>Тикер</th><th>Направление</th><th>Количество</th><th>Цена</th><th>Объём</th></tr></thead>
+                <thead><tr><th>Счёт</th><th>Тикер</th><th>Направление</th><th>Количество</th><th>Цена</th><th>PnL сегодня</th></tr></thead>
                 <tbody id="positionsTable"></tbody>
+            </table>
+        </div>
+
+        <!-- Сделки за сегодня -->
+        <div class="card" style="margin-bottom:20px">
+            <div class="card-header">💹 Сделки за сегодня</div>
+            <table class="data-table">
+                <thead><tr><th>Время</th><th>Тикер</th><th>Направление</th><th>Кол-во</th><th>Цена</th><th>Комментарий</th></tr></thead>
+                <tbody id="tradesTable"></tbody>
             </table>
         </div>
 
@@ -450,6 +459,6 @@
         </div>
     </div>
 
-    <script src="/js/app.js?v=23.2"></script>
+    <script src="/js/app.js?v=23.3"></script>
 </body>
 </html>

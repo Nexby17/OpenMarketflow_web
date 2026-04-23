@@ -218,6 +218,7 @@ async function fetchStatus() {
         updateStatus(status);
         loadPositions();
         loadOrders();
+        loadTrades();
         loadQuotes();
         loadAccounts();
     } catch (e) { }
@@ -243,16 +244,60 @@ function loadOrders() {
     fetch('/api/orders').then(r => r.json()).then(data => {
         const tbody = el('ordersTable');
         if (!tbody) return;
-        if (!data || data.error || !data.length) { tbody.innerHTML = '<tr><td colspan="8" style="color:var(--text-muted)">Нет заявок</td></tr>'; return; }
-        tbody.innerHTML = data.map(o => `<tr>
-            <td>${o.id?.slice(-6) || '—'}</td>
-            <td><b>${o.ticker}</b></td>
-            <td class="${o.dir === 'Buy' ? 'green' : 'red'}">${o.dir === 'Buy' ? 'Покупка' : 'Продажа'}</td>
-            <td>${o.qty || 0}</td>
-            <td>${o.price?.toFixed(2) || 'MKT'}</td>
-            <td>${o.filled || 0}/${o.qty || 0}</td>
-            <td>${o.status || '—'}</td>
-        </tr>`).join('');
+        // Finam REST format: { orders: [{ order: { symbol, side, quantity, limit_price }, status, ... }] }
+        const orders = data.orders || data;
+        if (!orders || (Array.isArray(orders) && orders.length === 0) || (orders.length === 0)) {
+            tbody.innerHTML = '<tr><td colspan="7" style="color:var(--text-muted)">Нет заявок</td></tr>';
+            return;
+        }
+        tbody.innerHTML = orders.map(o => {
+            const ord = o.order || o;
+            const ticker = (ord.symbol || o.ticker || '').split('@')[0];
+            const side = ord.side || o.dir || '';
+            const qty = ord.quantity?.value || o.qty || 0;
+            const price = ord.limit_price?.value || o.price || '';
+            const status = o.status || ord.status || '';
+            const filled = o.executed_quantity?.value || o.filled || 0;
+            const oid = o.order_id || o.id || '';
+            return `<tr>
+                <td>${oid.slice(-6)}</td>
+                <td><b>${ticker}</b></td>
+                <td class="${side.includes('BUY') || side === 'Buy' ? 'green' : 'red'}">${side.includes('BUY') || side === 'Buy' ? 'Покупка' : 'Продажа'}</td>
+                <td>${parseFloat(qty)}</td>
+                <td>${price ? parseFloat(price).toFixed(0) : 'MKT'}</td>
+                <td>${parseFloat(filled)}/${parseFloat(qty)}</td>
+                <td>${status.replace('ORDER_STATUS_','')}</td>
+            </tr>`;
+        }).join('');
+    }).catch(e => console.error("[ERROR]", e));
+}
+
+function loadTrades() {
+    fetch('/api/trades').then(r => r.json()).then(data => {
+        const tbody = el('tradesTable');
+        if (!tbody) return;
+        const trades = data.trades || data;
+        if (!trades || (Array.isArray(trades) && trades.length === 0)) {
+            tbody.innerHTML = '<tr><td colspan="6" style="color:var(--text-muted)">Нет сделок за сегодня</td></tr>';
+            return;
+        }
+        tbody.innerHTML = trades.map(t => {
+            const ticker = (t.symbol || '').split('@')[0];
+            const side = t.side || '';
+            const price = t.price?.value || t.price || 0;
+            const size = t.size?.value || t.size || 0;
+            const ts = t.timestamp || t.time || '';
+            const time = ts ? new Date(ts).toLocaleTimeString('ru-RU', {hour:'2-digit',minute:'2-digit',second:'2-digit'}) : '—';
+            const comment = t.comment || '';
+            return `<tr>
+                <td>${time}</td>
+                <td><b>${ticker}</b></td>
+                <td class="${side.includes('BUY') ? 'green' : 'red'}">${side.includes('BUY') ? 'Покупка' : 'Продажа'}</td>
+                <td>${parseFloat(size)}</td>
+                <td>${parseFloat(price).toFixed(0)}</td>
+                <td>${comment}</td>
+            </tr>`;
+        }).join('');
     }).catch(e => console.error("[ERROR]", e));
 }
 

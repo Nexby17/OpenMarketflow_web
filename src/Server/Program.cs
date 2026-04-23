@@ -674,6 +674,29 @@ app.MapGet("/api/orders", async (TradingService svc) =>
     return Results.Json(new object[] {});
 });
 
+// === Trades API ===
+app.MapGet("/api/trades", async () =>
+{
+    if (_activeConnectorName == "QUIK")
+        return Results.Json(new object[] {});
+    try
+    {
+        var jwt = await GetFinamJwt();
+        if (string.IsNullOrEmpty(jwt)) return Results.Json(new object[] {});
+        var today = DateTime.UtcNow.ToString("yyyy-MM-dd");
+        using var req = new HttpRequestMessage(HttpMethod.Get, $"https://api.finam.ru/v1/accounts/{_finamAccountId}/trades?interval.start_time={today}T00:00:00Z&interval.end_time={today}T23:59:00Z");
+        req.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", jwt);
+        var resp = await finamRest.SendAsync(req);
+        if (resp.IsSuccessStatusCode)
+        {
+            var body = await resp.Content.ReadAsStringAsync();
+            return Results.Text(body, "application/json");
+        }
+    }
+    catch { }
+    return Results.Json(new object[] {});
+});
+
 app.MapGet("/api/quote", async (string ticker) =>
 {
     // === Connector isolation ===
