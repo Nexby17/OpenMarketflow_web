@@ -302,13 +302,13 @@ public class GridMmRegimeStrategy : IStrategy
         int dir = 0;
         if (CurrentSar > CurrentEma)
         {
-            dir = 1; // Long
-            Console.WriteLine($"[FORCE ENTRY] SAR={CurrentSar:F0} > EMA={CurrentEma:F0} → LONG @ {currentPrice:F0}");
+            dir = -1; // Short (SAR выше EMA = нисходящий тренд)
+            Console.WriteLine($"[FORCE ENTRY] SAR={CurrentSar:F0} > EMA={CurrentEma:F0} → SHORT @ {currentPrice:F0}");
         }
         else if (CurrentSar < CurrentEma)
         {
-            dir = -1; // Short
-            Console.WriteLine($"[FORCE ENTRY] SAR={CurrentSar:F0} < EMA={CurrentEma:F0} → SHORT @ {currentPrice:F0}");
+            dir = 1; // Long (SAR ниже EMA = восходящий тренд)
+            Console.WriteLine($"[FORCE ENTRY] SAR={CurrentSar:F0} < EMA={CurrentEma:F0} → LONG @ {currentPrice:F0}");
         }
         else
         {

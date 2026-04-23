@@ -94,6 +94,7 @@ public class GridMmRegimeLauncher : IDisposable
         };
 
         _strategy.Params.ForceEntryOnStart = forceEntryOnStart;
+        _forceEntryPending = forceEntryOnStart;
         _ = ConnectAndWarm(finamToken, accountId);
     }
 
@@ -137,12 +138,13 @@ public class GridMmRegimeLauncher : IDisposable
         if (history.Length > 0)
         {
             Console.WriteLine($"[GRID-MM-v6] Загружено {history.Length} исторических свечей");
+            var origMode = _strategy.Mode;
+            _strategy.Mode = GridMmRegimeStrategy.StrategyMode.Paused; // Не генерировать entry signals
             try
             {
                 for (int i = 0; i < history.Length; i++)
                 {
                     _strategy.OnCandle(history[i], _ticker);
-                    // Обрабатываем события прогрева (не торгуем)
                     while (_strategy.HasPendingEvents)
                         _strategy.GetNextEvent();
                 }
@@ -151,26 +153,15 @@ public class GridMmRegimeLauncher : IDisposable
             {
                 Console.WriteLine($"[GRID-MM-v6] ❌ ОШИБКА ПРОГРЕВА: {ex.Message}");
             }
+            _strategy.Mode = origMode; // Восстанавливаем режим
             Console.WriteLine($"[GRID-MM-v6] ✅ Прогрето. SAR={_strategy.CurrentSar:F0} EMA={_strategy.CurrentEma:F0}");
             _warmedUp = true;
             _warmupEndTime = DateTime.UtcNow;
             _lastProcessedCandle = DateTime.UtcNow;
             _strategy.Mode = GridMmRegimeStrategy.StrategyMode.Running; // Автостарт после прогрева
             
-            // Принудительный вход если включено
-            if (_strategy.Params.ForceEntryOnStart)
-            {
-                var lastCandle = history[^1];
-                Console.WriteLine("[GRID-MM-v6] 🚀 Force entry on start enabled...");
-                _strategy.ForceEntry(lastCandle.Close);
-                // Обрабатываем сгенерированное событие
-                while (_strategy.HasPendingEvents)
-                {
-                    var evt = _strategy.GetNextEvent();
-                    if (evt.Type == GridMmRegimeStrategy.StrategyEvent.EventType.EntryMarket)
-                        _ = ExecuteEntryAsync(evt);
-                }
-            }
+            // Force entry выполняется из Start() через ForceEntryAsync()
+            // (с правильным направлением SAR/EMA)
             
             // Восстанавливаем состояние (если есть открытая позиция)
             _ = RestoreStateAsync();
@@ -238,6 +229,7 @@ public class GridMmRegimeLauncher : IDisposable
     }
 
     private int _candleCount = 0;
+    private volatile bool _forceEntryPending = false;
     
     private async void OnNewCandle(Candle candle)
     {
@@ -268,7 +260,16 @@ public class GridMmRegimeLauncher : IDisposable
         // Обновляем статус в UI (каждую свечу)
         _ = BroadcastStatus();
         
-        // Обрабатываем события
+        // Если ждём ForceEntry — пропускаем обработку свечи
+        if (_forceEntryPending)
+        {
+            // Сбрасываем position если candle loop успел открыть через EmitEntry
+            if (_strategy.PositionDirection != 0) _strategy.ClearPosition();
+            while (_strategy.HasPendingEvents) _ = _strategy.GetNextEvent();
+            return;
+        }
+        else
+        {
         while (_strategy.HasPendingEvents)
         {
             var evt = _strategy.GetNextEvent();
@@ -298,6 +299,7 @@ public class GridMmRegimeLauncher : IDisposable
                     break;
             }
         }
+        } // end else (not _forceEntryPending)
         
         // Статус при наличии позиции
         if (_strategy.PositionDirection != 0 && _candleCount % 12 == 0)
@@ -409,6 +411,7 @@ public class GridMmRegimeLauncher : IDisposable
             }
             _strategy.SetGridOrderIds(j, result.BrokerOrderId, null);
             Console.WriteLine($"[GRID] 📌 Level {j} @ {price:F0} (TP={tpPrice:F0}) → order={result.BrokerOrderId}");
+            System.IO.File.AppendAllText("/tmp/orders.log", $"{DateTime.UtcNow:HH:mm:ss} GRID-TRACK: level={j} id={result.BrokerOrderId} price={price} tp={tpPrice}\n");
         }
         catch (Exception ex)
         {
@@ -503,6 +506,7 @@ public class GridMmRegimeLauncher : IDisposable
 
     private void OnOrderUpdate(Order order)
     {
+        System.IO.File.AppendAllText("/tmp/orders.log", $"{DateTime.UtcNow:HH:mm:ss} ORDER: id={order.BrokerOrderId} status={order.Status} dir={order.Direction} vol={order.Volume}/{order.FilledVolume}\n");
         // Логируем ВСЕ обновления ордеров (не только заполненные)
         lock (_orderLock)
         {
@@ -656,15 +660,21 @@ public class GridMmRegimeLauncher : IDisposable
         // Force entry если включено
         if (_strategy.Params.ForceEntryOnStart && _broker != null)
         {
-            // Сбрасываем восстановленную позицию — force entry сам войдёт
-            if (_strategy.PositionDirection != 0)
-            {
-                Console.WriteLine($"[CMD] ⚠️ ForceEntry: сбрасываем восстановленную позицию dir={_strategy.PositionDirection}");
-                _strategy.ClearPosition();
-                lock (_orderLock) { _trackedOrders.Clear(); }
-            }
-            _lastForceError = "triggered";
-            _ = ForceEntryAsync();
+            _forceEntryPending = true;
+            // Ждём завершения ConnectAndWarm (восстановление состояния)
+            // Потом сбрасываем и force-входим
+            _ = Task.Run(async () => {
+                // Ждём подключения gRPC
+                for (int i = 0; i < 30 && (_broker == null || !_broker.IsConnected); i++)
+                    await Task.Delay(1000);
+                if (_broker == null || !_broker.IsConnected)
+                {
+                    _lastForceError = "broker not connected after 30s";
+                    return;
+                }
+                _lastForceError = "connected, starting force entry...";
+                await ForceEntryAsync();
+            });
         }
         else
         {
@@ -700,12 +710,38 @@ public class GridMmRegimeLauncher : IDisposable
                 return;
             }
             
-            // Индикаторы прогреются из QUIK/candle loop
+            // Прогреваем индикаторы через gRPC свечи
+            if (_strategy.CurrentEma == 0 && _strategy.CurrentSar == 0 && grpc != null && grpc.IsConnected)
+            {
+                _lastForceError = "warming...";
+                try
+                {
+                    var tf = Grpc.Tradeapi.V1.Marketdata.TimeFrame.M5;
+                    var bars = await grpc.GetBarsAsync("SiM6@RTSX", tf, DateTime.UtcNow.AddDays(-2), DateTime.UtcNow);
+                    int count = 0;
+                    foreach (var c in bars)
+                    {
+                        _strategy.OnCandle(c, "SiM6");
+                        count++;
+                    }
+                    Console.WriteLine($"[FORCE] Warmed with {count} candles: SAR={_strategy.CurrentSar:F0} EMA={_strategy.CurrentEma:F0}");
+                }
+                catch (Exception ex) { Console.WriteLine($"[FORCE] Warmup failed: {ex.Message}"); }
+            }
             
             // Позиция может быть восстановлена из gRPC (устаревший кэш) — игнорируем
             // Start() уже вызвал ClearPosition() если ForceEntryOnStart=true
             
             Console.WriteLine($"[GRID-MM-v6] 🚀 Force entry @ {price:F0} (SAR={_strategy.CurrentSar:F0} EMA={_strategy.CurrentEma:F0})");
+            
+            // Отменяем ВСЕ активные ордера (могли остаться от предыдущих запусков)
+            try {
+                var allOrders = await _broker.GetActiveOrdersAsync();
+                foreach (var o in allOrders) {
+                    try { await _broker.CancelOrderAsync(o.BrokerOrderId); } catch {}
+                }
+                if (allOrders.Length > 0) Console.WriteLine($"[FORCE] Cancelled {allOrders.Length} active orders");
+            } catch {}
             _strategy.ForceEntry(price);
             while (_strategy.HasPendingEvents)
             {
@@ -718,6 +754,7 @@ public class GridMmRegimeLauncher : IDisposable
                     await PlaceGridLimitsAsync(evt);
                 }
             }
+            _forceEntryPending = false; // Разблокируем candle loop ПОСЛЕ завершения
         }
         catch (Exception ex)
         {
@@ -872,35 +909,37 @@ public class GridMmRegimeLauncher : IDisposable
                 if (!_strategy.Params.ForceEntryOnStart)
                 {
                     _strategy.RestorePosition(dir, entryPrice, lots);
-                }
-                
-                // 2. Проверяем активные ордера
-                var activeOrders = await _broker.GetActiveOrdersAsync();
-                lock (_orderLock)
-                {
-                    _trackedOrders.Clear();
-                    foreach (var order in activeOrders)
+                    
+                    // 2. Проверяем активные ордера
+                    var activeOrders = await _broker.GetActiveOrdersAsync();
+                    lock (_orderLock)
                     {
-                        // Определяем тип ордера по цене относительно позиции
-                        bool isBuy = order.Direction == SignalDirection.Buy;
-                        int levelIndex = CalculateGridLevel(entryPrice, order.Price, dir);
-                        string orderType = DetermineOrderType(levelIndex, dir, isBuy);
-                        
-                        _trackedOrders[order.BrokerOrderId] = new TrackedOrder
+                        _trackedOrders.Clear();
+                        foreach (var order in activeOrders)
                         {
-                            BrokerOrderId = order.BrokerOrderId,
-                            Type = orderType,
-                            LevelIndex = levelIndex,
-                            Price = order.Price,
-                            Volume = order.Volume,
-                            IsBuy = isBuy
-                        };
+                            bool isBuy = order.Direction == SignalDirection.Buy;
+                            int levelIndex = CalculateGridLevel(entryPrice, order.Price, dir);
+                            string orderType = DetermineOrderType(levelIndex, dir, isBuy);
+                            _trackedOrders[order.BrokerOrderId] = new TrackedOrder
+                            {
+                                BrokerOrderId = order.BrokerOrderId,
+                                Type = orderType,
+                                LevelIndex = levelIndex,
+                                Price = order.Price,
+                                Volume = order.Volume,
+                                IsBuy = isBuy
+                            };
+                        }
                     }
+                    Console.WriteLine($"[GRID-MM-v6] 📊 Восстановлено {_trackedOrders.Count} ордеров из брокера");
+                    
+                    // 3. Расставляем недостающие лимитки грида
+                    await PlaceMissingGridLimitsAsync(dir, entryPrice);
                 }
-                Console.WriteLine($"[GRID-MM-v6] 📊 Восстановлено {_trackedOrders.Count} ордеров из брокера");
-                
-                // 3. Расставляем недостающие лимитки грида
-                await PlaceMissingGridLimitsAsync(dir, entryPrice);
+                else
+                {
+                    Console.WriteLine("[GRID-MM-v6] ⏭️ ForceEntry — пропускаем восстановление");
+                }
             }
             else
             {
