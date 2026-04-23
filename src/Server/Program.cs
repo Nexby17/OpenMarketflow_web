@@ -272,18 +272,49 @@ app.MapGet("/api/candles", async (TradingService svc, string ticker, int tf, int
 {
     try
     {
-        // Получаем FinamConnector из TradingService
-        var connector = svc.Connector;
-        if (connector != null && connector.IsConnected)
+        if (_activeConnectorName == "QUIK")
         {
-            var to = DateTime.UtcNow;
-            var from = to.AddDays(-Math.Max(1, Math.Min(days, 30)));
-            var timeframe = TimeSpan.FromMinutes(tf > 0 ? tf : 5);
-            var candles = await connector.GetHistoricalCandlesAsync(ticker, timeframe, from, to);
-            return Results.Ok(candles.Select(c => new {
-                t = new DateTimeOffset(c.Timestamp.ToUniversalTime()).ToUnixTimeSeconds(),
-                o = c.Open, h = c.High, l = c.Low, c = c.Close, v = c.Volume
-            }));
+            // QUIK: свечи из candleBuilderHistory (из тиков)
+            lock (candleBuilderHistory)
+            {
+                if (candleBuilderHistory.Count > 0)
+                {
+                    var candles = candleBuilderHistory.ToList();
+                    if (days > 0) candles = candles.TakeLast(days * 288).ToList(); // ~288 пятиминуток в день
+                    return Results.Ok(candles.Select(c => new { t = (long)c[0], o = c[1], h = c[2], l = c[3], c = c[4], v = c[5] }));
+                }
+            }
+            return Results.Ok(Array.Empty<object>());
+        }
+        
+        // Finam REST
+        var jwt = await GetFinamJwt();
+        if (string.IsNullOrEmpty(jwt)) return Results.Ok(Array.Empty<object>());
+        var sym = ToFinamSymbol(ticker);
+        var timeframe = tf switch { 1 => "TIME_FRAME_M1", 5 => "TIME_FRAME_M5", 15 => "TIME_FRAME_M15", 30 => "TIME_FRAME_M30", 60 => "TIME_FRAME_H1", 240 => "TIME_FRAME_H4", 1440 => "TIME_FRAME_D", _ => "TIME_FRAME_M5" };
+        var to = DateTime.UtcNow;
+        var from = to.AddDays(-Math.Max(1, Math.Min(days, 30)));
+        using var req = new HttpRequestMessage(HttpMethod.Get, $"https://api.finam.ru/v1/instruments/{sym}/bars?timeframe={timeframe}&interval.start_time={from:yyyy-MM-ddTHH:mm:ssZ}&interval.end_time={to:yyyy-MM-ddTHH:mm:ssZ}");
+        req.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", jwt);
+        var resp = await finamRest.SendAsync(req);
+        if (resp.IsSuccessStatusCode)
+        {
+            var bDoc = JsonDocument.Parse(await resp.Content.ReadAsStringAsync());
+            if (bDoc.RootElement.TryGetProperty("bars", out var bars))
+            {
+                var result = new List<object>();
+                foreach (var b in bars.EnumerateArray())
+                {
+                    var ts = b.TryGetProperty("timestamp", out var tsEl) ? DateTimeOffset.Parse(tsEl.GetString() ?? "").ToUnixTimeSeconds() : 0;
+                    var o = b.TryGetProperty("open", out var oEl) && oEl.TryGetProperty("value", out var ov) ? double.Parse(ov.GetString() ?? "0") : 0;
+                    var h = b.TryGetProperty("high", out var hEl) && hEl.TryGetProperty("value", out var hv) ? double.Parse(hv.GetString() ?? "0") : 0;
+                    var l = b.TryGetProperty("low", out var lEl) && lEl.TryGetProperty("value", out var lv) ? double.Parse(lv.GetString() ?? "0") : 0;
+                    var c = b.TryGetProperty("close", out var cEl) && cEl.TryGetProperty("value", out var cv) ? double.Parse(cv.GetString() ?? "0") : 0;
+                    var v = b.TryGetProperty("volume", out var vEl) && vEl.TryGetProperty("value", out var vv) ? double.Parse(vv.GetString() ?? "0") : 0;
+                    if (ts > 0) result.Add(new { t = ts, o, h, l, c, v });
+                }
+                return Results.Ok(result);
+            }
         }
         return Results.Ok(Array.Empty<object>());
     }
@@ -548,7 +579,7 @@ app.MapGet("/api/accounts", async (TradingService svc) =>
 // === Positions API (unified) ===
 app.MapGet("/api/positions", async (TradingService svc) =>
 {
-    if (IsQuikAlive())
+    if (_activeConnectorName == "QUIK")
     {
         lock (quikData)
         {
@@ -568,15 +599,47 @@ app.MapGet("/api/positions", async (TradingService svc) =>
                 } catch {}
             }
         }
+        return Results.Json(new object[] {});
     }
-    // Fallback: return empty
+    
+    // Finam REST
+    try
+    {
+        var jwt = await GetFinamJwt();
+        if (string.IsNullOrEmpty(jwt)) return Results.Json(new object[] {});
+        using var req = new HttpRequestMessage(HttpMethod.Get, $"https://api.finam.ru/v1/accounts/{_finamAccountId}");
+        req.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", jwt);
+        var resp = await finamRest.SendAsync(req);
+        if (resp.IsSuccessStatusCode)
+        {
+            var aDoc = JsonDocument.Parse(await resp.Content.ReadAsStringAsync());
+            if (aDoc.RootElement.TryGetProperty("positions", out var positions))
+            {
+                var arr = new List<object>();
+                foreach (var p in positions.EnumerateArray())
+                {
+                    var qty = p.TryGetProperty("quantity", out var qEl) && qEl.TryGetProperty("value", out var qv) ? int.Parse(qv.GetString() ?? "0") : 0;
+                    if (qty == 0) continue;
+                    arr.Add(new {
+                        ticker = p.TryGetProperty("symbol", out var sym) ? sym.GetString()?.Split('@')[0] : "",
+                        dir = qty > 0 ? "Buy" : "Sell",
+                        qty = Math.Abs(qty),
+                        avgPrice = p.TryGetProperty("current_price", out var cpEl) && cpEl.TryGetProperty("value", out var cpv) ? double.Parse(cpv.GetString() ?? "0") : 0,
+                        pnlToday = p.TryGetProperty("unrealized_profit", out var upEl) && upEl.TryGetProperty("value", out var upv) ? double.Parse(upv.GetString() ?? "0") : 0
+                    });
+                }
+                return Results.Json(arr);
+            }
+        }
+    }
+    catch { }
     return Results.Json(new object[] {});
 });
 
 // === Orders API (unified) ===
 app.MapGet("/api/orders", async (TradingService svc) =>
 {
-    if (IsQuikAlive())
+    if (_activeConnectorName == "QUIK")
     {
         lock (quikData)
         {
@@ -590,7 +653,24 @@ app.MapGet("/api/orders", async (TradingService svc) =>
                 } catch {}
             }
         }
+        return Results.Json(new object[] {});
     }
+    
+    // Finam REST — orders via account
+    try
+    {
+        var jwt = await GetFinamJwt();
+        if (string.IsNullOrEmpty(jwt)) return Results.Json(new object[] {});
+        using var req = new HttpRequestMessage(HttpMethod.Get, $"https://api.finam.ru/v1/accounts/{_finamAccountId}/orders");
+        req.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", jwt);
+        var resp = await finamRest.SendAsync(req);
+        if (resp.IsSuccessStatusCode)
+        {
+            var body = await resp.Content.ReadAsStringAsync();
+            return Results.Text(body, "application/json");
+        }
+    }
+    catch { }
     return Results.Json(new object[] {});
 });
 
