@@ -383,7 +383,7 @@ public class GridMmRegimeLauncher : IDisposable
         var gridOrder = new Order
         {
             Ticker = _ticker,
-            Direction = dir == 1 ? SignalDirection.Buy : SignalDirection.Sell,
+            Direction = dir == 1 ? SignalDirection.Sell : SignalDirection.Buy, // Grid: ПРОТИВОПОЛОЖНОЕ направление (закрытие позиции)
             Type = OrderType.Limit,
             Price = price,
             Volume = _gridConfig.Volume,
