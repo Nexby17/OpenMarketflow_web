@@ -16,29 +16,28 @@ namespace HedgeFund.Core.Strategies;
 /// Launcher ставит реальные лимитки и отслеживает их заполнение.
 /// 
 /// Параметры v6 (подтверждены 14.04.2026):
-/// SAR(0.005/0.02/0.2), EMA=35, TF=5мин
-/// Grid: step=30, spread=60, max_levels=70
-/// Close: RT>=25% + min_profit=35 пт/лот
-/// Optimized 2026-04-23 (30d rolling): PnL=45,898 WR=84% MaxDD=7,914
+/// SAR(0.009/0.01/0.2), EMA=30, TF=5мин
+/// Grid: step=45, spread=50, max_levels=70
+/// Close: RT>=30% + min_profit=35 пт/лот
 /// </summary>
 public class GridMmRegimeStrategy : IStrategy
 {
     public class Config
     {
         // SAR
-        public double SarStart { get; set; } = 0.005;
-        public double SarStep { get; set; } = 0.02;
+        public double SarStart { get; set; } = 0.009;
+        public double SarStep { get; set; } = 0.01;
         public double SarMax { get; set; } = 0.2;
         
         // EMA
-        public int EmaPeriod { get; set; } = 35;
+        public int EmaPeriod { get; set; } = 30;
         
         // Grid
-        public double GridStep { get; set; } = 30.0;
-        public double GridSpread { get; set; } = 60.0;
+        public double GridStep { get; set; } = 45.0;
+        public double GridSpread { get; set; } = 50.0;
         public int MaxGridLevels { get; set; } = 70;
         public double MinProfitPerLot { get; set; } = 35.0;
-        public double ClosePct { get; set; } = 0.25;
+        public double ClosePct { get; set; } = 0.30;
         
         // Commission
         public double Commission { get; set; } = 0.90;

@@ -96,36 +96,11 @@ app.MapHub<TradingHub>("/trading");
 var quikData = new Dictionary<string, object>();
 var quikConnected = false;
 DateTime quikLastHeartbeat = DateTime.MinValue;
-var _todayTrades = new List<Dictionary<string, object>>();
-var _todayOrders = new List<Dictionary<string, object>>();
 object _quikStateLock = new object();
 
 // === Candle Aggregator from QUIK ticks ===
 var candleBuilderLock = new object();
 GridMmRegimeLauncher? gridMm = null;
-GridMmRegimeLauncher.OnTradeRecorded = (dir, vol, price, comment) =>
-{
-    lock (_todayTrades) { _todayTrades.Add(new Dictionary<string, object> {
-        {"time", DateTime.UtcNow.ToString("HH:mm:ss")},
-        {"ticker", "SiM6"},
-        {"direction", dir},
-        {"volume", vol},
-        {"price", price},
-        {"comment", comment}
-    }); }
-};
-GridMmRegimeLauncher.OnOrderRecorded = (ticker, dir, price, vol, typ) =>
-{
-    lock (_todayOrders) { _todayOrders.Add(new Dictionary<string, object> {
-        {"time", DateTime.UtcNow.ToString("HH:mm:ss")},
-        {"ticker", ticker},
-        {"direction", dir},
-        {"price", price},
-        {"volume", vol},
-        {"type", typ},
-        {"status", "placed"}
-    }); }
-};
 var candleBuilderCurrent = (double[]?)null;
 var candleBuilderHistory = new LinkedList<double[]>();
 const int CANDLE_TF_MINUTES = 5;
@@ -561,10 +536,6 @@ app.MapGet("/api/orders", async (TradingService svc) =>
     }
     return Results.Json(new object[] {});
 });
-
-// История сделок и заявок за сегодня
-app.MapGet("/api/trades", () => Results.Json(_todayTrades));
-app.MapGet("/api/today-orders", () => Results.Json(_todayOrders));
 
 app.MapGet("/api/quote", async (string ticker) =>
 {
