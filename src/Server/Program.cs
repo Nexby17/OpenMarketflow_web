@@ -863,7 +863,7 @@ app.MapGet("/api/orderbook", async (string ticker) =>
     return Results.Ok(new { rows = Array.Empty<object>(), source = "Finam (error)" });
 });
 
-app.MapPost("/strategy/grid-mm/start", () =>
+app.MapPost("/strategy/grid-mm/start", async (HttpRequest req) =>
 {
     try
     {
@@ -873,7 +873,19 @@ app.MapPost("/strategy/grid-mm/start", () =>
         if (gridMm != null)
             return Results.Json(new { status = "already_running", detail = gridMm.GetStatus() });
         
-        gridMm = new GridMmRegimeLauncher(token, "SiM6", useQuikData: true);
+        // Read forceEntryOnStart from body
+        bool forceEntry = false;
+        try {
+            using var reader = new StreamReader(req.Body);
+            var body = await reader.ReadToEndAsync();
+            if (!string.IsNullOrEmpty(body)) {
+                var doc = JsonDocument.Parse(body);
+                if (doc.RootElement.TryGetProperty("forceEntryOnStart", out var fe))
+                    forceEntry = fe.GetBoolean();
+            }
+        } catch {}
+        
+        gridMm = new GridMmRegimeLauncher(token, "SiM6", useQuikData: true, forceEntryOnStart: forceEntry);
         return Results.Json(new { status = "initialized", detail = gridMm.GetStatus() });
     }
     catch (Exception ex)

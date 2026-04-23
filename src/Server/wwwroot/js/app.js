@@ -1482,7 +1482,7 @@ async function robotStart(i) {
         const resp = await fetch('/strategy/grid-mm/start', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ ticker: r.ticker })
+            body: JSON.stringify({ ticker: r.ticker, forceEntryOnStart: r.forceEntry === 'true' || r.forceEntryOnStart === true })
         });
         const data = await resp.json();
         if (data.error) { addLog(nowTime(), 'ERROR', data.error); return; }

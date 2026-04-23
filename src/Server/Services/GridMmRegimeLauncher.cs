@@ -58,7 +58,7 @@ public class GridMmRegimeLauncher : IDisposable
     public GridMmRegimeStrategy Strategy => _strategy;
     public bool IsConnected => _useQuikData || _broker.IsConnected;
 
-    public GridMmRegimeLauncher(string finamToken, string ticker = "SiM6", string accountId = "", IHubContext<TradingHub>? hub = null, bool useQuikData = false)
+    public GridMmRegimeLauncher(string finamToken, string ticker = "SiM6", string accountId = "", IHubContext<TradingHub>? hub = null, bool useQuikData = false, bool forceEntryOnStart = false)
     {
         _useQuikData = useQuikData;
         _ticker = ticker;
@@ -93,6 +93,7 @@ public class GridMmRegimeLauncher : IDisposable
             _ = HandleDisconnect();
         };
 
+        _strategy.Params.ForceEntryOnStart = forceEntryOnStart;
         _ = ConnectAndWarm(finamToken, accountId);
     }
 
@@ -655,17 +656,24 @@ public class GridMmRegimeLauncher : IDisposable
         // Force entry если включено и ещё нет позиции
         if (_strategy.Params.ForceEntryOnStart && _strategy.PositionDirection == 0 && _broker != null)
         {
+            _lastForceError = "triggered";
             _ = ForceEntryAsync();
+        }
+        else
+        {
+            _lastForceError = $"skip: force={_strategy.Params.ForceEntryOnStart} pos={_strategy.PositionDirection} broker={_broker != null}";
         }
     }
     
     private async Task ForceEntryAsync()
     {
+        _lastForceError = "starting...";
         try
         {
             // Получаем цену из Finam REST (QUIK может быть устаревшим)
             double price = 0;
-            var jwtResp = await new HttpClient().PostAsync("https://api.finam.ru/v1/sessions",
+            using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(10) };
+            var jwtResp = await http.PostAsync("https://api.finam.ru/v1/sessions",
                 new StringContent($"{{\"secret\": \"{Environment.GetEnvironmentVariable("FINAM_API_KEY")}\"}}", System.Text.Encoding.UTF8, "application/json"));
             if (!jwtResp.IsSuccessStatusCode) { Console.WriteLine("[FORCE] ❌ Cannot get JWT"); return; }
             var jwtDoc = System.Text.Json.JsonDocument.Parse(await jwtResp.Content.ReadAsStringAsync());
@@ -673,7 +681,7 @@ public class GridMmRegimeLauncher : IDisposable
             
             using var quoteReq = new HttpRequestMessage(HttpMethod.Get, "https://api.finam.ru/v1/instruments/SiM6@RTSX/quotes/latest");
             quoteReq.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
-            var quoteResp = await new HttpClient().SendAsync(quoteReq);
+            var quoteResp = await http.SendAsync(quoteReq);
             if (quoteResp.IsSuccessStatusCode)
             {
                 var qDoc = System.Text.Json.JsonDocument.Parse(await quoteResp.Content.ReadAsStringAsync());
@@ -698,7 +706,7 @@ public class GridMmRegimeLauncher : IDisposable
                     var barsReq = new HttpRequestMessage(HttpMethod.Get,
                         $"https://api.finam.ru/v1/instruments/SiM6@RTSX/bars?timeframe=TIME_FRAME_M5&interval.start_time={from:yyyy-MM-ddTHH:mm:ssZ}&interval.end_time={to:yyyy-MM-ddTHH:mm:ssZ}");
                     barsReq.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
-                    var barsResp = await new HttpClient().SendAsync(barsReq);
+                    var barsResp = await http.SendAsync(barsReq);
                     if (barsResp.IsSuccessStatusCode)
                     {
                         var barsDoc = System.Text.Json.JsonDocument.Parse(await barsResp.Content.ReadAsStringAsync());
@@ -717,6 +725,13 @@ public class GridMmRegimeLauncher : IDisposable
                     }
                 }
                 catch (Exception ex) { Console.WriteLine($"[FORCE] Warmup failed: {ex.Message}"); }
+            }
+            
+            // Проверяем что позиция ещё не занята (ConnectAndWarm мог восстановить)
+            if (_strategy.PositionDirection != 0)
+            {
+                _lastForceError = $"skip: pos already {_strategy.PositionDirection}";
+                return;
             }
             
             Console.WriteLine($"[GRID-MM-v6] 🚀 Force entry @ {price:F0} (SAR={_strategy.CurrentSar:F0} EMA={_strategy.CurrentEma:F0})");
@@ -828,6 +843,8 @@ public class GridMmRegimeLauncher : IDisposable
         } catch { }
     }
 
+    private string _lastForceError = "";
+    
     public string GetStatus()
     {
         int tracked;
@@ -840,7 +857,7 @@ public class GridMmRegimeLauncher : IDisposable
             
         return $"Mode={_strategy.Mode} | Pos={_strategy.PositionDirection} | " +
                $"Lots={_strategy.CurrentLotLevel} | {_strategy.GetStatus()} | " +
-               $"{gridInfo}Connected={IsConnected}";
+               $"{gridInfo}Connected={IsConnected} | Force={_strategy.Params.ForceEntryOnStart} {_lastForceError}";
     }
 
     private async Task HandleDisconnect()
@@ -876,10 +893,15 @@ public class GridMmRegimeLauncher : IDisposable
                 double entryPrice = position.Entries[0].Price;
                 int lots = position.Entries[0].Volume;
                 
+                _lastForceError = $"found pos: {position.Direction} {lots}x @ {entryPrice:F0}, forceEntry={_strategy.Params.ForceEntryOnStart}";
                 Console.WriteLine($"[GRID-MM-v6] 📌 Найдена позиция: {position.Direction} {lots}x @ {entryPrice:F0}");
                 
                 // Восстанавливаем состояние стратегии
-                _strategy.RestorePosition(dir, entryPrice, lots);
+                // Пропускаем восстановление если ForceEntry включён — стратегия сама войдёт
+                if (!_strategy.Params.ForceEntryOnStart)
+                {
+                    _strategy.RestorePosition(dir, entryPrice, lots);
+                }
                 
                 // 2. Проверяем активные ордера
                 var activeOrders = await _broker.GetActiveOrdersAsync();
@@ -1028,3 +1050,4 @@ public class GridMmRegimeLauncher : IDisposable
         _broker.Dispose();
     }
 }
+// DEBUG: temporarily log to file
