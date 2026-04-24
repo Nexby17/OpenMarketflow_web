@@ -234,12 +234,7 @@ public class GridMmRegimeLauncher : IDisposable
 
     private async Task ForceEntryAsync()
     {
-        System.IO.File.AppendAllText("/tmp/mm-force.txt", $"{DateTime.UtcNow:HH:mm:ss} ForceEntryAsync called, forceEntryOnStart={_forceEntryOnStart}, OpenLots={_strategy.OpenLots}\n");
-        if (!_forceEntryOnStart || _strategy.OpenLots > 0)
-        {
-            System.IO.File.AppendAllText("/tmp/mm-force.txt", $"{DateTime.UtcNow:HH:mm:ss} ForceEntry skipped (no force or already in position)\n");
-            return;
-        }
+        if (!_forceEntryOnStart || _strategy.OpenLots > 0) return;
         
         Console.WriteLine("[GRID-MM-v6] ⚡ ForceEntry: determining direction...");
         
@@ -261,12 +256,11 @@ public class GridMmRegimeLauncher : IDisposable
         else
         {
             Console.WriteLine($"[GRID-MM-v6] ⚠️ ForceEntry: SAR==EMA, skipping");
-            System.IO.File.AppendAllText("/tmp/mm-force.txt", $"{DateTime.UtcNow:HH:mm:ss} ForceEntry skipped (SAR==EMA)\n");
             return;
         }
         
         // Создаём событие входа
-        var evt = new GridMmRegimeStrategy.StrategyEvent
+        var entryEvt = new GridMmRegimeStrategy.StrategyEvent
         {
             Type = GridMmRegimeStrategy.StrategyEvent.EventType.EntryMarket,
             Direction = direction,
@@ -274,9 +268,38 @@ public class GridMmRegimeLauncher : IDisposable
             Reason = "ForceEntry"
         };
         
-        await ExecuteEntryAsync(evt);
+        await ExecuteEntryAsync(entryEvt);
+        
+        // Вычисляем grid цены (как в стратегии)
+        double step = _strategy.Params.GridStep;
+        var prices = new List<double>();
+        var tpPrices = new List<double>();
+        for (int i = 0; i < _strategy.Params.MaxGridLevels; i++)
+        {
+            double gridPrice = direction == 1 
+                ? sar - step * (i + 1)  // long: BUY ниже
+                : sar + step * (i + 1); // short: SELL выше
+            double tpPrice = direction == 1
+                ? gridPrice + _strategy.Params.GridSpread  // long: TP выше
+                : gridPrice - _strategy.Params.GridSpread; // short: TP ниже
+            prices.Add(gridPrice);
+            tpPrices.Add(tpPrice);
+        }
+        
+        // Создаём событие для grid лимиток
+        var gridEvt = new GridMmRegimeStrategy.StrategyEvent
+        {
+            Type = GridMmRegimeStrategy.StrategyEvent.EventType.GridLimitOrders,
+            Direction = direction,
+            Price = sar,
+            Volume = 1,
+            GridPrices = prices.ToArray(),
+            GridTpPrices = tpPrices.ToArray(),
+            Reason = $"Grid: {_strategy.Params.MaxGridLevels} уровней, step={step}, spread={_strategy.Params.GridSpread}"
+        };
+        
+        await PlaceGridLimitsAsync(gridEvt);
         Console.WriteLine("[GRID-MM-v6] ✅ ForceEntry completed");
-        System.IO.File.AppendAllText("/tmp/mm-force.txt", $"{DateTime.UtcNow:HH:mm:ss} ForceEntry completed\n");
     }
 
     private async Task QuikPollLoop(CancellationToken ct)
