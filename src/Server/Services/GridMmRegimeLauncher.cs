@@ -55,6 +55,7 @@ public class GridMmRegimeLauncher : IDisposable
     
     // Close state
     private bool _closingAll;
+    private readonly bool _forceEntryOnStart;
 
     public GridMmRegimeStrategy Strategy => _strategy;
     public bool IsConnected => _useQuikData || _broker.IsConnected;
@@ -64,6 +65,7 @@ public class GridMmRegimeLauncher : IDisposable
         _useQuikData = useQuikData;
         _ticker = ticker;
         _accountId = accountId;
+        _forceEntryOnStart = forceEntryOnStart;
         _hub = hub;
         _broker = new FinamConnector();
         if (useQuikData)
@@ -201,6 +203,9 @@ public class GridMmRegimeLauncher : IDisposable
             
             // Восстанавливаем состояние (если есть открытая позиция)
             _ = RestoreStateAsync();
+
+            // ForceEntry если включено
+            _ = ForceEntryAsync();
         }
         else
         {
@@ -225,6 +230,53 @@ public class GridMmRegimeLauncher : IDisposable
         Console.WriteLine($"[GRID-MM-v6] ❌ ConnectAndWarm error: {ex.Message}");
         System.IO.File.AppendAllText("/tmp/mm-debug.log", $"{DateTime.UtcNow:HH:mm:ss} ConnectAndWarm ERROR: {ex.Message}\n{ex.StackTrace}\n");
     }
+    }
+
+    private async Task ForceEntryAsync()
+    {
+        System.IO.File.AppendAllText("/tmp/mm-force.txt", $"{DateTime.UtcNow:HH:mm:ss} ForceEntryAsync called, forceEntryOnStart={_forceEntryOnStart}, OpenLots={_strategy.OpenLots}\n");
+        if (!_forceEntryOnStart || _strategy.OpenLots > 0)
+        {
+            System.IO.File.AppendAllText("/tmp/mm-force.txt", $"{DateTime.UtcNow:HH:mm:ss} ForceEntry skipped (no force or already in position)\n");
+            return;
+        }
+        
+        Console.WriteLine("[GRID-MM-v6] ⚡ ForceEntry: determining direction...");
+        
+        // Определяем направление по текущим SAR/EMA (уже прогреты)
+        int direction;
+        double sar = _strategy.CurrentSar;
+        double ema = _strategy.CurrentEma;
+        
+        if (sar > ema)
+        {
+            direction = -1; // SHORT
+            Console.WriteLine($"[GRID-MM-v6] ⚡ ForceEntry: SHORT (SAR={sar:F0} > EMA={ema:F0})");
+        }
+        else if (sar < ema)
+        {
+            direction = 1; // LONG
+            Console.WriteLine($"[GRID-MM-v6] ⚡ ForceEntry: LONG (SAR={sar:F0} < EMA={ema:F0})");
+        }
+        else
+        {
+            Console.WriteLine($"[GRID-MM-v6] ⚠️ ForceEntry: SAR==EMA, skipping");
+            System.IO.File.AppendAllText("/tmp/mm-force.txt", $"{DateTime.UtcNow:HH:mm:ss} ForceEntry skipped (SAR==EMA)\n");
+            return;
+        }
+        
+        // Создаём событие входа
+        var evt = new GridMmRegimeStrategy.StrategyEvent
+        {
+            Type = GridMmRegimeStrategy.StrategyEvent.EventType.EntryMarket,
+            Direction = direction,
+            Volume = 1,
+            Reason = "ForceEntry"
+        };
+        
+        await ExecuteEntryAsync(evt);
+        Console.WriteLine("[GRID-MM-v6] ✅ ForceEntry completed");
+        System.IO.File.AppendAllText("/tmp/mm-force.txt", $"{DateTime.UtcNow:HH:mm:ss} ForceEntry completed\n");
     }
 
     private async Task QuikPollLoop(CancellationToken ct)
@@ -682,6 +734,12 @@ public class GridMmRegimeLauncher : IDisposable
     {
         _strategy.Mode = GridMmRegimeStrategy.StrategyMode.Running;
         Console.WriteLine("[CMD] ▶️ СТАРТ — Grid MM v6 торгует (лимитные ордера)");
+        
+        // ForceEntry если включено и нет позиции
+        if (_warmedUp && _forceEntryOnStart && _strategy.OpenLots == 0)
+        {
+            _ = ForceEntryAsync();
+        }
     }
     
     public void StopTrading()
