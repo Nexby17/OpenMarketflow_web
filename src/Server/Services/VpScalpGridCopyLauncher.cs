@@ -393,6 +393,7 @@ public class VpScalpGridCopyLauncher : IDisposable
     private bool _manualInProgress = false;
     private int _tickCount = 0;
     private int _skipTicks = 0;
+    private int _lastRvLevel = -1; // -1 = not initialized
     private int _barsSinceReset = 0;
     private const int MIN_BARS_AFTER_RESET = 3;
 
@@ -661,6 +662,12 @@ public class VpScalpGridCopyLauncher : IDisposable
         // === STEP 1: Process candles and feed strategy ===
         await ProcessCandlesAsync();
 
+        // === STEP 1.5: RV Adaptation — regrid if level changed ===
+        if (_tracker.HasPosition && _strategy.Params.RvAdaptation)
+        {
+            await CheckRvLevelChangeAsync();
+        }
+
         // === STEP 2: Handle signals (Entry/CloseAll) ===
         // Handled inside ProcessCandlesAsync
 
@@ -892,6 +899,45 @@ public class VpScalpGridCopyLauncher : IDisposable
     // === GRID & TP PLACEMENT (STEP 4) ===
 
     /// <summary>Ensure both grid and TP are placed if position exists and no tracked orders.</summary>
+    // === RV ADAPTATION — regrid on level change ===
+
+    private async Task CheckRvLevelChangeAsync()
+    {
+        if (!_strategy.Params.RvAdaptation) return;
+        if (!_tracker.HasPosition) return;
+        if (_tracker.EntryPrice <= 0) return;
+
+        int currentLevel = _strategy.RvLevel;
+        if (_lastRvLevel < 0)
+        {
+            _lastRvLevel = currentLevel;
+            return;
+        }
+        if (currentLevel == _lastRvLevel) return;
+
+        // Level changed — cancel current grid + TP, regrid
+        var (newStep, newSpread) = _signalDetector.GetAdaptedParams();
+        Console.WriteLine($"[{_logPrefix}] RV level changed: {_lastRvLevel} → {currentLevel} (rank={_strategy.RvRank:F2}) → step={newStep} spread={newSpread}");
+
+        _lastRvLevel = currentLevel;
+
+        // Cancel current grid
+        if (_orders.TrackedGridId != null && _orders.TrackedGridId != "pending")
+        {
+            await _orders.CancelAndWait(_orders.TrackedGridId);
+            _orders.TrackedGridId = null;
+        }
+
+        // Cancel current TP
+        if (_orders.TrackedTpId != null && _orders.TrackedTpId != "pending")
+        {
+            await _orders.CancelAndWait(_orders.TrackedTpId);
+            _orders.TrackedTpId = null;
+        }
+
+        // EnsureGridAndTpAsync will place new ones with updated step/spread
+    }
+
     private async Task EnsureGridAndTpAsync()
     {
         // GUARD: Never place orders if entry price is 0
@@ -1180,17 +1226,47 @@ public class VpScalpGridCopyLauncher : IDisposable
             foreach (var p in account.Positions)
             {
                 string ticker = p.Symbol.Split('@')[0];
-                if (ticker == _ticker)
-                {
-                    if (p.Balance == 0) continue;
-                    int d = p.Balance > 0 ? 1 : -1;
-                    int q = (int)Math.Abs(p.Balance);
-                    double avg = p.AveragePrice ?? p.CurrentPrice ?? 0;
-                    return (d, q, avg);
-                }
+                if (ticker != _ticker) continue;
+                long qty = p.EffectiveQuantity;
+                if (qty == 0) continue;
+                int d = qty > 0 ? 1 : -1;
+                int q = (int)Math.Abs(qty);
+                double avg = p.CurrentPrice ?? 0;
+                return (d, q, avg);
             }
         }
         catch (Exception ex) { Console.WriteLine($"[{_logPrefix}] GetBrokerPosition error: {ex.Message}"); }
+        return (0, 0, 0);
+    }
+
+    private async Task<(int dir, int lots, double avgPrice)> GetBrokerPositionRawAsync()
+    {
+        try
+        {
+            var rest = _broker.RestClient;
+            if (rest == null) return (0, 0, 0);
+            using var http = new HttpClient();
+            http.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", await rest.GetJwtAsync());
+            var resp = await http.GetAsync($"https://api.finam.ru/v1/accounts/{_accountId}");
+            if (!resp.IsSuccessStatusCode) return (0, 0, 0);
+            var json = await resp.Content.ReadAsStringAsync();
+            var doc = System.Text.Json.JsonDocument.Parse(json);
+            if (!doc.RootElement.TryGetProperty("positions", out var positions)) return (0, 0, 0);
+            foreach (var p in positions.EnumerateArray())
+            {
+                var sym = p.GetProperty("symbol").GetString() ?? "";
+                if (sym.Split('@')[0] != _ticker) continue;
+                var qtyStr = p.GetProperty("quantity").GetProperty("value").GetString() ?? "0";
+                long qty = long.Parse(qtyStr);
+                if (qty == 0) continue;
+                double price = 0;
+                if (p.TryGetProperty("current_price", out var cp) && cp.TryGetProperty("value", out var cpv))
+                    double.TryParse(cpv.GetString(), out price);
+                int d = qty > 0 ? 1 : -1;
+                return (d, (int)Math.Abs(qty), price);
+            }
+        }
+        catch (Exception ex) { Console.WriteLine($"[{_logPrefix}] GetBrokerPositionRaw error: {ex.Message}"); }
         return (0, 0, 0);
     }
 

@@ -1,3 +1,4 @@
+using System.Text.Json;
 using System.Text.Json.Serialization;
 
 namespace HedgeFund.Brokers.Finam;
@@ -173,11 +174,40 @@ public class PositionRow
     [JsonPropertyName("balance")]
     public long Balance { get; set; }
     
+    [JsonPropertyName("quantity")]
+    public object? QuantityRaw { get; set; }
+    
+    /// <summary>Effective quantity: Balance (old API) or quantity.value (new API)</summary>
+    public long EffectiveQuantity
+    {
+        get
+        {
+            if (Balance != 0) return Balance;
+            if (QuantityRaw is JsonElement je && je.ValueKind == JsonValueKind.Object && je.TryGetProperty("value", out var v))
+                return long.TryParse(v.GetString(), out var l) ? l : 0;
+            return 0;
+        }
+    }
+    
     [JsonPropertyName("current_price")]
-    public double? CurrentPrice { get; set; }
+    public object? CurrentPriceRaw { get; set; }
+    
+    [JsonIgnore]
+    public double? CurrentPrice => CurrentPriceRaw switch {
+        JsonElement je => je.ValueKind == JsonValueKind.Object && je.TryGetProperty("value", out var v) ? double.TryParse(v.GetString(), out var d) ? d : (double?)null : je.ValueKind == JsonValueKind.Number ? je.GetDouble() : (double?)null,
+        double d => d,
+        _ => null
+    };
     
     [JsonPropertyName("average_price")]
-    public double? AveragePrice { get; set; }
+    public object? AveragePriceRaw { get; set; }
+    
+    [JsonIgnore]
+    public double? AveragePrice => AveragePriceRaw switch {
+        JsonElement je => je.ValueKind == JsonValueKind.Object && je.TryGetProperty("value", out var v) ? double.TryParse(v.GetString(), out var d) ? d : (double?)null : je.ValueKind == JsonValueKind.Number ? je.GetDouble() : (double?)null,
+        double d => d,
+        _ => null
+    };
     
     [JsonPropertyName("unrealized_profit")]
     public double UnrealizedProfit { get; set; }

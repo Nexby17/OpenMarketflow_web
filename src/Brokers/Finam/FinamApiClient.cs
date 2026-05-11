@@ -82,6 +82,9 @@ public class FinamApiClient : IDisposable
         }
     }
 
+    /// <summary>Get current JWT token (authenticates if needed).</summary>
+    public async Task<string> GetJwtAsync() => await AuthenticateAsync();
+
     /// <summary>
     /// Получить детали токена (account_ids, readonly, exchanges).
     /// </summary>

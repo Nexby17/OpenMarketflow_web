@@ -144,17 +144,27 @@ public class VpScalpGridCopyStrategy
     }
 
     /// <summary>
-    /// Get adapted step and spread based on RV rank
+    /// Get adapted step and spread based on RV rank.
+    /// RV adaptation: 13 levels from 15/15 to 75/75, step 5.
+    /// k = rvRank → level = floor(k × 13) → step = 15 + level × 5
     /// </summary>
     public (int step, int spread) GetAdaptedParams()
     {
         if (!Params.RvAdaptation)
             return (Params.StepBase, Params.SpreadBase);
 
-        int step = (int)(Params.StepBase + Params.StepBase * _rvRank);
-        int spread = (int)(Params.SpreadBase + Params.SpreadBase * _rvRank);
-        return (step, spread);
+        int level = (int)Math.Floor(_rvRank * 13);
+        if (level > 12) level = 12;
+        if (level < 0) level = 0;
+        int step = 15 + level * 5;
+        return (step, step);
     }
+
+    /// <summary>Current RV rank (0..1) for display</summary>
+    public double RvRank => _rvRank;
+
+    /// <summary>Current RV-adapted level (0..12) for display</summary>
+    public int RvLevel => (int)Math.Floor(Math.Clamp(_rvRank, 0, 1) * 13);
 
     /// <summary>
     /// Get all grid level prices for current position
