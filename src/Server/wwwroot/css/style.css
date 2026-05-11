@@ -88,16 +88,42 @@ label { font-size: 12px; color: var(--text2); margin-bottom: 2px; display: block
 .log-trade { color: var(--green); }
 
 /* Orderbook */
-.orderbook-ladder { height: calc(100vh - 100px); overflow-y: auto; font-family: 'Consolas', monospace; font-size: 12px; }
-.ob-row { display: grid; grid-template-columns: 1fr 80px 1fr; padding: 1px 4px; position: relative; }
-.ob-row:hover { background: rgba(255,255,255,0.05); }
-.ob-row.spread-row { background: rgba(255,255,255,0.08); }
-.ob-bid { text-align: right; color: var(--green); position: relative; }
-.ob-ask { text-align: left; color: var(--red); position: relative; }
-.ob-price { text-align: center; font-weight: 600; color: var(--text); }
-.ob-bar-bid { position: absolute; right: 0; top: 0; bottom: 0; background: rgba(34,197,94,0.15); }
-.ob-bar-ask { position: absolute; left: 0; top: 0; bottom: 0; background: rgba(239,68,68,0.15); }
-.ob-price-last { background: rgba(255,255,255,0.1); border-radius: 3px; }
+.orderbook-ladder { height: calc(100vh - 100px); overflow-y: auto; font-family: 'Consolas', 'Courier New', monospace; font-size: 12px; background: #141414; }
+.ob-row { display: grid; grid-template-columns: 56px 1fr 1fr 56px; padding: 0; position: relative; border-bottom: 1px solid rgba(255,255,255,0.03); height: 17px; line-height: 17px; }
+.ob-row:hover { filter: brightness(1.15); }
+/* Bid: volume + bar (left) */
+.ob-bid { text-align: right; color: #a5d6a7; font-size: 11px; position: relative; padding-right: 4px; z-index: 1; grid-column: 1; }
+.ob-bid .ob-bar-bid { position: absolute; top: 0; bottom: 0; right: 0; background: #2e7d32; opacity: 0.5; }
+/* Price (center-left) */
+.ob-price { text-align: right; font-weight: 600; color: #cfd8dc; z-index: 1; grid-column: 2; font-size: 12px; padding-right: 8px; letter-spacing: 0.5px; }
+/* Ask bar+volume (center-right) */
+.ob-ask { text-align: left; color: #ef9a9a; font-size: 11px; position: relative; padding-left: 8px; z-index: 1; grid-column: 3; }
+.ob-ask .ob-bar-ask { position: absolute; top: 0; bottom: 0; left: 0; background: #b71c1c; opacity: 0.5; }
+/* Volume number (right) */
+.ob-vol { text-align: left; color: #ef9a9a; font-size: 11px; padding-left: 2px; z-index: 1; grid-column: 4; }
+.ob-row.ob-has-bid { background: none; }
+.ob-row.ob-has-ask { background: none; }
+.ob-best-bid .ob-price { color: #69f0ae; font-weight: 700; }
+.ob-best-bid .ob-bid { color: #69f0ae; font-weight: 700; }
+.ob-best-ask .ob-price { color: #ff5252; font-weight: 700; }
+.ob-best-ask .ob-ask { color: #ff5252; font-weight: 700; }
+.ob-spread-row { background: rgba(255,215,0,0.08) !important; }
+.ob-spread-row .ob-price { color: #ffd54f; }
+/* Position row — blue highlight */
+.ob-position-row { border-left: 3px solid #42a5f5 !important; background: rgba(33,150,243,0.10) !important; }
+.ob-position-row .ob-price { color: #64b5f6 !important; font-weight: 700; }
+.ob-position-pnl { font-weight: 700; font-size: 10px; white-space: nowrap; }
+/* My orders markers */
+.ob-my-buy .ob-price::after { content: ' ◄'; color: #66bb6a; font-size: 9px; }
+.ob-my-sell .ob-price::after { content: ' ►'; color: #ef5350; font-size: 9px; }
+
+.trade-tape { width: 50px; background: #1e1e1e; position: relative; flex-shrink: 0; border-right: 1px solid #333; }
+.pnl-line { position: absolute; left: 0; width: 100%; min-height: 2px; border-radius: 1px; }
+.pnl-line-profit { background: #4CAF50; box-shadow: 0 0 4px #4CAF50; }
+.pnl-line-loss { background: #E91E63; box-shadow: 0 0 4px #E91E63; }
+.pnl-entry { position: absolute; left: 0; width: 100%; height: 2px; background: #2196F3; z-index: 2; }
+.pnl-entry-label { position: absolute; left: 2px; transform: translateY(-50%); font-size: 9px; color: #2196F3; white-space: nowrap; z-index: 3; font-weight: 600; }
+.pnl-pts-label { position: absolute; left: 50%; transform: translate(-50%, -50%); font-size: 13px; font-weight: 700; background: #141414; padding: 1px 4px; border-radius: 2px; z-index: 3; white-space: nowrap; }
 
 /* Strategy list */
 .strategy-list { display: flex; flex-direction: column; gap: 8px; }

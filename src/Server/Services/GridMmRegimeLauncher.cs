@@ -60,14 +60,14 @@ public class GridMmRegimeLauncher : IDisposable
     public GridMmRegimeStrategy Strategy => _strategy;
     public bool IsConnected => _useQuikData || _broker.IsConnected;
 
-    public GridMmRegimeLauncher(string finamToken, string ticker = "SiM6", string accountId = "", IHubContext<TradingHub>? hub = null, bool useQuikData = false, bool forceEntryOnStart = false)
+    public GridMmRegimeLauncher(FinamConnector broker, string ticker = "SiM6", string accountId = "", IHubContext<TradingHub>? hub = null, bool useQuikData = false, bool forceEntryOnStart = false)
     {
         _useQuikData = useQuikData;
         _ticker = ticker;
         _accountId = accountId;
         _forceEntryOnStart = forceEntryOnStart;
         _hub = hub;
-        _broker = new FinamConnector();
+        _broker = broker; // Общий экземпляр из TradingService
         if (useQuikData)
             _quikProvider = new QuikCandleProvider();
 
@@ -98,32 +98,22 @@ public class GridMmRegimeLauncher : IDisposable
         };
 
         _strategy.Params.ForceEntryOnStart = forceEntryOnStart;
-        _ = ConnectAndWarm(finamToken, accountId);
+        // Брокер уже подключён — сразу warmup
+        _ = ConnectAndWarm(accountId);
     }
 
-    private async Task ConnectAndWarm(string token, string accountId)
+    private async Task ConnectAndWarm(string accountId)
     {
         try
         {
-            System.IO.File.AppendAllText("/tmp/mm-debug.log", $"{DateTime.UtcNow:HH:mm:ss} ConnectAndWarm started\n");
-            if (_useQuikData)
-        {
-            Console.WriteLine("[GRID-MM-v6] 📡 QUIK данные + Finam для ордеров...");
-        }
-        else
-        {
-            Console.WriteLine("[GRID-MM-v6] 📐 Подключение к Финам...");
-        }
-        // Всегда подключаем Finam (ордера идут через gRPC)
-            System.IO.File.AppendAllText("/tmp/mm-debug.log", $"{DateTime.UtcNow:HH:mm:ss} Calling ConnectAsync\n");
-        bool ok = await _broker.ConnectAsync(token, accountId);
-            System.IO.File.AppendAllText("/tmp/mm-debug.log", $"{DateTime.UtcNow:HH:mm:ss} ConnectAsync returned: {ok}\n");
-        if (!ok)
-        {
-            Console.WriteLine("[GRID-MM-v6] ❌ Finam gRPC не подключился!");
-            return;
-        }
-        Console.WriteLine($"[GRID-MM-v6] ✅ Finam подключён (ордера).");
+            System.IO.File.AppendAllText("/tmp/mm-debug.log", $"{DateTime.UtcNow:HH:mm:ss} ConnectAndWarm started (shared broker)\n");
+            Console.WriteLine("[GRID-MM-v6] 📐 Warmup (broker уже подключён)...");
+
+            if (!_broker.IsConnected)
+            {
+                Console.WriteLine("[GRID-MM-v6] ❌ Broker не подключён!");
+                return;
+            }
 
         // Прогрев: 5-мин свечи
         Console.WriteLine($"[GRID-MM-v6] 📐 Прогрев индикаторов ({_ticker}, 5-мин)...");
@@ -400,6 +390,12 @@ public class GridMmRegimeLauncher : IDisposable
                     _ = ExecuteCloseAllAsync(evt);
                     break;
             }
+        }
+        
+        // === ПРОВЕРКА ПОТЕРЯННЫХ ОРДЕРОВ (каждую свечу при позиции) ===
+        if (_strategy.PositionDirection != 0)
+        {
+            _ = VerifyAndRestoreLostOrdersAsync();
         }
         
         // Статус при наличии позиции
@@ -886,15 +882,70 @@ public class GridMmRegimeLauncher : IDisposable
     /// Проверяет позицию, ордера и расставляет недостающие лимитки.
     /// </summary>
     private async Task RestoreStateAsync()
-    {
-        try
         {
-            System.IO.File.AppendAllText("/tmp/mm-debug.log", $"{DateTime.UtcNow:HH:mm:ss} RestoreStateAsync started\n");
-            Console.WriteLine("[GRID-MM-v6] 🔄 Восстановление состояния...");
-            
-            // 1. Проверяем открытую позицию через REST (не gRPC)
-            Position? position = null;
-            if (_broker.RestClient != null && !string.IsNullOrEmpty(_accountId))
+            try
+            {
+                System.IO.File.AppendAllText("/tmp/mm-debug.log", $"{DateTime.UtcNow:HH:mm:ss} RestoreStateAsync started\n");
+                Console.WriteLine("[GRID-MM-v6] 🔄 Восстановление состояния...");
+                
+                System.IO.File.AppendAllText("/tmp/mm-debug.log", $"{DateTime.UtcNow:HH:mm:ss} RestClient={_broker.RestClient != null} accountId={_accountId}\n");
+                
+                // 1. Проверяем открытую позицию через /api/positions (надёжный источник)
+                Position? position = null;
+                if (!string.IsNullOrEmpty(_accountId))
+                {
+                    try
+                    {
+                        // Получаем позиции через локальный API (он сам использует кэш/QUIK/gRPC)
+                        using var httpClient = new HttpClient();
+                        httpClient.BaseAddress = new Uri("http://localhost:5050");
+                        var response = await httpClient.GetAsync($"/api/positions?accountId={_accountId}");
+                        if (response.IsSuccessStatusCode)
+                        {
+                            var positionsJson = await response.Content.ReadAsStringAsync();
+                            var positionsData = System.Text.Json.JsonDocument.Parse(positionsJson);
+                            var posArray = positionsData.RootElement.EnumerateArray();
+                            
+                            foreach (var pos in posArray)
+                            {
+                                string ticker = pos.GetProperty("ticker").GetString() ?? "";
+                                if (ticker == _ticker)
+                                {
+                                    string dirStr = pos.GetProperty("dir").GetString() ?? "";
+                                    int qty = pos.GetProperty("qty").GetInt32();
+                                    double avgPrice = pos.GetProperty("avgPrice").GetDouble();
+                                    
+                                    if (qty != 0)
+                                    {
+                                        int dir = dirStr == "Buy" ? 1 : -1;
+                                        int lots = Math.Abs(qty);
+                                        
+                                        position = new Position
+                                        {
+                                            Ticker = _ticker,
+                                            Direction = dir > 0 ? SignalDirection.Buy : SignalDirection.Sell,
+                                            Entries = new List<PositionEntry>
+                                            {
+                                                new PositionEntry { Price = avgPrice, Volume = lots }
+                                            }
+                                        };
+                                        Console.WriteLine($"[GRID-MM-v6] 📌 /api/positions позиция: {dirStr} {lots}x @ {avgPrice:F0}");
+                                        System.IO.File.AppendAllText("/tmp/mm-debug.log", $"{DateTime.UtcNow:HH:mm:ss} /api/positions found: dir={dir} avgPrice={avgPrice} lots={lots}\n");
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"[GRID-MM-v6] ⚠️ /api/positions failed: {ex.Message}");
+                        System.IO.File.AppendAllText("/tmp/mm-debug.log", $"{DateTime.UtcNow:HH:mm:ss} /api/positions failed: {ex.Message}\n");
+                    }
+                }
+                
+                // Fallback: старый метод через брокера
+                if (position == null && _broker.RestClient != null && !string.IsNullOrEmpty(_accountId))
             {
                 try
                 {
@@ -904,7 +955,9 @@ public class GridMmRegimeLauncher : IDisposable
                     {
                         int dir = posRow.Balance > 0 ? 1 : -1;
                         int lots = (int)Math.Abs(posRow.Balance);
-                        double avgPrice = posRow.AveragePrice;
+                        
+                        // AveragePrice может быть null — используем CurrentPrice как fallback
+                        double avgPrice = posRow.AveragePrice ?? posRow.CurrentPrice ?? 0;
                         
                         // Создаём Position object для стратегии
                         position = new Position
@@ -926,8 +979,11 @@ public class GridMmRegimeLauncher : IDisposable
                 catch (Exception ex)
                 {
                     Console.WriteLine($"[GRID-MM-v6] ⚠️ REST position failed: {ex.Message}");
+                    System.IO.File.AppendAllText("/tmp/mm-debug.log", $"{DateTime.UtcNow:HH:mm:ss} REST failed: {ex.Message}\n");
                 }
             }
+            
+            System.IO.File.AppendAllText("/tmp/mm-debug.log", $"{DateTime.UtcNow:HH:mm:ss} After REST, position={(position != null ? "FOUND" : "NULL")}\n");
             
             // Fallback: gRPC если REST недоступен или нет данных
             if (position == null)
@@ -948,11 +1004,24 @@ public class GridMmRegimeLauncher : IDisposable
                 double entryPrice = position.Entries[0].Price;
                 int lots = position.Entries[0].Volume;
                 
+                System.IO.File.AppendAllText("/tmp/mm-debug.log", $"{DateTime.UtcNow:HH:mm:ss} Position found: dir={dir} entry={entryPrice} lots={lots}\n");
+                
                 // Восстанавливаем состояние стратегии (УБРАН ForceEntryOnStart check)
                 _strategy.RestorePosition(dir, entryPrice, lots);
                 
                 // 2. Проверяем активные ордера
-                var activeOrders = await _broker.GetActiveOrdersAsync();
+                List<Order> activeOrders;
+                try
+                {
+                    activeOrders = (await _broker.GetActiveOrdersAsync()).ToList();
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"[GRID-MM-v6] ⚠️ GetActiveOrders failed: {ex.Message}");
+                    System.IO.File.AppendAllText("/tmp/mm-debug.log", $"{DateTime.UtcNow:HH:mm:ss} GetActiveOrders failed: {ex.Message}\n");
+                    activeOrders = new List<Order>(); // Пустой список — продолжим восстановление
+                }
+                
                 lock (_orderLock)
                 {
                     _trackedOrders.Clear();
@@ -975,7 +1044,9 @@ public class GridMmRegimeLauncher : IDisposable
                 Console.WriteLine($"[GRID-MM-v6] 📊 Восстановлено {_trackedOrders.Count} ордеров из брокера");
                 
                 // 3. Расставляем недостающие лимитки грида
+                System.IO.File.AppendAllText("/tmp/mm-debug.log", $"{DateTime.UtcNow:HH:mm:ss} Calling PlaceMissingGridLimitsAsync\n");
                 await PlaceMissingGridLimitsAsync(dir, entryPrice);
+                System.IO.File.AppendAllText("/tmp/mm-debug.log", $"{DateTime.UtcNow:HH:mm:ss} PlaceMissingGridLimitsAsync done\n");
             }
             else
             {
@@ -1086,6 +1157,64 @@ public class GridMmRegimeLauncher : IDisposable
         
         if (placed > 0)
             Console.WriteLine($"[GRID-MM-v6] ✅ Расставлено {placed} недостающих уровней");
+    }
+    
+    /// <summary>
+    /// Периодическая проверка: если отслеживаемый ордер отменён брокером — удаляем из tracking
+    /// и если есть позиция — перевыставляем недостающие уровни грида
+    /// </summary>
+    private async Task VerifyAndRestoreLostOrdersAsync()
+    {
+        try
+        {
+            // Получаем активные ордера от брокера
+            var activeOrders = await _broker.GetActiveOrdersAsync();
+            var activeIds = new HashSet<string>(activeOrders.Select(o => o.BrokerOrderId));
+            
+            // Находим отменённые ордера в tracking
+            List<string> lostOrders;
+            List<TrackedOrder> trackedCopy;
+            lock (_orderLock)
+            {
+                lostOrders = _trackedOrders
+                    .Where(kvp => !activeIds.Contains(kvp.Key))
+                    .Select(kvp => kvp.Key)
+                    .ToList();
+                trackedCopy = _trackedOrders.Values.ToList();
+            }
+            
+            if (lostOrders.Count == 0) return; // Все ок
+            
+            Console.WriteLine($"[GRID-MM-v6] ⚠️ Обнаружено {lostOrders.Count} потерянных ордеров");
+            
+            // Удаляем отменённые из tracking
+            lock (_orderLock)
+            {
+                foreach (var orderId in lostOrders)
+                {
+                    if (_trackedOrders.TryGetValue(orderId, out var tracked))
+                    {
+                        Console.WriteLine($"[GRID-MM-v6] 🗑️ Удалён из tracking: {tracked.Type} L{tracked.LevelIndex} @ {tracked.Price:F0}");
+                        _trackedOrders.Remove(orderId);
+                    }
+                }
+            }
+            
+            // Если есть позиция — восстанавливаем недостающие уровни
+            if (_strategy.PositionDirection != 0)
+            {
+                // Получаем позицию от стратегии
+                int dir = _strategy.PositionDirection;
+                double entryPrice = _strategy.EntryPrice;
+                
+                Console.WriteLine($"[GRID-MM-v6] 🔄 Восстановление грида: dir={dir} entry={entryPrice:F0}");
+                await PlaceMissingGridLimitsAsync(dir, entryPrice);
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[GRID-MM-v6] ❌ VerifyAndRestoreLostOrders: {ex.Message}");
+        }
     }
 
     public void Dispose()

@@ -4,9 +4,13 @@ using HedgeFund.Server.Services;
 using HedgeFund.Server.Connectors;
 using HedgeFund.Core.Strategies;
 using HedgeFund.Core.Connectors;
+using HedgeFund.Brokers.Finam;
 using System.Text.Json;
 using Microsoft.AspNetCore.Http.Extensions;
 using System.Collections.Generic;
+using System.Security.Cryptography;
+using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.Authentication.Cookies;
 
 // Load .env file
 var envPath = "/root/.openclaw/workspace/HedgeFund/src/.env";
@@ -39,6 +43,23 @@ builder.Services.AddCors(options =>
     });
 });
 
+// === Аутентификация (Cookie) ===
+var loginUser = Environment.GetEnvironmentVariable("APP_LOGIN") ?? "admin";
+var loginPassHash = Environment.GetEnvironmentVariable("APP_PASS_HASH") ?? Convert.ToBase64String(SHA256.HashData("admin"u8.ToArray()));
+
+builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme)
+    .AddCookie(options =>
+    {
+        options.LoginPath = "/login.html";
+        options.LogoutPath = "/api/logout";
+        options.Cookie.Name = "OpenMarkets.Auth";
+        options.Cookie.HttpOnly = true;
+        options.ExpireTimeSpan = TimeSpan.FromDays(7);
+        options.SlidingExpiration = true;
+        options.AccessDeniedPath = "/login.html";
+    });
+builder.Services.AddAuthorization();
+
 // === Сервисы ===
 builder.Services.AddSingleton<TradingService>();
 builder.Services.AddSingleton<StrategyRunner>();
@@ -52,8 +73,83 @@ var httpClient = new HttpClient();
 httpClient.Timeout = TimeSpan.FromSeconds(3);
 
 app.UseCors();
+app.UseAuthentication();
+app.UseAuthorization();
 app.UseDefaultFiles();
 app.UseStaticFiles();
+
+// === Login API ===
+app.MapPost("/api/login", async (HttpRequest req, HttpResponse res) =>
+{
+    using var reader = new StreamReader(req.Body);
+    var body = await reader.ReadToEndAsync();
+    try
+    {
+        var json = System.Text.Json.JsonDocument.Parse(body);
+        var username = json.RootElement.GetProperty("username").GetString() ?? "";
+        var password = json.RootElement.GetProperty("password").GetString() ?? "";
+        var passHash = Convert.ToBase64String(SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(password)));
+        
+        if (username == loginUser && passHash == loginPassHash)
+        {
+            var claims = new[] { new System.Security.Claims.Claim(System.Security.Claims.ClaimTypes.Name, username) };
+            var identity = new System.Security.Claims.ClaimsIdentity(claims, CookieAuthenticationDefaults.AuthenticationScheme);
+            var principal = new System.Security.Claims.ClaimsPrincipal(identity);
+            await req.HttpContext.SignInAsync(CookieAuthenticationDefaults.AuthenticationScheme, principal);
+            return Results.Ok(new { success = true });
+        }
+        return Results.Unauthorized();
+    }
+    catch { return Results.BadRequest(); }
+});
+
+app.MapPost("/api/logout", async (HttpContext ctx) =>
+{
+    await ctx.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
+    return Results.Ok(new { success = true });
+});
+
+app.MapGet("/api/me", (HttpContext ctx) =>
+{
+    if (ctx.User.Identity?.IsAuthenticated == true)
+        return Results.Ok(new { user = ctx.User.Identity.Name });
+    return Results.Unauthorized();
+}).RequireAuthorization();
+
+
+// === Auth Middleware (protect all except login/health/static) ===
+app.Use(async (HttpContext ctx, Func<Task> next) =>
+{
+    var path = ctx.Request.Path.Value ?? "";
+    
+    // Allow: login, logout, health, static files, login page
+    if (path.StartsWith("/api/login") || 
+        path.StartsWith("/api/logout") ||
+        path == "/health" ||
+        path == "/login.html" ||
+        path.StartsWith("/css/") || 
+        path.StartsWith("/js/") || 
+        path.StartsWith("/favicon"))
+    {
+        await next();
+        return;
+    }
+    
+    // Require auth for everything else (API + SignalR + pages)
+    if (ctx.User.Identity?.IsAuthenticated != true)
+    {
+        ctx.Response.StatusCode = 401;
+        if (ctx.Request.Headers["Accept"].ToString().Contains("text/html"))
+        {
+            ctx.Response.Redirect("/login.html");
+            return;
+        }
+        await ctx.Response.WriteAsync("{\"error\":\"Unauthorized\"}");
+        return;
+    }
+    
+    await next();
+});
 
 // === Connector Manager ===
 var connectorMgr = new HedgeFund.Core.Connectors.ConnectorManager();
@@ -158,6 +254,7 @@ object _quikStateLock = new object();
 // === Candle Aggregator from QUIK ticks ===
 var candleBuilderLock = new object();
 GridMmRegimeLauncher? gridMm = null;
+GridMmV7Launcher? gridMmV7 = null;
 var candleBuilderCurrent = (double[]?)null;
 var candleBuilderHistory = new LinkedList<double[]>();
 const int CANDLE_TF_MINUTES = 5;
@@ -709,7 +806,7 @@ app.MapGet("/api/orders", async (TradingService svc) =>
 });
 
 // === Trades API ===
-app.MapGet("/api/trades", async () =>
+app.MapGet("/api/trades", async (string? date) =>
 {
     if (_activeConnectorName == "QUIK")
         return Results.Json(new object[] {});
@@ -717,8 +814,10 @@ app.MapGet("/api/trades", async () =>
     {
         var jwt = await GetFinamJwt();
         if (string.IsNullOrEmpty(jwt)) return Results.Json(new object[] {});
-        var today = DateTime.UtcNow.ToString("yyyy-MM-dd");
-        using var req = new HttpRequestMessage(HttpMethod.Get, $"https://api.finam.ru/v1/accounts/{_finamAccountId}/trades?interval.start_time={today}T00:00:00Z&interval.end_time={today}T23:59:00Z");
+        var targetDate = !string.IsNullOrEmpty(date) ? date : DateTime.UtcNow.ToString("yyyy-MM-dd");
+        // End date = next day 00:00 to include evening session trades
+        var endDate = DateTime.TryParse(targetDate, out var parsed) ? parsed.AddDays(1).ToString("yyyy-MM-dd") : targetDate;
+        using var req = new HttpRequestMessage(HttpMethod.Get, $"https://api.finam.ru/v1/accounts/{_finamAccountId}/trades?interval.start_time={targetDate}T00:00:00Z&interval.end_time={endDate}T00:00:00Z");
         req.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", jwt);
         var resp = await finamRest.SendAsync(req);
         if (resp.IsSuccessStatusCode)
@@ -863,7 +962,7 @@ app.MapGet("/api/orderbook", async (string ticker) =>
     return Results.Ok(new { rows = Array.Empty<object>(), source = "Finam (error)" });
 });
 
-app.MapPost("/strategy/grid-mm/start", async (HttpRequest req) =>
+app.MapPost("/strategy/grid-mm/start", async (TradingService tradingSvc, HttpRequest req) =>
 {
     try
     {
@@ -885,7 +984,7 @@ app.MapPost("/strategy/grid-mm/start", async (HttpRequest req) =>
             }
         } catch {}
         
-        gridMm = new GridMmRegimeLauncher(token, "SiM6", useQuikData: true, forceEntryOnStart: forceEntry);
+        gridMm = new GridMmRegimeLauncher(tradingSvc.FinamBroker ?? throw new InvalidOperationException("Broker not connected. POST /connect-broker first"), "SiM6", accountId: "1225953", useQuikData: true, forceEntryOnStart: forceEntry);
         return Results.Json(new { status = "initialized", detail = gridMm.GetStatus() });
     }
     catch (Exception ex)
@@ -941,8 +1040,6 @@ app.MapPost("/strategy/grid-mm/config", async (HttpRequest req) =>
         if (root.TryGetProperty("gridStep", out var gridStep)) gridMm.Strategy.Params.GridStep = gridStep.GetDouble();
         if (root.TryGetProperty("gridSpread", out var gridSpread)) gridMm.Strategy.Params.GridSpread = gridSpread.GetDouble();
         if (root.TryGetProperty("maxGridLevels", out var maxGrid)) { gridMm.Strategy.Params.MaxGridLevels = maxGrid.GetInt32(); gridMm.Strategy.ResizeGrid(); }
-        if (root.TryGetProperty("minProfitPerLot", out var minProfit)) gridMm.Strategy.Params.MinProfitPerLot = minProfit.GetDouble();
-        if (root.TryGetProperty("closePct", out var closePct)) gridMm.Strategy.Params.ClosePct = closePct.GetDouble();
         if (root.TryGetProperty("commission", out var comm)) gridMm.Strategy.Params.Commission = comm.GetDouble();
         if (root.TryGetProperty("maxLots", out var maxLots)) gridMm.Strategy.Params.MaxLots = maxLots.GetInt32();
         if (root.TryGetProperty("forceEntryOnStart", out var forceEntry)) gridMm.Strategy.Params.ForceEntryOnStart = forceEntry.GetBoolean();
@@ -1009,14 +1106,509 @@ app.MapGet("/strategy/grid-mm/chart-data", () =>
 
 // NOTE: NoSignal и PSAR Grid — удалены. Используем Grid MM Regime.
 
-// === REST API: Арбитраж ===
-ArbLauncher? arbLauncher = null;
+// V7 chart-data
+app.MapGet("/strategy/grid-mm-v7/chart-data", () =>
+{
+    if (gridMmV7 == null) return Results.Json(new { error = "Not running" }, statusCode: 400);
+    var s = gridMmV7.Strategy;
+    return Results.Json(new
+    {
+        current = new
+        {
+            sar = s.CurrentSar,
+            ema = s.CurrentEma,
+            std = s.CurrentStd,
+            posDir = s.PositionDirection,
+            entryPrice = s.EntryPrice,
+            lots = s.TotalLots,
+            totalPnl = s.TotalPnL,
+            roundTrips = s.RoundTrips,
+            gridHold = s.Params.GridHold,
+            stdMult = s.Params.StdMult
+        }
+    });
+});
 
+// ARB removed
+object? arbLauncher = null;
 
 // === Volume Reversal (RTS) ===
 VolumeReversalLauncher volRev = null;
 
-// === Единый endpoint: все активные стратегии ===
+// === Grid MM v7 endpoints ===
+app.MapPost("/strategy/grid-mm-v7/start", async (TradingService tradingSvc, HttpRequest req) =>
+{
+    if (gridMmV7 != null)
+        return Results.Json(new { status = "already_running", detail = gridMmV7.GetStatus() });
+    
+    var broker = tradingSvc.FinamBroker;
+    if (broker == null || !broker.IsConnected)
+    {
+        // Fallback: create broker with REST client only
+        var apiKey = Environment.GetEnvironmentVariable("FINAM_API_KEY") ?? "";
+        var restClient = new FinamApiClient(apiKey);
+        broker = new FinamConnector(); // will use RestClient from below
+        // Force set restClient via reflection
+        broker.GetType().GetField("_restClient", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)?.SetValue(broker, restClient);
+    }
+    if (broker == null) return Results.Json(new { status = "error", error = "Брокер не подключён. Перезапустите сервер." });
+    var v7Strategy = new GridMmV7Strategy();
+    gridMmV7 = new GridMmV7Launcher(broker, v7Strategy);
+    
+    // Apply config from request body BEFORE starting
+    try
+    {
+        var body = await new StreamReader(req.Body).ReadToEndAsync();
+        if (!string.IsNullOrEmpty(body))
+        {
+            var doc = System.Text.Json.JsonDocument.Parse(body);
+            var root = doc.RootElement;
+            var p = v7Strategy.Params;
+            if (root.TryGetProperty("sarStart", out var v)) p.SarStart = v.GetDouble();
+            if (root.TryGetProperty("sarStep", out v)) p.SarStep = v.GetDouble();
+            if (root.TryGetProperty("sarMax", out v)) p.SarMax = v.GetDouble();
+            if (root.TryGetProperty("emaPeriod", out v)) p.EmaPeriod = v.GetInt32();
+            if (root.TryGetProperty("gridStep", out v)) p.GridStep = v.GetDouble();
+            if (root.TryGetProperty("gridSpread", out v)) p.GridSpread = v.GetDouble();
+            if (root.TryGetProperty("maxGridLevels", out v)) p.MaxGridLevels = v.GetInt32();
+            if (root.TryGetProperty("maxLots", out v)) p.MaxLots = v.GetInt32();
+            if (root.TryGetProperty("stdPeriod", out v)) p.StdPeriod = v.GetInt32();
+            if (root.TryGetProperty("stdMult", out v)) p.StdMult = v.GetDouble();
+            if (root.TryGetProperty("gridHold", out v)) p.GridHold = v.GetBoolean();
+        }
+    } catch { }
+    
+    try { 
+        var startTask = gridMmV7.StartAsync();
+        if (await Task.WhenAny(startTask, Task.Delay(5000)) != startTask)
+            return Results.Json(new { status = "running", detail = gridMmV7.GetStatus(), warn = "Start taking long, warming up" });
+    } catch (Exception ex) { Console.WriteLine($"[V7] Start error: {ex.Message}"); return Results.Json(new { status = "error", error = ex.Message }); }
+    return Results.Json(new { status = "running", detail = gridMmV7.GetStatus() });
+});
+
+app.MapPost("/strategy/grid-mm-v7/stop", async () =>
+{
+    Console.WriteLine("[V7-ENDPOINT] Stop requested, gridMmV7=" + (gridMmV7 != null ? "not null" : "null"));
+    if (gridMmV7 != null)
+    {
+        await gridMmV7.StopAsync();
+        var status = gridMmV7.GetStatus();
+        gridMmV7.Dispose();
+        gridMmV7 = null;
+        Console.WriteLine("[V7-ENDPOINT] Stopped OK");
+        return Results.Json(new { status = "stopped", detail = status });
+    }
+    
+    // Стратегия null, но может быть открытая позиция — отменяем все ордера через REST
+    Console.WriteLine("[V7-ENDPOINT] Strategy null, force cancelling all orders");
+    try
+    {
+        using var http = new HttpClient { BaseAddress = new Uri("http://localhost:5050") };
+        await http.PostAsync("/api/orders/cancel-all", null);
+        Console.WriteLine("[V7-ENDPOINT] All orders cancelled via REST");
+    }
+    catch (Exception ex) { Console.WriteLine($"[V7-ENDPOINT] Cancel failed: {ex.Message}"); }
+    
+    return Results.Json(new { status = "stopped", detail = "Strategy was null, orders cancelled" });
+});
+
+app.MapPost("/strategy/grid-mm-v7/pause", async () =>
+{
+    if (gridMmV7 == null) return Results.Json(new { error = "Not running" }, statusCode: 400);
+    await gridMmV7.PauseAsync();
+    return Results.Json(new { status = "paused", detail = gridMmV7.GetStatus() });
+});
+
+app.MapPost("/strategy/grid-mm-v7/resume", async () =>
+{
+    if (gridMmV7 == null) return Results.Json(new { error = "Not running" }, statusCode: 400);
+    await gridMmV7.ResumeAsync();
+    return Results.Json(new { status = "running", detail = gridMmV7.GetStatus() });
+});
+
+app.MapGet("/strategy/grid-mm-v7/status", () =>
+{
+    if (gridMmV7 == null) return Results.Json(new { status = "stopped" });
+    var s = gridMmV7.Strategy;
+    return Results.Json(new {
+        status = s.CurrentMode.ToString(),
+        direction = s.PositionDirection, // 0=flat, 1=long, -1=short
+        dirStr = s.PositionDirection == 1 ? "LONG" : s.PositionDirection == -1 ? "SHORT" : "FLAT",
+        entryPrice = s.EntryPrice,
+        totalLots = s.TotalLots,
+        filledLevels = s.FilledLevels,
+        roundTrips = s.RoundTrips,
+        totalPnL = s.TotalPnL,
+        currentLevel = s.CurrentLevel,
+        sar = s.CurrentSar,
+        ema = s.CurrentEma,
+        connected = true,
+        detail = gridMmV7.GetStatus()
+    });
+});
+
+app.MapPost("/strategy/grid-mm-v7/force-entry", async () =>
+{
+    if (gridMmV7 == null) return Results.Json(new { error = "Not running" }, statusCode: 400);
+    await gridMmV7.ForceEntryAsync();
+    return Results.Json(new { status = "ok", detail = gridMmV7.GetStatus() });
+});
+
+app.MapPost("/strategy/grid-mm-v7/buy", async () =>
+{
+    if (gridMmV7 == null) return Results.Json(new { error = "Not running" }, statusCode: 400);
+    await gridMmV7.MarketBuyAsync();
+    return Results.Json(new { status = "ok", detail = gridMmV7.GetStatus() });
+});
+
+app.MapPost("/strategy/grid-mm-v7/sell", async () =>
+{
+    if (gridMmV7 == null) return Results.Json(new { error = "Not running" }, statusCode: 400);
+    await gridMmV7.MarketSellAsync();
+    return Results.Json(new { status = "ok", detail = gridMmV7.GetStatus() });
+});
+
+app.MapPost("/strategy/grid-mm-v7/config", async (HttpRequest req) =>
+{
+    if (gridMmV7 == null) return Results.Json(new { error = "Not running" }, statusCode: 400);
+    var body = await new StreamReader(req.Body).ReadToEndAsync();
+    var doc = System.Text.Json.JsonDocument.Parse(body);
+    var root = doc.RootElement;
+    var p = gridMmV7.Strategy.Params;
+    
+    if (root.TryGetProperty("sarStart", out var v)) p.SarStart = v.GetDouble();
+    if (root.TryGetProperty("sarStep", out v)) p.SarStep = v.GetDouble();
+    if (root.TryGetProperty("sarMax", out v)) p.SarMax = v.GetDouble();
+    if (root.TryGetProperty("emaPeriod", out v)) p.EmaPeriod = v.GetInt32();
+    if (root.TryGetProperty("gridStep", out v)) p.GridStep = v.GetDouble();
+    if (root.TryGetProperty("gridSpread", out v)) p.GridSpread = v.GetDouble();
+    if (root.TryGetProperty("maxGridLevels", out v)) p.MaxGridLevels = v.GetInt32();
+    if (root.TryGetProperty("maxLots", out v)) p.MaxLots = v.GetInt32();
+    if (root.TryGetProperty("stdPeriod", out v)) p.StdPeriod = v.GetInt32();
+    if (root.TryGetProperty("stdMult", out v)) p.StdMult = v.GetDouble();
+    if (root.TryGetProperty("gridHold", out v)) p.GridHold = v.GetBoolean();
+    
+    return Results.Json(new { status = "ok", config = new {
+        p.SarStart, p.SarStep, p.SarMax, p.EmaPeriod,
+        p.GridStep, p.GridSpread, p.MaxGridLevels,
+        p.StdPeriod, p.StdMult, p.GridHold
+    }});
+});
+
+// === Grid MM V8 (Trend-following) ===
+GridMmV7Launcher? gridMmV8 = null;
+
+app.MapPost("/strategy/grid-mm-v8/start", async (TradingService tradingSvc, HttpRequest req) =>
+{
+    if (gridMmV8 != null)
+        return Results.Json(new { status = "already_running", detail = gridMmV8.GetStatus() });
+    
+    var broker = tradingSvc.FinamBroker ?? throw new InvalidOperationException("Broker not connected");
+    
+    // Determine instrument from request body
+    string v8Instrument = "SiM6";
+    string? bodyRaw = null;
+    try { bodyRaw = await new StreamReader(req.Body).ReadToEndAsync(); } catch {}
+    if (!string.IsNullOrEmpty(bodyRaw))
+    {
+        try {
+            var docPre = System.Text.Json.JsonDocument.Parse(bodyRaw);
+            if (docPre.RootElement.TryGetProperty("instrument", out var instrEl))
+                v8Instrument = instrEl.GetString() ?? "SiM6";
+        } catch {}
+    }
+    
+    var v8Config = new GridMmV7Strategy.Config { InvertedLogic = true };
+    
+    try
+    {
+        if (!string.IsNullOrEmpty(bodyRaw))
+        {
+            var doc = System.Text.Json.JsonDocument.Parse(bodyRaw);
+            var root = doc.RootElement;
+            if (root.TryGetProperty("sarStart", out var v)) v8Config.SarStart = v.GetDouble();
+            if (root.TryGetProperty("sarStep", out v)) v8Config.SarStep = v.GetDouble();
+            if (root.TryGetProperty("sarMax", out v)) v8Config.SarMax = v.GetDouble();
+            if (root.TryGetProperty("emaPeriod", out v)) v8Config.EmaPeriod = v.GetInt32();
+            if (root.TryGetProperty("gridStep", out v)) v8Config.GridStep = v.GetDouble();
+            if (root.TryGetProperty("gridSpread", out v)) v8Config.GridSpread = v.GetDouble();
+            if (root.TryGetProperty("maxGridLevels", out v)) v8Config.MaxGridLevels = v.GetInt32();
+            if (root.TryGetProperty("maxLots", out v)) v8Config.MaxLots = v.GetInt32();
+            if (root.TryGetProperty("stdPeriod", out v)) v8Config.StdPeriod = v.GetInt32();
+            if (root.TryGetProperty("stdMult", out v)) v8Config.StdMult = v.GetDouble();
+            if (root.TryGetProperty("gridHold", out v)) v8Config.GridHold = v.GetBoolean();
+        }
+    }
+    catch { }
+    
+    gridMmV8 = new GridMmV8Launcher(broker, v8Config);
+    if (!string.IsNullOrEmpty(v8Instrument) && v8Instrument != "SiM6")
+        gridMmV8.SetInstrument(v8Instrument);
+    
+    try {
+        var startTask = gridMmV8.StartAsync();
+        if (await Task.WhenAny(startTask, Task.Delay(5000)) != startTask)
+            return Results.Json(new { status = "error", error = "Start timeout" });
+    } catch (Exception ex) { return Results.Json(new { status = "error", error = ex.Message }); }
+    return Results.Json(new { status = "running", detail = gridMmV8.GetStatus() });
+});
+
+app.MapPost("/strategy/grid-mm-v8/stop", async () =>
+{
+    if (gridMmV8 == null) return Results.Json(new { error = "Not running" }, statusCode: 400);
+    await gridMmV8.StopAsync();
+    var status = gridMmV8.GetStatus();
+    gridMmV8.Dispose(); gridMmV8 = null;
+    return Results.Json(new { status = "stopped", detail = status });
+});
+
+app.MapPost("/strategy/grid-mm-v8/pause", async () =>
+{
+    if (gridMmV8 == null) return Results.Json(new { error = "Not running" }, statusCode: 400);
+    await gridMmV8.PauseAsync();
+    return Results.Json(new { status = "paused", detail = gridMmV8.GetStatus() });
+});
+
+app.MapPost("/strategy/grid-mm-v8/resume", async () =>
+{
+    if (gridMmV8 == null) return Results.Json(new { error = "Not running" }, statusCode: 400);
+    await gridMmV8.ResumeAsync();
+    return Results.Json(new { status = "running", detail = gridMmV8.GetStatus() });
+});
+
+app.MapGet("/strategy/grid-mm-v8/status", () =>
+{
+    if (gridMmV8 == null) return Results.Json(new { status = "not_initialized" });
+    var s = gridMmV8.Strategy;
+    return Results.Json(new {
+        status = s.CurrentMode.ToString(),
+        posDir = s.PositionDirection, entryPrice = s.EntryPrice,
+        lots = s.TotalLots, filledLevels = s.FilledLevels,
+        roundTrips = s.RoundTrips, pnl = s.TotalPnL,
+        sar = s.CurrentSar, ema = s.CurrentEma, std = s.CurrentStd,
+        level = s.CurrentLevel, connected = true,
+        detail = gridMmV8.GetStatus()
+    });
+});
+
+app.MapPost("/strategy/grid-mm-v8/force-entry", () =>
+{
+    if (gridMmV8 == null) return Results.Json(new { error = "Not running" }, statusCode: 400);
+    gridMmV8.Strategy.ForceEntry(0); // цена обновится при исполнении
+    return Results.Json(new { status = "ok", detail = gridMmV8.GetStatus() });
+});
+
+app.MapPost("/strategy/grid-mm-v8/buy", async () =>
+{
+    if (gridMmV8 == null) return Results.Json(new { error = "Not running" }, statusCode: 400);
+    await gridMmV8.MarketBuyAsync();
+    return Results.Json(new { status = "ok" });
+});
+
+app.MapPost("/strategy/grid-mm-v8/sell", async () =>
+{
+    if (gridMmV8 == null) return Results.Json(new { error = "Not running" }, statusCode: 400);
+    await gridMmV8.MarketSellAsync();
+    return Results.Json(new { status = "ok" });
+});
+
+app.MapPost("/strategy/grid-mm-v8/config", async (HttpRequest req) =>
+{
+    if (gridMmV8 == null) return Results.Json(new { error = "Not running" }, statusCode: 400);
+    var body = await new StreamReader(req.Body).ReadToEndAsync();
+    var doc = System.Text.Json.JsonDocument.Parse(body);
+    var root = doc.RootElement;
+    var p = gridMmV8.Strategy.Params;
+    if (root.TryGetProperty("sarStart", out var v)) p.SarStart = v.GetDouble();
+    if (root.TryGetProperty("sarStep", out v)) p.SarStep = v.GetDouble();
+    if (root.TryGetProperty("sarMax", out v)) p.SarMax = v.GetDouble();
+    if (root.TryGetProperty("emaPeriod", out v)) p.EmaPeriod = v.GetInt32();
+    if (root.TryGetProperty("gridStep", out v)) p.GridStep = v.GetDouble();
+    if (root.TryGetProperty("gridSpread", out v)) p.GridSpread = v.GetDouble();
+    if (root.TryGetProperty("maxGridLevels", out v)) p.MaxGridLevels = v.GetInt32();
+    if (root.TryGetProperty("maxLots", out v)) p.MaxLots = v.GetInt32();
+    if (root.TryGetProperty("stdPeriod", out v)) p.StdPeriod = v.GetInt32();
+    if (root.TryGetProperty("stdMult", out v)) p.StdMult = v.GetDouble();
+    if (root.TryGetProperty("gridHold", out v)) p.GridHold = v.GetBoolean();
+    return Results.Json(new { status = "ok", config = new { p.SarStart, p.SarStep, p.SarMax, p.EmaPeriod, p.GridStep, p.GridSpread, p.MaxGridLevels, p.StdPeriod, p.StdMult, p.GridHold }});
+});
+
+// === VP Scalp Grid ===
+VpScalpGridLauncher? vpScalpGrid = null;
+
+// === VP Scalp Grid Copy ===
+VpScalpGridCopyLauncher? vpCopyLauncher = null;
+
+app.MapPost("/strategy/vp-scalp-grid/start", async (TradingService tradingSvc, HttpRequest req) =>
+{
+    if (vpScalpGrid != null)
+        return Results.Json(new { status = "already_running", detail = vpScalpGrid.GetStatus() });
+
+    var broker = tradingSvc.FinamBroker ?? throw new InvalidOperationException("Broker not connected");
+    var config = new VpScalpGridStrategy.Config();
+
+    string? bodyRaw = null;
+    try { bodyRaw = await new StreamReader(req.Body).ReadToEndAsync(); } catch {}
+    if (!string.IsNullOrEmpty(bodyRaw))
+    {
+        try {
+            var doc = System.Text.Json.JsonDocument.Parse(bodyRaw);
+            var root = doc.RootElement;
+            if (root.TryGetProperty("maxLevels", out var v)) config.MaxLevels = v.GetInt32();
+            if (root.TryGetProperty("stepBase", out v)) config.StepBase = v.GetInt32();
+            if (root.TryGetProperty("spreadBase", out v)) config.SpreadBase = v.GetInt32();
+            if (root.TryGetProperty("maxHoldMinutes", out v)) config.MaxHoldMinutes = v.GetInt32();
+            if (root.TryGetProperty("vpLookback", out v)) config.VpLookback = v.GetInt32();
+            if (root.TryGetProperty("vpBinSize", out v)) config.VpBinSize = v.GetInt32();
+            if (root.TryGetProperty("vaPercent", out v)) config.VaPercent = v.GetDouble();
+            if (root.TryGetProperty("rvAdaptation", out v)) config.RvAdaptation = v.GetBoolean();
+        } catch {}
+    }
+
+    var vpStrategy = new VpScalpGridStrategy(config);
+    vpScalpGrid = new VpScalpGridLauncher(broker, vpStrategy);
+
+    try {
+        var startTask = vpScalpGrid.StartAsync();
+        if (await Task.WhenAny(startTask, Task.Delay(5000)) != startTask)
+            return Results.Json(new { status = "error", error = "Start timeout" });
+    } catch (Exception ex) { return Results.Json(new { status = "error", error = ex.Message }); }
+    return Results.Json(new { status = "running", detail = vpScalpGrid.GetStatus() });
+});
+
+app.MapPost("/strategy/vp-scalp-grid/stop", async () =>
+{
+    if (vpScalpGrid == null) return Results.Json(new { error = "Not running" }, statusCode: 400);
+    await vpScalpGrid.StopAsync();
+    var status = vpScalpGrid.GetStatus();
+    vpScalpGrid = null;
+    return Results.Json(new { status = "stopped", detail = status });
+});
+
+app.MapPost("/strategy/vp-scalp-grid/pause", async () =>
+{
+    if (vpScalpGrid == null) return Results.Json(new { error = "Not running" }, statusCode: 400);
+    await vpScalpGrid.PauseAsync();
+    return Results.Json(new { status = "paused", detail = vpScalpGrid.GetStatus() });
+});
+
+app.MapPost("/strategy/vp-scalp-grid/resume", async () =>
+{
+    if (vpScalpGrid == null) return Results.Json(new { error = "Not running" }, statusCode: 400);
+    await vpScalpGrid.ResumeAsync();
+    return Results.Json(new { status = "running", detail = vpScalpGrid.GetStatus() });
+});
+
+app.MapGet("/strategy/vp-scalp-grid/status", () =>
+{
+    if (vpScalpGrid == null) return Results.Json(new { status = "stopped" });
+    return Results.Json(vpScalpGrid.GetStatus());
+});
+
+app.MapPost("/strategy/vp-scalp-grid/config", async (HttpRequest req) =>
+{
+    if (vpScalpGrid == null) return Results.Json(new { error = "Not running" }, statusCode: 400);
+    var body = await new StreamReader(req.Body).ReadToEndAsync();
+    var doc = System.Text.Json.JsonDocument.Parse(body);
+    var root = doc.RootElement;
+    var p = vpScalpGrid.Strategy.Params;
+    if (root.TryGetProperty("maxLevels", out var v)) p.MaxLevels = v.GetInt32();
+    if (root.TryGetProperty("stepBase", out v)) p.StepBase = v.GetInt32();
+    if (root.TryGetProperty("spreadBase", out v)) p.SpreadBase = v.GetInt32();
+    if (root.TryGetProperty("maxHoldMinutes", out v)) p.MaxHoldMinutes = v.GetInt32();
+    if (root.TryGetProperty("vpLookback", out v)) p.VpLookback = v.GetInt32();
+    if (root.TryGetProperty("vpBinSize", out v)) p.VpBinSize = v.GetInt32();
+    if (root.TryGetProperty("vaPercent", out v)) p.VaPercent = v.GetDouble();
+    if (root.TryGetProperty("rvAdaptation", out v)) p.RvAdaptation = v.GetBoolean();
+    return Results.Json(new { status = "ok" });
+});
+
+// === VP Scalp Grid Copy ===
+app.MapPost("/strategy/vp-copy/start", async (TradingService tradingSvc, HttpRequest req) =>
+{
+    if (vpCopyLauncher != null)
+        return Results.Json(new { status = "already_running", detail = vpCopyLauncher.GetStatus() });
+
+    var broker = tradingSvc.FinamBroker ?? throw new InvalidOperationException("Broker not connected");
+    var config = new VpScalpGridCopyStrategy.Config();
+
+    string? bodyRaw = null;
+    try { bodyRaw = await new StreamReader(req.Body).ReadToEndAsync(); } catch {}
+    if (!string.IsNullOrEmpty(bodyRaw))
+    {
+        try {
+            var doc = System.Text.Json.JsonDocument.Parse(bodyRaw);
+            var root = doc.RootElement;
+            if (root.TryGetProperty("maxLevels", out var v)) config.MaxLevels = v.GetInt32();
+            if (root.TryGetProperty("stepBase", out v)) config.StepBase = v.GetInt32();
+            if (root.TryGetProperty("spreadBase", out v)) config.SpreadBase = v.GetInt32();
+            if (root.TryGetProperty("maxHoldMinutes", out v)) config.MaxHoldMinutes = v.GetInt32();
+            if (root.TryGetProperty("vpLookback", out v)) config.VpLookback = v.GetInt32();
+            if (root.TryGetProperty("vpBinSize", out v)) config.VpBinSize = v.GetInt32();
+            if (root.TryGetProperty("vaPercent", out v)) config.VaPercent = v.GetDouble();
+            if (root.TryGetProperty("rvAdaptation", out v)) config.RvAdaptation = v.GetBoolean();
+        } catch {}
+    }
+
+    var vpCopyStrategy = new VpScalpGridCopyStrategy(config);
+    vpCopyLauncher = new VpScalpGridCopyLauncher(broker, vpCopyStrategy);
+
+    try {
+        var startTask = vpCopyLauncher.StartAsync();
+        if (await Task.WhenAny(startTask, Task.Delay(5000)) != startTask)
+            return Results.Json(new { status = "error", error = "Start timeout" });
+    } catch (Exception ex) { return Results.Json(new { status = "error", error = ex.Message }); }
+    return Results.Json(new { status = "running", detail = vpCopyLauncher.GetStatus() });
+});
+
+app.MapPost("/strategy/vp-copy/stop", async () =>
+{
+    if (vpCopyLauncher == null) return Results.Json(new { error = "Not running" }, statusCode: 400);
+    await vpCopyLauncher.StopAsync();
+    var status = vpCopyLauncher.GetStatus();
+    vpCopyLauncher.Dispose();
+    vpCopyLauncher = null;
+    return Results.Json(new { status = "stopped", detail = status });
+});
+
+app.MapPost("/strategy/vp-copy/pause", async () =>
+{
+    if (vpCopyLauncher == null) return Results.Json(new { error = "Not running" }, statusCode: 400);
+    await vpCopyLauncher.PauseAsync();
+    return Results.Json(new { status = "paused", detail = vpCopyLauncher.GetStatus() });
+});
+
+app.MapPost("/strategy/vp-copy/resume", async () =>
+{
+    if (vpCopyLauncher == null) return Results.Json(new { error = "Not running" }, statusCode: 400);
+    await vpCopyLauncher.ResumeAsync();
+    return Results.Json(new { status = "running", detail = vpCopyLauncher.GetStatus() });
+});
+
+app.MapGet("/strategy/vp-copy/status", () =>
+{
+    if (vpCopyLauncher == null) return Results.Json(new { status = "stopped" });
+    return Results.Json(vpCopyLauncher.GetStatus());
+});
+
+app.MapPost("/strategy/vp-copy/config", async (HttpRequest req) =>
+{
+    if (vpCopyLauncher == null) return Results.Json(new { error = "Not running" }, statusCode: 400);
+    var body = await new StreamReader(req.Body).ReadToEndAsync();
+    var doc = System.Text.Json.JsonDocument.Parse(body);
+    var root = doc.RootElement;
+    var p = vpCopyLauncher.Strategy.Params;
+    if (root.TryGetProperty("maxLevels", out var v)) p.MaxLevels = v.GetInt32();
+    if (root.TryGetProperty("stepBase", out v)) p.StepBase = v.GetInt32();
+    if (root.TryGetProperty("spreadBase", out v)) p.SpreadBase = v.GetInt32();
+    if (root.TryGetProperty("maxHoldMinutes", out v)) p.MaxHoldMinutes = v.GetInt32();
+    if (root.TryGetProperty("vpLookback", out v)) p.VpLookback = v.GetInt32();
+    if (root.TryGetProperty("vpBinSize", out v)) p.VpBinSize = v.GetInt32();
+    if (root.TryGetProperty("vaPercent", out v)) p.VaPercent = v.GetDouble();
+    if (root.TryGetProperty("rvAdaptation", out v)) p.RvAdaptation = v.GetBoolean();
+    return Results.Json(new { status = "ok" });
+});
+
 app.MapGet("/api/active-strategies", () =>
 {
     var strategies = new List<object>();
@@ -1032,6 +1624,18 @@ app.MapGet("/api/active-strategies", () =>
             detail = gridMm.GetStatus()
         });
     }
+    if (gridMmV7 != null)
+    {
+        var s = gridMmV7.Strategy;
+        strategies.Add(new {
+            id = "grid-mm-v7", name = "Grid MM v7", instrument = "SiM6", tf = "5 мин",
+            mode = s.CurrentMode.ToString(), posDir = s.PositionDirection, entryPrice = s.EntryPrice,
+            lots = s.TotalLots, openLots = s.TotalLots, filledGrid = s.FilledLevels,
+            totalTrades = s.RoundTrips, totalPnL = s.TotalPnL,
+            sar = s.CurrentSar, ema = s.CurrentEma, connected = true,
+            detail = gridMmV7.GetStatus()
+        });
+    }
     if (volRev != null)
     {
         var s = volRev.Strategy;
@@ -1043,13 +1647,40 @@ app.MapGet("/api/active-strategies", () =>
             sar = 0.0, ema = 0.0, connected = false, detail = volRev.GetStatus()
         });
     }
-    if (arbLauncher != null)
+    if (gridMmV8 != null)
     {
+        var s = gridMmV8.Strategy;
         strategies.Add(new {
-            id = "arb", name = "Arbitrage", instrument = "Multi", tf = "—",
-            mode = "Running", posDir = 0, entryPrice = 0.0, lots = 0, openLots = 0, filledGrid = 0,
-            totalTrades = 0, totalPnL = 0.0, sar = 0.0, ema = 0.0,
-            connected = arbLauncher.IsConnected, detail = arbLauncher.GetStatus()
+            id = "grid-mm-v8", name = "Grid MM v8 (Trend)", instrument = gridMmV8.Ticker, tf = "5 мин",
+            mode = s.CurrentMode.ToString(), posDir = s.PositionDirection, entryPrice = s.EntryPrice,
+            lots = s.TotalLots, openLots = s.TotalLots, filledGrid = s.FilledLevels,
+            totalTrades = s.RoundTrips, totalPnL = s.TotalPnL,
+            sar = s.CurrentSar, ema = s.CurrentEma, connected = true,
+            detail = gridMmV8.GetStatus()
+        });
+    }
+    if (vpScalpGrid != null)
+    {
+        var s = vpScalpGrid.Strategy;
+        strategies.Add(new {
+            id = "vp-scalp-grid", name = "VP Scalp Grid", instrument = "SiM6", tf = "1 мин",
+            mode = s.CurrentMode.ToString(), posDir = s.PositionDirection, entryPrice = s.EntryPrice,
+            lots = s.TotalLots, openLots = s.TotalLots, filledGrid = s.FilledLevels,
+            totalTrades = 0, totalPnL = s.RealizedPnL,
+            sar = 0.0, ema = 0.0, connected = true,
+            detail = vpScalpGrid.GetStatus()
+        });
+    }
+    if (vpCopyLauncher != null)
+    {
+        var s = vpCopyLauncher.Strategy;
+        strategies.Add(new {
+            id = "vp-copy", name = "VP Scalp Grid Copy", instrument = "SiM6", tf = "1 мин",
+            mode = s.CurrentMode.ToString(), posDir = s.PositionDirection, entryPrice = s.EntryPrice,
+            lots = s.TotalLots, openLots = s.TotalLots, filledGrid = s.FilledLevels,
+            totalTrades = s.RoundTrips, totalPnL = s.RealizedPnL,
+            sar = 0.0, ema = 0.0, connected = true,
+            detail = vpCopyLauncher.GetStatus()
         });
     }
     return Results.Json(new { strategies, count = strategies.Count });
@@ -1098,160 +1729,57 @@ app.MapGet("/strategy/vol-rev/status", () =>
     });
 });
 
-// === Arbitrage ===
-app.MapPost("/arb/start", () =>
-{
-    if (arbLauncher == null) return Results.BadRequest(new { error = "Арбитраж не инициализирован. POST /arb/init" });
-    arbLauncher.Start();
-    return Results.Ok(new { status = "running", detail = arbLauncher.GetStatus() });
-});
+// === ARB REMOVED ===
 
-app.MapPost("/arb/stop", () =>
-{
-    if (arbLauncher == null) return Results.BadRequest(new { error = "Арбитраж не инициализирован" });
-    arbLauncher.StopTrading();
-    return Results.Ok(new { status = "stopped", detail = arbLauncher.GetStatus() });
-});
 
-app.MapPost("/arb/pause", () =>
-{
-    if (arbLauncher == null) return Results.BadRequest(new { error = "Арбитраж не инициализирован" });
-    arbLauncher.Pause();
-    return Results.Ok(new { status = "paused", detail = arbLauncher.GetStatus() });
-});
-
-app.MapGet("/arb/status", () =>
-{
-    if (arbLauncher == null) return Results.Ok(new { status = "not_initialized" });
-    return Results.Ok(new { status = "ok", detail = arbLauncher.GetStatus(), connected = arbLauncher.IsConnected });
-});
-
-app.MapPost("/arb/init", async (HttpRequest req) =>
+// Отмена всех активных ордеров
+app.MapPost("/api/orders/cancel-all", async () =>
 {
     try
     {
-        // Токен: из тела запроса или из переменной окружения
-        string? token = null;
-        try
+        var connector = connectorMgr?.Active;
+        if (connector == null)
+            return Results.Json(new { error = "No active connector" }, statusCode: 400);
+        
+        // Получаем ордера через локальный API
+        using var httpClient = new HttpClient();
+        httpClient.BaseAddress = new Uri("http://localhost:5050");
+        var ordersResp = await httpClient.GetAsync("/api/orders");
+        var ordersJson = await ordersResp.Content.ReadAsStringAsync();
+        var ordersDoc = JsonDocument.Parse(ordersJson);
+        
+        int cancelled = 0;
+        int total = 0;
+        
+        if (ordersDoc.RootElement.TryGetProperty("orders", out var ordersArray))
         {
-            using var reader = new StreamReader(req.Body);
-            var body = await reader.ReadToEndAsync();
-            Console.WriteLine($"[ARB/INIT] body: {body?.Substring(0, Math.Min(body?.Length ?? 0, 100))}");
-            if (!string.IsNullOrWhiteSpace(body))
+            foreach (var order in ordersArray.EnumerateArray())
             {
-                var json = System.Text.Json.JsonDocument.Parse(body);
-                if (json.RootElement.TryGetProperty("token", out var t))
+                string status = order.GetProperty("status").GetString() ?? "";
+                if (status == "ORDER_STATUS_NEW")
                 {
-                    var val = t.GetString();
-                    if (!string.IsNullOrWhiteSpace(val))
-                        token = val;
+                    total++;
+                    string orderId = order.GetProperty("order_id").GetString() ?? "";
+                    try
+                    {
+                        await connector.CancelOrderAsync(orderId);
+                        cancelled++;
+                        Console.WriteLine($"[CANCEL] Cancelled {orderId}");
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"[CANCEL] Failed to cancel {orderId}: {ex.Message}");
+                    }
                 }
             }
         }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"[ARB/INIT] Ошибка парсинга body: {ex.Message}");
-        }
         
-        if (string.IsNullOrEmpty(token))
-            token = Environment.GetEnvironmentVariable("FINAM_TOKEN");
-        
-        Console.WriteLine($"[ARB/INIT] token: {(string.IsNullOrEmpty(token) ? "EMPTY" : token.Substring(0, Math.Min(4, token.Length)) + "...")}");
-        
-        if (string.IsNullOrEmpty(token))
-            return Results.Json(new { error = "Токен не передан. Сначала подключитесь на вкладке Торговля" }, statusCode: 400);
-
-        if (arbLauncher != null)
-            return Results.Json(new { status = "already_initialized", detail = arbLauncher.GetStatus() });
-
-        var capital = 10_000_000.0;
-        Console.WriteLine($"[ARB/INIT] Создаю ArbLauncher...");
-        arbLauncher = new ArbLauncher(token, capital: capital);
-        Console.WriteLine($"[ARB/INIT] ✅ ArbLauncher создан");
-        return Results.Json(new { status = "initialized", capital });
+        return Results.Json(new { status = "ok", cancelled, total });
     }
     catch (Exception ex)
     {
-        Console.WriteLine($"[ARB/INIT] ❌ Ошибка: {ex}");
-        return Results.Json(new { error = $"Ошибка инициализации: {ex.Message}" }, statusCode: 500);
+        return Results.Json(new { error = ex.Message }, statusCode: 500);
     }
-});
-
-app.MapPost("/arb/pair/{spot}/start", (string spot) =>
-{
-    arbLauncher?.SetPairMode(spot, StrategyMode.Running);
-    return Results.Ok(new { pair = spot, mode = "running" });
-});
-
-app.MapPost("/arb/pair/{spot}/stop", (string spot) =>
-{
-    arbLauncher?.SetPairMode(spot, StrategyMode.Stopped);
-    return Results.Ok(new { pair = spot, mode = "stopped" });
-});
-
-// Установить лоты: POST /arb/pair/ROSN/lots с JSON {spotLots: 100, futLots: 1}
-app.MapPost("/arb/pair/{spot}/lots", async (string spot, HttpRequest req) =>
-{
-    try
-    {
-        if (arbLauncher == null)
-            return Results.Json(new { error = "Арбитраж не инициализирован" }, statusCode: 400);
-        
-        var name = $"ARB_{spot}";
-        var strategy = arbLauncher.Portfolio.Strategies.Values.FirstOrDefault(s => s.Name == name);
-        if (strategy == null)
-            return Results.Json(new { error = $"Пара {spot} не найдена" }, statusCode: 404);
-        
-        using var reader = new StreamReader(req.Body);
-        var body = await reader.ReadToEndAsync();
-        var json = System.Text.Json.JsonDocument.Parse(body);
-        
-        if (json.RootElement.TryGetProperty("spotLots", out var sl))
-            strategy.SpotLots = sl.GetInt32();
-        if (json.RootElement.TryGetProperty("futLots", out var fl))
-            strategy.FutLots = fl.GetInt32();
-        
-        Console.WriteLine($"[ARB] {name}: spotLots={strategy.SpotLots} (эфф.={strategy.EffectiveSpotLots}), futLots={strategy.FutLots}");
-        return Results.Json(new { pair = spot, spotLots = strategy.EffectiveSpotLots, futLots = strategy.FutLots, status = "ok" });
-    }
-    catch (Exception ex)
-    {
-        return Results.Json(new { error = ex.Message }, statusCode: 400);
-    }
-});
-
-app.MapGet("/arb/pairs", () =>
-{
-    if (arbLauncher == null)
-        return Results.Json(new { pairs = Array.Empty<object>() });
-    
-    var pairs = arbLauncher.Portfolio.Strategies.Values.Select(s => new
-    {
-        name = s.Name,
-        spot = s.SpotTicker,
-        futures = s.FuturesTicker,
-        spotLots = s.EffectiveSpotLots,
-        futLots = s.FutLots,
-        spotValueRub = Math.Round(s.SpotValueRub, 0),
-        futGORub = Math.Round(s.FutGORub, 0),
-        totalValueRub = Math.Round(s.SpotValueRub + s.FutGORub, 0),
-        zScore = Math.Round(s.LastZScore, 2),
-        basisAnnual = Math.Round(s.LastBasisAnnual, 1),
-        isOpen = s.CurrentPosition.IsOpen,
-        posDirection = s.CurrentPosition.Direction.ToString(),
-        posSpotLots = s.CurrentPosition.SpotLots,
-        posFutLots = s.CurrentPosition.FutLots,
-        pnl = Math.Round(s.TotalPnL, 0),
-        trades = s.TotalTrades,
-        winRate = s.TotalTrades > 0 ? Math.Round(s.WinRate, 0) : 0,
-        mode = s.Mode.ToString(),
-        spotPrice = Math.Round(s.LastSpotPrice, 2),
-        futPrice = Math.Round(s.LastFuturesPrice, 2),
-        sharesPerSpotLot = s.SharesPerSpotLot,
-        futuresGO = s.FuturesGO,
-    }).ToArray();
-    
-    return Results.Json(new { pairs });
 });
 
 Console.WriteLine($"═══════════════════════════════════════════");
@@ -1281,11 +1809,6 @@ if (!string.IsNullOrEmpty(finamToken))
             Console.WriteLine("✅ Подключено к Финам!");
             await hub.Clients.All.SendAsync("OnLogMessage", DateTime.UtcNow.ToString("HH:mm:ss"), "INFO", "✅ Подключено к Финам!");
             await hub.Clients.All.SendAsync("OnStatusUpdate", tradingService.GetStatus());
-            
-            // Автозапуск арбитража
-            Console.WriteLine("🔄 Инициализация арбитражного портфеля...");
-            arbLauncher = new ArbLauncher(finamToken);
-            await hub.Clients.All.SendAsync("OnLogMessage", DateTime.UtcNow.ToString("HH:mm:ss"), "INFO", "📊 Арбитраж инициализирован. POST /arb/start для запуска");
         }
         else
         {

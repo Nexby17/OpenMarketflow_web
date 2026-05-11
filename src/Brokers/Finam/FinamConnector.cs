@@ -36,8 +36,11 @@ public class FinamConnector : IBrokerConnector
         {
             _globalCts = new CancellationTokenSource();
 
-            // REST клиент (для исторических данных и legacy)
-            _restClient = new FinamApiClient(token);
+            // REST клиент — нужен API_KEY (tapi_sk_...), НЕ gRPC token
+            var apiKey = Environment.GetEnvironmentVariable("FINAM_API_KEY") ?? "";
+            _restClient = !string.IsNullOrEmpty(apiKey)
+                ? new FinamApiClient(apiKey)
+                : new FinamApiClient(token); // fallback на gRPC token
             await _restClient.AuthenticateAsync();
 
             // gRPC клиент (основной — стриминг)
@@ -304,15 +307,14 @@ public class FinamConnector : IBrokerConnector
         // REST fallback
         var request = new PlaceOrderRequest
         {
-            AccountId = _accountId,
             Symbol = symbol,
             Side = order.Direction == SignalDirection.Buy ? "SIDE_BUY" : "SIDE_SELL",
-            Quantity = order.Volume,
+            Quantity = new DecimalValue { Value = order.Volume.ToString() },
             OrderType = order.Type == Core.Models.OrderType.Market ? "ORDER_TYPE_MARKET" : "ORDER_TYPE_LIMIT",
-            Price = order.Type == Core.Models.OrderType.Limit ? order.Price : null
+            Price = order.Type == Core.Models.OrderType.Limit ? new DecimalValue { Value = ((int)order.Price).ToString() } : null
         };
 
-        var result = await _restClient!.PlaceOrderAsync(request);
+        var result = await _restClient!.PlaceOrderAsync(_accountId, request);
         order.BrokerOrderId = result?.OrderId ?? "";
         order.Status = OrderStatus.Active;
         OnOrderUpdate?.Invoke(order);
@@ -394,7 +396,7 @@ public class FinamConnector : IBrokerConnector
             Direction = p.Balance > 0 ? SignalDirection.Buy : SignalDirection.Sell,
             Entries = new List<PositionEntry>
             {
-                new() { Price = p.AveragePrice, Volume = (int)Math.Abs(p.Balance), Comment = "Позиция из Финам" }
+                new() { Price = p.AveragePrice ?? p.CurrentPrice ?? 0, Volume = (int)Math.Abs(p.Balance), Comment = "Позиция из Финам" }
             }
         }).ToArray();
     }

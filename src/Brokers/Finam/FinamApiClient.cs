@@ -27,7 +27,11 @@ public class FinamApiClient : IDisposable
     public FinamApiClient(string accessToken)
     {
         _accessToken = accessToken;
-        _http = new HttpClient(new SocketsHttpHandler(), false) { BaseAddress = new Uri(BaseUrl) };
+        _http = new HttpClient(new SocketsHttpHandler
+        {
+            AllowAutoRedirect = true,
+            MaxAutomaticRedirections = 5
+        }, false) { BaseAddress = new Uri(BaseUrl) };
         _http.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
         _http.Timeout = TimeSpan.FromSeconds(30);
         _http.DefaultRequestVersion = System.Net.HttpVersion.Version11;
@@ -174,15 +178,15 @@ public class FinamApiClient : IDisposable
 
     /// <summary>Получить список заявок</summary>
     public async Task<OrdersResponse?> GetOrdersAsync(string accountId)
-        => await GetAsync<OrdersResponse>($"/v1/orders?account_id={accountId}");
+        => await GetAsync<OrdersResponse>($"/v1/accounts/{accountId}/orders");
 
     /// <summary>Выставить заявку</summary>
-    public async Task<PlaceOrderResponse?> PlaceOrderAsync(PlaceOrderRequest request)
-        => await PostAsync<PlaceOrderResponse>("/v1/orders", request);
+    public async Task<PlaceOrderResponse?> PlaceOrderAsync(string accountId, PlaceOrderRequest request)
+        => await PostAsync<PlaceOrderResponse>($"/v1/accounts/{accountId}/orders", request);
 
     /// <summary>Отменить заявку</summary>
     public async Task<CancelOrderResponse?> CancelOrderAsync(string accountId, string orderId)
-        => await PostAsync<CancelOrderResponse>("/v1/orders/cancel", new { account_id = accountId, order_id = orderId });
+        => await DeleteAsync<CancelOrderResponse>($"/v1/accounts/{accountId}/orders/{orderId}");
 
     // === HTTP helpers ===
 
@@ -208,22 +212,65 @@ public class FinamApiClient : IDisposable
         }
     }
 
+    private async Task<T?> DeleteAsync<T>(string path) where T : class
+    {
+        await EnsureAuthenticatedAsync();
+        try
+        {
+            var response = await _http.DeleteAsync(path);
+            var content = await response.Content.ReadAsStringAsync();
+            
+            if (!response.IsSuccessStatusCode)
+            {
+                throw new FinamApiException(response.StatusCode, content);
+            }
+            
+            return JsonSerializer.Deserialize<T>(content, _jsonOptions);
+        }
+        catch (FinamApiException) { throw; }
+        catch (Exception ex)
+        {
+            throw new FinamApiException(System.Net.HttpStatusCode.InternalServerError, ex.Message);
+        }
+    }
+
     private async Task<T?> PostAsync<T>(string path, object body) where T : class
     {
         await EnsureAuthenticatedAsync();
+        Console.WriteLine($"[REST] POST {path} | JWT={_jwt?.Substring(0,Math.Min(20,_jwt.Length))}...");
         try
         {
             var json = JsonSerializer.Serialize(body, _jsonOptions);
             var content = new StringContent(json, System.Text.Encoding.UTF8, "application/json");
             var response = await _http.PostAsync(path, content);
+            
             var responseContent = await response.Content.ReadAsStringAsync();
+            
+            Console.WriteLine($"[REST] POST {path} → {(int)response.StatusCode} ({responseContent.Length} bytes)");
+            
+            // Finam возвращает 308 для путей без trailing slash
+            if (response.StatusCode == System.Net.HttpStatusCode.Redirect
+                || response.StatusCode == System.Net.HttpStatusCode.RedirectMethod
+                || (int)response.StatusCode == 308)
+            {
+                var location = response.Headers.Location?.ToString();
+                if (!string.IsNullOrEmpty(location))
+                {
+                    Console.WriteLine($"[REST] 308 redirect {path} → {location}");
+                    var newContent = new StringContent(json, System.Text.Encoding.UTF8, "application/json");
+                    response = await _http.PostAsync(location, newContent);
+                }
+            }
+            
+            var responseContent2 = await response.Content.ReadAsStringAsync();
+            Console.WriteLine($"[REST] POST {path} → {(int)response.StatusCode} body={responseContent2}");
             
             if (!response.IsSuccessStatusCode)
             {
-                throw new FinamApiException(response.StatusCode, responseContent);
+                throw new FinamApiException(response.StatusCode, responseContent2);
             }
             
-            return JsonSerializer.Deserialize<T>(responseContent, _jsonOptions);
+            return JsonSerializer.Deserialize<T>(responseContent2, _jsonOptions);
         }
         catch (FinamApiException) { throw; }
         catch (Exception ex)

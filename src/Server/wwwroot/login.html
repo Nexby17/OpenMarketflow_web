@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OpenMarketflow — Вход</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background: #0a0a1a;
+            color: #e0e0e0;
+            display: flex; align-items: center; justify-content: center;
+            min-height: 100vh;
+        }
+        .login-box {
+            background: #1a1a2e;
+            border: 1px solid #2a2a4a;
+            border-radius: 12px;
+            padding: 40px;
+            width: 360px;
+            text-align: center;
+        }
+        .logo { font-size: 24px; margin-bottom: 8px; }
+        .title { font-size: 20px; font-weight: 600; margin-bottom: 24px; color: #fff; }
+        .input-group { margin-bottom: 16px; text-align: left; }
+        .input-group label { display: block; font-size: 13px; color: #888; margin-bottom: 4px; }
+        .input-group input {
+            width: 100%; padding: 10px 12px; border-radius: 6px;
+            border: 1px solid #2a2a4a; background: #0d0d1a; color: #fff;
+            font-size: 14px; outline: none;
+        }
+        .input-group input:focus { border-color: #4a9eff; }
+        .btn {
+            width: 100%; padding: 12px; border: none; border-radius: 6px;
+            background: #4a9eff; color: #fff; font-size: 15px; font-weight: 600;
+            cursor: pointer; margin-top: 8px;
+        }
+        .btn:hover { background: #3a8eef; }
+        .btn:disabled { background: #333; cursor: not-allowed; }
+        .error {
+            color: #ff4a4a; font-size: 13px; margin-top: 12px;
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="login-box">
+        <div class="logo">⚡</div>
+        <div class="title">OpenMarketflow</div>
+        <form id="loginForm">
+            <div class="input-group">
+                <label>Логин</label>
+                <input type="text" id="username" autocomplete="username" required autofocus>
+            </div>
+            <div class="input-group">
+                <label>Пароль</label>
+                <input type="password" id="password" autocomplete="current-password" required>
+            </div>
+            <button type="submit" class="btn" id="btnLogin">Войти</button>
+            <div class="error" id="error"></div>
+        </form>
+    </div>
+
+    <script>
+        const form = document.getElementById('loginForm');
+        const errorEl = document.getElementById('error');
+        const btn = document.getElementById('btnLogin');
+
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            errorEl.style.display = 'none';
+            btn.disabled = true;
+            btn.textContent = 'Вход...';
+
+            try {
+                const res = await fetch('/api/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        username: document.getElementById('username').value,
+                        password: document.getElementById('password').value
+                    })
+                });
+
+                if (res.ok) {
+                    window.location.href = '/';
+                } else {
+                    errorEl.textContent = 'Неверный логин или пароль';
+                    errorEl.style.display = 'block';
+                }
+            } catch (err) {
+                errorEl.textContent = 'Ошибка подключения';
+                errorEl.style.display = 'block';
+            } finally {
+                btn.disabled = false;
+                btn.textContent = 'Войти';
+            }
+        });
+    </script>
+</body>
+</html>

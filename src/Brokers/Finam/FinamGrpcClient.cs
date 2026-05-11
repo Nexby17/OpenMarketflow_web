@@ -313,7 +313,7 @@ public class FinamGrpcClient : IDisposable
         };
 
         if (limitPrice.HasValue)
-            order.LimitPrice = new Google.Type.Decimal { Value = limitPrice.Value.ToString("F2", System.Globalization.CultureInfo.InvariantCulture) };
+            order.LimitPrice = new Google.Type.Decimal { Value = ((int)limitPrice.Value).ToString() };
         if (comment != null)
             order.Comment = comment;
 

@@ -1,3 +1,22 @@
+// === Auth Check ===
+(function() {
+    // Check if authenticated
+    fetch('/api/me', { credentials: 'include' })
+        .then(r => { if (r.status === 401) window.location.href = '/login.html'; });
+    
+    // Intercept all fetch calls — redirect to login on 401
+    const origFetch = window.fetch;
+    window.fetch = function(...args) {
+        return origFetch.apply(this, args).then(res => {
+            if (res.status === 401) {
+                window.location.href = '/login.html';
+                return new Promise(() => {});
+            }
+            return res;
+        });
+    };
+})();
+
 // === OpenMarketflow Web UI ===
 
 let connection = null;
@@ -6,6 +25,10 @@ let candleSeries = null;
 let volumeSeries = null;
 let sarSeries = null;
 let emaSeries = null;
+let stdSeries = null;
+let positionSeries = null;
+let buyOrdersSeries = null;
+let sellOrdersSeries = null;
 let isConnected = false;
 const MAX_LOG = 200;
 
@@ -217,6 +240,7 @@ async function fetchStatus() {
         const status = await resp.json();
         updateStatus(status);
         loadPositions();
+        updateChartLines();
         loadOrders();
         loadTrades();
         loadQuotes();
@@ -234,11 +258,59 @@ function loadPositions() {
             <td><b>${p.ticker}</b></td>
             <td class="${p.dir === 'Buy' ? 'green' : 'red'}">${p.dir === 'Buy' ? 'Лонг' : 'Шорт'}</td>
             <td>${p.qty || 0}</td>
-            <td>${p.entries?.[0]?.price?.toFixed(2) || p.avgPrice?.toFixed(2) || '—'}</td>
+            <td>${p.avgPrice?.toFixed(2) || '—'}</td>
             <td>${p.qty || 0}</td>
         </tr>`).join('');
     }).catch(e => console.error("[ERROR]", e));
 }
+
+function updateChartLines() {
+    console.log("[updateChartLines] Called. positionSeries:", !!positionSeries, "buyOrdersSeries:", !!buyOrdersSeries, "sellOrdersSeries:", !!sellOrdersSeries);
+    
+    // Обновить линии позиций
+    fetch('/api/positions').then(r => r.json()).then(positions => {
+        window._lastPositions = positions;
+        console.log("[updateChartLines] Positions:", positions);
+        if (!positionSeries || !positions || positions.length === 0) {
+            if (positionSeries) positionSeries.setData([]);
+            return;
+        }
+        const now = Math.floor(Date.now() / 1000);
+        const timeStart = Math.floor((now - 7200) / 60) * 60;
+        const timeEnd = Math.floor((now + 3600) / 60) * 60;
+        console.log("[updateChartLines] Position time range:", timeStart, "-", timeEnd);
+
+        if (positions.length === 1) {
+            const p = positions[0];
+            const price = p.entries?.[0]?.price || p.avgPrice || 0;
+            const isLong = p.dir === 'Buy';
+            console.log("[updateChartLines] Position:", isLong ? "LONG" : "SHORT", "@", price);
+            positionSeries.applyOptions({ color: isLong ? '#22C55E' : '#EF4444' });
+            positionSeries.setData([
+                { time: timeStart, value: price },
+                { time: timeEnd, value: price }
+            ]);
+        } else {
+            positionSeries.setData([]);
+        }
+    }).catch(e => console.error("[ERROR] updateChartLines positions:", e));
+
+    // Обновить линии заявок
+    fetch('/api/orders').then(r => r.json()).then(data => {
+        window._lastOrders = (data.orders || data || []);
+        clearOrderLines();
+        const orders = data.orders || data || [];
+        const activeOrders = orders.filter(o => o.status === 'ORDER_STATUS_NEW');
+        if (!activeOrders.length) return;
+        activeOrders.forEach(o => {
+            const isBuy = o.order?.side === 'BUY' || o.order?.side === 'SIDE_BUY';
+            const price = parseFloat(o.order?.limit_price?.value || 0);
+            if (price > 0) addOrderLine(price, isBuy);
+        });
+    }).catch(e => console.error('[ERROR] updateChartLines orders:', e));
+
+}
+
 
 function loadOrders() {
     fetch('/api/orders').then(r => r.json()).then(data => {
@@ -420,10 +492,32 @@ function renderOrderBook(snapshot) {
 
     const maxVol = Math.max(...entries.map(e => Math.max(e.bidVolume || e.BidVolume || 0, e.askVolume || e.AskVolume || 0)), 1);
 
+    // Get position and orders for overlays
+    let posDir = 0, posPrice = 0, posLots = 0;
+    try {
+        const posData = window._lastPositions;
+        if (posData && posData.length > 0) {
+            const p = posData[0];
+            posDir = (p.dir === 'Buy' || p.direction === 'Long') ? 1 : -1;
+            posPrice = p.avgPrice || p.entryPrice || 0;
+            posLots = p.volume || p.qty || 0;
+        }
+    } catch(e) {}
+    
+    // Get active order prices
+    let myBuyPrices = [], mySellPrices = [];
+    try {
+        const ordData = window._lastOrders;
+        (ordData || []).filter(o => o.status === 'ORDER_STATUS_NEW').forEach(o => {
+            const price = parseFloat(o.order?.limit_price?.value || 0);
+            const isBuy = o.order?.side === 'BUY' || o.order?.side === 'SIDE_BUY';
+            if (price > 0) { if (isBuy) myBuyPrices.push(price); else mySellPrices.push(price); }
+        });
+    } catch(e) {}
+
     let html = '';
     const sorted = [...entries].sort((a, b) => (b.price || b.Price) - (a.price || a.Price));
     
-    // Ограничим ±25 от спреда
     const spreadIdx = sorted.findIndex(e => (e.bidVolume || e.BidVolume || 0) > 0);
     const start = Math.max(0, spreadIdx - 25);
     const end = Math.min(sorted.length, spreadIdx + 25);
@@ -436,10 +530,36 @@ function renderOrderBook(snapshot) {
         const bidW = (bid / maxVol * 100).toFixed(0);
         const askW = (ask / maxVol * 100).toFixed(0);
         const isLast = Math.abs(price - lastPrice) < 1;
+        const isBestBid = Math.abs(price - bestBid) < 1 && bid > 0;
+        const isBestAsk = Math.abs(price - bestAsk) < 1 && ask > 0;
+        
+        // Check if this is position entry price
+        const isPos = posPrice > 0 && Math.abs(price - posPrice) < 1;
+        // Check if my order is at this price
+        const isMyBuy = myBuyPrices.some(p => Math.abs(p - price) < 1);
+        const isMySell = mySellPrices.some(p => Math.abs(p - price) < 1);
+        
+        let rowCls = 'ob-row';
+        if (isLast) rowCls += ' ob-spread-row';
+        if (bid > 0) rowCls += ' ob-has-bid';
+        if (ask > 0) rowCls += ' ob-has-ask';
+        if (isBestBid && bid > 0) rowCls += ' ob-best-bid';
+        if (isBestAsk && ask > 0) rowCls += ' ob-best-ask';
+        if (isMyBuy || isMySell) rowCls += ' ob-my-order';
+        
+        let priceExtra = '';
+        if (isPos) {
+            rowCls += ' ob-position-row';
+            const pnl = posDir * (lastPrice - posPrice) * posLots;
+            const pnlSign = pnl >= 0 ? '+' : '';
+            priceExtra = ` <span class="ob-position-pnl" style="color:${pnl >= 0 ? '#2E7D32' : '#C62828'}">${pnlSign}${pnl.toFixed(0)}₽</span>`;
+        }
+        
+        const posIcon = isPos ? (posDir > 0 ? '▲' : '▼') : '';
 
-        html += `<div class="ob-row${isLast ? ' spread-row' : ''}">
+        html += `<div class="${rowCls}">
             <div class="ob-bid"><div class="ob-bar-bid" style="width:${bidW}%"></div>${bid || ''}</div>
-            <div class="ob-price${isLast ? ' ob-price-last' : ''}">${price.toFixed(2)}</div>
+            <div class="ob-price">${posIcon}${priceExtra ? posIcon + ' ' : ''}${price.toFixed(2)}${priceExtra}</div>
             <div class="ob-ask"><div class="ob-bar-ask" style="width:${askW}%"></div>${ask || ''}</div>
         </div>`;
     }
@@ -507,12 +627,10 @@ function initChart() {
     }
     const msOffset = 3 * 3600000; // MSK = UTC+3
     const fmtTime = d => {
-        const msk = new Date(d.getTime() + msOffset);
-        return msk.toISOString().slice(11, 16);
+        return d.toISOString().slice(11, 16);
     };
     const fmtDate = d => {
-        const msk = new Date(d.getTime() + msOffset);
-        return msk.toISOString().slice(0, 10);
+        return d.toISOString().slice(0, 10);
     };
     chart = LightweightCharts.createChart(container, {
         width: container.offsetWidth,
@@ -556,7 +674,59 @@ function initChart() {
         title: 'EMA',
     });
 
-    // Двойной клик по графику → меню индикаторов
+    // STD line (порог выхода)
+    stdSeries = chart.addLineSeries({
+        color: '#FF6B6B',
+        lineWidth: 1,
+        lineStyle: 2,  // dashed
+        priceLineVisible: false,
+        lastValueVisible: false,
+        title: 'STD',
+        visible: true,
+    });
+
+    // Position lines (LONG=green, SHORT=red)
+    positionSeries = chart.addLineSeries({
+        color: '#FFFFFF',
+        lineWidth: 2,
+        priceLineVisible: false,
+        lastValueVisible: false,
+        title: 'Position',
+    });
+
+let _orderLineSeries = []; // dynamic order line series
+window._lastTradeCount = 0;
+
+function clearOrderLines() {
+    _orderLineSeries.forEach(s => { try { chart.removeSeries(s); } catch(e) {} });
+    _orderLineSeries = [];
+}
+
+function addOrderLine(price, isBuy) {
+    if (!chart) return;
+    const s = chart.addLineSeries({
+        color: isBuy ? 'rgba(34,197,94,0.6)' : 'rgba(239,68,68,0.6)',
+        lineWidth: 1,
+        lineStyle: isBuy ? LightweightCharts.LineStyle.Dashed : LightweightCharts.LineStyle.Dotted,
+        priceLineVisible: true,
+        lastValueVisible: true,
+        priceFormat: { type: 'price', precision: 0, minMove: 1 },
+        title: (isBuy ? '🟢 B ' : '🔴 S ') + price.toFixed(0),
+        crosshairMarkerVisible: false,
+    });
+    const now = Math.floor(Date.now() / 1000);
+    const ts = Math.floor((now - 7200) / 60) * 60;
+    const te = Math.floor((now + 3600) / 60) * 60;
+    s.setData([{ time: ts, value: price }, { time: te, value: price }]);
+    _orderLineSeries.push(s);
+}
+
+    // Order lines — replaced with dynamic series below
+    buyOrdersSeries = null;
+    sellOrdersSeries = null;
+
+
+    // Двойной клик по графику → меню индикаторы
     container.addEventListener('dblclick', (e) => {
         e.preventDefault();
         showIndicatorMenu(e.clientX, e.clientY);
@@ -578,26 +748,96 @@ function loadCandles(ticker, tf) {
             if (data.error) { addLog(nowTime(), 'ERROR', data.error); return; }
             if (!data.length) { addLog(nowTime(), 'INFO', `Нет данных для ${ticker}`); return; }
 
-            const candles = data.map(r => ({ time: r.t, open: r.o, high: r.h, low: r.l, close: r.c }));
+        const candles = data.map(r => ({ time: r.t + 10800, open: r.o, high: r.h, low: r.l, close: r.c }));
             const volumes = data.map(r => ({
-                time: r.t, value: r.v || 0,
+                time: r.t + 10800, value: r.v || 0,
                 color: r.c >= r.o ? 'rgba(34,197,94,0.3)' : 'rgba(239,68,68,0.3)'
             }));
 
+            // Store instrument for reinit detection
+            window._currentChartTicker = ticker;
+            window._currentChartTf = tfMinutes;
+
             if (candleSeries) candleSeries.setData(candles);
             if (volumeSeries) volumeSeries.setData(volumes);
+            window._lastCandles = candles;
+            // Clear old order lines
+            clearOrderLines();
+            updateChartLines();
 
             // Рассчитываем SAR и EMA на клиенте
             const sarData = calcSAR(data, window._sarParams?.start || 0.009, window._sarParams?.step || 0.01, window._sarParams?.max || 0.2);
             const emaData = calcEMA(data, window._emaPeriod || 30);
 
-            if (sarSeries && sarData.length > 0) sarSeries.setData(sarData);
-            if (emaSeries && emaData.length > 0) emaSeries.setData(emaData);
+            if (sarSeries && sarData.length > 0) sarSeries.setData(sarData.map(d => ({ time: d.time + 10800, value: d.value })));
+            if (emaSeries && emaData.length > 0) emaSeries.setData(emaData.map(d => ({ time: d.time + 10800, value: d.value })));
+            
+            // STD band around SAR
+            const stdMult = parseFloat(localStorage.getItem('v7_stdMult')) || 1.5;
+            const stdPeriod = parseInt(localStorage.getItem('v7_stdPeriod')) || 14;
+            const stdBand = [];
+            for (let i = stdPeriod - 1; i < data.length; i++) {
+                let sum=0,sq=0;
+                for (let j=i-stdPeriod+1;j<=i;j++){sum+=data[j].c;sq+=data[j].c*data[j].c;}
+                const std=Math.sqrt(sq/stdPeriod-Math.pow(sum/stdPeriod,2));
+                const sar=d=>d.time===data[i].t;
+                const sv=sarData.find(sar);
+                if(sv&&std>0){stdBand.push({time:data[i].t+10800,value:sv.value+std*stdMult});stdBand.push({time:data[i].t+10800,value:sv.value-std*stdMult});}
+            }
+            if(stdSeries&&stdBand.length>0)stdSeries.setData(stdBand);
 
             el('obCandleCount').textContent = `${candles.length} свечей`;
             addLog(nowTime(), 'INFO', `📊 ${ticker}: ${candles.length} свечей (${tfMinutes}м) SAR=${sarData.length} EMA=${emaData.length}`);
+            
+            // Load trade markers on chart
+            loadTradeMarkers(ticker, candles);
         })
         .catch(e => addLog(nowTime(), 'ERROR', `Свечи: ${e.message}`));
+}
+
+// === Trade markers on main chart ===
+async function loadTradeMarkers(ticker, candles) {
+    if (!candleSeries || !candles.length) return;
+    
+    try {
+        // Only today's trades for live refresh
+        const today = new Date().toISOString().slice(0, 10);
+        const resp = await fetch(`/api/trades?date=${today}`);
+        const raw = await resp.json();
+        let trades = raw.trades || (Array.isArray(raw) ? raw : []);
+        
+        // Filter by ticker
+        const tTicker = ticker.replace('@RTSX', '');
+        trades = trades.filter(t => {
+            const sym = (t.symbol || '').replace('@RTSX', '');
+            return sym.includes(tTicker) || tTicker.includes(sym);
+        });
+        
+        if (!trades.length) { candleSeries.setMarkers([]); return; }
+        
+        // Build markers
+        const markers = trades.map(t => {
+            const isBuy = (t.side || '').includes('BUY');
+            const price = t.price?.value ? parseFloat(t.price.value) : parseFloat(t.price || 0);
+            const time = t.timestamp || t.time || '';
+            const ts = new Date(time).getTime() / 1000;
+            const chartTime = ts + 10800;
+            return {
+                time: chartTime,
+                position: isBuy ? 'belowBar' : 'aboveBar',
+                color: isBuy ? '#22C55E' : '#EF4444',
+                shape: isBuy ? 'arrowUp' : 'arrowDown',
+                text: isBuy ? '▲' : '▼',
+                price: price,
+                size: 1
+            };
+        }).filter(m => m.time > 0 && !isNaN(m.time));
+        
+        markers.sort((a, b) => a.time - b.time);
+        candleSeries.setMarkers(markers);
+    } catch (e) {
+        // silently fail
+    }
 }
 
 // === Индикаторы: SAR и EMA на клиенте ===
@@ -644,6 +884,22 @@ function calcEMA(bars, period) {
     return result;
 }
 
+function calcSTD(bars, period, mult, sarData) {
+    if (bars.length < period) return [];
+    const result = [];
+    for (let i = period - 1; i < bars.length; i++) {
+        let sum = 0, sumSq = 0;
+        for (let j = i - period + 1; j <= i; j++) { sum += bars[j].c; sumSq += bars[j].c * bars[j].c; }
+        const std = Math.sqrt(sumSq / period - Math.pow(sum / period, 2));
+        const sar = sarData.find(s => s.time === bars[i].t);
+        if (sar && std > 0) {
+            result.push({ time: bars[i].t, value: sar.value + std * mult });
+            result.push({ time: bars[i].t, value: sar.value - std * mult });
+        }
+    }
+    return result;
+}
+
 // === Меню настроек индикаторов ===
 function showIndicatorMenu(x, y) {
     const existing = el('indicatorMenu');
@@ -671,6 +927,7 @@ function showIndicatorMenu(x, y) {
         <div style="margin-bottom:12px">
             <div style="color:#00BFFF;margin-bottom:4px;font-size:12px">● EMA (Exponential MA)</div>
             <div><label style="color:#9CA3AF;font-size:11px">Period</label><input id="indEmaPeriod" class="input" type="number" value="${window._emaPeriod || 30}" style="width:80px"></div>
+                <div><label style="color:#9CA3AF;font-size:11px">STD</label><label style="color:#FF6B6B;font-size:11px;margin-left:4px">Period</label><input id="indStdPeriod" class="input" type="number" value="${parseInt(localStorage.getItem('v7_stdPeriod'))||14}" style="width:50px"><label style="color:#FF6B6B;font-size:11px;margin-left:4px">Mult</label><input id="indStdMult" class="input" type="number" step="0.1" value="${parseFloat(localStorage.getItem('v7_stdMult'))||1.5}" style="width:50px"><input id="indStdVisible" type="checkbox" style="width:16px;height:16px;vertical-align:middle" title="Показать STD"></div>
         </div>
         <div style="display:flex;gap:8px">
             <button class="btn btn-primary btn-sm" onclick="applyIndicatorParams()" style="flex:1">✅ Применить</button>
@@ -688,6 +945,13 @@ function applyIndicatorParams() {
     
     window._sarParams = { start, step, max };
     window._emaPeriod = emaPeriod;
+    
+    // STD параметры
+    const stdPeriod = parseInt(el('indStdPeriod')?.value) || 14;
+    const stdMult = parseFloat(el('indStdMult')?.value) || 1.5;
+    localStorage.setItem('v7_stdPeriod', stdPeriod);
+    localStorage.setItem('v7_stdMult', stdMult);
+    if (stdSeries && el('indStdVisible')?.checked) { stdSeries.applyOptions({ visible: true }); } else if (stdSeries) { stdSeries.applyOptions({ visible: false }); }
     
     // Обновляем в стратегии
     fetch('/strategy/grid-mm/config', {
@@ -728,22 +992,69 @@ function switchOrderBookInstrument() {
         const t = el('obInstrument')?.value;
         loadQuote(t);
         updateLivePrice(t);
-    }, 2000);  // Реал-тайм котировки каждые 2с
-    // Индикаторы и стакан — реже
+        // Fast refresh: positions + orders + trades
+        Promise.all([
+            fetch('/api/positions').then(r=>r.json()).catch(()=>[]),
+            fetch('/api/orders').then(r=>r.json()).catch(()=>({orders:[]})),
+            fetch(`/api/trades?date=${new Date().toISOString().slice(0,10)}`).then(r=>r.json()).catch(()=>({trades:[]}))
+        ]).then(([pos, ord, tradesResp]) => {
+            const posChanged = JSON.stringify(window._lastPositions) !== JSON.stringify(pos);
+            const ordChanged = JSON.stringify(window._lastOrders) !== JSON.stringify(ord.orders || ord || []);
+            window._lastPositions = pos;
+            window._lastOrders = ord.orders || ord || [];
+            
+            // Trade markers — incremental
+            const newTrades = tradesResp.trades || [];
+            const newCount = newTrades.length;
+            if (newCount !== window._lastTradeCount && candleSeries) {
+                window._lastTradeCount = newCount;
+                const tTicker = (t || '').replace('@RTSX', '');
+                const markers = newTrades.filter(tr => {
+                    const sym = (tr.symbol || '').replace('@RTSX', '');
+                    return sym.includes(tTicker) || tTicker.includes(sym);
+                }).map(tr => {
+                    const isBuy = (tr.side || '').includes('BUY');
+                    const price = tr.price?.value ? parseFloat(tr.price.value) : parseFloat(tr.price || 0);
+                    const ts = new Date(tr.timestamp || tr.time || '').getTime() / 1000;
+                    return { time: ts + 10800, position: isBuy ? 'belowBar' : 'aboveBar', color: isBuy ? '#22C55E' : '#EF4444', shape: isBuy ? 'arrowUp' : 'arrowDown', text: isBuy ? 'B' : 'S', price: price, size: 1 };
+                }).filter(m => m.time > 0 && !isNaN(m.time)).sort((a, b) => a.time - b.time);
+                candleSeries.setMarkers(markers);
+            }
+            
+            // Re-render orderbook only if changed
+            if ((posChanged || ordChanged) && window._lastObData) {
+                _renderOrderBookCached();
+            }
+            // Update chart order lines
+            if (ordChanged) {
+                clearOrderLines();
+                window._lastOrders.filter(o => o.status === 'ORDER_STATUS_NEW').forEach(o => {
+                    const isBuy = o.order?.side === 'BUY' || o.order?.side === 'SIDE_BUY';
+                    const price = parseFloat(o.order?.limit_price?.value || 0);
+                    if (price > 0) addOrderLine(price, isBuy);
+                });
+            }
+        });
+    }, 500);  // 500ms — fast as QUIK
+    // Orderbook + candles — 2s
     if (window._slowInterval) clearInterval(window._slowInterval);
     window._slowInterval = setInterval(() => {
         const t = el('obInstrument')?.value;
         loadOrderBook(t);
         updateLiveCandle(t);
         if (t && t.startsWith('Si')) loadStrategyIndicators();
-    }, 3000);  // Стакан + свечи каждые 3с
+    }, 2000);  // Стакан + свечи каждые 3с
     
     // Первая загрузка индикаторов
     loadStrategyIndicators();
     
-    // Инициализация графика с ретраем (контейнер может быть ещё скрыт)
-    initChart();
-    if (!chart) setTimeout(() => { initChart(); loadCandles(ticker, tf); }, 300);
+    // Инициализация графика (один раз)
+    if (!chart) {
+        initChart();
+        if (!chart) setTimeout(() => { initChart(); loadCandles(ticker, tf); }, 300);
+    } else {
+        loadCandles(ticker, tf);
+    }
 }
 
 function loadQuote(ticker) {
@@ -751,22 +1062,44 @@ function loadQuote(ticker) {
     fetch(`/api/quote?ticker=${ticker}`)
         .then(r => r.json())
         .then(q => {
-            if (q.last > 0) el('obLast').textContent = q.last.toFixed(2);
-            if (q.bid > 0) el('obBid').textContent = q.bid.toFixed(2);
-            if (q.ask > 0) el('obAsk').textContent = q.ask.toFixed(2);
-            if (q.spread > 0) el('obSpread').textContent = q.spread.toFixed(2);
+            if (q.last > 0) el('obLast').textContent = Math.round(q.last);
+            if (q.bid > 0) el('obBid').textContent = Math.round(q.bid);
+            if (q.ask > 0) el('obAsk').textContent = Math.round(q.ask);
+            if (q.spread > 0) el('obSpread').textContent = q.spread.toFixed(0);
         })
         .catch(e => console.error("[ERROR]", e));
 }
 
 function loadOrderBook(ticker) {
     if (!ticker) return;
-    fetch(`/api/orderbook?ticker=${ticker}`)
-        .then(r => r.json())
-        .then(data => {
-            if (!data.rows || data.rows.length === 0) return;
-            const rows = data.rows;
-            const maxVol = Math.max(...rows.map(r => Math.max(r.bid || 0, r.ask || 0)), 1);
+    
+    // Загружаем позицию и стакан параллельно
+    Promise.all([
+        fetch('/api/positions').then(r => r.json()).catch(() => []),
+        fetch('/api/orders').then(r => r.json()).catch(() => ({orders:[]})),
+        fetch(`/api/orderbook?ticker=${ticker}`).then(r => r.json()),
+        fetch(`/api/trades?date=${new Date().toISOString().slice(0,10)}`).then(r => r.json()).catch(() => ({trades:[]}))
+    ]).then(([positions, ordersData, data, tradesResp]) => {
+        window._recentTrades = (tradesResp.trades || tradesResp || []).filter(t => (t.symbol || t.ticker || '').includes(ticker));
+        // Cache orderbook data for fast re-render
+        window._lastObData = data;
+        // Кэшируем для renderOrderBook
+        window._lastPositions = positions;
+        window._lastOrders = ordersData.orders || ordersData || [];
+        
+        // Парсим позицию
+        let posDir = 0, posPrice = 0, posLots = 0;
+        if (positions && positions.length > 0) {
+            const p = positions[0];
+            posDir = (p.dir === 'Buy' || p.direction === 'Long') ? 1 : -1;
+            posPrice = p.avgPrice || p.entryPrice || 0;
+            posLots = p.volume || p.qty || 0;
+        }
+        
+        if (!data.rows || data.rows.length === 0) return;
+        const rows = data.rows;
+        const maxVol = Math.max(...rows.map(r => Math.max(r.bid || 0, r.ask || 0)), 1);
+        window._lastObData.maxVol = maxVol;
             
             // Сортируем по убыванию цены
             rows.sort((a, b) => b.price - a.price);
@@ -779,19 +1112,171 @@ function loadOrderBook(ticker) {
             const visible = rows.slice(start, end);
             
             let html = '';
+            const bestBid = Math.max(...visible.filter(r => r.bid > 0).map(r => r.price), 0);
+            const bestAsk = Math.min(...visible.filter(r => r.ask > 0).map(r => r.price), 0);
+            
+            // Свои заявки
+            const myOrders = (window._lastOrders || []).filter(o => o.status === 'ORDER_STATUS_NEW');
+            const myBuyPrices = myOrders.filter(o => o.order?.side === 'BUY' || o.order?.side === 'SIDE_BUY').map(o => parseFloat(o.order?.limit_price?.value || 0)).filter(p => p > 0);
+            const mySellPrices = myOrders.filter(o => o.order?.side === 'SELL' || o.order?.side === 'SIDE_SELL').map(o => parseFloat(o.order?.limit_price?.value || 0)).filter(p => p > 0);
+            
+            // Добавляем строки своих заявок если их цены не в стакане
+            const obPrices = new Set(visible.map(r => Math.round(r.price)));
+            for (const p of myBuyPrices) {
+                const rp = Math.round(p);
+                if (!obPrices.has(rp)) {
+                    visible.push({price: p, bid: 0, ask: 0, _myBuy: true});
+                    obPrices.add(rp);
+                }
+            }
+            for (const p of mySellPrices) {
+                const rp = Math.round(p);
+                if (!obPrices.has(rp)) {
+                    visible.push({price: p, bid: 0, ask: 0, _mySell: true});
+                    obPrices.add(rp);
+                }
+            }
+            visible.sort((a, b) => b.price - a.price);
+            
             for (const r of visible) {
                 const bidW = ((r.bid || 0) / maxVol * 100).toFixed(0);
                 const askW = ((r.ask || 0) / maxVol * 100).toFixed(0);
-                const isSpread = r.bid > 0 && visible.indexOf(r) === visible.findIndex(x => x.bid > 0);
-                html += `<div class="ob-row${isSpread ? ' spread-row' : ''}">
-                    <div class="ob-bid"><div class="ob-bar-bid" style="width:${bidW}%"></div>${r.bid || ''}</div>
-                    <div class="ob-price">${r.price.toFixed(2)}</div>
-                    <div class="ob-ask"><div class="ob-bar-ask" style="width:${askW}%"></div>${r.ask || ''}</div>
+                const isMyBuy = r._myBuy || myBuyPrices.some(p => Math.abs(p - r.price) < 1);
+                const isMySell = r._mySell || mySellPrices.some(p => Math.abs(p - r.price) < 1);
+                let cls = 'ob-row';
+                if (r.bid > 0) cls += ' ob-has-bid';
+                if (r.ask > 0) cls += ' ob-has-ask';
+                if (Math.abs(r.price - bestBid) < 1 && r.bid > 0) cls += ' ob-best-bid';
+                if (Math.abs(r.price - bestAsk) < 1 && r.ask > 0) cls += ' ob-best-ask';
+                if (isMyBuy) cls += ' ob-my-buy';
+                if (isMySell) cls += ' ob-my-sell';
+                
+                // Позиция
+                const isPos = posPrice > 0 && Math.abs(r.price - posPrice) < 1;
+                if (isPos) cls += ' ob-position-row';
+                const posIcon = isPos ? (posDir > 0 ? '▲' : '▼') : '';
+                let posHtml = '';
+                if (isPos) {
+                    const lastPx = parseFloat(el('obLast')?.textContent || 0);
+                    const pnl = posDir * (lastPx - posPrice) * posLots;
+                    const dirLabel = posDir > 0 ? '▲L' : '▼S';
+                    const pnlColor = pnl >= 0 ? '#69f0ae' : '#ff5252';
+                    const pnlSign = pnl >= 0 ? '+' : '';
+                    posHtml = `<span class="ob-position-pnl"> ${dirLabel}${posLots} ${pnlSign}${pnl.toFixed(0)}₽</span>`;
+                }
+                
+                html += `<div class="${cls}">
+                    <div class="ob-bid"><div class="ob-bar-bid" style="width:${bidW}%"></div>${r.bid || ''}${isMyBuy ? ' ◄' : ''}</div>
+                    <div class="ob-price">${Math.round(r.price)}${posHtml}</div>
+                    <div class="ob-ask"><div class="ob-bar-ask" style="width:${askW}%"></div>${r.ask || ''}${isMySell ? '► ' : ''}</div>
                 </div>`;
             }
             el('orderbookLadder').innerHTML = html;
+            _renderTradeTape(visible);
         })
         .catch(e => console.error("[ERROR]", e));
+}
+
+// Fast re-render orderbook from cached data (no fetch)
+function _renderOrderBookCached() {
+    const data = window._lastObData;
+    if (!data || !data.rows || !data.rows.length) return;
+    const rows = data.rows;
+    const maxVol = data.maxVol || 1;
+    rows.sort((a, b) => b.price - a.price);
+    const spreadIdx = rows.findIndex(r => (r.bid || 0) > 0);
+    const si = spreadIdx >= 0 ? spreadIdx : Math.floor(rows.length / 2);
+    const start = Math.max(0, si - 25);
+    const end = Math.min(rows.length, si + 25);
+    const visible = rows.slice(start, end);
+    const bestBid = Math.max(...visible.filter(r => r.bid > 0).map(r => r.price), 0);
+    const bestAsk = Math.min(...visible.filter(r => r.ask > 0).map(r => r.price), 0);
+    
+    let posDir=0, posPrice=0, posLots=0;
+    try { const p=(window._lastPositions||[])[0]; if(p){posDir=(p.dir==='Buy'||p.direction==='Long')?1:-1;posPrice=p.entries?.[0]?.price||p.avgPrice||p.entryPrice||0;posLots=p.volume||p.qty||0;} } catch(e){}
+    const myOrders=(window._lastOrders||[]).filter(o=>o.status==='ORDER_STATUS_NEW');
+    const myBuyPrices=myOrders.filter(o=>o.order?.side==='BUY'||o.order?.side==='SIDE_BUY').map(o=>parseFloat(o.order?.limit_price?.value||0)).filter(p=>p>0);
+    const mySellPrices=myOrders.filter(o=>o.order?.side==='SELL'||o.order?.side==='SIDE_SELL').map(o=>parseFloat(o.order?.limit_price?.value||0)).filter(p=>p>0);
+    const obPrices=new Set(visible.map(r=>Math.round(r.price)));
+    for(const p of myBuyPrices){const rp=Math.round(p);if(!obPrices.has(rp)){visible.push({price:p,bid:0,ask:0,_myBuy:true});obPrices.add(rp);}}
+    for(const p of mySellPrices){const rp=Math.round(p);if(!obPrices.has(rp)){visible.push({price:p,bid:0,ask:0,_mySell:true});obPrices.add(rp);}}
+    visible.sort((a,b)=>b.price-a.price);
+    
+    let html='';
+    for(const r of visible){
+        const bidW=((r.bid||0)/maxVol*100).toFixed(0);
+        const askW=((r.ask||0)/maxVol*100).toFixed(0);
+        const isMyBuy=r._myBuy||myBuyPrices.some(p=>Math.abs(p-r.price)<1);
+        const isMySell=r._mySell||mySellPrices.some(p=>Math.abs(p-r.price)<1);
+        let cls='ob-row';
+        if(r.bid>0)cls+=' ob-has-bid';
+        if(r.ask>0)cls+=' ob-has-ask';
+        if(Math.abs(r.price-bestBid)<1&&r.bid>0)cls+=' ob-best-bid';
+        if(Math.abs(r.price-bestAsk)<1&&r.ask>0)cls+=' ob-best-ask';
+        if(isMyBuy)cls+=' ob-my-buy';
+        if(isMySell)cls+=' ob-my-sell';
+        const isPos=posPrice>0&&Math.abs(r.price-posPrice)<1;
+        if(isPos)cls+=' ob-position-row';
+        const posIcon=isPos?(posDir>0?'▲':'▼'):'';
+        let posHtml='';
+        if(isPos){const lastPx=parseFloat(el('obLast')?.textContent||0);const pnl=posDir*(lastPx-posPrice)*posLots;const dirLabel=posDir>0?'▲L':'▼S';const pnlSign=pnl>=0?'+':'';posHtml=`<span class="ob-position-pnl"> ${dirLabel}${posLots} ${pnlSign}${pnl.toFixed(0)}₽</span>`;}
+        html+=`<div class="${cls}"><div class="ob-bid"><div class="ob-bar-bid" style="width:${bidW}%"></div>${r.bid||''}${isMyBuy?' ◄':''}</div><div class="ob-price">${Math.round(r.price)}${posHtml}</div><div class="ob-ask"><div class="ob-bar-ask" style="width:${askW}%"></div>${r.ask||''}${isMySell?'► ':''}</div></div>`;
+    }
+    el('orderbookLadder').innerHTML=html;
+    _renderTradeTape(visible);
+}
+
+function _renderTradeTape(visible) {
+    const tape = el('tradeTape');
+    if (!tape || !visible || !visible.length) { if (tape) tape.innerHTML = ''; return; }
+    
+    const minPrice = visible[visible.length-1].price;
+    const maxPrice = visible[0].price;
+    const priceRange = maxPrice - minPrice || 1;
+    const tapeH = tape.offsetHeight || 400;
+    
+    // PnL линия: от entry до current price
+    let posDir = 0, posPrice = 0;
+    try {
+        const p = (window._lastPositions || [])[0];
+        if (p) {
+            posDir = (p.dir === 'Buy' || p.direction === 'Long') ? 1 : -1;
+            posPrice = p.avgPrice || p.entryPrice || 0;
+        }
+    } catch(e) {}
+    
+    if (posPrice === 0) { tape.innerHTML = ''; return; }
+    
+    const currentPrice = parseFloat(el('obLast')?.textContent || 0);
+    if (currentPrice === 0) { tape.innerHTML = ''; return; }
+    
+    // Позиция на шкале
+    const entryPct = ((maxPrice - posPrice) / priceRange) * 100;
+    const currentPct = ((maxPrice - currentPrice) / priceRange) * 100;
+    const isProfit = posDir * (currentPrice - posPrice) >= 0;
+    
+    const topPct = Math.min(entryPct, currentPct);
+    const heightPct = Math.abs(currentPct - entryPct);
+    
+    let html = '';
+    
+    // Entry horizontal line (QScalp style)
+    if (posPrice >= minPrice && posPrice <= maxPrice) {
+        html += `<div class="pnl-entry" style="top:${entryPct}%"></div>`;
+        html += `<div class="pnl-entry-label" style="top:${entryPct}%">${posDir > 0 ? '▲' : '▼'} ${Math.round(posPrice)}</div>`;
+    }
+    
+    // Vertical line from entry to current price
+    if (heightPct > 0.1) {
+        const pts = Math.round(Math.abs(currentPrice - posPrice));
+        html += `<div class="pnl-line ${isProfit ? 'pnl-line-profit' : 'pnl-line-loss'}" style="top:${topPct}%;height:${Math.max(heightPct, 0.5)}%"></div>`;
+        // Points label in the middle of the line
+        const midPct = topPct + heightPct / 2;
+        const ptsColor = isProfit ? '#4CAF50' : '#E91E63';
+        const ptsSign = isProfit ? '+' : '-';
+        html += `<div class="pnl-pts-label" style="top:${midPct}%;color:${ptsColor}">${ptsSign}${pts}</div>`;
+    }
+    tape.innerHTML = html;
 }
 
 function switchTimeframe() {
@@ -818,7 +1303,7 @@ function updateLivePrice(ticker) {
             if (last && last.close > 0 && Math.abs(price - last.close) / last.close > 0.05) return;
             const now = Math.floor(Date.now() / 1000);
             const tf = parseInt(el('obTimeframe')?.value) || 5;
-            const candleOpen = now - (now % (tf * 60)); // начало текущей свечи
+            const candleOpen = now - (now % (tf * 60)) + 10800; // MSK offset
 
             // Обновляем/создаём текущую свечу
             if (_lastCandleTime !== candleOpen) {
@@ -841,6 +1326,7 @@ function updateLivePrice(ticker) {
             }
         })
         .catch(e => console.error("[ERROR]", e));
+        updateChartLines();
 }
 
 function updateLiveCandle(ticker) {
@@ -854,16 +1340,46 @@ function updateLiveCandle(ticker) {
 
             // Только обновляем последнюю свечу
             const last = data[data.length - 1];
-            candleSeries.update({ time: last.t, open: last.o, high: last.h, low: last.l, close: last.c });
+            candleSeries.update({ time: last.t + 10800, open: last.o, high: last.h, low: last.l, close: last.c });
             if (volumeSeries) {
-                volumeSeries.update({ time: last.t, value: last.v || 0, color: last.c >= last.o ? 'rgba(34,197,94,0.3)' : 'rgba(239,68,68,0.3)' });
+                volumeSeries.update({ time: last.t + 10800, value: last.v || 0, color: last.c >= last.o ? 'rgba(34,197,94,0.3)' : 'rgba(239,68,68,0.3)' });
             }
         })
         .catch(e => console.error("[ERROR]", e));
 }
 
+            updateChartLines();
 // === Strategy Indicators on Chart ===
 function loadStrategyIndicators() {
+    const ticker = el('obInstrument')?.value || '';
+    if (!ticker.startsWith('Si')) return;
+    
+    // Try v7 first
+    fetch('/strategy/grid-mm-v7/chart-data')
+        .then(r => r.json())
+        .then(data => {
+            if (data.error) {
+                // Fallback to v6
+                loadV6Indicators();
+                return;
+            }
+            if (data.current) {
+                updateIndicatorMetrics({
+                    sar: data.current.sar,
+                    ema: data.current.ema,
+                    std: data.current.std,
+                    posDir: data.current.posDir,
+                    entryPrice: data.current.entryPrice,
+                    lots: data.current.lots,
+                    totalPnl: data.current.totalPnl,
+                    totalTrades: data.current.roundTrips
+                });
+            }
+        })
+        .catch(() => loadV6Indicators());
+}
+
+function loadV6Indicators() {
     const ticker = el('obInstrument')?.value || '';
     // Only for SI futures — skip for stocks and other instruments
     if (!ticker.startsWith('Si')) return;
@@ -906,7 +1422,7 @@ function toChartTime(isoStr) {
     if (!isoStr) return 0;
     const d = new Date(isoStr);
     if (isNaN(d.getTime())) return 0;
-    return Math.floor(d.getTime() / 1000);
+    return Math.floor(d.getTime() / 1000) + 10800;
 }
 
 function updateIndicatorMetrics(c) {
@@ -921,6 +1437,7 @@ function updateIndicatorMetrics(c) {
             metricsRow.innerHTML = `
                 <div class="metric-card"><div class="metric-label">SAR</div><div id="mSar" class="metric-value" style="color:#FFD700">—</div></div>
                 <div class="metric-card"><div class="metric-label">EMA</div><div id="mEma" class="metric-value" style="color:#00BFFF">—</div></div>
+                <div class="metric-card"><div class="metric-label">STD(14)</div><div id="mStd" class="metric-value" style="color:#FF69B4">—</div></div>
                 <div class="metric-card"><div class="metric-label">RV/HV</div><div id="mRatio" class="metric-value">—</div></div>
                 <div class="metric-card"><div class="metric-label">Regime</div><div id="mRegime" class="metric-value">—</div></div>
                 <div class="metric-card"><div class="metric-label">Позиция</div><div id="mPos" class="metric-value">—</div></div>
@@ -932,6 +1449,7 @@ function updateIndicatorMetrics(c) {
     }
     if (el('mSar')) el('mSar').textContent = c.sar > 0 ? c.sar.toFixed(2) : '—';
     if (el('mEma')) el('mEma').textContent = c.ema > 0 ? c.ema.toFixed(2) : '—';
+    if (el('mStd')) el('mStd').textContent = c.std > 0 ? c.std.toFixed(1) : '—';
     if (el('mRatio')) {
         el('mRatio').textContent = c.ratio > 0 ? c.ratio.toFixed(2) : '—';
         el('mRatio').style.color = c.regime === 'LOW' ? 'var(--green)' : 'var(--red)';
@@ -1015,6 +1533,9 @@ function readStratCfg() {
         maxLots: parseInt(el('cfgMaxLots')?.value),
         lotStepProfit: parseFloat(el('cfgLotStepProfit')?.value),
         forceEntryOnStart: el('cfgForceEntry')?.checked,
+        stdPeriod: parseInt(el('cfgStdPeriod')?.value) || 14,
+        stdMult: parseFloat(el('cfgStdMult')?.value) || 1.5,
+        gridHold: el('cfgGridHold')?.checked || false,
     };
 }
 
@@ -1175,7 +1696,7 @@ async function runBacktest() {
                 timeScale: { timeVisible: true },
             });
             const line = btEquityChart.addLineSeries({ color: '#22C55E', lineWidth: 2 });
-            const eqData = r.equityCurve.map(p => ({ time: p.time, value: p.value }));
+            const eqData = r.equityCurve.map(p => ({ time: p.time + 10800, value: p.value }));
             line.setData(eqData);
         }
 
@@ -1192,8 +1713,8 @@ async function runBacktest() {
                 localization: { timeFormatter: t => { const d=new Date(t*1000); return d.getUTCDate()+'.'+(d.getUTCMonth()+1)+' '+d.getUTCHours()+':'+String(d.getUTCMinutes()).padStart(2,'0'); } },
             });
             const cs = btCandleChart.addCandlestickSeries({ upColor: '#22C55E', downColor: '#EF4444', borderUpColor: '#22C55E', borderDownColor: '#EF4444', wickUpColor: '#22C55E', wickDownColor: '#EF4444' });
-            cs.setData(r.candles.map(c => ({ time: c.t, open: c.o, high: c.h, low: c.l, close: c.c })));
-            if (r.sar?.length) { const s = btCandleChart.addLineSeries({ color: '#F59E0B', lineWidth: 1, priceLineVisible: false, lastValueVisible: false }); s.setData(r.sar); }
+            cs.setData(r.candles.map(c => ({ time: c.t + 10800, open: c.o, high: c.h, low: c.l, close: c.c })));
+            if (r.sar?.length) { const s = btCandleChart.addLineSeries({ color: '#F59E0B', lineWidth: 1, priceLineVisible: false, lastValueVisible: false }); s.setData(r.sar.map(d => ({ time: d.time + 10800, value: d.value }))); }
             if (r.ema?.length) { const e = btCandleChart.addLineSeries({ color: '#3B82F6', lineWidth: 1, priceLineVisible: false, lastValueVisible: false }); e.setData(r.ema); }
             // Trade markers on candles
             if (r.markers?.length) {
@@ -1311,6 +1832,103 @@ async function startOptimize() {
 // === Роботы (мониторинг) ===
 let robots = JSON.parse(localStorage.getItem('hf_robots') || '[]');
 
+// Пресеты параметров по стратегии + инструменту
+const STRAT_PRESETS = {
+    'v7-SiM6': {sarStart:0.009,sarStep:0.01,sarMax:0.2,ema:30,gridStep:35,gridSpread:35,maxGrid:70,stdPeriod:14,stdMult:1.5,gridHold:true,closePct:0.15},
+    'v8-RIM6': {sarStart:0.009,sarStep:0.02,sarMax:0.2,ema:20,gridStep:1672,gridSpread:1672,maxGrid:70,stdPeriod:20,stdMult:2.5,gridHold:true,closePct:0.15},
+    'v8-GDM6': {sarStart:0.009,sarStep:0.02,sarMax:0.2,ema:20,gridStep:41,gridSpread:41,maxGrid:70,stdPeriod:20,stdMult:2.5,gridHold:true,closePct:0.15},
+    'v8-SPM6': {sarStart:0.009,sarStep:0.02,sarMax:0.2,ema:20,gridStep:460,gridSpread:460,maxGrid:70,stdPeriod:20,stdMult:2.5,gridHold:true,closePct:0.15},
+};
+
+function onStratVersionChange() {
+    const ver = el('stratVersion')?.value || 'v7';
+    // VP SG has different params
+    const gridParamsEl = document.querySelectorAll('#cfgSarStart,#cfgSarStep,#cfgSarMax,#cfgEmaPeriod,#cfgStdPeriod,#cfgStdMult,#cfgGridHold,#cfgClosePct');
+    if (ver === 'vpsg') {
+        // Show VP Scalp Grid params
+        if (el('cfgGridStep')) el('cfgGridStep').value = 15;
+        if (el('cfgGridSpread')) el('cfgGridSpread').value = 50;
+        if (el('cfgMaxGridLevels')) el('cfgMaxGridLevels').value = 100;
+        addLog(nowTime(), 'INFO', '📋 VP Scalp Grid: step=15 spread=50 levels=100');
+        return;
+    }
+    onStratInstrChange();
+}
+
+function onStratInstrChange() {
+    const ver = el('stratVersion')?.value || 'v7';
+    const instr = el('stratInstrument')?.value || 'SiM6';
+    const key = ver + '-' + instr;
+    const p = STRAT_PRESETS[key];
+    if (p) {
+        if (el('cfgSarStart')) el('cfgSarStart').value = p.sarStart;
+        if (el('cfgSarStep')) el('cfgSarStep').value = p.sarStep;
+        if (el('cfgSarMax')) el('cfgSarMax').value = p.sarMax;
+        if (el('cfgEmaPeriod')) el('cfgEmaPeriod').value = p.ema;
+        if (el('cfgGridStep')) el('cfgGridStep').value = p.gridStep;
+        if (el('cfgGridSpread')) el('cfgGridSpread').value = p.gridSpread;
+        if (el('cfgMaxGridLevels')) el('cfgMaxGridLevels').value = p.maxGrid;
+        if (el('cfgStdPeriod')) el('cfgStdPeriod').value = p.stdPeriod;
+        if (el('cfgStdMult')) el('cfgStdMult').value = p.stdMult;
+        if (el('cfgGridHold')) el('cfgGridHold').checked = p.gridHold;
+        addLog(nowTime(), 'INFO', `📋 Пресет загружен: ${key} EMA=${p.ema} GS=${p.gridStep} STD×${p.stdMult}`);
+    }
+}
+
+function vpScalpGridCreateRobot() {
+    const robot = {
+        id: Date.now(),
+        ticker: 'SiM6',
+        account: '',
+        accountName: '',
+        strategy: 'VP Scalp Grid',
+        gridStep: el('cfgVpStepBase')?.value || '15',
+        gridSpread: el('cfgVpSpreadBase')?.value || '50',
+        maxGrid: el('cfgVpMaxLevels')?.value || '100',
+        holdMinutes: el('cfgVpMaxHold')?.value || '60',
+        status: 'stopped',
+        position: '—',
+        pnlToday: 0, pnlTotal: 0,
+        lotsOpen: 0, go: 0,
+        exchangeStatus: '—'
+    };
+    robots.push(robot);
+    saveRobots();
+    renderRobots();
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+    document.querySelector('[data-tab="monitoring"]').classList.add('active');
+    el('monitoring')?.classList.add('active');
+    addLog(nowTime(), 'INFO', '🤖 VP Scalp Grid робот создан (levels=' + robot.maxGrid + ' step=' + robot.gridStep + ' spread=' + robot.gridSpread + ')');
+}
+
+function vpCopyCreateRobot() {
+    const robot = {
+        id: Date.now(),
+        ticker: 'SiM6',
+        account: '',
+        accountName: '',
+        strategy: 'VP Scalp Grid Copy',
+        gridStep: el('cfgVpCopyStepBase')?.value || '15',
+        gridSpread: el('cfgVpCopySpreadBase')?.value || '50',
+        maxGrid: el('cfgVpCopyMaxLevels')?.value || '100',
+        holdMinutes: el('cfgVpCopyMaxHold')?.value || '60',
+        status: 'stopped',
+        position: '—',
+        pnlToday: 0, pnlTotal: 0,
+        lotsOpen: 0, go: 0,
+        exchangeStatus: '—'
+    };
+    robots.push(robot);
+    saveRobots();
+    renderRobots();
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+    document.querySelector('[data-tab="monitoring"]').classList.add('active');
+    el('monitoring')?.classList.add('active');
+    addLog(nowTime(), 'INFO', '🤖 VP Scalp Grid Copy робот создан (levels=' + robot.maxGrid + ' step=' + robot.gridStep + ' spread=' + robot.gridSpread + ')');
+}
+
 function stratCreateRobot() {
     const cfg = getStratCfg();
     if (el('robotTicker')) el('robotTicker').value = el('stratInstrument')?.value;
@@ -1325,6 +1943,9 @@ function stratCreateRobot() {
     if (el('robotMinProfit')) el('robotMinProfit').value = cfg.minProfit || 28;
     if (el('robotComm')) el('robotComm').value = cfg.commission;
     if (el('robotLots')) el('robotLots').value = cfg.maxLots;
+    if (el('robotStdPeriod')) el('robotStdPeriod').value = cfg.stdPeriod || 14;
+    if (el('robotStdMult')) el('robotStdMult').value = cfg.stdMult || 1.5;
+    if (el('robotGridHold')) el('robotGridHold').checked = cfg.gridHold === true;
     if (el('robotForceEntry')) el('robotForceEntry').checked = cfg.forceEntry === 'true' || cfg.forceEntryOnStart === true;
     el('robotPanel').style.display = 'block';
 }
@@ -1335,7 +1956,7 @@ function confirmCreateRobot() {
         ticker: el('robotTicker')?.value || 'SiM6',
         account: el('robotAccount')?.value || '',
         accountName: el('robotAccount')?.selectedOptions?.[0]?.text || '',
-        strategy: 'SAR×EMA Grid MM v6',
+        strategy: el('stratVersion')?.value === 'v8' ? 'SAR×EMA Grid MM v8 (Trend)' : 'SAR×EMA Grid MM v7',
         sarStart: el('robotSarStart')?.value,
         sarStep: el('robotSarStep')?.value,
         sarMax: el('robotSarMax')?.value,
@@ -1348,6 +1969,9 @@ function confirmCreateRobot() {
         forceEntry: el('robotForceEntry')?.checked ? 'true' : 'false',
         commission: el('robotComm')?.value,
         lots: el('robotLots')?.value,
+        stdPeriod: el('robotStdPeriod')?.value,
+        stdMult: el('robotStdMult')?.value,
+        gridHold: el('robotGridHold')?.checked || false,
         status: 'stopped', // stopped, running, paused
         position: '—',
         pnlToday: 0,
@@ -1377,12 +2001,26 @@ async function renderRobots() {
 
     // Загружаем активные стратегии с сервера
     let serverStrategies = [];
+    let brokerPositions = [];
+    try {
+        const bpResp = await fetch('/api/positions');
+        brokerPositions = await bpResp.json();
+    } catch(e) {}
     try {
         const resp = await fetch('/api/active-strategies');
         const data = await resp.json();
         if (data.strategies) {
             serverStrategies = data.strategies.map(s => {
-                const posText = s.posDir > 0 ? 'Лонг' : s.posDir < 0 ? 'Шорт' : 'Флэт';
+                // Match broker position to strategy instrument
+                const bPos = brokerPositions.find(p => (p.ticker || '').includes(s.instrument || 'X'));
+                const brokerLots = bPos ? bPos.qty : 0;
+                const brokerAvg = bPos ? bPos.avgPrice : 0;
+                const brokerDir = bPos ? (bPos.dir === 'Buy' ? 1 : -1) : 0;
+                // Show broker data if available, otherwise strategy data
+                const showDir = brokerLots > 0 ? brokerDir : s.posDir;
+                const showPrice = brokerLots > 0 ? brokerAvg : s.entryPrice;
+                const showLots = brokerLots > 0 ? brokerLots : s.openLots;
+                const posText = showDir > 0 ? 'Лонг' : showDir < 0 ? 'Шорт' : 'Флэт';
                 const modeText = s.mode === 'Running' ? '🟢 Работает' : s.mode === 'Paused' ? '🟡 Пауза' : '🔴 Остановлен';
                 const modeCls = s.mode === 'Running' ? 'green' : s.mode === 'Paused' ? 'yellow' : 'red';
                 const pnlCls = v => v >= 0 ? 'green' : 'red';
@@ -1390,12 +2028,30 @@ async function renderRobots() {
                     <td><strong>${s.instrument}</strong></td>
                     <td><strong>${s.name}</strong> <span class="badge">СЕРВЕР</span></td>
                     <td>Финам</td>
-                    <td class="${s.posDir > 0 ? 'green' : s.posDir < 0 ? 'red' : ''}">${posText}${s.entryPrice > 0 ? ' @ ' + s.entryPrice.toFixed(0) : ''}</td>
+                    <td class="${showDir > 0 ? 'green' : showDir < 0 ? 'red' : ''}">${posText}${showPrice > 0 ? ' @ ' + showPrice.toFixed(0) : ''}</td>
                     <td>—</td>
                     <td class="${pnlCls(s.totalPnL)}">${s.totalPnL >= 0 ? '+' : ''}${s.totalPnL.toFixed(0)} ₽</td>
-                    <td>${s.openLots || s.lots || 0}</td>
+                    <td>${showLots}</td>
                     <td>—</td>
                     <td>
+                        ${s.id === 'grid-mm-v7' || s.id === 'grid-mm-v8' ? `
+                            <button class="btn btn-success btn-sm" onclick="fetch('/strategy/${s.id}/start',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({instrument:s.instrument||'SiM6'})}).then(r=>r.json()).then(d=>{addLog(nowTime(),'INFO','▶ Start '+s.id+': '+JSON.stringify(d));renderRobots();})">▶ Start</button>
+                            <button class="btn btn-warning btn-sm" onclick="fetch('/strategy/${s.id}/pause',{method:'POST'})">⏸</button>
+                            <button class="btn btn-danger btn-sm" onclick="fetch('/strategy/${s.id}/stop',{method:'POST'}).then(r=>r.json()).then(d=>{addLog(nowTime(),'INFO','⏹ Stop '+s.id+': '+JSON.stringify(d));renderRobots();})">⏹</button>
+                            <button class="btn btn-success btn-sm" onclick="fetch('/strategy/${s.id}/resume',{method:'POST'})">▶ Resume</button>
+                            <button class="btn btn-success btn-sm" onclick="fetch('/strategy/${s.id}/buy',{method:'POST'}).then(r=>r.json()).then(d=>addLog(nowTime(),'INFO','🟢 BUY: '+JSON.stringify(d)))" title="Купить по рынку">BUY</button>
+                            <button class="btn btn-danger btn-sm" onclick="fetch('/strategy/${s.id}/sell',{method:'POST'}).then(r=>r.json()).then(d=>addLog(nowTime(),'INFO','🔴 SELL: '+JSON.stringify(d)))" title="Продать по рынку">SELL</button>
+                        ` : ''}
+                        ${s.id === 'vp-scalp-grid' ? `
+                            <button class="btn btn-warning btn-sm" onclick="fetch('/strategy/vp-scalp-grid/pause',{method:'POST'})">⏸</button>
+                            <button class="btn btn-danger btn-sm" onclick="fetch('/strategy/vp-scalp-grid/stop',{method:'POST'})">⏹</button>
+                            <button class="btn btn-success btn-sm" onclick="fetch('/strategy/vp-scalp-grid/resume',{method:'POST'})">▶</button>
+                        ` : ''}
+                        ${s.id === 'vp-copy' ? `
+                            <button class="btn btn-warning btn-sm" onclick="fetch('/strategy/vp-copy/pause',{method:'POST'})">⏸</button>
+                            <button class="btn btn-danger btn-sm" onclick="fetch('/strategy/vp-copy/stop',{method:'POST'})">⏹</button>
+                            <button class="btn btn-success btn-sm" onclick="fetch('/strategy/vp-copy/resume',{method:'POST'})">▶</button>
+                        ` : ''}
                         ${s.id === 'grid-mm' ? `
                             <button class="btn btn-warning btn-sm" onclick="fetch('/strategy/grid-mm/pause',{method:'POST'})">⏸</button>
                             <button class="btn btn-danger btn-sm" onclick="fetch('/strategy/grid-mm/stop',{method:'POST'})">⏹</button>
@@ -1419,7 +2075,7 @@ async function renderRobots() {
         const statusText = r.status === 'running' ? '🟢 Работает' : r.status === 'paused' ? '🟡 Пауза' : '🔴 Остановлен';
         const posCls = r.position === 'Лонг' ? 'green' : r.position === 'Шорт' ? 'red' : '';
         const pnlCls = v => v >= 0 ? 'green' : 'red';
-        return `<tr ondblclick="editRobot(${i})" style="cursor:pointer" title="Двойной клик — параметры">
+        return `<tr ondblclick="editRobot(${i})" style="cursor:pointer" title="Двойной клик — торговый журнал">
             <td><strong>${r.ticker}</strong></td>
             <td>${r.strategy}</td>
             <td>${r.accountName || r.account || '—'}</td>
@@ -1447,58 +2103,74 @@ async function renderRobots() {
 async function robotStart(i) {
     const r = robots[i];
     if (!r) return;
-    addLog(nowTime(), 'INFO', `▶ Запуск робота ${r.ticker}...`);
-    // Сначала сохраняем параметры стратегии
+    let apiBase = getRobotApiBase(r);
+    let body = {};
+    
+    if (r.strategy && r.strategy.includes('VP Scalp Grid Copy')) {
+        body = {
+            maxLevels: parseInt(r.maxGrid) || 100,
+            stepBase: parseInt(r.gridStep) || 15,
+            spreadBase: parseInt(r.gridSpread) || 50,
+            maxHoldMinutes: parseInt(r.holdMinutes) || 60,
+            rvAdaptation: r.rvAdaptation === true
+        };
+    } else if (r.strategy && r.strategy.includes('VP Scalp')) {
+        body = {
+            maxLevels: parseInt(r.maxGrid) || 100,
+            stepBase: parseInt(r.gridStep) || 15,
+            spreadBase: parseInt(r.gridSpread) || 50,
+            maxHoldMinutes: parseInt(r.holdMinutes) || 60,
+            rvAdaptation: r.rvAdaptation === true
+        };
+    } else {
+        const isV8 = r.strategy && r.strategy.includes('v8');
+        apiBase = isV8 ? '/strategy/grid-mm-v8' : '/strategy/grid-mm-v7';
+        body = {
+            instrument: r.ticker || 'SiM6',
+            sarStart: parseFloat(r.sarStart) || 0.009,
+            sarStep: parseFloat(r.sarStep) || 0.01,
+            sarMax: parseFloat(r.sarMax) || 0.2,
+            emaPeriod: parseInt(r.ema) || 30,
+            gridStep: parseFloat(r.gridStep) || 35,
+            gridSpread: parseFloat(r.gridSpread) || 35,
+            maxGridLevels: parseInt(r.maxGrid) || 70,
+            closePct: parseFloat(r.closePct) || 0.30,
+            minProfitPerLot: parseFloat(r.minProfit) || 35,
+            maxLots: parseInt(r.lots) || 1,
+            stdPeriod: parseInt(r.stdPeriod) || 14,
+            stdMult: parseFloat(r.stdMult) || 1.5,
+            gridHold: r.gridHold === true
+        };
+    }
+    addLog(nowTime(), 'INFO', `▶ Запуск робота ${r.ticker} (${r.strategy})...`);
     try {
-        await fetch('/strategy/grid-mm/config', {
+        const resp = await fetch(apiBase + '/start', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                sarStart: parseFloat(r.sarStart) || 0.009,
-                sarStep: parseFloat(r.sarStep) || 0.01,
-                sarMax: parseFloat(r.sarMax) || 0.2,
-                emaPeriod: parseInt(r.ema) || 30,
-                gridStep: parseFloat(r.gridStep) || 45,
-                gridSpread: parseFloat(r.gridSpread) || 50,
-                maxGridLevels: parseInt(r.maxGrid) || 70,
-                closePct: parseFloat(r.closePct) || 0.30,
-                minProfitPerLot: parseFloat(r.minProfit) || 28,
-                commission: parseFloat(r.commission) || 0.90,
-                maxLots: parseInt(r.lots) || 1,
-                forceEntryOnStart: r.forceEntry === 'true'
-            })
-        });
-    } catch (e) {}
-    
-    // Обновляем параметры для графика
-    window._sarParams = { 
-        start: parseFloat(r.sarStart) || 0.009, 
-        step: parseFloat(r.sarStep) || 0.01, 
-        max: parseFloat(r.sarMax) || 0.2 
-    };
-    window._emaPeriod = parseInt(r.ema) || 30;
-    
-    try {
-        const resp = await fetch('/strategy/grid-mm/start', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ ticker: r.ticker, forceEntryOnStart: r.forceEntry === 'true' || r.forceEntryOnStart === true })
+            body: JSON.stringify(body)
         });
         const data = await resp.json();
         if (data.error) { addLog(nowTime(), 'ERROR', data.error); return; }
-        await fetch('/strategy/grid-mm/run', { method: 'POST' });
         r.status = 'running';
         r.exchangeStatus = 'Подключен';
         saveRobots(); renderRobots();
-        addLog(nowTime(), 'INFO', `🤖 Робот ${r.ticker} запущен`);
+        addLog(nowTime(), 'INFO', `🤖 Робот ${r.strategy} ${r.ticker} запущен`);
     } catch (e) { addLog(nowTime(), 'ERROR', e.message); }
+}
+
+function getRobotApiBase(r) {
+    if (r.strategy && r.strategy.includes('VP Scalp Grid Copy')) return '/strategy/vp-copy';
+    if (r.strategy && r.strategy.includes('VP Scalp')) return '/strategy/vp-scalp-grid';
+    if (r.strategy && r.strategy.includes('v8')) return '/strategy/grid-mm-v8';
+    return '/strategy/grid-mm-v7';
 }
 
 async function robotPause(i) {
     const r = robots[i];
     if (!r) return;
+    const apiBase = getRobotApiBase(r);
     try {
-        await fetch('/strategy/grid-mm/pause', { method: 'POST' });
+        await fetch(apiBase + '/pause', { method: 'POST' });
         r.status = 'paused';
         saveRobots(); renderRobots();
         addLog(nowTime(), 'INFO', `⏸ Робот ${r.ticker} на паузе`);
@@ -1508,9 +2180,10 @@ async function robotPause(i) {
 async function robotStop(i) {
     const r = robots[i];
     if (!r) return;
+    const apiBase = getRobotApiBase(r);
     addLog(nowTime(), 'INFO', `⏹ Остановка робота ${r.ticker}, закрытие позиций...`);
     try {
-        await fetch('/strategy/grid-mm/stop', { method: 'POST' });
+        await fetch(apiBase + '/stop', { method: 'POST' });
         r.status = 'stopped';
         r.position = '—'; r.lotsOpen = 0; r.go = 0;
         saveRobots(); renderRobots();
@@ -1562,7 +2235,6 @@ function editRobot(i) {
     if (!r) return;
     const panel = el('robotEditPanel');
     if (panel) { 
-        if (robotEditChartInstance) { robotEditChartInstance.remove(); robotEditChartInstance = null; }
         panel.remove(); 
     }
     // Create floating edit panel
@@ -1572,11 +2244,12 @@ function editRobot(i) {
     div.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);z-index:1000;width:900px;max-height:90vh;overflow-y:auto;box-shadow:0 8px 32px rgba(0,0,0,.5)';
     div.innerHTML = `
         <div class="card-header row gap-8">
-            🤖 Параметры: ${r.ticker}
+            🤖 Робот: ${r.ticker}
             <button class="btn btn-primary btn-sm" onclick="saveRobotEdit(${i})">💾 Сохранить</button>
-            <button class="btn btn-secondary btn-sm" onclick="if(robotEditChartInstance)robotEditChartInstance.remove();robotEditChartInstance=null;el('robotEditPanel')?.remove()">✕</button>
+            <button class="btn btn-secondary btn-sm" onclick="if(_journalRefreshTimer){clearInterval(_journalRefreshTimer);_journalRefreshTimer=null;}el('robotEditPanel')?.remove()">✕</button>
         </div>
         <div style="padding:12px">
+            <!-- Параметры робота -->
             <div class="metrics-row" style="flex-wrap:wrap;margin-bottom:16px">
                 <div class="metric-card"><div class="metric-label">Счёт</div><select id="editAccount" class="input" style="width:180px"><option value="${r.account}">${r.accountName || r.account}</option></select></div>
                 <div class="metric-card"><div class="metric-label">SAR Start</div><input id="editSarStart" class="input" type="number" step="0.001" value="${r.sarStart}" style="width:70px"></div>
@@ -1589,14 +2262,49 @@ function editRobot(i) {
                 <div class="metric-card"><div class="metric-label">Close %</div><input id="editClosePct" class="input" type="number" step="0.01" value="${r.closePct}" style="width:70px"></div>
                 <div class="metric-card"><div class="metric-label">Лоты</div><input id="editLots" class="input" type="number" value="${r.lots}" style="width:60px"></div>
             </div>
-            <div id="robotEditChart" style="height:400px;border:1px solid #2D2D44;border-radius:8px;margin-bottom:12px"></div>
-            <div id="robotEditInfo" style="font-size:12px;color:#9CA3AF">Загрузка данных...</div>
+            <hr style="border-color:#2D2D44;margin:12px 0">
+            <!-- Сводка -->
+            <div id="journalSummary" class="metrics-row" style="flex-wrap:wrap;margin-bottom:12px"></div>
+            <!-- Фильтры -->
+            <div style="display:flex;gap:8px;margin-bottom:12px;align-items:center">
+                <select id="journalFilter" class="input" style="width:120px" onchange="renderJournal()">
+                    <option value="all">Все позиции</option>
+                    <option value="LONG">Лонги</option>
+                    <option value="SHORT">Шорты</option>
+                    <option value="win">Прибыльные</option>
+                    <option value="loss">Убыточные</option>
+                </select>
+                <input id="journalDate" class="input" type="date" style="width:140px" onchange="if(_journalRobot)loadTradeJournal(_journalRobot)">
+                <button class="btn btn-secondary btn-sm" onclick="loadTradeJournal(robots[${i}])">🔄</button>
+            </div>
+            <!-- Таблица сделок -->
+            <div style="max-height:400px;overflow-y:auto;border:1px solid #2D2D44;border-radius:8px">
+                <table style="width:100%;border-collapse:collapse;font-size:13px">
+                    <thead style="position:sticky;top:0;z-index:1">
+                        <tr style="background:var(--card);border-bottom:2px solid var(--accent)">
+                            <th style="padding:8px;text-align:left">📅 Дата</th>
+                            <th style="padding:8px;text-align:left">⏰ Вход</th>
+                            <th style="padding:8px;text-align:left">⏰ Выход</th>
+                            <th style="padding:8px;text-align:center">↔️ Напр.</th>
+                            <th style="padding:8px;text-align:right">💰 Вход</th>
+                            <th style="padding:8px;text-align:right">💰 Выход</th>
+                            <th style="padding:8px;text-align:right">📊 Лоты</th>
+                            <th style="padding:8px;text-align:right">💵 PnL</th>
+                            <th style="padding:8px;text-align:right">📈 Накопл.</th>
+                        </tr>
+                    </thead>
+                    <tbody id="journalBody" style="background:var(--bg)"></tbody>
+                </table>
+            </div>
+            <div id="journalInfo" style="font-size:12px;color:#9CA3AF;margin-top:8px">Загрузка данных...</div>
         </div>`;
     document.body.appendChild(div);
-    // Load accounts into edit select
+    // Set today's date
+    const today = new Date();
+    const dateStr = today.toISOString().slice(0, 10);
+    if (el('journalDate')) el('journalDate').value = dateStr;
     loadAccountsInto('editAccount', r.account);
-    // Load chart
-    loadRobotChart(r);
+    loadTradeJournal(r);
 }
 
 async function loadAccountsInto(selectId, currentVal) {
@@ -1609,113 +2317,246 @@ async function loadAccountsInto(selectId, currentVal) {
     } catch (e) {}
 }
 
-let robotEditChartInstance = null;
+let _journalTrades = [];
+let _journalPositions = [];
+let _journalRobot = null;
+let _journalRefreshTimer = null;
 
-async function loadRobotChart(robot) {
-    const container = el('robotEditChart');
-    const info = el('robotEditInfo');
-    if (!container) return;
-
-    try { if (robotEditChartInstance) { robotEditChartInstance.remove(); robotEditChartInstance = null; } } catch(e) {}
-
+async function loadTradeJournal(robot) {
+    const info = el('journalInfo');
+    const body = el('journalBody');
+    if (!body) return;
+    
+    _journalRobot = robot;
+    
+    // Stop previous refresh timer
+    if (_journalRefreshTimer) { clearInterval(_journalRefreshTimer); _journalRefreshTimer = null; }
+    
+    if (info) info.textContent = 'Загрузка сделок...';
+    body.innerHTML = '';
+    
+    const dateVal = el('journalDate')?.value;
+    const dateParam = dateVal ? `&date=${dateVal}` : '';
+    
     try {
-        // 1. Load candles
-        const resp = await fetch(`/api/candles?ticker=${robot.ticker}&tf=5&days=5`);
+        const resp = await fetch('/api/trades' + (dateParam ? `?date=${dateVal}` : ''));
         const raw = await resp.json();
-        const allCandles = Array.isArray(raw) ? raw : [];
-        if (!allCandles.length) { if (info) info.textContent = 'Нет данных'; return; }
-
-        // 2. Filter out non-trading (flat) candles
-        const candles = allCandles.filter(c => c.h > c.l);
-        if (!candles.length) { if (info) info.textContent = 'Нет торговых данных'; return; }
-
-        // 3. Take last 200 candles max — enough for chart + indicators
-        const data = candles.slice(-200);
-
-        // 4. Wait for container dimensions
-        await new Promise(r => setTimeout(r, 100));
-        const width = container.offsetWidth || 860;
-
-        // 5. Create chart — MSK timezone
-        const tzOffset = 3 * 3600; // UTC+3
-        robotEditChartInstance = LightweightCharts.createChart(container, {
-            width, height: 400,
-            layout: { background: { color: '#1A1A2E' }, textColor: '#9CA3AF' },
-            grid: { vertLines: { color: '#2D2D44' }, horzLines: { color: '#2D2D44' } },
-            timeScale: { timeVisible: true, secondsVisible: false },
-            localization: {
-                timeFormatter: t => {
-                    const d = new Date((t + tzOffset) * 1000);
-                    return d.toISOString().slice(11, 16);
-                },
-            },
-            crosshair: { mode: LightweightCharts.CrosshairMode.Normal },
+        let trades = Array.isArray(raw) ? raw : (raw.trades || []);
+        
+        // Filter by robot ticker
+        const ticker = robot.ticker || 'SiM6';
+        trades = trades.filter(t => {
+            const tTicker = t.symbol || t.ticker || t.Ticker || '';
+            return tTicker.includes(ticker) || tTicker.includes(ticker.replace('@RTSX', ''));
         });
-
-        // 6. Candlestick series
-        const candleSeries = robotEditChartInstance.addCandlestickSeries({
-            upColor: '#22C55E', downColor: '#EF4444',
-            borderUpColor: '#22C55E', borderDownColor: '#EF4444',
-            wickUpColor: '#22C55E', wickDownColor: '#EF4444',
-        });
-        candleSeries.setData(data.map(c => ({
-            time: c.t, open: c.o, high: c.h, low: c.l, close: c.c
-        })));
-
-        // 7. Volume as histogram
-        const volSeries = robotEditChartInstance.addHistogramSeries({
-            priceFormat: { type: 'volume' },
-            priceScaleId: 'vol',
-        });
-        volSeries.priceScale().applyOptions({ scaleMargins: { top: 0.85, bottom: 0 } });
-        volSeries.setData(data.map(c => ({
-            time: c.t, value: c.v || 0,
-            color: c.c >= c.o ? 'rgba(34,197,94,0.25)' : 'rgba(239,68,68,0.25)',
-        })));
-
-        // 8. SAR indicator
-        const sarStart = parseFloat(robot.sarStart) || 0.005;
-        const sarStep = parseFloat(robot.sarStep) || 0.01;
-        const sarMax = parseFloat(robot.sarMax) || 0.2;
-        const sarPoints = calcSAR(data, sarStart, sarStep, sarMax);
-        if (sarPoints.length) {
-            const sarLine = robotEditChartInstance.addLineSeries({
-                color: '#FFD700', lineWidth: 1, pointMarkersVisible: true,
-                priceLineVisible: false, lastValueVisible: false, title: 'SAR',
-            });
-            sarLine.setData(sarPoints);
+        
+        // Normalize trade fields (Finam format: price.value, size.value, SIDE_BUY/SIDE_SELL)
+        _journalTrades = trades.map(t => ({
+            time: t.timestamp || t.time || t.trade_date || t.datetime || '',
+            ticker: t.symbol || t.ticker || t.Ticker || ticker,
+            dir: (t.side || t.direction || t.dir || '').replace('SIDE_', '').toUpperCase(),
+            price: parseFloat((t.price && t.price.value) ? t.price.value : (t.price || t.Price || 0)),
+            lots: parseInt((t.size && t.size.value) ? t.size.value : (t.quantity || t.lots || t.Lots || t.qty || 0)),
+            comment: t.comment || t.Comment || t.order_comment || ''
+        }));
+        
+        _journalTrades.sort((a, b) => a.time.localeCompare(b.time));
+        _journalPositions = groupIntoPositions(_journalTrades);
+        renderJournal();
+        
+        // Auto-refresh every 10 seconds if viewing today
+        const isToday = !dateVal || dateVal === new Date().toISOString().slice(0, 10);
+        if (isToday && robot.status === 'running') {
+            _journalRefreshTimer = setInterval(() => loadTradeJournal(robot), 10000);
         }
-
-        // 9. EMA indicator
-        const emaPeriod = parseInt(robot.ema) || 30;
-        const emaPoints = calcEMA(data, emaPeriod);
-        if (emaPoints.length) {
-            const emaLine = robotEditChartInstance.addLineSeries({
-                color: '#00BFFF', lineWidth: 2,
-                priceLineVisible: false, lastValueVisible: false, title: 'EMA',
-            });
-            emaLine.setData(emaPoints);
-        }
-
-        // 10. Scroll to latest bars — show ~100 last candles with proper width
-        robotEditChartInstance.applyOptions({
-            timeScale: { barSpacing: 8, rightOffset: 5 }
-        });
-        robotEditChartInstance.timeScale().scrollToRealTime();
-
-        // 11. Resize handling
-        new ResizeObserver(() => {
-            const w = container.offsetWidth;
-            if (w > 0 && robotEditChartInstance) robotEditChartInstance.applyOptions({ width: w });
-        }).observe(container);
-
-        if (info) info.textContent = `${data.length} свечей · SAR(${sarStart}/${sarStep}/${sarMax}) · EMA(${emaPeriod})`;
-
-    } catch(e) {
-        console.error('[RobotChart]', e);
-        if (info) info.textContent = 'Ошибка: ' + e.message;
+        
+    } catch (e) {
+        if (info) info.textContent = 'Ошибка загрузки: ' + e.message;
+        loadJournalFromStrategy(robot);
     }
 }
+
+function groupIntoPositions(trades) {
+    const positions = [];
+    let current = null;
+    let netPos = 0; // positive = long, negative = short
+    let cumPnl = 0;
+    
+    trades.forEach(t => {
+        const isBuy = t.dir === 'BUY' || t.dir === '1' || t.dir === 'B';
+        const lots = isBuy ? t.lots : -t.lots;
+        
+        if (!current) {
+            // New position
+            current = {
+                entryTime: t.time,
+                exitTime: t.time,
+                direction: isBuy ? 'LONG' : 'SHORT',
+                entryPrice: t.price,
+                exitPrice: t.price,
+                totalLots: t.lots,
+                maxLots: t.lots,
+                trades: [t],
+                realizedPnL: 0,
+                commission: Math.round(t.lots * 0.90), // 0.90₽ RT
+                cumPnl: 0,
+                comments: t.comment ? [t.comment] : []
+            };
+            netPos = lots;
+        } else {
+            // Adding to or closing position
+            const prevNet = netPos;
+            netPos += lots;
+            
+            // Calculate partial PnL if closing
+            if ((prevNet > 0 && !isBuy) || (prevNet < 0 && isBuy)) {
+                const closingLots = Math.min(Math.abs(lots), Math.abs(prevNet));
+                const pnlPerLot = prevNet > 0 ? (t.price - current.exitPrice) : (current.exitPrice - t.price);
+                current.realizedPnL += pnlPerLot * closingLots;
+            }
+            
+            current.exitTime = t.time;
+            current.exitPrice = t.price;
+            current.maxLots = Math.max(current.maxLots, Math.abs(netPos));
+            current.trades.push(t);
+            current.commission += Math.round(t.lots * 0.90);
+            if (t.comment && !current.comments.includes(t.comment)) current.comments.push(t.comment);
+            
+            // Position closed?
+            if (netPos === 0) {
+                current.totalLots = current.maxLots;
+                current.netPnL = current.realizedPnL - current.commission;
+                cumPnl += current.netPnL;
+                current.cumPnl = cumPnl;
+                positions.push(current);
+                current = null;
+                netPos = 0;
+            }
+        }
+    });
+    
+    // Open position (not closed yet)
+    if (current) {
+        current.totalLots = current.maxLots;
+        current.netPnL = current.realizedPnL - current.commission;
+        current.isOpen = true;
+        cumPnl += current.netPnL;
+        current.cumPnl = cumPnl;
+        positions.push(current);
+    }
+    
+    return positions;
+}
+
+async function loadJournalFromStrategy(robot) {
+    const info = el('journalInfo');
+    try {
+        const isV8 = robot.strategy && robot.strategy.includes('v8');
+        const apiBase = isV8 ? '/strategy/grid-mm-v8' : '/strategy/grid-mm-v7';
+        const resp = await fetch(apiBase + '/status');
+        const data = await resp.json();
+        
+        const summary = el('journalSummary');
+        if (summary && data.detail) {
+            const d = data.detail;
+            summary.innerHTML = `
+                <div class="metric-card"><div class="metric-label">Round Trips</div><div style="font-size:1.2em;font-weight:700;color:var(--accent)">${d.roundTrips || 0}</div></div>
+                <div class="metric-card"><div class="metric-label">PnL</div><div style="font-size:1.2em;font-weight:700;color:${(d.totalPnL||0) >= 0 ? 'var(--green)' : 'var(--red)'}">${(d.totalPnL||0) >= 0 ? '+' : ''}${(d.totalPnL||0).toFixed(0)} ₽</div></div>
+                <div class="metric-card"><div class="metric-label">Позиция</div><div style="font-size:1.2em;font-weight:700">${d.position || '—'}</div></div>
+                <div class="metric-card"><div class="metric-label">Grid уровни</div><div style="font-size:1.2em;font-weight:700">${d.filledLevels || 0} / ${d.maxGridLevels || '?'}</div></div>
+            `;
+        }
+        if (info) info.textContent = 'Данные из стратегии (сделки брокера недоступны)';
+    } catch (e2) {
+        if (info) info.textContent = 'Нет данных';
+    }
+}
+
+function renderJournal() {
+    const body = el('journalBody');
+    const info = el('journalInfo');
+    const summary = el('journalSummary');
+    if (!body) return;
+    
+    const filter = el('journalFilter')?.value || 'all';
+    let positions = _journalPositions;
+    if (filter === 'LONG') positions = positions.filter(p => p.direction === 'LONG');
+    else if (filter === 'SHORT') positions = positions.filter(p => p.direction === 'SHORT');
+    else if (filter === 'win') positions = positions.filter(p => p.netPnL > 0);
+    else if (filter === 'loss') positions = positions.filter(p => p.netPnL < 0);
+    
+    // === Summary stats (QScalp style) ===
+    const wins = positions.filter(p => p.netPnL > 0);
+    const losses = positions.filter(p => p.netPnL < 0);
+    const winRate = positions.length ? (wins.length / positions.length * 100).toFixed(1) : '—';
+    const totalPnl = positions.reduce((s, p) => s + p.netPnL, 0);
+    const avgWin = wins.length ? wins.reduce((s, p) => s + p.netPnL, 0) / wins.length : 0;
+    const avgLoss = losses.length ? losses.reduce((s, p) => s + p.netPnL, 0) / losses.length : 0;
+    const grossProfit = wins.reduce((s, p) => s + p.netPnL, 0);
+    const grossLoss = Math.abs(losses.reduce((s, p) => s + p.netPnL, 0));
+    const pf = grossLoss > 0 ? (grossProfit / grossLoss).toFixed(2) : grossProfit > 0 ? '∞' : '—';
+    const totalComm = positions.reduce((s, p) => s + p.commission, 0);
+    
+    // Max drawdown (from cumPnl peak)
+    let maxDD = 0, peak = 0;
+    positions.forEach(p => {
+        if (p.cumPnl > peak) peak = p.cumPnl;
+        const dd = peak - p.cumPnl;
+        if (dd > maxDD) maxDD = dd;
+    });
+    
+    if (summary) {
+        summary.innerHTML = `
+            <div class="metric-card"><div class="metric-label">Всего позиций</div><div style="font-size:1.2em;font-weight:700;color:var(--accent)">${positions.length}</div></div>
+            <div class="metric-card"><div class="metric-label">Win / Loss</div><div style="font-size:1.2em;font-weight:700"><span style="color:var(--green)">${wins.length}</span> / <span style="color:var(--red)">${losses.length}</span></div></div>
+            <div class="metric-card"><div class="metric-label">Win Rate</div><div style="font-size:1.2em;font-weight:700;color:${parseFloat(winRate) >= 50 ? 'var(--green)' : 'var(--red)'}">${winRate}%</div></div>
+            <div class="metric-card"><div class="metric-label">PnL (нетто)</div><div style="font-size:1.2em;font-weight:700;color:${totalPnl >= 0 ? 'var(--green)' : 'var(--red)'}">${totalPnl >= 0 ? '+' : ''}${totalPnl.toFixed(0)} ₽</div></div>
+            <div class="metric-card"><div class="metric-label">Profit Factor</div><div style="font-size:1.2em;font-weight:700">${pf}</div></div>
+            <div class="metric-card"><div class="metric-label">Avg Win</div><div style="font-size:1.2em;font-weight:700;color:var(--green)">${avgWin >= 0 ? '+' : ''}${avgWin.toFixed(0)} ₽</div></div>
+            <div class="metric-card"><div class="metric-label">Avg Loss</div><div style="font-size:1.2em;font-weight:700;color:var(--red)">${avgLoss.toFixed(0)} ₽</div></div>
+            <div class="metric-card"><div class="metric-label">Комиссия</div><div style="font-size:1.2em;font-weight:700;color:#9CA3AF">${totalComm.toLocaleString('ru-RU')} ₽</div></div>
+            <div class="metric-card"><div class="metric-label">Max DD</div><div style="font-size:1.2em;font-weight:700;color:var(--red)">${maxDD > 0 ? '-' : ''}${maxDD.toFixed(0)} ₽</div></div>
+        `;
+    }
+    
+    if (!positions.length) {
+        body.innerHTML = '<tr><td colspan="9" style="text-align:center;padding:24px;color:#9CA3AF">Нет закрытых позиций</td></tr>';
+        if (info) info.textContent = 'Нет позиций за выбранный период';
+        return;
+    }
+    
+    // Render positions (newest first)
+    const sorted = [...positions].reverse();
+    body.innerHTML = sorted.map((p, idx) => {
+        const pnlCls = p.netPnL >= 0 ? 'var(--green)' : 'var(--red)';
+        const dirCls = p.direction === 'LONG' ? 'var(--green)' : 'var(--red)';
+        const dirIcon = p.direction === 'LONG' ? '🟢' : '🔴';
+        const entryT = p.entryTime ? p.entryTime.replace(/\.\d+Z$/, '').replace('T', ' ').slice(11, 19) : '—';
+        const exitT = p.exitTime ? p.exitTime.replace(/\.\d+Z$/, '').replace('T', ' ').slice(11, 19) : '—';
+        const dateStr = p.entryTime ? p.entryTime.slice(0, 10) : '';
+        const pnlSign = p.netPnL >= 0 ? '+' : '';
+        const cumSign = p.cumPnl >= 0 ? '+' : '';
+        const bg = p.isOpen ? 'rgba(255,215,0,0.05)' : (idx % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.02)');
+        const openBadge = p.isOpen ? ' <span style="color:#FFD700;font-size:10px">⚡ОТКРЫТА</span>' : '';
+        const comments = p.comments.filter(c => c).join('; ');
+        
+        return `<tr style="border-bottom:1px solid #2D2D44;background:${bg}">
+            <td style="padding:6px 8px;font-size:11px;color:#9CA3AF">${dateStr}</td>
+            <td style="padding:6px 8px;font-family:monospace;font-size:12px">${entryT}</td>
+            <td style="padding:6px 8px;font-family:monospace;font-size:12px">${exitT}${openBadge}</td>
+            <td style="padding:6px 8px;text-align:center;color:${dirCls};font-weight:700;font-size:12px">${dirIcon} ${p.direction}</td>
+            <td style="padding:6px 8px;text-align:right;font-weight:600">${p.entryPrice.toFixed(2)}</td>
+            <td style="padding:6px 8px;text-align:right;font-weight:600">${p.exitPrice.toFixed(2)}</td>
+            <td style="padding:6px 8px;text-align:right">${p.totalLots}</td>
+            <td style="padding:6px 8px;text-align:right;font-weight:700;color:${pnlCls}">${pnlSign}${p.netPnL.toFixed(0)} ₽</td>
+            <td style="padding:6px 8px;text-align:right;font-size:11px;color:${p.cumPnl >= 0 ? 'var(--green)' : 'var(--red)'}">${cumSign}${p.cumPnl.toFixed(0)}</td>
+        </tr>
+        ${comments ? `<tr style="background:${bg}"><td colspan="9" style="padding:2px 8px 6px;font-size:10px;color:#9CA3AF;padding-left:42px">📝 ${comments}</td></tr>` : ''}`;
+    }).join('');
+    
+    if (info) info.textContent = `${positions.length} позиций · ${wins.length}W / ${losses.length}L · PnL ${totalPnl >= 0 ? '+' : ''}${totalPnl.toFixed(0)}₽${_journalRefreshTimer ? ' · 🔄 Live (10с)' : ''}`;
+}
+
 
 async function saveRobotEdit(i) {
     const r = robots[i];
@@ -1731,48 +2572,11 @@ async function saveRobotEdit(i) {
     r.maxGrid = el('editMaxGrid')?.value || r.maxGrid;
     r.closePct = el('editClosePct')?.value || r.closePct;
     r.lots = el('editLots')?.value || r.lots;
-    
-    // Отправляем параметры в стратегию
-    try {
-        await fetch('/strategy/grid-mm/config', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                sarStart: parseFloat(r.sarStart),
-                sarStep: parseFloat(r.sarStep),
-                sarMax: parseFloat(r.sarMax),
-                emaPeriod: parseInt(r.ema),
-                gridStep: parseFloat(r.gridStep),
-                gridSpread: parseFloat(r.gridSpread),
-                maxGridLevels: parseInt(r.maxGrid),
-                closePct: parseFloat(r.closePct),
-                maxLots: parseInt(r.lots),
-                commission: parseFloat(r.commission) || 0.90
-            })
-        });
-        // Обновляем параметры для графика
-        window._sarParams = { start: parseFloat(r.sarStart), step: parseFloat(r.sarStep), max: parseFloat(r.sarMax) };
-        window._emaPeriod = parseInt(r.ema);
-        // Пересчитываем индикаторы на графике
-        if (candleSeries && sarSeries && emaSeries) {
-            const candles = candleSeries.data();
-            if (candles && candles.length > 0) {
-                const bars = candles.map(c => ({ t: c.time, h: c.high, l: c.low, c: c.close }));
-                const sarData = calcSAR(bars, window._sarParams.start, window._sarParams.step, window._sarParams.max);
-                const emaData = calcEMA(bars, window._emaPeriod);
-                if (sarData.length > 0) sarSeries.setData(sarData);
-                if (emaData.length > 0) emaSeries.setData(emaData);
-            }
-        }
-        addLog(nowTime(), 'INFO', `⚙️ Параметры стратегии обновлены: SAR(${r.sarStart}/${r.sarStep}/${r.sarMax}) EMA(${r.ema})`);
-    } catch (e) {
-        addLog(nowTime(), 'ERROR', `Ошибка обновления параметров: ${e.message}`);
-    }
-    
-    saveRobots(); renderRobots();
-    if (robotEditChartInstance) robotEditChartInstance.remove();
-    robotEditChartInstance = null;
+    saveRobots();
+    if (_journalRefreshTimer) { clearInterval(_journalRefreshTimer); _journalRefreshTimer = null; }
+    renderRobots();
     el('robotEditPanel')?.remove();
+    addLog(nowTime(), 'INFO', `💾 Параметры робота ${r.ticker} сохранены`);
 }
 
 // === Log ===

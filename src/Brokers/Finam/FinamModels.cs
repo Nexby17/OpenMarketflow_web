@@ -174,10 +174,10 @@ public class PositionRow
     public long Balance { get; set; }
     
     [JsonPropertyName("current_price")]
-    public double CurrentPrice { get; set; }
+    public double? CurrentPrice { get; set; }
     
     [JsonPropertyName("average_price")]
-    public double AveragePrice { get; set; }
+    public double? AveragePrice { get; set; }
     
     [JsonPropertyName("unrealized_profit")]
     public double UnrealizedProfit { get; set; }
@@ -260,30 +260,42 @@ public class FinamOrder
     
     [JsonPropertyName("created_at")]
     public string CreatedAt { get; set; } = string.Empty;
+    
+    [JsonPropertyName("order")]
+    public FinamOrderDetails? Details { get; set; }
+}
+
+public class FinamOrderDetails
+{
+    [JsonPropertyName("comment")]
+    public string Comment { get; set; } = string.Empty;
+    
+    [JsonPropertyName("limit_price")]
+    public DecimalValue? LimitPrice { get; set; }
 }
 
 public class PlaceOrderRequest
 {
-    [JsonPropertyName("account_id")]
-    public string AccountId { get; set; } = string.Empty;
-    
     [JsonPropertyName("symbol")]
     public string Symbol { get; set; } = string.Empty;
+    
+    [JsonPropertyName("quantity")]
+    public DecimalValue Quantity { get; set; } = new() { Value = "1" };
     
     [JsonPropertyName("side")]
     public string Side { get; set; } = string.Empty;  // SIDE_BUY / SIDE_SELL
     
-    [JsonPropertyName("quantity")]
-    public int Quantity { get; set; }
-    
-    [JsonPropertyName("order_type")]
+    [JsonPropertyName("type")]
     public string OrderType { get; set; } = string.Empty;  // ORDER_TYPE_MARKET / ORDER_TYPE_LIMIT
     
-    [JsonPropertyName("price")]
-    public double? Price { get; set; }
+    [JsonPropertyName("limit_price")]
+    public DecimalValue? Price { get; set; }
     
     [JsonPropertyName("time_in_force")]
     public string? TimeInForce { get; set; }
+    
+    [JsonPropertyName("comment")]
+    public string? Comment { get; set; }
 }
 
 public class PlaceOrderResponse
@@ -351,3 +363,4 @@ public class DateValue
     [JsonPropertyName("day")]
     public int Day { get; set; }
 }
+
