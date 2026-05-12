@@ -103,7 +103,9 @@ public class VpScalpGridCopyStrategy
                 if (vols.Count > 10)
                 {
                     double currentRv = vols.Last();
-                    _rvRank = vols.Count(v => v <= currentRv) / (double)vols.Count;
+                    // Rolling percentile: only last 200 RV values for rank
+                    var recentVols = vols.Skip(Math.Max(0, vols.Count - 200)).ToList();
+                    _rvRank = recentVols.Count(v => v <= currentRv) / (double)recentVols.Count;
                 }
             }
         }
