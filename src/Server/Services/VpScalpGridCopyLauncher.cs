@@ -748,9 +748,27 @@ public class VpScalpGridCopyLauncher : IDisposable
                 _lastCandleTime = ts;
                 _barsSinceReset++;
 
-                // Check entry signal (only if no position)
+                // Check entry signal (only if no position — double-check with broker)
                 if (!_tracker.HasPosition && _barsSinceReset >= MIN_BARS_AFTER_RESET && sig != 0)
                 {
+                    // Guard: verify broker also has no position
+                    var (guardDir, guardLots, _) = await GetBrokerPositionAsync();
+                    if (guardLots > 0)
+                    {
+                        // Broker has position but tracker doesn't — sync first
+                        Console.WriteLine($"[{_logPrefix}] Entry guard: broker has {guardLots} lots, syncing instead of entry");
+                        double entry = _lastEntryPrice > 0 ? _lastEntryPrice : close;
+                        int filled = guardLots - 1;
+                        if (filled < 0) filled = 0;
+                        _tracker.Restore(guardDir, entry, guardLots, filled, 0, 0);
+                        _strategy.RestorePosition(guardDir, entry, filled, 0, 0, null);
+                        _lastEntryPrice = entry;
+                        _lastEntryDir = guardDir;
+                        _currentGridLevel = filled + 1;
+                        await PlaceNextGridAsync();
+                        SaveState();
+                        return;
+                    }
                     if (!double.IsNaN(_strategy.VAL) && !double.IsNaN(_strategy.VAH))
                     {
                         Console.WriteLine($"[{_logPrefix}] Signal: {(sig == 1 ? "LONG" : "SHORT")} @ {close:F0} VAL={_strategy.VAL:F0} VAH={_strategy.VAH:F0}");
@@ -1209,7 +1227,7 @@ public class VpScalpGridCopyLauncher : IDisposable
             return;
         }
 
-        // Lots mismatch → broker wins
+        // Lots mismatch → broker wins, but don't nuke orders unless severe
         if (bLots != _tracker.TotalLots)
         {
             Console.WriteLine($"[{_logPrefix}] Broker sync: lots mismatch broker={bLots} tracker={_tracker.TotalLots}");
@@ -1221,10 +1239,14 @@ public class VpScalpGridCopyLauncher : IDisposable
             _strategy.RestorePosition(bDir, _strategy.EntryPrice, filledLevels, _tracker.RoundTrips, _tracker.RealizedPnL, null);
             _currentGridLevel = filledLevels + 1;
 
-            // Reset tracked orders — they may be stale
-            await _orders.CancelAllByPrefix();
-            _orders.TrackedGridId = null;
-            _orders.TrackedTpId = null;
+            // Only cancel+replace orders if severe mismatch (tracker was way off)
+            // Small mismatches (1-2 lots) will self-correct on next fill
+            if (Math.Abs(bLots - _tracker.TotalLots) > 2 || _orders.TrackedGridId == null)
+            {
+                await _orders.CancelAllByPrefix();
+                _orders.TrackedGridId = null;
+                _orders.TrackedTpId = null;
+            }
             SaveState();
         }
     }
