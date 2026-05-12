@@ -2237,19 +2237,40 @@ function editRobot(i) {
     if (panel) { 
         panel.remove(); 
     }
-    // Create floating edit panel
-    const div = document.createElement('div');
-    div.id = 'robotEditPanel';
-    div.className = 'card';
-    div.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);z-index:1000;width:900px;max-height:90vh;overflow-y:auto;box-shadow:0 8px 32px rgba(0,0,0,.5)';
-    div.innerHTML = `
-        <div class="card-header row gap-8">
-            🤖 Робот: ${r.ticker}
-            <button class="btn btn-primary btn-sm" onclick="saveRobotEdit(${i})">💾 Сохранить</button>
-            <button class="btn btn-secondary btn-sm" onclick="if(_journalRefreshTimer){clearInterval(_journalRefreshTimer);_journalRefreshTimer=null;}el('robotEditPanel')?.remove()">✕</button>
-        </div>
-        <div style="padding:12px">
-            <!-- Параметры робота -->
+
+    // Check if VP Scalp Grid Copy
+    const isVpCopy = r.strategy && r.strategy.includes('VP Scalp Grid Copy');
+    const isVpScalp = r.strategy && r.strategy.includes('VP Scalp Grid') && !isVpCopy;
+
+    let paramsHtml = '';
+    if (isVpCopy) {
+        paramsHtml = `
+            <div class="metrics-row" style="flex-wrap:wrap;margin-bottom:16px">
+                <div class="metric-card"><div class="metric-label">Max Levels</div><input id="editMaxGrid" class="input" type="number" value="${r.maxGrid||100}" style="width:70px"></div>
+                <div class="metric-card"><div class="metric-label">Step Base (пт)</div><input id="editGridStep" class="input" type="number" value="${r.gridStep||15}" style="width:70px"></div>
+                <div class="metric-card"><div class="metric-label">Spread Base (пт)</div><input id="editGridSpread" class="input" type="number" value="${r.gridSpread||15}" style="width:70px"></div>
+                <div class="metric-card"><div class="metric-label">Max Hold (мин)</div><input id="editHoldMinutes" class="input" type="number" value="${r.holdMinutes||60}" style="width:70px"></div>
+                <div class="metric-card"><div class="metric-label">VP Lookback</div><input id="editVpLookback" class="input" type="number" value="${r.vpLookback||60}" style="width:70px"></div>
+                <div class="metric-card"><div class="metric-label">VP Bin Size</div><input id="editVpBinSize" class="input" type="number" value="${r.vpBinSize||50}" style="width:70px"></div>
+                <div class="metric-card"><div class="metric-label">VA %</div><input id="editVaPercent" class="input" type="number" step="0.05" value="${r.vaPercent||0.70}" style="width:70px"></div>
+                <div class="metric-card"><div class="metric-label">Min Profit/лот</div><input id="editMinProfit" class="input" type="number" value="${r.minProfit||28}" style="width:70px"></div>
+                <div class="metric-card" style="display:flex;align-items:center;gap:8px"><div class="metric-label">RV Adaptation</div><input id="editRvAdapt" type="checkbox" ${r.rvAdaptation!==false?'checked':''} style="width:20px;height:20px"></div>
+                <div class="metric-card"><div class="metric-label">RV Info</div><span id="rvInfo" style="font-size:12px;color:#9CA3AF">—</span></div>
+            </div>`;
+    } else if (isVpScalp) {
+        paramsHtml = `
+            <div class="metrics-row" style="flex-wrap:wrap;margin-bottom:16px">
+                <div class="metric-card"><div class="metric-label">Max Levels</div><input id="editMaxGrid" class="input" type="number" value="${r.maxGrid||100}" style="width:70px"></div>
+                <div class="metric-card"><div class="metric-label">Step Base (пт)</div><input id="editGridStep" class="input" type="number" value="${r.gridStep||15}" style="width:70px"></div>
+                <div class="metric-card"><div class="metric-label">Spread Base (пт)</div><input id="editGridSpread" class="input" type="number" value="${r.gridSpread||50}" style="width:70px"></div>
+                <div class="metric-card"><div class="metric-label">Max Hold (мин)</div><input id="editHoldMinutes" class="input" type="number" value="${r.holdMinutes||60}" style="width:70px"></div>
+                <div class="metric-card"><div class="metric-label">VP Lookback</div><input id="editVpLookback" class="input" type="number" value="${r.vpLookback||60}" style="width:70px"></div>
+                <div class="metric-card"><div class="metric-label">VP Bin Size</div><input id="editVpBinSize" class="input" type="number" value="${r.vpBinSize||50}" style="width:70px"></div>
+                <div class="metric-card"><div class="metric-label">VA %</div><input id="editVaPercent" class="input" type="number" step="0.05" value="${r.vaPercent||0.70}" style="width:70px"></div>
+                <div class="metric-card" style="display:flex;align-items:center;gap:8px"><div class="metric-label">RV Adaptation</div><input id="editRvAdapt" type="checkbox" ${r.rvAdaptation!==false?'checked':''} style="width:20px;height:20px"></div>
+            </div>`;
+    } else {
+        paramsHtml = `
             <div class="metrics-row" style="flex-wrap:wrap;margin-bottom:16px">
                 <div class="metric-card"><div class="metric-label">Счёт</div><select id="editAccount" class="input" style="width:180px"><option value="${r.account}">${r.accountName || r.account}</option></select></div>
                 <div class="metric-card"><div class="metric-label">SAR Start</div><input id="editSarStart" class="input" type="number" step="0.001" value="${r.sarStart}" style="width:70px"></div>
@@ -2261,7 +2282,23 @@ function editRobot(i) {
                 <div class="metric-card"><div class="metric-label">Max Grid</div><input id="editMaxGrid" class="input" type="number" value="${r.maxGrid}" style="width:70px"></div>
                 <div class="metric-card"><div class="metric-label">Close %</div><input id="editClosePct" class="input" type="number" step="0.01" value="${r.closePct}" style="width:70px"></div>
                 <div class="metric-card"><div class="metric-label">Лоты</div><input id="editLots" class="input" type="number" value="${r.lots}" style="width:60px"></div>
-            </div>
+            </div>`;
+    }
+
+    // Create floating edit panel
+    const div = document.createElement('div');
+    div.id = 'robotEditPanel';
+    div.className = 'card';
+    div.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);z-index:1000;width:900px;max-height:90vh;overflow-y:auto;box-shadow:0 8px 32px rgba(0,0,0,.5)';
+    div.innerHTML = `
+        <div class="card-header row gap-8">
+            🤖 Робот: ${r.ticker} (${r.strategy})
+            <button class="btn btn-primary btn-sm" onclick="saveRobotEdit(${i})">💾 Сохранить</button>
+            <button class="btn btn-secondary btn-sm" onclick="if(_journalRefreshTimer){clearInterval(_journalRefreshTimer);_journalRefreshTimer=null;}el('robotEditPanel')?.remove()">✕</button>
+        </div>
+        <div style="padding:12px">
+            <!-- Параметры робота -->
+            ${paramsHtml}
             <hr style="border-color:#2D2D44;margin:12px 0">
             <!-- Сводка -->
             <div id="journalSummary" class="metrics-row" style="flex-wrap:wrap;margin-bottom:12px"></div>
@@ -2561,22 +2598,67 @@ function renderJournal() {
 async function saveRobotEdit(i) {
     const r = robots[i];
     if (!r) return;
-    r.account = el('editAccount')?.value || r.account;
-    r.accountName = el('editAccount')?.selectedOptions?.[0]?.text || r.accountName;
-    r.sarStart = el('editSarStart')?.value || r.sarStart;
-    r.sarStep = el('editSarStep')?.value || r.sarStep;
-    r.sarMax = el('editSarMax')?.value || r.sarMax;
-    r.ema = el('editEma')?.value || r.ema;
-    r.gridStep = el('editGridStep')?.value || r.gridStep;
-    r.gridSpread = el('editGridSpread')?.value || r.gridSpread;
-    r.maxGrid = el('editMaxGrid')?.value || r.maxGrid;
-    r.closePct = el('editClosePct')?.value || r.closePct;
-    r.lots = el('editLots')?.value || r.lots;
+
+    const isVpCopy = r.strategy && r.strategy.includes('VP Scalp Grid Copy');
+    const isVpScalp = r.strategy && r.strategy.includes('VP Scalp Grid') && !isVpCopy;
+
+    if (isVpCopy) {
+        r.maxGrid = el('editMaxGrid')?.value || r.maxGrid;
+        r.gridStep = el('editGridStep')?.value || r.gridStep;
+        r.gridSpread = el('editGridSpread')?.value || r.gridSpread;
+        r.holdMinutes = el('editHoldMinutes')?.value || r.holdMinutes;
+        r.vpLookback = el('editVpLookback')?.value || r.vpLookback;
+        r.vpBinSize = el('editVpBinSize')?.value || r.vpBinSize;
+        r.vaPercent = el('editVaPercent')?.value || r.vaPercent;
+        r.minProfit = el('editMinProfit')?.value || r.minProfit;
+        r.rvAdaptation = el('editRvAdapt')?.checked ?? r.rvAdaptation;
+        // Send config to running strategy
+        try {
+            await fetch('/strategy/vp-copy/config', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({
+                    maxLevels: parseInt(r.maxGrid),
+                    stepBase: parseInt(r.gridStep),
+                    spreadBase: parseInt(r.gridSpread),
+                    maxHoldMinutes: parseInt(r.holdMinutes),
+                    vpLookback: parseInt(r.vpLookback),
+                    vpBinSize: parseInt(r.vpBinSize),
+                    vaPercent: parseFloat(r.vaPercent),
+                    rvAdaptation: r.rvAdaptation,
+                    minProfitPerLot: parseFloat(r.minProfit)
+                })
+            });
+            addLog(nowTime(), 'INFO', `📤 Конфиг отправлен на сервер: step=${r.gridStep} spread=${r.gridSpread} RV=${r.rvAdaptation}`);
+        } catch(e) { addLog(nowTime(), 'ERROR', 'Config send failed: ' + e.message); }
+    } else if (isVpScalp) {
+        r.maxGrid = el('editMaxGrid')?.value || r.maxGrid;
+        r.gridStep = el('editGridStep')?.value || r.gridStep;
+        r.gridSpread = el('editGridSpread')?.value || r.gridSpread;
+        r.holdMinutes = el('editHoldMinutes')?.value || r.holdMinutes;
+        r.vpLookback = el('editVpLookback')?.value || r.vpLookback;
+        r.vpBinSize = el('editVpBinSize')?.value || r.vpBinSize;
+        r.vaPercent = el('editVaPercent')?.value || r.vaPercent;
+        r.rvAdaptation = el('editRvAdapt')?.checked ?? r.rvAdaptation;
+    } else {
+        r.account = el('editAccount')?.value || r.account;
+        r.accountName = el('editAccount')?.selectedOptions?.[0]?.text || r.accountName;
+        r.sarStart = el('editSarStart')?.value || r.sarStart;
+        r.sarStep = el('editSarStep')?.value || r.sarStep;
+        r.sarMax = el('editSarMax')?.value || r.sarMax;
+        r.ema = el('editEma')?.value || r.ema;
+        r.gridStep = el('editGridStep')?.value || r.gridStep;
+        r.gridSpread = el('editGridSpread')?.value || r.gridSpread;
+        r.maxGrid = el('editMaxGrid')?.value || r.maxGrid;
+        r.closePct = el('editClosePct')?.value || r.closePct;
+        r.lots = el('editLots')?.value || r.lots;
+    }
+
     saveRobots();
     if (_journalRefreshTimer) { clearInterval(_journalRefreshTimer); _journalRefreshTimer = null; }
     renderRobots();
     el('robotEditPanel')?.remove();
-    addLog(nowTime(), 'INFO', `💾 Параметры робота ${r.ticker} сохранены`);
+    addLog(nowTime(), 'INFO', `💾 Параметры робота ${r.ticker} (${r.strategy}) сохранены`);
 }
 
 // === Log ===

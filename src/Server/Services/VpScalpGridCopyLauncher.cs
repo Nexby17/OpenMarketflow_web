@@ -579,6 +579,8 @@ public class VpScalpGridCopyLauncher : IDisposable
             maxHold = _strategy.Params.MaxHoldMinutes,
             step, spread,
             rvAdaptation = _strategy.Params.RvAdaptation,
+            rvRank = Math.Round(_strategy.RvRank, 3),
+            rvLevel = _strategy.RvLevel,
             currentLevel = _currentGridLevel,
             connected = true,
             params_obj = new
@@ -846,8 +848,11 @@ public class VpScalpGridCopyLauncher : IDisposable
                         _orders.TrackedGridId = null;
                     }
 
-                    // 3. Reset grid to level 1 (mill logic)
-                    _currentGridLevel = 1;
+                    // 3. Reset grid to next unfilled level (skip already completed ones)
+                    _currentGridLevel = _tracker.FilledLevels + 1;
+                    // Cap at max
+                    if (_currentGridLevel > _strategy.Params.MaxLevels)
+                        _currentGridLevel = 0;
 
                     if (_tracker.HasPosition)
                     {
