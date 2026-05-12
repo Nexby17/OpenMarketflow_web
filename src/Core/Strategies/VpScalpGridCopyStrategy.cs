@@ -60,7 +60,8 @@ public class VpScalpGridCopyStrategy
     private double _prevClose = 0;
     private double _rvRank = 0.5;
     private double _smoothedRvRank = 0.5;
-    private int _prevRvLevel = 6; // start middle
+    // Start level from StepBase param (e.g. stepBase=35 → level=4)
+    private int _prevRvLevel = -1; // -1 = not initialized, will be set from StepBase on first call
 
     public Config Params { get; }
 
@@ -160,6 +161,10 @@ public class VpScalpGridCopyStrategy
     {
         if (!Params.RvAdaptation)
             return (Params.StepBase, Params.SpreadBase);
+
+        // Initialize level from StepBase on first call
+        if (_prevRvLevel < 0)
+            _prevRvLevel = Math.Clamp((Params.StepBase - 15) / 5, 0, 12);
 
         int rawLevel = (int)Math.Floor(_rvRank * 13);
         if (rawLevel > 12) rawLevel = 12;
