@@ -879,11 +879,22 @@ public class VpScalpGridCopyLauncher : IDisposable
 
         // Check if broker still has position
         var (bDir, bLots, _) = await GetBrokerPositionAsync();
+        if (bDir == -999)
+        {
+            // API error — don't make decisions, skip this tick
+            Console.WriteLine($"[{_logPrefix}] Broker check failed (API error) — skipping reset");
+            return;
+        }
         if (bLots == 0 && _tracker.HasPosition)
         {
             // Broker flicker protection: double-check
             await Task.Delay(1000);
             var (recheckDir, recheckLots, _) = await GetBrokerPositionAsync();
+            if (recheckDir == -999)
+            {
+                Console.WriteLine($"[{_logPrefix}] Broker recheck failed (API error) — skipping reset");
+                return;
+            }
             if (recheckLots > 0)
             {
                 Console.WriteLine($"[{_logPrefix}] Broker flicker — position still exists ({recheckLots} lots)");
@@ -1240,7 +1251,7 @@ public class VpScalpGridCopyLauncher : IDisposable
                 return (d, q, avg);
             }
         }
-        catch (Exception ex) { Console.WriteLine($"[{_logPrefix}] GetBrokerPosition error: {ex.Message}"); }
+        catch (Exception ex) { Console.WriteLine($"[{_logPrefix}] GetBrokerPosition error: {ex.Message}"); return (-999, 0, 0); }
         return (0, 0, 0);
     }
 
