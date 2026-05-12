@@ -59,6 +59,8 @@ public class VpScalpGridCopyStrategy
     private readonly List<double> _retBuffer = new();
     private double _prevClose = 0;
     private double _rvRank = 0.5;
+    private double _smoothedRvRank = 0.5;
+    private int _prevRvLevel = 6; // start middle
 
     public Config Params { get; }
 
@@ -103,9 +105,13 @@ public class VpScalpGridCopyStrategy
                 if (vols.Count > 10)
                 {
                     double currentRv = vols.Last();
-                    // Rolling percentile: only last 200 RV values for rank
-                    var recentVols = vols.Skip(Math.Max(0, vols.Count - 200)).ToList();
-                    _rvRank = recentVols.Count(v => v <= currentRv) / (double)recentVols.Count;
+                    // Rolling percentile: last 1000 RV values for rank (3.5 days on 5-min)
+                    var recentVols = vols.Skip(Math.Max(0, vols.Count - 1000)).ToList();
+                    double rawRank = recentVols.Count(v => v <= currentRv) / (double)recentVols.Count;
+                    
+                    // EMA smoothing: α=0.05 (slow adaptation)
+                    _smoothedRvRank = 0.95 * _smoothedRvRank + 0.05 * rawRank;
+                    _rvRank = Math.Clamp(_smoothedRvRank, 0, 1);
                 }
             }
         }
@@ -155,9 +161,18 @@ public class VpScalpGridCopyStrategy
         if (!Params.RvAdaptation)
             return (Params.StepBase, Params.SpreadBase);
 
-        int level = (int)Math.Floor(_rvRank * 13);
-        if (level > 12) level = 12;
-        if (level < 0) level = 0;
+        int rawLevel = (int)Math.Floor(_rvRank * 13);
+        if (rawLevel > 12) rawLevel = 12;
+        if (rawLevel < 0) rawLevel = 0;
+        
+        // Hysteresis: only change level if diff >= 2
+        // Clamp: max change 2 levels per tick
+        int diff = rawLevel - _prevRvLevel;
+        int level = _prevRvLevel;
+        if (Math.Abs(diff) >= 2)
+            level = _prevRvLevel + Math.Sign(diff) * Math.Min(Math.Abs(diff), 2);
+        
+        _prevRvLevel = level;
         int step = 15 + level * 5;
         return (step, step);
     }
