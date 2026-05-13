@@ -355,13 +355,29 @@ public class VpScalpGridLauncher : IDisposable
             brokerOrders = await GetBrokerOrdersAsync();
 
         bool brokerHasPos = brokerLots > 0 && brokerDir != -999;
+        bool brokerError = brokerDir == -999;
         bool robotHasPos = _strategy.PositionDirection != 0;
 
-        // 2. NO POSITION AT BROKER → reset if needed
+        // API error → skip this tick entirely, don't touch anything
+        if (brokerError && robotHasPos) return;
+
+        // 2. NO POSITION AT BROKER → flicker check, then reset
         if (!brokerHasPos)
         {
             if (robotHasPos || _gridOrderId != null || _tpOrderId != null)
             {
+                // Flicker protection: recheck after 200ms
+                if (fetchPosition)
+                {
+                    await Task.Delay(200);
+                    var (recheckDir, recheckLots, _) = await GetBrokerPositionAsync();
+                    if (recheckLots > 0 && recheckDir != -999)
+                    {
+                        Console.WriteLine($"[{_logPrefix}] Broker flicker — position exists ({recheckLots} lots)");
+                        return;
+                    }
+                    if (recheckDir == -999) return; // API still erroring, don't reset
+                }
                 Console.WriteLine($"[{_logPrefix}] No broker position → cancel all, reset");
                 await CancelAllOrdersAsync();
                 _gridOrderId = null;
@@ -788,7 +804,7 @@ public class VpScalpGridLauncher : IDisposable
             var rest = _broker.RestClient;
             if (rest == null) return (0, 0, 0);
             var jwt = await rest.GetJwtAsync();
-            using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(1) };
+            using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(3) };
             http.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", jwt);
             var resp = await http.GetAsync($"https://api.finam.ru/v1/accounts/{_accountId}");
             if (!resp.IsSuccessStatusCode) return (-999, 0, 0);

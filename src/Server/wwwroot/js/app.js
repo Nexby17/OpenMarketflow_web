@@ -298,7 +298,7 @@ function updateChartLines() {
     // Обновить линии заявок
     fetch('/api/orders').then(r => r.json()).then(data => {
         window._lastOrders = (data.orders || data || []);
-        clearOrderLines();
+        if (typeof clearOrderLines === 'function') clearOrderLines();
         const orders = data.orders || data || [];
         const activeOrders = orders.filter(o => o.status === 'ORDER_STATUS_NEW');
         if (!activeOrders.length) return;
