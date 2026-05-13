@@ -350,9 +350,9 @@ public class VpScalpGridCopyLauncher : IDisposable
         }
 
         /// <summary>Check exit conditions at given price.</summary>
-        public (bool shouldClose, string reason) CheckExit(double currentPrice, int currentHourUtc)
+        public (bool shouldClose, string reason) CheckExit(double currentPrice, int currentHourUtc, double? unrealizedPnL = null)
         {
-            return _strategy.CheckExit(currentPrice, currentHourUtc);
+            return _strategy.CheckExit(currentPrice, currentHourUtc, unrealizedPnL);
         }
 
         /// <summary>Get adapted step and spread based on RV rank.</summary>
@@ -509,7 +509,7 @@ public class VpScalpGridCopyLauncher : IDisposable
         }
 
         // Start main loop 200ms
-        _mainTimer = new System.Threading.Timer(MainLoopTick, null, TimeSpan.FromMilliseconds(200), TimeSpan.FromMilliseconds(200));
+        _mainTimer = new System.Threading.Timer(MainLoopTick, null, TimeSpan.FromMilliseconds(500), TimeSpan.FromMilliseconds(500));
         Console.WriteLine($"[{_logPrefix}] ✅ Started");
     }
 
@@ -720,7 +720,8 @@ public class VpScalpGridCopyLauncher : IDisposable
                 if (_tracker.HasPosition)
                 {
                     double exitPrice = _tracker.Direction == 1 ? high : low;
-                    var (shouldClose, reason) = _signalDetector.CheckExit(exitPrice, ts.Hour);
+                    double unrealizedPnl = _tracker.RealizedPnL;
+                    var (shouldClose, reason) = _signalDetector.CheckExit(exitPrice, ts.Hour, unrealizedPnl);
                     if (shouldClose)
                     {
                         // Timeout: only close if profitable
@@ -907,7 +908,7 @@ public class VpScalpGridCopyLauncher : IDisposable
         if (bLots == 0 && _tracker.HasPosition)
         {
             // Broker flicker protection: double-check
-            await Task.Delay(1000);
+            await Task.Delay(200);
             var (recheckDir, recheckLots, _) = await GetBrokerPositionAsync();
             if (recheckDir == -999)
             {

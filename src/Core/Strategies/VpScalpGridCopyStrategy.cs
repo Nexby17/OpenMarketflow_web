@@ -135,7 +135,7 @@ public class VpScalpGridCopyStrategy
     /// <summary>
     /// Check exit conditions. Returns true if should close.
     /// </summary>
-    public (bool shouldClose, string reason) CheckExit(double currentPrice, int currentHourUtc)
+    public (bool shouldClose, string reason) CheckExit(double currentPrice, int currentHourUtc, double? unrealizedPnL = null)
     {
         if (_posDir == 0) return (false, "");
 
@@ -143,11 +143,24 @@ public class VpScalpGridCopyStrategy
         if (_entryTime.HasValue && HoldMinutes >= Params.MaxHoldMinutes)
             return (true, $"Timeout ({HoldMinutes} min >= {Params.MaxHoldMinutes})");
 
-        // POC hit
-        if (_posDir == 1 && currentPrice >= POC)
-            return (true, $"POC hit LONG: {currentPrice:F0} >= {POC:F0}");
-        if (_posDir == -1 && currentPrice <= POC)
-            return (true, $"POC hit SHORT: {currentPrice:F0} <= {POC:F0}");
+        // POC hit — 1 lot = unconditional, 2+ lots = profit check
+        bool pocHit = (_posDir == 1 && currentPrice >= POC) || (_posDir == -1 && currentPrice <= POC);
+        if (pocHit)
+        {
+            if (TotalLots <= 1)
+                return (true, $"POC hit {(_posDir == 1 ? "LONG" : "SHORT")}: {currentPrice:F0} {(_posDir == 1 ? ">=" : "<=")} {POC:F0}");
+
+            double perLot = 0;
+            if (unrealizedPnL.HasValue && TotalLots > 0)
+                perLot = unrealizedPnL.Value / TotalLots;
+            else if (_posDir == 1)
+                perLot = currentPrice - _entryPrice;
+            else
+                perLot = _entryPrice - currentPrice;
+
+            if (perLot >= Params.MinProfitPerLot)
+                return (true, $"POC hit {(_posDir == 1 ? "LONG" : "SHORT")}: {currentPrice:F0} {(_posDir == 1 ? ">=" : "<=")} {POC:F0} (PnL/lot={perLot:F0})");
+        }
 
         return (false, "");
     }
