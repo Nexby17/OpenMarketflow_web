@@ -1929,6 +1929,56 @@ function vpCopyCreateRobot() {
     addLog(nowTime(), 'INFO', '🤖 VP Scalp Grid Copy робот создан (levels=' + robot.maxGrid + ' step=' + robot.gridStep + ' spread=' + robot.gridSpread + ')');
 }
 
+function vpSimpleCreateRobot() {
+    const slPct = el('cfgVpSimpleSlPct')?.value || '0.20';
+    const maxHold = el('cfgVpSimpleMaxHold')?.value || '60';
+    const lookback = el('cfgVpSimpleLookback')?.value || '40';
+    const bins = el('cfgVpSimpleBins')?.value || '30';
+    const ticker = el('cfgVpSimpleTicker')?.value || 'MXM6';
+    const finamSym = ticker + '@RTSX';
+    const robot = {
+        id: Date.now(),
+        ticker: ticker,
+        account: '',
+        accountName: '',
+        strategy: 'VP Scalp Simple',
+        slPct: slPct,
+        holdMinutes: maxHold,
+        vpLookback: lookback,
+        vpBins: bins,
+        finamSymbol: finamSym,
+        status: 'stopped',
+        position: '—',
+        pnlToday: 0, pnlTotal: 0,
+        lotsOpen: 0, go: 0,
+        exchangeStatus: '—'
+    };
+    robots.push(robot);
+    saveRobots();
+    renderRobots();
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+    document.querySelector('[data-tab="monitoring"]').classList.add('active');
+    el('monitoring')?.classList.add('active');
+    addLog(nowTime(), 'INFO', `⚡ VP Scalp Simple робот создан (${ticker} SL=${slPct}% hold=${maxHold}мин)`);
+}
+
+function vpSimpleTest() {
+    const ticker = el('cfgVpSimpleTicker')?.value || 'MXM6';
+    const slPct = el('cfgVpSimpleSlPct')?.value || '0.20';
+    // Switch to testing tab
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+    document.querySelector('[data-tab="testing"]').classList.add('active');
+    el('testing')?.classList.add('active');
+    // Set instrument
+    const instrSel = el('testInstrument');
+    if (instrSel) {
+        for (let opt of instrSel.options) { if (opt.value.includes(ticker)) { instrSel.value = opt.value; break; } }
+    }
+    addLog(nowTime(), 'INFO', `🧪 VP Scalp Simple: откройте тестирование для ${ticker} (SL=${slPct}%)`);
+}
+
 function stratCreateRobot() {
     const cfg = getStratCfg();
     if (el('robotTicker')) el('robotTicker').value = el('stratInstrument')?.value;
@@ -2106,7 +2156,15 @@ async function robotStart(i) {
     let apiBase = getRobotApiBase(r);
     let body = {};
     
-    if (r.strategy && r.strategy.includes('VP Scalp Grid Copy')) {
+    if (r.strategy && r.strategy.includes('VP Scalp Simple')) {
+        body = {
+            ticker: r.ticker || 'MXM6',
+            slPct: parseFloat(r.slPct) || 0.20,
+            maxHoldMinutes: parseInt(r.holdMinutes) || 60,
+            vpLookback: parseInt(r.vpLookback) || 40,
+            vpBins: parseInt(r.vpBins) || 30
+        };
+    } else if (r.strategy && r.strategy.includes('VP Scalp Grid Copy')) {
         body = {
             maxLevels: parseInt(r.maxGrid) || 100,
             stepBase: parseInt(r.gridStep) || 15,
@@ -2159,6 +2217,7 @@ async function robotStart(i) {
 }
 
 function getRobotApiBase(r) {
+    if (r.strategy && r.strategy.includes('VP Scalp Simple')) return '/strategy/vp-simple';
     if (r.strategy && r.strategy.includes('VP Scalp Grid Copy')) return '/strategy/vp-copy';
     if (r.strategy && r.strategy.includes('VP Scalp')) return '/strategy/vp-scalp-grid';
     if (r.strategy && r.strategy.includes('v8')) return '/strategy/grid-mm-v8';
@@ -2202,24 +2261,24 @@ function robotRemove(i) {
 // Обновление данных роботов из стратегии
 async function updateRobotData() {
     if (!robots.length) return;
-    try {
-        const resp = await fetch('/strategy/grid-mm/status');
-        const data = await resp.json();
-        if (data.status === 'not_initialized') return;
-        robots.forEach(r => {
-            if (r.status === 'running' || r.status === 'paused') {
-                r.pnlToday = data.pnl || 0;
-                r.pnlTotal = data.totalPnl || data.pnl || 0;
-                r.position = data.direction === 1 ? 'Лонг' : data.direction === -1 ? 'Шорт' : '—';
-                r.lotsOpen = data.openLots || 0;
-                r.go = data.margin || r.lotsOpen * 12000;
-                r.exchangeStatus = data.connected ? 'Биржа OK' : 'Нет связи';
-                if (data.mode === 'Stopped') r.status = 'stopped';
-                if (data.mode === 'Paused') r.status = 'paused';
-            }
-        });
-        saveRobots(); renderRobots();
-    } catch (e) {}
+    for (const r of robots) {
+        if (r.status !== 'running' && r.status !== 'paused') continue;
+        try {
+            const apiBase = getRobotApiBase(r);
+            const resp = await fetch(apiBase + '/status');
+            const data = await resp.json();
+            if (data.status === 'not_running' || data.status === 'not_initialized') continue;
+            // Use brokerPnL if available, otherwise realizedPnL
+            r.pnlToday = data.brokerPnL ?? data.realizedPnL ?? data.pnl ?? 0;
+            r.pnlTotal = data.brokerPnL ?? data.realizedPnL ?? data.totalPnl ?? data.pnl ?? 0;
+            r.position = data.dirStr || (data.direction === 1 ? 'Лонг' : data.direction === -1 ? 'Шорт' : '—');
+            r.lotsOpen = data.totalLots || data.openLots || 0;
+            r.exchangeStatus = data.connected ? 'Биржа OK' : 'Нет связи';
+            if (data.status === 'stopped') r.status = 'stopped';
+            if (data.status === 'paused') r.status = 'paused';
+        } catch (e) {}
+    }
+    saveRobots(); renderRobots();
 }
 
 // Начальный рендер
@@ -2240,10 +2299,19 @@ function editRobot(i) {
 
     // Check if VP Scalp Grid Copy
     const isVpCopy = r.strategy && r.strategy.includes('VP Scalp Grid Copy');
-    const isVpScalp = r.strategy && r.strategy.includes('VP Scalp Grid') && !isVpCopy;
+    const isVpSimple = r.strategy && r.strategy.includes('VP Scalp Simple');
+    const isVpScalp = r.strategy && r.strategy.includes('VP Scalp Grid') && !isVpCopy && !isVpSimple;
 
     let paramsHtml = '';
-    if (isVpCopy) {
+    if (isVpSimple) {
+        paramsHtml = `
+            <div class="metrics-row" style="flex-wrap:wrap;margin-bottom:16px">
+                <div class="metric-card"><div class="metric-label">SL %</div><input id="editSlPct" class="input" type="number" step="0.05" value="${r.slPct||0.20}" style="width:70px"></div>
+                <div class="metric-card"><div class="metric-label">Max Hold (мин)</div><input id="editHoldMinutes" class="input" type="number" value="${r.holdMinutes||60}" style="width:70px"></div>
+                <div class="metric-card"><div class="metric-label">VP Lookback</div><input id="editVpLookback" class="input" type="number" value="${r.vpLookback||40}" style="width:70px"></div>
+                <div class="metric-card"><div class="metric-label">VP Bins</div><input id="editVpBins" class="input" type="number" value="${r.vpBins||30}" style="width:70px"></div>
+            </div>`;
+    } else if (isVpCopy) {
         paramsHtml = `
             <div class="metrics-row" style="flex-wrap:wrap;margin-bottom:16px">
                 <div class="metric-card"><div class="metric-label">Max Levels</div><input id="editMaxGrid" class="input" type="number" value="${r.maxGrid||100}" style="width:70px"></div>
@@ -2600,9 +2668,27 @@ async function saveRobotEdit(i) {
     if (!r) return;
 
     const isVpCopy = r.strategy && r.strategy.includes('VP Scalp Grid Copy');
-    const isVpScalp = r.strategy && r.strategy.includes('VP Scalp Grid') && !isVpCopy;
+    const isVpSimple = r.strategy && r.strategy.includes('VP Scalp Simple');
+    const isVpScalp = r.strategy && r.strategy.includes('VP Scalp Grid') && !isVpCopy && !isVpSimple;
 
-    if (isVpCopy) {
+    if (isVpSimple) {
+        r.slPct = el('editSlPct')?.value || r.slPct;
+        r.holdMinutes = el('editHoldMinutes')?.value || r.holdMinutes;
+        r.vpLookback = el('editVpLookback')?.value || r.vpLookback;
+        r.vpBins = el('editVpBins')?.value || r.vpBins;
+        try {
+            await fetch('/strategy/vp-simple/config', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({
+                    slPct: parseFloat(r.slPct),
+                    maxHoldMinutes: parseInt(r.holdMinutes),
+                    vpLookback: parseInt(r.vpLookback)
+                })
+            });
+            addLog(nowTime(), 'INFO', `📤 VP Simple конфиг: SL=${r.slPct}% hold=${r.holdMinutes}мин`);
+        } catch(e) { addLog(nowTime(), 'ERROR', 'Config send failed: ' + e.message); }
+    } else if (isVpCopy) {
         r.maxGrid = el('editMaxGrid')?.value || r.maxGrid;
         r.gridStep = el('editGridStep')?.value || r.gridStep;
         r.gridSpread = el('editGridSpread')?.value || r.gridSpread;
@@ -2917,4 +3003,5 @@ document.addEventListener('DOMContentLoaded', () => {
     
     // Проверка здоровья каждые 5 сек
     setInterval(checkHealth, 30000);
+
 });

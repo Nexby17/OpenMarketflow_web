@@ -321,6 +321,18 @@
             <button class="btn btn-success btn-sm" onclick="vpCopyCreateRobot()">🤖 Создать робота</button>
         </div>
 
+        <!-- VP Scalp Simple — MIX/RTS, trailing SL% + POC exit -->
+        <div class="strategy-item" style="padding:16px; gap:12px; align-items:center; flex-wrap:wrap; margin-top:12px; border-top:1px solid var(--border-color)">
+            <strong style="min-width:140px">⚡ VP Scalp Simple</strong>
+            <div class="metric-card" style="min-width:120px"><div class="metric-label">Тикер</div><select id="cfgVpSimpleTicker" class="input" style="width:100px"><option value="MXM6">MXM6</option><option value="RIM6">RIM6</option></select></div>
+            <div class="metric-card" style="min-width:120px"><div class="metric-label">SL %</div><input id="cfgVpSimpleSlPct" class="input" type="number" step="0.05" value="0.20" style="width:70px"></div>
+            <div class="metric-card" style="min-width:120px"><div class="metric-label">Max Hold (мин)</div><input id="cfgVpSimpleMaxHold" class="input" type="number" step="1" value="60" style="width:70px"></div>
+            <div class="metric-card" style="min-width:120px"><div class="metric-label">VP Lookback</div><input id="cfgVpSimpleLookback" class="input" type="number" step="1" value="40" style="width:70px"></div>
+            <div class="metric-card" style="min-width:120px"><div class="metric-label">VP Bins</div><input id="cfgVpSimpleBins" class="input" type="number" step="1" value="30" style="width:70px"></div>
+            <button class="btn btn-success btn-sm" onclick="vpSimpleCreateRobot()">🤖 Создать робота</button>
+            <button class="btn btn-secondary btn-sm" onclick="vpSimpleTest()">🧪 Тестирование</button>
+        </div>
+
         <!-- Панель оптимизации -->
         <div id="optimizePanel" class="card" style="display:none; margin-top:12px">
             <div class="card-header row gap-8">
@@ -503,6 +515,6 @@
         </div>
     </div>
 
-    <script src="/js/app.js?v=41"></script>
+    <script src="/js/app.js?v=43"></script>
 </body>
 </html>

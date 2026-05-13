@@ -853,6 +853,7 @@ public class VpScalpGridCopyLauncher : IDisposable
                     double pnl = spread - _strategy.Params.Commission * 2;
                     Console.WriteLine($"[{_logPrefix}] ⚡ TP fill detected! PnL={pnl:F0}");
 
+
                     // 1. Position tracker update
                     _tracker.OnTpFill(pnl);
                     _strategy.OnGridTpDone(pnl);
@@ -1064,6 +1065,7 @@ public class VpScalpGridCopyLauncher : IDisposable
         }
 
         var (gridPrice, level) = next.Value;
+
         _currentGridLevel = level;
 
         int dir = _tracker.Direction;
@@ -1122,9 +1124,9 @@ public class VpScalpGridCopyLauncher : IDisposable
         int fillDir = 0;
         int fillLots = 0;
 
-        for (int attempt = 0; attempt < 3; attempt++)
+        for (int attempt = 0; attempt < 2; attempt++)
         {
-            await Task.Delay(1000);
+            await Task.Delay(500);
             var (d, l, avg) = await GetBrokerPositionAsync();
             if (l > 0 && avg > 0)
             {
@@ -1150,8 +1152,6 @@ public class VpScalpGridCopyLauncher : IDisposable
         _lastEntryPrice = fillPrice;
         _lastEntryDir = fillDir;
         _currentGridLevel = 1;
-
-        // Place grid level 1 + TP level 1
         await PlaceNextGridAsync();
         SaveState();
     }
@@ -1185,11 +1185,23 @@ public class VpScalpGridCopyLauncher : IDisposable
 
         var (bDir, bLots, bAvg) = await GetBrokerPositionAsync();
 
+        // API error — don't make any decisions
+        if (bDir == -999)
+        {
+            Console.WriteLine($"[{_logPrefix}] Broker sync: API error — skipping");
+            return;
+        }
+
         // No position at broker but we think we have one → double check (flicker protection)
         if (bLots == 0)
         {
             await Task.Delay(1000);
             var (recheckDir, recheckLots, _) = await GetBrokerPositionAsync();
+            if (recheckDir == -999)
+            {
+                Console.WriteLine($"[{_logPrefix}] Broker sync recheck: API error — skipping reset");
+                return;
+            }
             if (recheckLots > 0)
             {
                 Console.WriteLine($"[{_logPrefix}] Broker sync flicker — position exists ({recheckLots} lots)");

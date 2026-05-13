@@ -122,10 +122,12 @@ app.Use(async (HttpContext ctx, Func<Task> next) =>
 {
     var path = ctx.Request.Path.Value ?? "";
     
-    // Allow: login, logout, health, static files, login page
+    // Allow: login, logout, health, test, heartbeat, static files, login page
     if (path.StartsWith("/api/login") || 
         path.StartsWith("/api/logout") ||
         path == "/health" ||
+        path == "/test" ||
+        path == "/heartbeat" ||
         path == "/login.html" ||
         path.StartsWith("/css/") || 
         path.StartsWith("/js/") || 
@@ -291,7 +293,10 @@ void AggregateCandleTick(double price, double volume, long ts)
 }
 
 // === Health-check endpoint ===
-app.MapGet("/health", () => Results.Ok(new { status = "ok", time = DateTime.UtcNow }));
+app.MapGet("/health", () => Results.Ok(new { status = "ok", time = DateTime.UtcNow })).AllowAnonymous();
+
+// === Test endpoint (no auth) ===
+app.MapGet("/test", () => Results.Ok(new { message = "test endpoint works" })).AllowAnonymous();
 
 // === REST API для управления ===
 app.MapGet("/status", (TradingService svc) => Results.Ok(svc.GetStatus()));
@@ -1439,6 +1444,12 @@ VpScalpGridLauncher? vpScalpGrid = null;
 // === VP Scalp Grid Copy ===
 VpScalpGridCopyLauncher? vpCopyLauncher = null;
 
+// === Fade Impulse ===
+FadeImpulseLauncher? fadeImpulseLauncher = null;
+
+// === VP Scalp Simple ===
+VpScalpSimpleLauncher? vpScalpSimpleLauncher = null;
+
 app.MapPost("/strategy/vp-scalp-grid/start", async (TradingService tradingSvc, HttpRequest req) =>
 {
     if (vpScalpGrid != null)
@@ -1729,6 +1740,89 @@ app.MapGet("/strategy/vol-rev/status", () =>
     });
 });
 
+// === Heartbeat Monitoring (no auth) ===
+app.MapGet("/heartbeat", () =>
+{
+    object gridMmResult, volRevResult;
+    
+    if (gridMm != null)
+    {
+        var status = gridMm.GetStatus();
+        var connected = gridMm.IsConnected;
+        
+        // Parse status string to extract PnL
+        double pnl = 0;
+        int position = 0;
+        string mode = "Stopped";
+        
+        var parts = status.Split('|');
+        foreach (var part in parts)
+        {
+            var trimmed = part.Trim();
+            if (trimmed.StartsWith("PnL="))
+            {
+                var pnlStr = trimmed.Substring(4).Trim();
+                double.TryParse(pnlStr, out pnl);
+            }
+            else if (trimmed.StartsWith("Pos="))
+            {
+                var posStr = trimmed.Substring(4).Split(' ')[0].Trim();
+                int.TryParse(posStr, out position);
+            }
+            else if (trimmed.StartsWith("Mode="))
+            {
+                mode = trimmed.Substring(5).Split(' ')[0].Trim();
+            }
+        }
+        
+        gridMmResult = new
+        {
+            initialized = true,
+            running = mode == "Running",
+            connected = connected,
+            pnl = pnl,
+            position = position,
+            mode = mode,
+            status = status
+        };
+    }
+    else
+    {
+        gridMmResult = new { initialized = false };
+    }
+    
+    if (volRev != null)
+    {
+        var status = volRev.GetStatus();
+        var pnl = volRev.Strategy.TotalPnL;
+        var pos = volRev.Strategy.PositionDirection;
+        var mode = volRev.Strategy.Mode.ToString();
+        
+        volRevResult = new
+        {
+            initialized = true,
+            running = mode == "Running",
+            pnl = pnl,
+            position = pos,
+            mode = mode,
+            status = status
+        };
+    }
+    else
+    {
+        volRevResult = new { initialized = false };
+    }
+    
+    var result = new
+    {
+        timestamp = DateTime.UtcNow,
+        grid_mm = gridMmResult,
+        vol_rev = volRevResult
+    };
+    
+    return Results.Ok(result);
+}).AllowAnonymous();
+
 // === ARB REMOVED ===
 
 
@@ -1817,5 +1911,138 @@ if (!string.IsNullOrEmpty(finamToken))
         }
     });
 }
+
+// === Fade Impulse API ===
+app.MapPost("/strategy/fade-impulse/start", (TradingService tradingSvc) =>
+{
+    if (fadeImpulseLauncher != null)
+        return Results.Json(new { status = "already_running" });
+
+    var broker = tradingSvc.FinamBroker ?? throw new InvalidOperationException("Broker not connected");
+    var config = new FadeImpulseStrategy.Config();
+    fadeImpulseLauncher = new FadeImpulseLauncher(
+        broker, "1225953", "MXM6", "MXM6@RTSX", config);
+    fadeImpulseLauncher.Start();
+    return Results.Json(new { status = "started" });
+});
+
+app.MapPost("/strategy/fade-impulse/stop", async () =>
+{
+    if (fadeImpulseLauncher == null)
+        return Results.Json(new { status = "not_running" });
+    await fadeImpulseLauncher.StopAsync();
+    fadeImpulseLauncher = null;
+    return Results.Json(new { status = "stopped" });
+});
+
+app.MapPost("/strategy/fade-impulse/pause", () =>
+{
+    if (fadeImpulseLauncher == null)
+        return Results.Json(new { status = "not_running" });
+    fadeImpulseLauncher.Pause();
+    return Results.Json(new { status = "paused" });
+});
+
+app.MapPost("/strategy/fade-impulse/resume", () =>
+{
+    if (fadeImpulseLauncher == null)
+        return Results.Json(new { status = "not_running" });
+    fadeImpulseLauncher.Resume();
+    return Results.Json(new { status = "resumed" });
+});
+
+app.MapGet("/strategy/fade-impulse/status", () =>
+{
+    if (fadeImpulseLauncher == null)
+        return Results.Json(new { status = "not_running" });
+    return Results.Json(fadeImpulseLauncher.GetStatus());
+});
+
+app.MapPost("/strategy/fade-impulse/config", async (HttpRequest req) =>
+{
+    if (fadeImpulseLauncher == null)
+        return Results.Json(new { status = "not_running" });
+    var body = await new StreamReader(req.Body).ReadToEndAsync();
+    var doc = System.Text.Json.JsonDocument.Parse(body);
+    var root = doc.RootElement;
+    var config = fadeImpulseLauncher.Strategy.Params;
+    // Update config fields if provided
+    if (root.TryGetProperty("volMult", out var vm)) config.VolMult = vm.GetDouble();
+    if (root.TryGetProperty("bodyMult", out var bm)) config.BodyMult = bm.GetDouble();
+    if (root.TryGetProperty("slPts", out var sl)) config.SlPts = sl.GetDouble();
+    if (root.TryGetProperty("tpPts", out var tp)) config.TpPts = tp.GetDouble();
+    if (root.TryGetProperty("pullbackBars", out var pb)) config.PullbackBars = pb.GetInt32();
+    if (root.TryGetProperty("maxHoldMinutes", out var mh)) config.MaxHoldMinutes = mh.GetInt32();
+    fadeImpulseLauncher.UpdateConfig(config);
+    return Results.Json(new { status = "updated", config = new {
+        config.VolMult, config.BodyMult, config.SlPts, config.TpPts,
+        config.PullbackBars, config.MaxHoldMinutes
+    }});
+});
+
+// === VP Scalp Simple API ===
+app.MapPost("/strategy/vp-simple/start", async (HttpRequest req, TradingService tradingSvc) =>
+{
+    if (vpScalpSimpleLauncher != null)
+        return Results.Json(new { status = "already_running" });
+    var broker = tradingSvc.FinamBroker ?? throw new InvalidOperationException("Broker not connected");
+    var config = new VpScalpSimpleStrategy.Config();
+    string ticker = "MXM6", finamSym = "MXM6@RTSX";
+    try {
+        var body = await new StreamReader(req.Body).ReadToEndAsync();
+        if (!string.IsNullOrEmpty(body)) {
+            var doc = System.Text.Json.JsonDocument.Parse(body);
+            if (doc.RootElement.TryGetProperty("ticker", out var t)) { ticker = t.GetString() ?? "MXM6"; finamSym = ticker + "@RTSX"; }
+            if (doc.RootElement.TryGetProperty("slPct", out var sp)) config.SlPct = sp.GetDouble();
+            if (doc.RootElement.TryGetProperty("maxHoldMinutes", out var mh)) config.MaxHoldMinutes = mh.GetInt32();
+            if (doc.RootElement.TryGetProperty("vpLookback", out var vl)) config.VpLookback = vl.GetInt32();
+            if (doc.RootElement.TryGetProperty("vpBins", out var vb)) config.VpBins = vb.GetInt32();
+        }
+    } catch {}
+    vpScalpSimpleLauncher = new VpScalpSimpleLauncher(broker, "1225953", ticker, finamSym, config);
+    vpScalpSimpleLauncher.Start();
+    return Results.Json(new { status = "started" });
+});
+
+app.MapPost("/strategy/vp-simple/stop", async () =>
+{
+    if (vpScalpSimpleLauncher == null) return Results.Json(new { status = "not_running" });
+    await vpScalpSimpleLauncher.StopAsync();
+    vpScalpSimpleLauncher = null;
+    return Results.Json(new { status = "stopped" });
+});
+
+app.MapPost("/strategy/vp-simple/pause", () =>
+{
+    if (vpScalpSimpleLauncher == null) return Results.Json(new { status = "not_running" });
+    vpScalpSimpleLauncher.Pause();
+    return Results.Json(new { status = "paused" });
+});
+
+app.MapPost("/strategy/vp-simple/resume", () =>
+{
+    if (vpScalpSimpleLauncher == null) return Results.Json(new { status = "not_running" });
+    vpScalpSimpleLauncher.Resume();
+    return Results.Json(new { status = "resumed" });
+});
+
+app.MapGet("/strategy/vp-simple/status", () =>
+{
+    if (vpScalpSimpleLauncher == null) return Results.Json(new { status = "not_running" });
+    return Results.Json(vpScalpSimpleLauncher.GetStatus());
+});
+
+app.MapPost("/strategy/vp-simple/config", async (HttpRequest req) =>
+{
+    if (vpScalpSimpleLauncher == null) return Results.Json(new { status = "not_running" });
+    var body = await new StreamReader(req.Body).ReadToEndAsync();
+    var doc = System.Text.Json.JsonDocument.Parse(body);
+    var root = doc.RootElement;
+    var config = vpScalpSimpleLauncher.Strategy.Params;
+    if (root.TryGetProperty("slPct", out var sp)) config.SlPct = sp.GetDouble();
+    if (root.TryGetProperty("maxHoldMinutes", out var mh)) config.MaxHoldMinutes = mh.GetInt32();
+    if (root.TryGetProperty("vpLookback", out var vl)) config.VpLookback = vl.GetInt32();
+    return Results.Json(new { status = "updated", config = new { config.SlPct, config.MaxHoldMinutes, config.VpLookback, config.VpBins, config.Commission } });
+});
 
 app.Run();

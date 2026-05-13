@@ -48,6 +48,7 @@ public class VpScalpGridLauncher : IDisposable
     private int _skipTicks = 0;
     private string? _pocOrderId;
     private double _pocPrice = 0;
+    private int _brokerSyncTick = 0;
 
     // Last entry для recovery
     private double _lastEntryPrice = 0;
@@ -137,7 +138,7 @@ public class VpScalpGridLauncher : IDisposable
             });
         }
 
-        _mainTimer = new System.Threading.Timer(MainLoopTick, null, TimeSpan.FromMilliseconds(200), TimeSpan.FromMilliseconds(200));
+        _mainTimer = new System.Threading.Timer(MainLoopTick, null, TimeSpan.FromMilliseconds(500), TimeSpan.FromMilliseconds(500));
         Console.WriteLine($"[{_logPrefix}] ✅ Started");
     }
 
@@ -190,6 +191,27 @@ public class VpScalpGridLauncher : IDisposable
 
     public object GetStatus()
     {
+        // Get broker PnL
+        double brokerPnL = 0;
+        try
+        {
+            var rest = _broker.RestClient;
+            if (rest != null)
+            {
+                var account = rest.GetAccountAsync(_accountId).GetAwaiter().GetResult();
+                if (account?.Positions != null)
+                {
+                    foreach (var p in account.Positions)
+                    {
+                        var sym = p.Symbol?.Split('@')[0] ?? "";
+                        if (sym == _ticker)
+                            brokerPnL += p.UnrealizedProfit;
+                    }
+                }
+            }
+        }
+        catch { }
+
         var (step, spread) = _strategy.GetAdaptedParams();
         return new
         {
@@ -201,6 +223,7 @@ public class VpScalpGridLauncher : IDisposable
             filledLevels = _strategy.FilledLevels,
             roundTrips = _strategy.RoundTrips,
             realizedPnL = Math.Round(_strategy.RealizedPnL, 1),
+            brokerPnL = Math.Round(brokerPnL, 1),
             poc = Math.Round(_strategy.POC, 0),
             vah = Math.Round(_strategy.VAH, 0),
             val = Math.Round(_strategy.VAL, 0),
@@ -306,27 +329,35 @@ public class VpScalpGridLauncher : IDisposable
             return;
         }
 
-        // 1. Читаем позицию и ордера брокера (один раз за цикл)
-        var (brokerDir, brokerLots, brokerAvg) = await GetBrokerPositionAsync();
-        var brokerOrders = await GetBrokerOrdersAsync();
+        // === BROKER = SOURCE OF TRUTH ===
+        // Чередуем: чётный тик → позиция, нечётный → ордера
+        _brokerSyncTick++;
+        bool fetchPosition = _brokerSyncTick % 2 == 0;
+        bool fetchOrders = _brokerSyncTick % 2 == 1;
 
-        bool brokerHasPos = brokerLots > 0;
-        bool robotHasPos = _strategy.PositionDirection != 0;
+        // Всегда запрашиваем и то и другое если нет позиции (для signal detection)
+        if (_strategy.PositionDirection == 0) { fetchPosition = true; fetchOrders = true; }
 
-        // 2. НЕТ ПОЗИЦИИ У БРОКЕРА → перепроверить (защита от мерцания)
-        if (!brokerHasPos && robotHasPos)
+        int brokerDir = 0, brokerLots = 0;
+        double brokerAvg = 0;
+        List<(string id, double price, string comment, bool isActive)> brokerOrders = new();
+
+        if (fetchPosition)
+            (brokerDir, brokerLots, brokerAvg) = await GetBrokerPositionAsync();
+        else
         {
-            await Task.Delay(1000);
-            var (recheckDir, recheckLots, _) = await GetBrokerPositionAsync();
-            if (recheckLots > 0)
-            {
-                Console.WriteLine($"[{_logPrefix}] Broker flicker — position still exists ({recheckLots} lots)");
-                brokerHasPos = true;
-                brokerDir = recheckDir;
-                brokerLots = recheckLots;
-            }
+            brokerDir = _strategy.PositionDirection;
+            brokerLots = _strategy.TotalLots;
+            brokerAvg = _lastEntryPrice;
         }
 
+        if (fetchOrders)
+            brokerOrders = await GetBrokerOrdersAsync();
+
+        bool brokerHasPos = brokerLots > 0 && brokerDir != -999;
+        bool robotHasPos = _strategy.PositionDirection != 0;
+
+        // 2. NO POSITION AT BROKER → reset if needed
         if (!brokerHasPos)
         {
             if (robotHasPos || _gridOrderId != null || _tpOrderId != null)
@@ -341,7 +372,7 @@ public class VpScalpGridLauncher : IDisposable
                 _strategy.ClearPosition();
                 SaveState();
             }
-            else
+            else if (fetchOrders)
             {
                 // Orphan cleanup
                 foreach (var o in brokerOrders)
@@ -358,7 +389,7 @@ public class VpScalpGridLauncher : IDisposable
             return;
         }
 
-        // 3. БРОКЕР ИМЕЕТ ПОЗИЦИЮ — restore если нужно
+        // 3. BROKER HAS POSITION — restore if robot doesn't know
         if (!robotHasPos)
         {
             await RestoreFromBrokerAsync(brokerDir, brokerLots, brokerAvg);
@@ -376,105 +407,57 @@ public class VpScalpGridLauncher : IDisposable
             _strategy.RestorePosition(brokerDir, entry, brokerLots - 1, 0, 0, null);
             _lastEntryPrice = entry;
             _lastEntryDir = brokerDir;
-            // НЕ ставим grid — MainLoop сделает на следующем тике через ensure
             SaveState();
             return;
         }
 
-        // 4. DETECT FILLS — broker lots vs strategy lots
-        int expectedLots = _strategy.TotalLots;
-
-        // Grid fill: broker has more lots
-        if (brokerLots > expectedLots)
+        // 4. DETECT FILLS — по tracked order IDs
+        if (fetchOrders && !string.IsNullOrEmpty(_gridOrderId) && _gridOrderId != "pending")
         {
-            Console.WriteLine($"[{_logPrefix}] Grid fill: broker={brokerLots} robot={expectedLots}");
-            _strategy.OnGridFill(_gridLevel, _gridPrice);
-            // Cancel ALL, then re-place
-            await CancelAllOrdersAsync();
-            _gridOrderId = null;
-            _tpOrderId = null;
-            _pocOrderId = null;
-            SaveState();
-            return; // MainLoop ensure поставит grid + TP на следующем тике
-        }
-
-        // TP fill: broker has fewer lots
-        if (brokerLots < expectedLots)
-        {
-            Console.WriteLine($"[{_logPrefix}] TP fill: broker={brokerLots} robot={expectedLots}");
-            double pnl = _tpPrice > 0 && _gridPrice > 0
-                ? Math.Abs(_tpPrice - _gridPrice) - _strategy.Params.Commission * 2
-                : 0;
-            _strategy.OnGridTpDone(pnl);
-            // Cancel ALL, then re-place
-            await CancelAllOrdersAsync();
-            _gridOrderId = null;
-            _tpOrderId = null;
-            _pocOrderId = null;
-            SaveState();
-            return; // MainLoop ensure поставит grid + TP на следующем тике
-        }
-
-        // 5. SYNC tracked orders with broker
-        var gridOrders = brokerOrders.Where(o => o.comment.StartsWith("VPSG-GRID") && o.isActive).ToList();
-        var tpOrders = brokerOrders.Where(o => o.comment.StartsWith("VPSG-TP") && o.isActive).ToList();
-        var entryTpOrders = brokerOrders.Where(o => o.comment == "VPSG-ENTRY-TP" && o.isActive).ToList();
-        var pocOrders = brokerOrders.Where(o => o.comment == "VPSG-POC-TP" && o.isActive).ToList();
-
-        // POC-TP DISABLED — cancel any leftover POC-TP orders
-        if (pocOrders.Count > 0)
-        {
-            foreach (var o in pocOrders)
+            var gridActive = brokerOrders.Any(o => o.id == _gridOrderId && o.isActive);
+            if (!gridActive)
             {
-                try { await CancelOrderAsync(o.id); } catch { }
-            }
-            _pocOrderId = null;
-        }
-
-        // Entry TP fill detection: order disappeared from active list
-        if (!string.IsNullOrEmpty(_entryTpOrderId) && _entryTpOrderId != "pending" && entryTpOrders.Count == 0)
-        {
-            Console.WriteLine($"[{_logPrefix}] Entry-TP fill @ {_entryTpPrice:F0}");
-            _entryTpOrderId = null;
-            // Entry lot closed — if no grid filled, whole position done
-            if (_strategy.FilledLevels == 0)
-            {
-                // Only entry lot was open, now closed
+                Console.WriteLine($"[{_logPrefix}] Grid fill: {_gridOrderId} @ {_gridPrice:F0} → broker lots={brokerLots}");
+                _strategy.OnGridFill(_gridLevel, _gridPrice);
                 await CancelAllOrdersAsync();
                 _gridOrderId = null;
                 _tpOrderId = null;
-                _strategy.ClearPosition();
+                _pocOrderId = null;
+                await PlaceGridAsync();
+                await PlaceTpAsync();
                 SaveState();
                 return;
             }
         }
 
-        if (_gridOrderId == null && gridOrders.Count > 0)
+        if (fetchOrders && !string.IsNullOrEmpty(_tpOrderId) && _tpOrderId != "pending")
         {
-            _gridOrderId = gridOrders[0].id;
-            _gridPrice = gridOrders[0].price;
-            if (int.TryParse(gridOrders[0].comment.Replace("VPSG-GRID-", ""), out int lvl))
-                _gridLevel = lvl;
-        }
-        if (_tpOrderId == null && tpOrders.Count > 0)
-        {
-            _tpOrderId = tpOrders[0].id;
-            _tpPrice = tpOrders[0].price;
+            var tpActive = brokerOrders.Any(o => o.id == _tpOrderId && o.isActive);
+            if (!tpActive)
+            {
+                Console.WriteLine($"[{_logPrefix}] TP fill: {_tpOrderId} @ {_tpPrice:F0} → broker lots={brokerLots}");
+                double pnl = _tpPrice > 0 && _gridPrice > 0
+                    ? Math.Abs(_tpPrice - _gridPrice) - _strategy.Params.Commission * 2
+                    : 0;
+                _strategy.OnGridTpDone(pnl);
+                await CancelAllOrdersAsync();
+                _gridOrderId = null;
+                _tpOrderId = null;
+                _pocOrderId = null;
+                await PlaceGridAsync();
+                await PlaceTpAsync();
+                SaveState();
+                return;
+            }
         }
 
-        // 6. ENSURE TP — grid НЕ переставляем
+        // 5. ENSURE orders — если grid/TP не стоят
         if (_strategy.FilledLevels > 0 && _tpOrderId == null)
             await PlaceTpAsync();
-
-        // 6a. ENSURE GRID — если позиция есть но grid не стоит
         if (_strategy.PositionDirection != 0 && _gridOrderId == null && _strategy.FilledLevels < _strategy.Params.MaxLevels)
             await PlaceGridAsync();
 
-        // 6b. DISABLED: Entry-TP removed
-
-        // 6c. DISABLED: POC-TP removed — exit by candle high/low check in ProcessCandlesAsync
-
-        // 7. CANDLES — feed и проверяем exit
+        // 6. CANDLES — feed и проверяем exit
         await ProcessCandlesAsync();
     }
 
@@ -507,7 +490,8 @@ public class VpScalpGridLauncher : IDisposable
                 if (_strategy.PositionDirection != 0)
                 {
                     double exitPrice = _strategy.PositionDirection == 1 ? high : low;
-                    var (shouldClose, reason) = _strategy.CheckExit(exitPrice, ts.Hour);
+                    double unrealizedPnl = _strategy.CalcUnrealizedPnL(close);
+                    var (shouldClose, reason) = _strategy.CheckExit(exitPrice, ts.Hour, unrealizedPnl);
                     if (shouldClose)
                     {
                         // Timeout: only close if profitable
@@ -564,27 +548,49 @@ public class VpScalpGridLauncher : IDisposable
     {
         if (_strategy.PositionDirection != 0) return;
 
-        string side = direction == 1 ? "SIDE_BUY" : "SIDE_SELL";
-        await PlaceMarketOrderAsync(side, 1, $"VPSG-ENTRY: {(direction == 1 ? "LONG" : "SHORT")}");
-        await Task.Delay(3000);
-
-        double fillPrice = await GetLastTradePriceAsync(direction == 1 ? "BUY" : "SELL");
-        if (fillPrice == 0)
+        // Entry guard: check broker before placing order
+        var (guardDir, guardLots, _) = await GetBrokerPositionAsync();
+        if (guardDir == -999) { Console.WriteLine($"[{_logPrefix}] Entry skipped: API error"); _skipTicks = 10; return; }
+        if (guardLots > 0)
         {
-            var (_, _, avg) = await GetBrokerPositionAsync();
-            fillPrice = avg;
-        }
-        if (fillPrice == 0)
-        {
-            Console.WriteLine($"[{_logPrefix}] Entry failed: no fill price");
+            Console.WriteLine($"[{_logPrefix}] Entry guard: broker already has {guardLots} lots (dir={guardDir}), syncing");
+            double entry = signalPrice;
+            _strategy.OnEntry(guardDir, entry);
+            _lastEntryPrice = entry;
+            _lastEntryDir = guardDir;
+            await PlaceGridAsync();
+            SaveState();
             return;
         }
 
-        _strategy.OnEntry(direction, fillPrice);
+        string side = direction == 1 ? "SIDE_BUY" : "SIDE_SELL";
+        await PlaceMarketOrderAsync(side, 1, $"VPSG-ENTRY: {(direction == 1 ? "LONG" : "SHORT")}");
+        await Task.Delay(1000);
+
+        // Confirm fill via broker position (3 retries)
+        double fillPrice = 0;
+        int fillDir = 0;
+        int fillLots = 0;
+        for (int attempt = 0; attempt < 2; attempt++)
+        {
+            var (bDir, bLots, bAvg) = await GetBrokerPositionAsync();
+            if (bLots > 0) { fillDir = bDir; fillLots = bLots; fillPrice = bAvg > 0 ? bAvg : signalPrice; break; }
+            if (bDir == -999) break;
+            await Task.Delay(500);
+        }
+
+        if (fillPrice == 0 || fillLots == 0)
+        {
+            Console.WriteLine($"[{_logPrefix}] Entry failed: no fill confirmed. Anti-spam 50 ticks.");
+            _skipTicks = 50; // ~10 sec cooldown
+            return;
+        }
+
+        _strategy.OnEntry(fillDir, fillPrice);
         _lastEntryPrice = fillPrice;
-        _lastEntryDir = direction;
-        Console.WriteLine($"[{_logPrefix}] Entry {(direction == 1 ? "LONG" : "SHORT")} @ {fillPrice:F0}");
-        _skipTicks = 5; // Wait 5 ticks (1 sec) for broker to process
+        _lastEntryDir = fillDir;
+        Console.WriteLine($"[{_logPrefix}] Entry {(fillDir == 1 ? "LONG" : "SHORT")} @ {fillPrice:F0}");
+        _skipTicks = 5;
         await PlaceGridAsync();
         SaveState();
     }
@@ -779,23 +785,31 @@ public class VpScalpGridLauncher : IDisposable
     {
         try
         {
-            using var http = new HttpClient { BaseAddress = new Uri("http://localhost:5050"), Timeout = TimeSpan.FromSeconds(5) };
-            var resp = await http.GetAsync("/api/positions");
-            if (!resp.IsSuccessStatusCode) return (0, 0, 0);
+            var rest = _broker.RestClient;
+            if (rest == null) return (0, 0, 0);
+            var jwt = await rest.GetJwtAsync();
+            using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(1) };
+            http.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", jwt);
+            var resp = await http.GetAsync($"https://api.finam.ru/v1/accounts/{_accountId}");
+            if (!resp.IsSuccessStatusCode) return (-999, 0, 0);
             var json = await resp.Content.ReadAsStringAsync();
             var doc = System.Text.Json.JsonDocument.Parse(json);
-            foreach (var p in doc.RootElement.EnumerateArray())
+            if (!doc.RootElement.TryGetProperty("positions", out var positions)) return (0, 0, 0);
+            foreach (var p in positions.EnumerateArray())
             {
-                if (p.GetProperty("ticker").GetString() == _ticker)
-                {
-                    int d = p.GetProperty("dir").GetString() == "Buy" ? 1 : -1;
-                    int q = p.GetProperty("qty").GetInt32();
-                    double avg = p.GetProperty("avgPrice").GetDouble();
-                    return (d, q, avg);
-                }
+                var sym = p.GetProperty("symbol").GetString() ?? "";
+                if (sym.Split('@')[0] != _ticker) continue;
+                var qtyStr = p.GetProperty("quantity").GetProperty("value").GetString() ?? "0";
+                long qty = long.Parse(qtyStr);
+                if (qty == 0) continue;
+                double avg = 0;
+                if (p.TryGetProperty("current_price", out var cp) && cp.TryGetProperty("value", out var cpv))
+                    double.TryParse(cpv.GetString(), out avg);
+                int d = qty > 0 ? 1 : -1;
+                return (d, (int)Math.Abs(qty), avg);
             }
         }
-        catch { }
+        catch (Exception ex) { Console.WriteLine($"[{_logPrefix}] GetBrokerPosition error: {ex.Message}"); return (-999, 0, 0); }
         return (0, 0, 0);
     }
 
