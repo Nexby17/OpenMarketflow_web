@@ -1694,6 +1694,18 @@ app.MapGet("/api/active-strategies", () =>
             detail = vpCopyLauncher.GetStatus()
         });
     }
+    if (vpScalpSimpleLauncher != null)
+    {
+        var s = vpScalpSimpleLauncher.Strategy;
+        strategies.Add(new {
+            id = "vp-simple", name = "VP Scalp Simple", instrument = "MXM6", tf = "5 мин",
+            mode = s.CurrentMode.ToString(), posDir = s.PositionDir, entryPrice = s.EntryPrice,
+            lots = s.PositionDir != 0 ? 1 : 0, openLots = s.PositionDir != 0 ? 1 : 0, filledGrid = 0,
+            totalTrades = s.TotalTrades, totalPnL = s.RealizedPnL,
+            sar = 0.0, ema = 0.0, connected = true,
+            detail = vpScalpSimpleLauncher.GetStatus()
+        });
+    }
     return Results.Json(new { strategies, count = strategies.Count });
 });
 

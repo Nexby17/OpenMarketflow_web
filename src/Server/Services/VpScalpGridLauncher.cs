@@ -803,24 +803,15 @@ public class VpScalpGridLauncher : IDisposable
         {
             var rest = _broker.RestClient;
             if (rest == null) return (0, 0, 0);
-            var jwt = await rest.GetJwtAsync();
-            using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(3) };
-            http.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", jwt);
-            var resp = await http.GetAsync($"https://api.finam.ru/v1/accounts/{_accountId}");
-            if (!resp.IsSuccessStatusCode) return (-999, 0, 0);
-            var json = await resp.Content.ReadAsStringAsync();
-            var doc = System.Text.Json.JsonDocument.Parse(json);
-            if (!doc.RootElement.TryGetProperty("positions", out var positions)) return (0, 0, 0);
-            foreach (var p in positions.EnumerateArray())
+            var account = await rest.GetAccountAsync(_accountId);
+            if (account?.Positions == null) return (0, 0, 0);
+            foreach (var p in account.Positions)
             {
-                var sym = p.GetProperty("symbol").GetString() ?? "";
-                if (sym.Split('@')[0] != _ticker) continue;
-                var qtyStr = p.GetProperty("quantity").GetProperty("value").GetString() ?? "0";
-                long qty = long.Parse(qtyStr);
+                var sym = (p.Symbol ?? "").Split('@')[0];
+                if (sym != _ticker) continue;
+                long qty = p.EffectiveQuantity;
                 if (qty == 0) continue;
-                double avg = 0;
-                if (p.TryGetProperty("current_price", out var cp) && cp.TryGetProperty("value", out var cpv))
-                    double.TryParse(cpv.GetString(), out avg);
+                double avg = p.AveragePrice ?? 0;
                 int d = qty > 0 ? 1 : -1;
                 return (d, (int)Math.Abs(qty), avg);
             }
