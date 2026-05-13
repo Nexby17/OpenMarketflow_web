@@ -2335,6 +2335,7 @@ function editRobot(i) {
                 <div class="metric-card"><div class="metric-label">VP Lookback</div><input id="editVpLookback" class="input" type="number" value="${r.vpLookback||60}" style="width:70px"></div>
                 <div class="metric-card"><div class="metric-label">VP Bin Size</div><input id="editVpBinSize" class="input" type="number" value="${r.vpBinSize||50}" style="width:70px"></div>
                 <div class="metric-card"><div class="metric-label">VA %</div><input id="editVaPercent" class="input" type="number" step="0.05" value="${r.vaPercent||0.70}" style="width:70px"></div>
+                <div class="metric-card"><div class="metric-label">PnL/лот (пт)</div><input id="editMinProfit" class="input" type="number" value="${r.minProfit||28}" style="width:70px"></div>
                 <div class="metric-card" style="display:flex;align-items:center;gap:8px"><div class="metric-label">RV Adaptation</div><input id="editRvAdapt" type="checkbox" ${r.rvAdaptation!==false?'checked':''} style="width:20px;height:20px"></div>
             </div>`;
     } else {
@@ -2725,6 +2726,7 @@ async function saveRobotEdit(i) {
         r.vpLookback = el('editVpLookback')?.value || r.vpLookback;
         r.vpBinSize = el('editVpBinSize')?.value || r.vpBinSize;
         r.vaPercent = el('editVaPercent')?.value || r.vaPercent;
+        r.minProfit = el('editMinProfit')?.value || r.minProfit;
         r.rvAdaptation = el('editRvAdapt')?.checked ?? r.rvAdaptation;
     } else {
         r.account = el('editAccount')?.value || r.account;
