@@ -728,7 +728,9 @@ public class VpScalpGridLauncher : IDisposable
         if (dir == 0) return;
 
         var (_, spread) = _strategy.GetAdaptedParams();
-        double tpPrice = dir == 1 ? _gridPrice + spread : _gridPrice - spread;
+        // TP from last filled grid price, not _gridPrice (which is next grid level)
+        double lastFilledPrice = _strategy.LastFilledGridPrice > 0 ? _strategy.LastFilledGridPrice : _gridPrice;
+        double tpPrice = dir == 1 ? lastFilledPrice + spread : lastFilledPrice - spread;
         _tpPrice = tpPrice;
 
         // Mark pending IMMEDIATELY
