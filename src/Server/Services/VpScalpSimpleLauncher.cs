@@ -53,7 +53,7 @@ public class VpScalpSimpleLauncher : IDisposable
         _strategy.CurrentMode = VpScalpSimpleStrategy.Mode.Running;
         RestoreState();
         BrokerSync();
-        _mainTimer = new Timer(async _ => await MainLoop(), null, 2000, 2000);
+        _mainTimer = new Timer(async _ => await MainLoop(), null, 2000, 500);
         Console.WriteLine($"[{_logPrefix}] Started on {_ticker}");
     }
 
@@ -101,7 +101,59 @@ public class VpScalpSimpleLauncher : IDisposable
             if (msk >= TimeSpan.FromHours(14) && msk < TimeSpan.FromHours(14) + TimeSpan.FromMinutes(5))
                 return;
 
-            // Get 5-min candle
+            // === FAST TICK: SL + POC по current_price (каждые 500мс) ===
+            if (_positionDir != 0)
+            {
+                var (bDir, bLots, bCurPrice) = GetBrokerPosition();
+                if (bDir == -999) return;
+                if (bLots == 0 && _positionDir != 0)
+                {
+                    // Flicker check
+                    await Task.Delay(200);
+                    var (rDir, rLots, _) = GetBrokerPosition();
+                    if (rLots == 0 && rDir != -999)
+                    {
+                        Console.WriteLine($"[{_logPrefix}] No broker position → reset");
+                        _positionDir = 0; _entryPrice = 0; _currentSL = 0; _entryTime = null;
+                        await CancelAllOrdersAsync();
+                        SaveState();
+                        return;
+                    }
+                }
+
+                if (bCurPrice > 0)
+                {
+                    // POC exit
+                    if (_strategy.POC > 0)
+                    {
+                        bool pocHit = (_positionDir == 1 && bCurPrice >= _strategy.POC) ||
+                                      (_positionDir == -1 && bCurPrice <= _strategy.POC);
+                        if (pocHit)
+                        {
+                            Console.WriteLine($"[{_logPrefix}] Exit: POC hit @ {bCurPrice:F0} POC={_strategy.POC:F0}");
+                            await ForceCloseAsync($"POC hit @ {bCurPrice:F0}");
+                            _positionDir = 0; _entryPrice = 0; _currentSL = 0; _entryTime = null;
+                            SaveState(); return;
+                        }
+                    }
+
+                    // Trailing SL check по current_price
+                    if (_currentSL > 0)
+                    {
+                        bool slHit = (_positionDir == 1 && bCurPrice <= _currentSL) ||
+                                     (_positionDir == -1 && bCurPrice >= _currentSL);
+                        if (slHit)
+                        {
+                            Console.WriteLine($"[{_logPrefix}] Exit: SL hit @ {bCurPrice:F0} SL={_currentSL:F0}");
+                            await ForceCloseAsync($"SL hit @ {bCurPrice:F0}");
+                            _positionDir = 0; _entryPrice = 0; _currentSL = 0; _entryTime = null;
+                            SaveState(); return;
+                        }
+                    }
+                }
+            }
+
+            // === CANDLE TICK: VP + signals (только при новой свече) ===
             var candle = GetLatestCandle();
             if (candle == null) return;
             if (candle.Timestamp <= _lastCandleTime) return;
@@ -121,29 +173,10 @@ public class VpScalpSimpleLauncher : IDisposable
             if (_vpCloses.Count >= 20)
                 _strategy.UpdateVP(_vpCloses.ToArray(), _vpVolumes.ToArray());
 
-            // If in position — check exits + update trailing
+            // If in position — update trailing + check timeout
             if (_positionDir != 0)
             {
-                // POC exit по текущей цене из брокера (не по свечам)
-                var (bDir, bLots, bCurPrice) = GetBrokerPosition();
-                if (bDir != -999 && bCurPrice > 0 && _strategy.POC > 0)
-                {
-                    bool pocHit = (_positionDir == 1 && bCurPrice >= _strategy.POC) ||
-                                  (_positionDir == -1 && bCurPrice <= _strategy.POC);
-                    if (pocHit)
-                    {
-                        Console.WriteLine($"[{_logPrefix}] Exit: POC hit @ {bCurPrice:F0} POC={_strategy.POC:F0}");
-                        await ForceCloseAsync($"POC hit @ {bCurPrice:F0}");
-                        _positionDir = 0;
-                        _entryPrice = 0;
-                        _currentSL = 0;
-                        _entryTime = null;
-                        SaveState();
-                        return;
-                    }
-                }
-
-                // Update trailing SL
+                // Update trailing SL от свечи
                 _strategy.UpdateTrailingSL(candle.Close);
                 double newSL = _strategy.CurrentSL;
 
@@ -154,18 +187,26 @@ public class VpScalpSimpleLauncher : IDisposable
                     _currentSL = newSL;
                 }
 
-                // Check other exits (trailing SL, timeout — NOT POC)
-                var (shouldExit, reason, exitPrice) = _strategy.CheckExitNoPOC(candle.High, candle.Low, candle.Close);
-                if (shouldExit)
+                // Check timeout only (SL and POC handled above by current_price)
+                if (_entryTime.HasValue)
                 {
-                    Console.WriteLine($"[{_logPrefix}] Exit: {reason} @ {exitPrice:F0}");
-                    await ForceCloseAsync(reason ?? "exit");
-                    _positionDir = 0;
-                    _entryPrice = 0;
-                    _currentSL = 0;
-                    _entryTime = null;
-                    SaveState();
-                    return;
+                    int holdMin = (int)(DateTime.UtcNow - _entryTime.Value).TotalMinutes;
+                    if (holdMin >= _strategy.Params.MaxHoldMinutes)
+                    {
+                        var (bDir2, bLots2, bAvg2) = GetBrokerPosition();
+                        if (bLots2 > 0)
+                        {
+                            double unrealized = (bAvg2 - _entryPrice) * _positionDir;
+                            double perLot = unrealized;
+                            if (perLot > 0)
+                            {
+                                Console.WriteLine($"[{_logPrefix}] Exit: Timeout {holdMin}min");
+                                await ForceCloseAsync($"Timeout {holdMin}min");
+                                _positionDir = 0; _entryPrice = 0; _currentSL = 0; _entryTime = null;
+                                SaveState(); return;
+                            }
+                        }
+                    }
                 }
             }
 

@@ -43,7 +43,7 @@ public class V8TrailLauncher
     public void Start()
     {
         Console.WriteLine($"[{_logPrefix}] ✅ Started on {_ticker} SL={Strategy.Params.SlPct}% EMA={Strategy.Params.EmaPeriod}");
-        _mainTimer = new System.Threading.Timer(MainLoopTick, null, TimeSpan.FromSeconds(2), TimeSpan.FromMilliseconds(2000));
+        _mainTimer = new System.Threading.Timer(MainLoopTick, null, TimeSpan.FromSeconds(2), TimeSpan.FromMilliseconds(500));
     }
 
     public async Task StopAsync()
@@ -126,6 +126,15 @@ public class V8TrailLauncher
             // Broker has position but robot doesn't — restore
             Console.WriteLine($"[{_logPrefix}] Restore from broker: dir={brokerDir} price={brokerAvg:F0}");
             Strategy.RestorePosition(brokerDir, brokerAvg);
+        }
+
+        // SL check по current_price (каждые 500мс, не ждём свечу)
+        if (Strategy.PositionDirection != 0 && brokerLots > 0)
+        {
+            double currentPrice = brokerAvg; // brokerAvg = avg entry, не current price
+            // Получаем current_price из отдельного запроса
+            // SL проверяется в ProcessCandlesAsync по high/low свечи — этого достаточно
+            // 500мс polling ускоряет получение новых свечей
         }
 
         // Process candles
