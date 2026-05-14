@@ -13,6 +13,7 @@ public class V8TrailLauncher
     private readonly FinamConnector _broker;
     private readonly string _accountId;
     private readonly string _ticker;
+    public string Ticker => _ticker;
     private readonly string _finamSymbol;
     private readonly double _stepPrice;
     private readonly string _logPrefix = "V8TR";

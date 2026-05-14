@@ -1713,7 +1713,7 @@ app.MapGet("/api/active-strategies", () =>
     {
         var s = v8TrailLauncher.Strategy;
         strategies.Add(new {
-            id = "v8-trail", name = "V8 Trail", instrument = "RTSM6", tf = "5 мин",
+            id = "v8-trail", name = "V8 Trail", instrument = v8TrailLauncher.Ticker, tf = "5 мин",
             mode = s.PositionDirection != 0 ? "Running" : "Waiting",
             posDir = s.PositionDirection, entryPrice = s.EntryPrice,
             lots = s.PositionDirection != 0 ? 1 : 0, openLots = s.PositionDirection != 0 ? 1 : 0, filledGrid = 0,
