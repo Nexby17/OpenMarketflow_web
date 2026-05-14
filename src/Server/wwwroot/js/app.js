@@ -2110,8 +2110,8 @@ async function renderRobots() {
                 const showPrice = brokerLots > 0 ? brokerAvg : s.entryPrice;
                 const showLots = brokerLots > 0 ? brokerLots : s.openLots;
                 const posText = showDir > 0 ? 'Лонг' : showDir < 0 ? 'Шорт' : 'Флэт';
-                const modeText = s.mode === 'Running' ? '🟢 Работает' : s.mode === 'Paused' ? '🟡 Пауза' : '🔴 Остановлен';
-                const modeCls = s.mode === 'Running' ? 'green' : s.mode === 'Paused' ? 'yellow' : 'red';
+                const modeText = s.mode === 'Running' || s.mode === 'Waiting' ? '🟢 Работает' : s.mode === 'Paused' ? '🟡 Пауза' : '🔴 Остановлен';
+                const modeCls = s.mode === 'Running' || s.mode === 'Waiting' ? 'green' : s.mode === 'Paused' ? 'yellow' : 'red';
                 const pnlCls = v => v >= 0 ? 'green' : 'red';
                 return `<tr>
                     <td><strong>${s.instrument}</strong></td>
