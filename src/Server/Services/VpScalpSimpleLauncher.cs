@@ -124,6 +124,25 @@ public class VpScalpSimpleLauncher : IDisposable
             // If in position — check exits + update trailing
             if (_positionDir != 0)
             {
+                // POC exit по текущей цене из брокера (не по свечам)
+                var (bDir, bLots, bCurPrice) = GetBrokerPosition();
+                if (bDir != -999 && bCurPrice > 0 && _strategy.POC > 0)
+                {
+                    bool pocHit = (_positionDir == 1 && bCurPrice >= _strategy.POC) ||
+                                  (_positionDir == -1 && bCurPrice <= _strategy.POC);
+                    if (pocHit)
+                    {
+                        Console.WriteLine($"[{_logPrefix}] Exit: POC hit @ {bCurPrice:F0} POC={_strategy.POC:F0}");
+                        await ForceCloseAsync($"POC hit @ {bCurPrice:F0}");
+                        _positionDir = 0;
+                        _entryPrice = 0;
+                        _currentSL = 0;
+                        _entryTime = null;
+                        SaveState();
+                        return;
+                    }
+                }
+
                 // Update trailing SL
                 _strategy.UpdateTrailingSL(candle.Close);
                 double newSL = _strategy.CurrentSL;
@@ -135,8 +154,8 @@ public class VpScalpSimpleLauncher : IDisposable
                     _currentSL = newSL;
                 }
 
-                // Check exits
-                var (shouldExit, reason, exitPrice) = _strategy.CheckExit(candle.High, candle.Low, candle.Close);
+                // Check other exits (trailing SL, timeout — NOT POC)
+                var (shouldExit, reason, exitPrice) = _strategy.CheckExitNoPOC(candle.High, candle.Low, candle.Close);
                 if (shouldExit)
                 {
                     Console.WriteLine($"[{_logPrefix}] Exit: {reason} @ {exitPrice:F0}");

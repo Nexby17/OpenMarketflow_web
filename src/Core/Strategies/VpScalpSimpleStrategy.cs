@@ -183,6 +183,26 @@ public class VpScalpSimpleStrategy
     }
 
     /// <summary>
+    /// Check exits without POC (POC handled by current_price in launcher).
+    /// </summary>
+    public (bool shouldExit, string? reason, double exitPrice) CheckExitNoPOC(double high, double low, double close)
+    {
+        if (_posDir == 0) return (false, null, 0);
+
+        // Trailing SL hit
+        if (_posDir == 1 && low <= _currentSL)
+            return (true, "SL", _currentSL);
+        if (_posDir == -1 && high >= _currentSL)
+            return (true, "SL", _currentSL);
+
+        // Timeout
+        if (HoldMinutes >= Params.MaxHoldMinutes)
+            return (true, $"Timeout {Params.MaxHoldMinutes}min", close);
+
+        return (false, null, 0);
+    }
+
+    /// <summary>
     /// Close position with PnL calculation.
     /// </summary>
     public double OnExit(double exitPrice, string reason)
