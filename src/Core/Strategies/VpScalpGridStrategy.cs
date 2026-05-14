@@ -37,7 +37,7 @@ public class VpScalpGridStrategy
     // Position state
     public int PositionDirection => _posDir;
     public double EntryPrice => _entryPrice;
-    public double LastFilledGridPrice => _lastFilledGridPrice;
+    public double LastFilledGridPrice => _filledGridPrices.Count > 0 ? _filledGridPrices[^1] : 0;
     public int FilledLevels => _filledLevels;
     public int TotalLots => 1 + _filledLevels;
     public int RoundTrips => _roundTrips;
@@ -50,6 +50,7 @@ public class VpScalpGridStrategy
     private double _entryPrice = 0;
     private int _filledLevels = 0;
     private double _lastFilledGridPrice = 0;
+    private readonly List<double> _filledGridPrices = new();
     private int _roundTrips = 0;
     private double _realizedPnL = 0;
     private DateTime? _entryTime = null;
@@ -218,6 +219,7 @@ public class VpScalpGridStrategy
     {
         _filledLevels++;
         _lastFilledGridPrice = fillPrice;
+        _filledGridPrices.Add(fillPrice);
     }
 
     public void OnGridTpDone(double pnl)
@@ -225,6 +227,7 @@ public class VpScalpGridStrategy
         _roundTrips++;
         _realizedPnL += pnl;
         if (_filledLevels > 0) _filledLevels--;
+        if (_filledGridPrices.Count > 0) _filledGridPrices.RemoveAt(_filledGridPrices.Count - 1);
     }
 
     public void ClearPosition()
@@ -232,6 +235,8 @@ public class VpScalpGridStrategy
         _posDir = 0;
         _entryPrice = 0;
         _filledLevels = 0;
+        _lastFilledGridPrice = 0;
+        _filledGridPrices.Clear();
         _roundTrips = 0;
         _realizedPnL = 0;
         _entryTime = null;
