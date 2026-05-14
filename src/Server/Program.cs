@@ -1447,6 +1447,9 @@ VpScalpGridCopyLauncher? vpCopyLauncher = null;
 // === Fade Impulse ===
 FadeImpulseLauncher? fadeImpulseLauncher = null;
 
+// === V8 Trail ===
+V8TrailLauncher? v8TrailLauncher = null;
+
 // === VP Scalp Simple ===
 VpScalpSimpleLauncher? vpScalpSimpleLauncher = null;
 
@@ -1704,6 +1707,19 @@ app.MapGet("/api/active-strategies", () =>
             totalTrades = s.TotalTrades, totalPnL = s.RealizedPnL,
             sar = 0.0, ema = 0.0, connected = true,
             detail = vpScalpSimpleLauncher.GetStatus()
+        });
+    }
+    if (v8TrailLauncher != null)
+    {
+        var s = v8TrailLauncher.Strategy;
+        strategies.Add(new {
+            id = "v8-trail", name = "V8 Trail", instrument = "RTSM6", tf = "5 мин",
+            mode = s.PositionDirection != 0 ? "Running" : "Waiting",
+            posDir = s.PositionDirection, entryPrice = s.EntryPrice,
+            lots = s.PositionDirection != 0 ? 1 : 0, openLots = s.PositionDirection != 0 ? 1 : 0, filledGrid = 0,
+            totalTrades = s.TotalTrades, totalPnL = s.RealizedPnL,
+            sar = s.CurrentSar, ema = s.CurrentEma, connected = true,
+            detail = v8TrailLauncher.GetStatus()
         });
     }
     return Results.Json(new { strategies, count = strategies.Count });
@@ -1990,6 +2006,56 @@ app.MapPost("/strategy/fade-impulse/config", async (HttpRequest req) =>
         config.VolMult, config.BodyMult, config.SlPts, config.TpPts,
         config.PullbackBars, config.MaxHoldMinutes
     }});
+});
+
+// === V8 Trail API ===
+app.MapPost("/strategy/v8-trail/start", async (HttpRequest req, TradingService tradingSvc) =>
+{
+    if (v8TrailLauncher != null) return Results.Json(new { status = "already_running", detail = v8TrailLauncher.GetStatus() });
+    var broker = tradingSvc.FinamBroker ?? throw new InvalidOperationException("Broker not connected");
+    var body = await req.ReadFromJsonAsync<Dictionary<string, JsonElement>>();
+    string ticker = body?.ContainsKey("ticker") == true ? body["ticker"].GetString()! : "RTSM6";
+    string finamSym = body?.ContainsKey("finamSymbol") == true ? body["finamSymbol"].GetString()! : "RTSM6@RTSX";
+    double stepPrice = body?.ContainsKey("stepPrice") == true ? body["stepPrice"].GetDouble() : 14.86;
+    var config = new V8TrailStrategy.V8Params();
+    if (body?.ContainsKey("sarStart") == true) config.SarStart = body["sarStart"].GetDouble();
+    if (body?.ContainsKey("sarStep") == true) config.SarStep = body["sarStep"].GetDouble();
+    if (body?.ContainsKey("sarMax") == true) config.SarMax = body["sarMax"].GetDouble();
+    if (body?.ContainsKey("emaPeriod") == true) config.EmaPeriod = body["emaPeriod"].GetInt32();
+    if (body?.ContainsKey("slPct") == true) config.SlPct = body["slPct"].GetDouble();
+    if (body?.ContainsKey("maxHoldMinutes") == true) config.MaxHoldMinutes = body["maxHoldMinutes"].GetInt32();
+    v8TrailLauncher = new V8TrailLauncher(broker, "1225953", ticker, finamSym, stepPrice, config);
+    v8TrailLauncher.Start();
+    return Results.Json(new { status = "started", detail = v8TrailLauncher.GetStatus() });
+});
+
+app.MapPost("/strategy/v8-trail/stop", async () =>
+{
+    if (v8TrailLauncher == null) return Results.Json(new { status = "not_running" });
+    await v8TrailLauncher.StopAsync();
+    v8TrailLauncher = null;
+    return Results.Json(new { status = "stopped" });
+});
+
+app.MapGet("/strategy/v8-trail/status", () =>
+{
+    if (v8TrailLauncher == null) return Results.Json(new { status = "not_running" });
+    return Results.Json(new { status = "running", detail = v8TrailLauncher.GetStatus() });
+});
+
+app.MapPost("/strategy/v8-trail/config", async (HttpRequest req) =>
+{
+    if (v8TrailLauncher == null) return Results.Json(new { status = "not_running" });
+    var body = await req.ReadFromJsonAsync<Dictionary<string, JsonElement>>();
+    if (body == null) return Results.Json(new { status = "error", error = "no body" });
+    var p = v8TrailLauncher.Strategy.Params;
+    if (body.ContainsKey("sarStart")) p.SarStart = body["sarStart"].GetDouble();
+    if (body.ContainsKey("sarStep")) p.SarStep = body["sarStep"].GetDouble();
+    if (body.ContainsKey("sarMax")) p.SarMax = body["sarMax"].GetDouble();
+    if (body.ContainsKey("emaPeriod")) p.EmaPeriod = body["emaPeriod"].GetInt32();
+    if (body.ContainsKey("slPct")) p.SlPct = body["slPct"].GetDouble();
+    if (body.ContainsKey("maxHoldMinutes")) p.MaxHoldMinutes = body["maxHoldMinutes"].GetInt32();
+    return Results.Json(new { status = "ok", detail = v8TrailLauncher.GetStatus() });
 });
 
 // === VP Scalp Simple API ===
