@@ -2176,7 +2176,7 @@ async function renderRobots() {
             <td>
                 <button class="btn btn-success btn-sm" onclick="robotStart(${i})" ${r.status === 'running' ? 'disabled' : ''}>▶</button>
                 <button class="btn btn-warning btn-sm" onclick="robotPause(${i})" ${r.status !== 'running' ? 'disabled' : ''}>⏸</button>
-                <button class="btn btn-danger btn-sm" onclick="robotStop(${i})" ${r.status === 'stopped' ? 'disabled' : ''}>⏹</button>
+                <button class="btn btn-danger btn-sm" onclick="robotStop(${i})" ${r.status === 'stopped' || r._stopping ? 'disabled' : ''}>${r._stopping ? '⏳' : '⏹'}</button>
                 <button class="btn btn-secondary btn-sm" onclick="robotRemove(${i})" title="Удалить">🗑</button>
             </td>
             <td class="${statusCls}">${statusText}</td>
@@ -2292,14 +2292,17 @@ async function robotStop(i) {
     const r = robots[i];
     if (!r) return;
     const apiBase = getRobotApiBase(r);
+    r._stopping = true; renderRobots();
     addLog(nowTime(), 'INFO', `⏹ Остановка робота ${r.ticker}, закрытие позиций...`);
     try {
-        await fetch(apiBase + '/stop', { method: 'POST' });
+        const resp = await fetch(apiBase + '/stop', { method: 'POST' });
+        const data = await resp.json();
         r.status = 'stopped';
+        r._stopping = false;
         r.position = '—'; r.lotsOpen = 0; r.go = 0;
         saveRobots(); renderRobots();
-        addLog(nowTime(), 'INFO', `⏹ Робот ${r.ticker} остановлен, позиции закрыты`);
-    } catch (e) { addLog(nowTime(), 'ERROR', e.message); }
+        addLog(nowTime(), 'INFO', `⏹ Робот ${r.ticker} остановлен`);
+    } catch (e) { r._stopping = false; renderRobots(); addLog(nowTime(), 'ERROR', e.message); }
 }
 
 function robotRemove(i) {
