@@ -29,6 +29,7 @@ public class V8TrailLauncher
 
     // Order tracking
     private string? _entryOrderId = null;
+    private string? _slOrderId = null;
 
     public V8TrailLauncher(FinamConnector broker, string accountId, string ticker, string finamSymbol, double stepPrice, V8TrailStrategy.V8Params? config = null)
     {
@@ -128,13 +129,28 @@ public class V8TrailLauncher
             Strategy.RestorePosition(brokerDir, brokerAvg);
         }
 
-        // SL check по current_price (каждые 500мс, не ждём свечу)
-        if (Strategy.PositionDirection != 0 && brokerLots > 0)
+        // SL fill detection: check if SL limit order filled
+        if (Strategy.PositionDirection != 0 && _slOrderId != null)
         {
-            double currentPrice = brokerAvg; // brokerAvg = avg entry, не current price
-            // Получаем current_price из отдельного запроса
-            // SL проверяется в ProcessCandlesAsync по high/low свечи — этого достаточно
-            // 500мс polling ускоряет получение новых свечей
+            var orders = await GetBrokerOrdersAsync();
+            var slOrder = orders.FirstOrDefault(o => o.id == _slOrderId);
+            if (slOrder.id == null) // SL order no longer exists → filled or cancelled
+            {
+                Console.WriteLine($"[{_logPrefix}] SL fill detected");
+                _slOrderId = null;
+                // Check if broker still has position (partial fill?)
+                if (brokerLots == 0)
+                {
+                    Strategy.ClearPosition();
+                    await CancelAllOrdersAsync();
+                }
+                else
+                {
+                    // SL filled but position still exists → close remaining
+                    await ClosePositionAsync("SL fill, closing remaining");
+                }
+                return;
+            }
         }
 
         // Process candles
@@ -163,14 +179,22 @@ public class V8TrailLauncher
                 double low = bar.Low != null ? double.Parse(bar.Low.Value) : close;
                 double vol = double.Parse(bar.Volume?.Value ?? "0");
 
-                // Check trailing SL first (for current position)
+                // Update trailing SL
                 if (Strategy.PositionDirection != 0)
                 {
-                    var (shouldClose, reason) = Strategy.CheckSL(high, low);
-                    if (shouldClose)
+                    double prevSL = Strategy.CurrentSLPrice;
+                    Strategy.UpdateTrailing(high, low);
+                    double newSL = Strategy.CurrentSLPrice;
+                    if (Math.Abs(newSL - prevSL) >= 1)
                     {
-                        Console.WriteLine($"[{_logPrefix}] Exit: {reason}");
-                        await ClosePositionAsync(reason);
+                        await UpdateSLOrderAsync(newSL);
+                    }
+
+                    // Timeout check
+                    if (Strategy.HoldMinutes >= Strategy.Params.MaxHoldMinutes)
+                    {
+                        Console.WriteLine($"[{_logPrefix}] Exit: Timeout ({Strategy.HoldMinutes} min)");
+                        await ClosePositionAsync($"Timeout ({Strategy.HoldMinutes} min)");
                         _lastCandleTime = ts;
                         continue;
                     }
@@ -217,6 +241,14 @@ public class V8TrailLauncher
             {
                 Strategy.OpenPosition(dir, price);
                 Console.WriteLine($"[{_logPrefix}] Entry {(dir == 1 ? "LONG" : "SHORT")} @ {price:F0}");
+
+                // Ставим SL limit ордер
+                double slPrice = dir == 1 ? price * (1 - Strategy.Params.SlPct / 100) : price * (1 + Strategy.Params.SlPct / 100);
+                slPrice = Math.Round(slPrice);
+                string slSide = dir == 1 ? "SIDE_SELL" : "SIDE_BUY";
+                _slOrderId = await PlaceLimitOrderAsync(slSide, slPrice, $"{_logPrefix}-SL");
+                if (_slOrderId != null)
+                    Console.WriteLine($"[{_logPrefix}] SL limit: {slSide} @ {slPrice:F0}");
             }
             else
             {
@@ -235,6 +267,13 @@ public class V8TrailLauncher
     {
         try
         {
+            // Cancel SL order first
+            if (_slOrderId != null)
+            {
+                await CancelOrderAsync(_slOrderId);
+                _slOrderId = null;
+            }
+
             var (bDir, bLots, _) = await GetBrokerPositionAsync();
             int lots = bLots > 0 ? bLots : 1;
             int dir = Strategy.PositionDirection;
@@ -341,6 +380,41 @@ public class V8TrailLauncher
         {
             Console.WriteLine($"[{_logPrefix}] Market order error: {ex.Message}");
         }
+    }
+
+    private async Task<string?> PlaceLimitOrderAsync(string side, double price, string comment)
+    {
+        try
+        {
+            var rest = _broker.RestClient;
+            var result = await rest.PlaceOrderAsync(_accountId, new PlaceOrderRequest
+            {
+                Symbol = _finamSymbol,
+                Quantity = new() { Value = "1" },
+                Side = side,
+                OrderType = "ORDER_TYPE_LIMIT",
+                Price = new() { Value = ((int)Math.Round(price)).ToString() },
+                Comment = comment
+            });
+            return result?.OrderId;
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[{_logPrefix}] Limit order error: {ex.Message}");
+            return null;
+        }
+    }
+
+    private async Task UpdateSLOrderAsync(double newSL)
+    {
+        if (Strategy.PositionDirection == 0) return;
+        await CancelOrderAsync(_slOrderId ?? "");
+        _slOrderId = null;
+
+        string side = Strategy.PositionDirection == 1 ? "SIDE_SELL" : "SIDE_BUY";
+        _slOrderId = await PlaceLimitOrderAsync(side, newSL, $"{_logPrefix}-SL");
+        if (_slOrderId != null)
+            Console.WriteLine($"[{_logPrefix}] Trailing SL → {newSL:F0}");
     }
 
     public string GetStatus()

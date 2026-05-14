@@ -112,6 +112,13 @@ public class V8TrailStrategy
     /// <summary>
     /// Check if trailing SL hit. Returns (shouldClose, reason).
     /// </summary>
+    public void UpdateTrailing(double high, double low)
+    {
+        if (_posDir == 0) return;
+        if (_posDir == 1) _highest = Math.Max(_highest, high);
+        else _lowest = Math.Min(_lowest, low);
+    }
+
     public (bool shouldClose, string reason) CheckSL(double high, double low)
     {
         if (_posDir == 0) return (false, "");
