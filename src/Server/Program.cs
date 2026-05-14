@@ -125,6 +125,7 @@ app.Use(async (HttpContext ctx, Func<Task> next) =>
     // Allow: login, logout, health, test, heartbeat, static files, login page
     if (path.StartsWith("/api/login") || 
         path.StartsWith("/api/logout") ||
+        path.StartsWith("/strategy/") ||
         path == "/health" ||
         path == "/test" ||
         path == "/heartbeat" ||
