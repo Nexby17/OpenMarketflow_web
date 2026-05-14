@@ -126,6 +126,7 @@ app.Use(async (HttpContext ctx, Func<Task> next) =>
     if (path.StartsWith("/api/login") || 
         path.StartsWith("/api/logout") ||
         path.StartsWith("/strategy/") ||
+        path.StartsWith("/api/active") ||
         path == "/health" ||
         path == "/test" ||
         path == "/heartbeat" ||
