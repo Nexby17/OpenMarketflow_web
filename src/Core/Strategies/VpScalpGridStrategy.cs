@@ -31,6 +31,7 @@ public class VpScalpGridStrategy
 
     // Current VP indicators
     public double POC { get; private set; }
+    public double CurrentPOC => POC;
     public double VAH { get; private set; }
     public double VAL { get; private set; }
 
@@ -40,6 +41,7 @@ public class VpScalpGridStrategy
     public double LastFilledGridPrice => _filledGridPrices.Count > 0 ? _filledGridPrices[^1] : 0;
     public int FilledLevels => _filledLevels;
     public int TotalLots => 1 + _filledLevels;
+    public string DirStr => _posDir == 1 ? "LONG" : _posDir == -1 ? "SHORT" : "—";
     public int RoundTrips => _roundTrips;
     public double RealizedPnL => _realizedPnL;
     public DateTime? EntryTime => _entryTime;

@@ -45,6 +45,7 @@ public class VpScalpGridLauncher : IDisposable
     private int _barsSinceReset = 0;
     private const int MIN_BARS_AFTER_RESET = 3;
     private double _lastCandlePrice = 0;
+    private double _currentPrice = 0;
     private int _skipTicks = 0;
     private string? _pocOrderId;
     private double _pocPrice = 0;
@@ -106,7 +107,7 @@ public class VpScalpGridLauncher : IDisposable
                 try
                 {
                     // Check broker position
-                    var (bDir, bLots, bAvg) = await GetBrokerPositionAsync();
+                    var (bDir, bLots, bAvg, _) = await GetBrokerPositionAsync();
                     if (bLots > 0 && bDir != 0)
                     {
                         // Restore position from broker
@@ -158,7 +159,7 @@ public class VpScalpGridLauncher : IDisposable
                 if (o.isActive) await CancelOrderAsync(o.id);
             }
         } catch { }
-        var (bDir, bLots, _) = await GetBrokerPositionAsync();
+        var (bDir, bLots, _, _) = await GetBrokerPositionAsync();
         if (bLots > 0 && bDir != 0)
         {
             await PlaceMarketOrderAsync(bDir == 1 ? "SIDE_SELL" : "SIDE_BUY", bLots, "VPSG-CLOSE: Stop");
@@ -343,7 +344,7 @@ public class VpScalpGridLauncher : IDisposable
         List<(string id, double price, string comment, bool isActive)> brokerOrders = new();
 
         if (fetchPosition)
-            (brokerDir, brokerLots, brokerAvg) = await GetBrokerPositionAsync();
+            (brokerDir, brokerLots, brokerAvg, _currentPrice) = await GetBrokerPositionAsync();
         else
         {
             brokerDir = _strategy.PositionDirection;
@@ -370,7 +371,7 @@ public class VpScalpGridLauncher : IDisposable
                 if (fetchPosition)
                 {
                     await Task.Delay(200);
-                    var (recheckDir, recheckLots, _) = await GetBrokerPositionAsync();
+                    var (recheckDir, recheckLots, _, _) = await GetBrokerPositionAsync();
                     if (recheckLots > 0 && recheckDir != -999)
                     {
                         Console.WriteLine($"[{_logPrefix}] Broker flicker — position exists ({recheckLots} lots)");
@@ -473,7 +474,32 @@ public class VpScalpGridLauncher : IDisposable
         if (_strategy.PositionDirection != 0 && _gridOrderId == null && _strategy.FilledLevels < _strategy.Params.MaxLevels)
             await PlaceGridAsync();
 
-        // 6. CANDLES — feed и проверяем exit
+        // 6. POC EXIT — по текущей цене из брокера (не по свечам)
+        if (_strategy.PositionDirection != 0 && _currentPrice > 0)
+        {
+            double poc = _strategy.CurrentPOC;
+            if (poc > 0)
+            {
+                bool pocHit = (_strategy.PositionDirection == 1 && _currentPrice >= poc) ||
+                              (_strategy.PositionDirection == -1 && _currentPrice <= poc);
+                if (pocHit)
+                {
+                    double unrealized = _strategy.CalcUnrealizedPnL(_currentPrice);
+                    double perLot = _strategy.TotalLots > 0 ? unrealized / _strategy.TotalLots : 0;
+                    bool shouldClose = _strategy.TotalLots == 1 || perLot >= _strategy.Params.MinProfitPerLot;
+                    if (shouldClose)
+                    {
+                        Console.WriteLine($"[{_logPrefix}] Exit: POC hit {_strategy.DirStr}: {_currentPrice:F0} " +
+                            $"{( _strategy.PositionDirection == 1 ? ">=" : "<=" )} {poc:F0} (PnL/lot={perLot:F0})");
+                        await CloseAllAsync($"POC hit {_strategy.DirStr}: {_currentPrice:F0} " +
+                            $"{( _strategy.PositionDirection == 1 ? ">=" : "<=" )} {poc:F0} (PnL/lot={perLot:F0})");
+                        return;
+                    }
+                }
+            }
+        }
+
+        // 7. CANDLES — feed и timeout exit
         await ProcessCandlesAsync();
     }
 
@@ -501,31 +527,20 @@ public class VpScalpGridLauncher : IDisposable
                 double low = bar.Low != null ? double.Parse(bar.Low.Value) : close;
                 double vol = double.Parse(bar.Volume?.Value ?? "0");
 
-                // Check exit BEFORE feeding (uses current VP state)
-                // Use high for LONG (price touched above), low for SHORT (price touched below)
+                // Check timeout exit BEFORE feeding (POC exit handled in MainLoop by current_price)
                 if (_strategy.PositionDirection != 0)
                 {
-                    double exitPrice = _strategy.PositionDirection == 1 ? high : low;
-                    double unrealizedPnl = _strategy.CalcUnrealizedPnL(close);
-                    var (shouldClose, reason) = _strategy.CheckExit(exitPrice, ts.Hour, unrealizedPnl);
-                    if (shouldClose)
+                    // Only check timeout here
+                    if (_strategy.HoldMinutes >= _strategy.Params.MaxHoldMinutes)
                     {
-                        // Timeout: only close if profitable
-                        if (reason.StartsWith("Timeout"))
+                        double unrealized = _strategy.CalcUnrealizedPnL(close);
+                        double perLot = _strategy.TotalLots > 0 ? unrealized / _strategy.TotalLots : 0;
+                        if (unrealized > 0 && perLot >= _strategy.Params.MinProfitPerLot)
                         {
-                            double unrealized = _strategy.CalcUnrealizedPnL(close);
-                            double perLot = _strategy.TotalLots > 0 ? unrealized / _strategy.TotalLots : 0;
-                            if (unrealized <= 0 || perLot < _strategy.Params.MinProfitPerLot)
-                            {
-                                // Not profitable enough — skip, keep waiting
-                                _strategy.OnBar(close, vol);
-                                _lastCandleTime = ts;
-                                continue;
-                            }
+                            Console.WriteLine($"[{_logPrefix}] Exit: Timeout ({_strategy.HoldMinutes} min)");
+                            await CloseAllAsync($"Timeout ({_strategy.HoldMinutes} min)");
+                            return;
                         }
-                        Console.WriteLine($"[{_logPrefix}] Exit: {reason}");
-                        await CloseAllAsync(reason);
-                        return;
                     }
                 }
 
@@ -565,7 +580,7 @@ public class VpScalpGridLauncher : IDisposable
         if (_strategy.PositionDirection != 0) return;
 
         // Entry guard: check broker before placing order
-        var (guardDir, guardLots, _) = await GetBrokerPositionAsync();
+        var (guardDir, guardLots, _, _) = await GetBrokerPositionAsync();
         if (guardDir == -999) { Console.WriteLine($"[{_logPrefix}] Entry skipped: API error"); _skipTicks = 10; return; }
         if (guardLots > 0)
         {
@@ -589,7 +604,7 @@ public class VpScalpGridLauncher : IDisposable
         int fillLots = 0;
         for (int attempt = 0; attempt < 2; attempt++)
         {
-            var (bDir, bLots, bAvg) = await GetBrokerPositionAsync();
+            var (bDir, bLots, bAvg, _) = await GetBrokerPositionAsync();
             if (bLots > 0) { fillDir = bDir; fillLots = bLots; fillPrice = bAvg > 0 ? bAvg : signalPrice; break; }
             if (bDir == -999) break;
             await Task.Delay(500);
@@ -799,14 +814,14 @@ public class VpScalpGridLauncher : IDisposable
 
     // === BROKER QUERIES ===
 
-    private async Task<(int dir, int lots, double avgPrice)> GetBrokerPositionAsync()
+    private async Task<(int dir, int lots, double avgPrice, double currentPrice)> GetBrokerPositionAsync()
     {
         try
         {
             var rest = _broker.RestClient;
-            if (rest == null) return (0, 0, 0);
+            if (rest == null) return (0, 0, 0, 0);
             var account = await rest.GetAccountAsync(_accountId);
-            if (account?.Positions == null) return (0, 0, 0);
+            if (account?.Positions == null) return (0, 0, 0, 0);
             foreach (var p in account.Positions)
             {
                 var sym = (p.Symbol ?? "").Split('@')[0];
@@ -814,12 +829,13 @@ public class VpScalpGridLauncher : IDisposable
                 long qty = p.EffectiveQuantity;
                 if (qty == 0) continue;
                 double avg = p.AveragePrice ?? 0;
+                double cp = p.CurrentPrice ?? 0;
                 int d = qty > 0 ? 1 : -1;
-                return (d, (int)Math.Abs(qty), avg);
+                return (d, (int)Math.Abs(qty), avg, cp);
             }
         }
-        catch (Exception ex) { Console.WriteLine($"[{_logPrefix}] GetBrokerPosition error: {ex.Message}"); return (-999, 0, 0); }
-        return (0, 0, 0);
+        catch (Exception ex) { Console.WriteLine($"[{_logPrefix}] GetBrokerPosition error: {ex.Message}"); return (-999, 0, 0, 0); }
+        return (0, 0, 0, 0);
     }
 
     private async Task<List<(string id, double price, string comment, bool isActive)>> GetBrokerOrdersAsync()
