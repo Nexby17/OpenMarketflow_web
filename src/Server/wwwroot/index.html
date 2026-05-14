@@ -333,6 +333,18 @@
             <button class="btn btn-secondary btn-sm" onclick="vpSimpleTest()">🧪 Тестирование</button>
         </div>
 
+        <div class="strategy-item" style="padding:16px; gap:12px; align-items:center; flex-wrap:wrap; margin-top:12px; border-top:1px solid var(--border-color)">
+            <strong style="min-width:140px">🎯 V8 Trail</strong>
+            <div class="metric-card" style="min-width:120px"><div class="metric-label">Тикер</div><select id="cfgV8Ticker" class="input" style="width:100px"><option value="RTSM6">RTSM6</option><option value="RIM6">RIM6</option></select></div>
+            <div class="metric-card" style="min-width:120px"><div class="metric-label">SL %</div><input id="cfgV8SlPct" class="input" type="number" step="0.01" value="0.10" style="width:70px"></div>
+            <div class="metric-card" style="min-width:120px"><div class="metric-label">EMA</div><input id="cfgV8Ema" class="input" type="number" value="20" style="width:70px"></div>
+            <div class="metric-card" style="min-width:120px"><div class="metric-label">SAR Start</div><input id="cfgV8SarStart" class="input" type="number" step="0.005" value="0.02" style="width:70px"></div>
+            <div class="metric-card" style="min-width:120px"><div class="metric-label">SAR Step</div><input id="cfgV8SarStep" class="input" type="number" step="0.005" value="0.02" style="width:70px"></div>
+            <div class="metric-card" style="min-width:120px"><div class="metric-label">SAR Max</div><input id="cfgV8SarMax" class="input" type="number" step="0.05" value="0.2" style="width:70px"></div>
+            <div class="metric-card" style="min-width:120px"><div class="metric-label">Max Hold (мин)</div><input id="cfgV8MaxHold" class="input" type="number" value="240" style="width:70px"></div>
+            <button class="btn btn-success btn-sm" onclick="v8TrailCreateRobot()">🤖 Создать робота</button>
+        </div>
+
         <!-- Панель оптимизации -->
         <div id="optimizePanel" class="card" style="display:none; margin-top:12px">
             <div class="card-header row gap-8">
@@ -515,6 +527,6 @@
         </div>
     </div>
 
-    <script src="/js/app.js?v=45"></script>
+    <script src="/js/app.js?v=46"></script>
 </body>
 </html>

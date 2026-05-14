@@ -2040,7 +2040,7 @@ app.MapPost("/strategy/v8-trail/stop", async () =>
 app.MapGet("/strategy/v8-trail/status", () =>
 {
     if (v8TrailLauncher == null) return Results.Json(new { status = "not_running" });
-    return Results.Json(new { status = "running", detail = v8TrailLauncher.GetStatus() });
+    return Results.Json(new { status = "running", detail = v8TrailLauncher.Strategy.GetStatus() });
 });
 
 app.MapPost("/strategy/v8-trail/config", async (HttpRequest req) =>

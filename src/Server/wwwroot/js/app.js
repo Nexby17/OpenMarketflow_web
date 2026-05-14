@@ -1963,6 +1963,45 @@ function vpSimpleCreateRobot() {
     addLog(nowTime(), 'INFO', `⚡ VP Scalp Simple робот создан (${ticker} SL=${slPct}% hold=${maxHold}мин)`);
 }
 
+function v8TrailCreateRobot() {
+    const slPct = el('cfgV8SlPct')?.value || '0.10';
+    const ema = el('cfgV8Ema')?.value || '20';
+    const sarStart = el('cfgV8SarStart')?.value || '0.02';
+    const sarStep = el('cfgV8SarStep')?.value || '0.02';
+    const sarMax = el('cfgV8SarMax')?.value || '0.2';
+    const maxHold = el('cfgV8MaxHold')?.value || '240';
+    const ticker = el('cfgV8Ticker')?.value || 'RTSM6';
+    const finamSym = ticker + '@RTSX';
+    const stepPrice = ticker.includes('RTS') ? 14.86 : 1;
+    const robot = {
+        id: Date.now(),
+        ticker: ticker,
+        account: '', accountName: '',
+        strategy: 'V8 Trail',
+        slPct: slPct,
+        ema: ema,
+        sarStart: sarStart,
+        sarStep: sarStep,
+        sarMax: sarMax,
+        holdMinutes: maxHold,
+        stepPrice: stepPrice,
+        finamSymbol: finamSym,
+        status: 'stopped',
+        position: '—',
+        pnlToday: 0, pnlTotal: 0,
+        lotsOpen: 0, go: 0,
+        exchangeStatus: '—'
+    };
+    robots.push(robot);
+    saveRobots();
+    renderRobots();
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+    document.querySelector('[data-tab="monitoring"]').classList.add('active');
+    el('monitoring')?.classList.add('active');
+    addLog(nowTime(), 'INFO', `🎯 V8 Trail робот создан (${ticker} SL=${slPct}% EMA=${ema})`);
+}
+
 function vpSimpleTest() {
     const ticker = el('cfgVpSimpleTicker')?.value || 'MXM6';
     const slPct = el('cfgVpSimpleSlPct')?.value || '0.20';
@@ -2156,7 +2195,19 @@ async function robotStart(i) {
     let apiBase = getRobotApiBase(r);
     let body = {};
     
-    if (r.strategy && r.strategy.includes('VP Scalp Simple')) {
+    if (r.strategy && r.strategy.includes('V8 Trail')) {
+        body = {
+            ticker: r.ticker || 'RTSM6',
+            finamSymbol: r.finamSymbol || 'RTSM6@RTSX',
+            stepPrice: parseFloat(r.stepPrice) || 14.86,
+            slPct: parseFloat(r.slPct) || 0.10,
+            emaPeriod: parseInt(r.ema) || 20,
+            sarStart: parseFloat(r.sarStart) || 0.02,
+            sarStep: parseFloat(r.sarStep) || 0.02,
+            sarMax: parseFloat(r.sarMax) || 0.2,
+            maxHoldMinutes: parseInt(r.holdMinutes) || 240
+        };
+    } else if (r.strategy && r.strategy.includes('VP Scalp Simple')) {
         body = {
             ticker: r.ticker || 'MXM6',
             slPct: parseFloat(r.slPct) || 0.20,
@@ -2217,6 +2268,7 @@ async function robotStart(i) {
 }
 
 function getRobotApiBase(r) {
+    if (r.strategy && r.strategy.includes('V8 Trail')) return '/strategy/v8-trail';
     if (r.strategy && r.strategy.includes('VP Scalp Simple')) return '/strategy/vp-simple';
     if (r.strategy && r.strategy.includes('VP Scalp Grid Copy')) return '/strategy/vp-copy';
     if (r.strategy && r.strategy.includes('VP Scalp')) return '/strategy/vp-scalp-grid';
@@ -2269,10 +2321,10 @@ async function updateRobotData() {
             const data = await resp.json();
             if (data.status === 'not_running' || data.status === 'not_initialized') continue;
             // Use brokerPnL if available, otherwise realizedPnL
-            r.pnlToday = data.brokerPnL ?? data.realizedPnL ?? data.pnl ?? 0;
-            r.pnlTotal = data.brokerPnL ?? data.realizedPnL ?? data.totalPnl ?? data.pnl ?? 0;
-            r.position = data.dirStr || (data.direction === 1 ? 'Лонг' : data.direction === -1 ? 'Шорт' : '—');
-            r.lotsOpen = data.totalLots || data.openLots || 0;
+            r.pnlToday = data.brokerPnL ?? data.realizedPnL ?? data.pnl ?? (data.detail?.realizedPnL ?? 0);
+            r.pnlTotal = data.brokerPnL ?? data.realizedPnL ?? data.totalPnl ?? data.pnl ?? (data.detail?.realizedPnL ?? 0);
+            r.position = data.dirStr || (data.direction === 1 || data.detail?.posDir === 1 ? 'Лонг' : data.direction === -1 || data.detail?.posDir === -1 ? 'Шорт' : '—');
+            r.lotsOpen = data.totalLots || data.openLots || (data.detail?.posDir !== 0 ? 1 : 0);
             r.exchangeStatus = data.connected ? 'Биржа OK' : 'Нет связи';
             if (data.status === 'stopped') r.status = 'stopped';
             if (data.status === 'paused') r.status = 'paused';
@@ -2300,10 +2352,21 @@ function editRobot(i) {
     // Check if VP Scalp Grid Copy
     const isVpCopy = r.strategy && r.strategy.includes('VP Scalp Grid Copy');
     const isVpSimple = r.strategy && r.strategy.includes('VP Scalp Simple');
+    const isV8Trail = r.strategy && r.strategy.includes('V8 Trail');
     const isVpScalp = r.strategy && r.strategy.includes('VP Scalp Grid') && !isVpCopy && !isVpSimple;
 
     let paramsHtml = '';
-    if (isVpSimple) {
+    if (isV8Trail) {
+        paramsHtml = `
+            <div class="metrics-row" style="flex-wrap:wrap;margin-bottom:16px">
+                <div class="metric-card"><div class="metric-label">SL %</div><input id="editSlPct" class="input" type="number" step="0.01" value="${r.slPct||0.10}" style="width:70px"></div>
+                <div class="metric-card"><div class="metric-label">EMA</div><input id="editEma" class="input" type="number" value="${r.ema||20}" style="width:70px"></div>
+                <div class="metric-card"><div class="metric-label">SAR Start</div><input id="editSarStart" class="input" type="number" step="0.005" value="${r.sarStart||0.02}" style="width:70px"></div>
+                <div class="metric-card"><div class="metric-label">SAR Step</div><input id="editSarStep" class="input" type="number" step="0.005" value="${r.sarStep||0.02}" style="width:70px"></div>
+                <div class="metric-card"><div class="metric-label">SAR Max</div><input id="editSarMax" class="input" type="number" step="0.05" value="${r.sarMax||0.2}" style="width:70px"></div>
+                <div class="metric-card"><div class="metric-label">Max Hold (мин)</div><input id="editHoldMinutes" class="input" type="number" value="${r.holdMinutes||240}" style="width:70px"></div>
+            </div>`;
+    } else if (isVpSimple) {
         paramsHtml = `
             <div class="metrics-row" style="flex-wrap:wrap;margin-bottom:16px">
                 <div class="metric-card"><div class="metric-label">SL %</div><input id="editSlPct" class="input" type="number" step="0.05" value="${r.slPct||0.20}" style="width:70px"></div>
@@ -2670,9 +2733,32 @@ async function saveRobotEdit(i) {
 
     const isVpCopy = r.strategy && r.strategy.includes('VP Scalp Grid Copy');
     const isVpSimple = r.strategy && r.strategy.includes('VP Scalp Simple');
+    const isV8Trail = r.strategy && r.strategy.includes('V8 Trail');
     const isVpScalp = r.strategy && r.strategy.includes('VP Scalp Grid') && !isVpCopy && !isVpSimple;
 
-    if (isVpSimple) {
+    if (isV8Trail) {
+        r.slPct = el('editSlPct')?.value || r.slPct;
+        r.ema = el('editEma')?.value || r.ema;
+        r.sarStart = el('editSarStart')?.value || r.sarStart;
+        r.sarStep = el('editSarStep')?.value || r.sarStep;
+        r.sarMax = el('editSarMax')?.value || r.sarMax;
+        r.holdMinutes = el('editHoldMinutes')?.value || r.holdMinutes;
+        try {
+            await fetch('/strategy/v8-trail/config', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({
+                    slPct: parseFloat(r.slPct),
+                    emaPeriod: parseInt(r.ema),
+                    sarStart: parseFloat(r.sarStart),
+                    sarStep: parseFloat(r.sarStep),
+                    sarMax: parseFloat(r.sarMax),
+                    maxHoldMinutes: parseInt(r.holdMinutes)
+                })
+            });
+            addLog(nowTime(), 'INFO', `📤 V8 Trail конфиг: SL=${r.slPct}% EMA=${r.ema}`);
+        } catch(e) { addLog(nowTime(), 'ERROR', 'Config send failed: ' + e.message); }
+    } else if (isVpSimple) {
         r.slPct = el('editSlPct')?.value || r.slPct;
         r.holdMinutes = el('editHoldMinutes')?.value || r.holdMinutes;
         r.vpLookback = el('editVpLookback')?.value || r.vpLookback;
