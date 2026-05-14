@@ -440,7 +440,7 @@ public class VpScalpGridLauncher : IDisposable
                 _tpOrderId = null;
                 _pocOrderId = null;
                 await PlaceGridAsync();
-                await PlaceTpAsync();
+                if (_strategy.FilledLevels > 0) await PlaceTpAsync();
                 SaveState();
                 return;
             }
@@ -461,7 +461,7 @@ public class VpScalpGridLauncher : IDisposable
                 _tpOrderId = null;
                 _pocOrderId = null;
                 await PlaceGridAsync();
-                await PlaceTpAsync();
+                if (_strategy.FilledLevels > 0) await PlaceTpAsync();
                 SaveState();
                 return;
             }
