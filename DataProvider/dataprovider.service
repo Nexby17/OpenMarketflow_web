@@ -1,0 +1,14 @@
+[Unit]
+Description=Finam DataProvider
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/root/.openclaw/workspace/HedgeFund/DataProvider
+ExecStart=/usr/bin/python3 /root/.openclaw/workspace/HedgeFund/DataProvider/main.py
+Restart=always
+RestartSec=5
+Environment=FINAM_TOKEN=%h/.finam-token
+
+[Install]
+WantedBy=multi-user.target

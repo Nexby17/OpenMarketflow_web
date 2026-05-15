@@ -1,0 +1,7 @@
+{
+  "port": 5060,
+  "account_id": "1225953",
+  "symbols": ["SiM6@RTSX", "RIM6@RTSX", "MXM6@RTSX"],
+  "timeframes": ["M1", "M5"],
+  "candle_cache_size": 500
+}

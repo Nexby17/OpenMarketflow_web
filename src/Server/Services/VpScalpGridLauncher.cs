@@ -27,6 +27,7 @@ public class VpScalpGridLauncher : IDisposable
     private readonly string _finamSymbol;
     private readonly string _ticker;
     private readonly string _accountId;
+    private static readonly DataProviderClient _dpClient = new DataProviderClient("http://localhost:5060");
     private readonly string _logPrefix = "VPSG";
 
     // Tracked order IDs — устанавливаются ТОЛЬКО при place
@@ -120,18 +121,37 @@ public class VpScalpGridLauncher : IDisposable
                         Console.WriteLine($"[{_logPrefix}] Broker position restored: {bDir} entry={entry:F0} lots={bLots}");
                     }
 
-                    // Warmup candles
-                    var bars = await rest.GetBarsAsync(_finamSymbol, "TIME_FRAME_M1",
-                        DateTime.UtcNow.AddMinutes(-120).ToString("o"),
-                        DateTime.UtcNow.ToString("o"));
-                    if (bars?.Bars != null)
+                    // Warmup candles — try DP first, fallback to REST
+                    bool warmupDone = false;
+                    try
                     {
-                        foreach (var bar in bars.Bars)
+                        var dpCandles = await _dpClient.GetCandlesAsync(_finamSymbol, "TIME_FRAME_M1", 120);
+                        if (dpCandles != null && dpCandles.Count > 0)
                         {
-                            _strategy.OnBar(double.Parse(bar.Close.Value), double.Parse(bar.Volume?.Value ?? "0"));
-                            _lastCandleTime = DateTime.Parse(bar.Timestamp);
+                            foreach (var c in dpCandles)
+                            {
+                                _strategy.OnBar(c.Close, c.Volume);
+                                _lastCandleTime = DateTime.Parse(c.Timestamp);
+                            }
+                            Console.WriteLine($"[{_logPrefix}] Warmup (DP): {dpCandles.Count} candles, VAL={_strategy.VAL:F0} VAH={_strategy.VAH:F0} POC={_strategy.POC:F0}");
+                            warmupDone = true;
                         }
-                        Console.WriteLine($"[{_logPrefix}] Warmup: {bars.Bars.Count} candles, VAL={_strategy.VAL:F0} VAH={_strategy.VAH:F0} POC={_strategy.POC:F0}");
+                    }
+                    catch { }
+                    if (!warmupDone)
+                    {
+                        var bars = await rest.GetBarsAsync(_finamSymbol, "TIME_FRAME_M1",
+                            DateTime.UtcNow.AddMinutes(-120).ToString("o"),
+                            DateTime.UtcNow.ToString("o"));
+                        if (bars?.Bars != null)
+                        {
+                            foreach (var bar in bars.Bars)
+                            {
+                                _strategy.OnBar(double.Parse(bar.Close.Value), double.Parse(bar.Volume?.Value ?? "0"));
+                                _lastCandleTime = DateTime.Parse(bar.Timestamp);
+                            }
+                            Console.WriteLine($"[{_logPrefix}] Warmup (REST): {bars.Bars.Count} candles, VAL={_strategy.VAL:F0} VAH={_strategy.VAH:F0} POC={_strategy.POC:F0}");
+                        }
                     }
                     SaveState();
                 }
@@ -509,23 +529,54 @@ public class VpScalpGridLauncher : IDisposable
     {
         try
         {
-            var rest = _broker.RestClient;
-            if (rest == null) return;
+            // Primary: DataProviderClient candles
+            List<(DateTime ts, double open, double high, double low, double close, double vol)> candleData = null;
 
-            var bars = await rest.GetBarsAsync(_finamSymbol, "TIME_FRAME_M1",
-                DateTime.UtcNow.AddMinutes(-10).ToString("o"),
-                DateTime.UtcNow.ToString("o"));
-            if (bars?.Bars == null) return;
-
-            foreach (var bar in bars.Bars)
+            try
             {
-                var ts = DateTime.Parse(bar.Timestamp);
+                var dpCandles = await _dpClient.GetCandlesAsync(_finamSymbol, "TIME_FRAME_M1", 10);
+                if (dpCandles != null && dpCandles.Count > 0)
+                {
+                    candleData = dpCandles.Select(c => (
+                        ts: DateTime.Parse(c.Timestamp),
+                        open: c.Open,
+                        high: c.High,
+                        low: c.Low,
+                        close: c.Close,
+                        vol: c.Volume
+                    )).ToList();
+                }
+            }
+            catch { }
+
+            // Fallback: Finam REST
+            if (candleData == null)
+            {
+                var rest = _broker.RestClient;
+                if (rest == null) return;
+                var bars = await rest.GetBarsAsync(_finamSymbol, "TIME_FRAME_M1",
+                    DateTime.UtcNow.AddMinutes(-10).ToString("o"),
+                    DateTime.UtcNow.ToString("o"));
+                if (bars?.Bars == null) return;
+                candleData = bars.Bars.Select(b => (
+                    ts: DateTime.Parse(b.Timestamp),
+                    open: double.Parse(b.Open.Value),
+                    high: b.High != null ? double.Parse(b.High.Value) : double.Parse(b.Close.Value),
+                    low: b.Low != null ? double.Parse(b.Low.Value) : double.Parse(b.Close.Value),
+                    close: double.Parse(b.Close.Value),
+                    vol: double.Parse(b.Volume?.Value ?? "0")
+                )).ToList();
+            }
+
+            foreach (var bar in candleData)
+            {
+                var ts = bar.ts;
                 if (ts <= _lastCandleTime) continue;
 
-                double close = double.Parse(bar.Close.Value);
-                double high = bar.High != null ? double.Parse(bar.High.Value) : close;
-                double low = bar.Low != null ? double.Parse(bar.Low.Value) : close;
-                double vol = double.Parse(bar.Volume?.Value ?? "0");
+                double close = bar.close;
+                double high = bar.high;
+                double low = bar.low;
+                double vol = bar.vol;
 
                 // Check timeout exit BEFORE feeding (POC exit handled in MainLoop by current_price)
                 if (_strategy.PositionDirection != 0)
@@ -554,7 +605,7 @@ public class VpScalpGridLauncher : IDisposable
             // Check entry signal (only if no position)
             if (_strategy.PositionDirection == 0 && _barsSinceReset >= MIN_BARS_AFTER_RESET)
             {
-                double currentPrice = double.Parse(bars.Bars.Last().Close.Value);
+                double currentPrice = candleData.Last().close;
                 if (currentPrice > 0 && !double.IsNaN(_strategy.VAL) && !double.IsNaN(_strategy.VAH))
                 {
                     if (currentPrice < _strategy.VAL)
@@ -818,6 +869,13 @@ public class VpScalpGridLauncher : IDisposable
     {
         try
         {
+            // Primary: DataProviderClient
+            var pos = await _dpClient.GetPositionAsync(_accountId, _ticker);
+            if (pos != null)
+                return (pos.Dir, pos.Lots, pos.AvgPrice, pos.CurrentPrice);
+
+            // Fallback: Finam REST
+            Console.WriteLine($"[{_logPrefix}] GetBrokerPosition: DP null, fallback to REST");
             var rest = _broker.RestClient;
             if (rest == null) return (0, 0, 0, 0);
             var account = await rest.GetAccountAsync(_accountId);
@@ -843,6 +901,20 @@ public class VpScalpGridLauncher : IDisposable
         var result = new List<(string, double, string, bool)>();
         try
         {
+            // Primary: DataProviderClient
+            var dpOrders = await _dpClient.GetOrdersAsync();
+            if (dpOrders != null && dpOrders.Count > 0)
+            {
+                foreach (var o in dpOrders)
+                {
+                    bool isActive = o.Status == "ORDER_STATUS_NEW" || o.Status == "active";
+                    result.Add((o.Id ?? "", o.Price, o.Comment ?? "", isActive));
+                }
+                return result;
+            }
+
+            // Fallback: Finam REST
+            Console.WriteLine($"[{_logPrefix}] GetBrokerOrders: DP empty, fallback to REST");
             var rest = _broker.RestClient;
             if (rest == null) return result;
             var orders = await rest.GetOrdersAsync(_accountId);
