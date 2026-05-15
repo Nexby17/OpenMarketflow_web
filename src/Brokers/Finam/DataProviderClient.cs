@@ -42,14 +42,14 @@ namespace HedgeFund.Brokers.Finam
 
     public class DataProviderOrder
     {
-        [JsonPropertyName("id")] public string Id { get; set; }
+        [JsonPropertyName("order_id")] public string Id { get; set; }
         [JsonPropertyName("symbol")] public string Symbol { get; set; }
         [JsonPropertyName("side")] public string Side { get; set; }
         [JsonPropertyName("type")] public string Type { get; set; }
-        [JsonPropertyName("price")] public double Price { get; set; }
-        [JsonPropertyName("quantity")] public int Quantity { get; set; }
+        [JsonPropertyName("limit_price")] public double Price { get; set; }
+        [JsonPropertyName("quantity")] public double Quantity { get; set; }
         [JsonPropertyName("status")] public string Status { get; set; }
-        [JsonPropertyName("comment")] public string Comment { get; set; }
+        [JsonPropertyName("client_order_id")] public string Comment { get; set; }
     }
 
     /// <summary>
@@ -82,7 +82,16 @@ namespace HedgeFund.Brokers.Finam
 
         public async Task<List<DataProviderCandle>> GetCandlesAsync(string symbol, string tf = "M1", int limit = 100)
         {
-            return await GetAsync<List<DataProviderCandle>>($"candles/{symbol}?tf={tf}&limit={limit}").ConfigureAwait(false);
+            try
+            {
+                var json = await _http.GetStringAsync($"candles/{symbol}?tf={tf}&limit={limit}").ConfigureAwait(false);
+                var doc = JsonDocument.Parse(json);
+                // DataProvider returns { "bars": [...] }
+                if (doc.RootElement.TryGetProperty("bars", out var bars))
+                    return JsonSerializer.Deserialize<List<DataProviderCandle>>(bars.GetRawText(), _json);
+                return JsonSerializer.Deserialize<List<DataProviderCandle>>(json, _json);
+            }
+            catch (Exception ex) { Console.WriteLine($"[DP] GET candles/{symbol} error: {ex.Message}"); return null; }
         }
 
         public async Task<DataProviderPosition> GetPositionAsync(string account, string ticker)

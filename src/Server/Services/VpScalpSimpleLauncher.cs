@@ -330,16 +330,8 @@ public class VpScalpSimpleLauncher : IDisposable
 
     private (int dir, int lots, double avg) GetBrokerPosition()
     {
-        // DataProvider first
-        try
-        {
-            var dpPos = _dpClient.GetPositionAsync(_accountId, _ticker).GetAwaiter().GetResult();
-            if (dpPos != null)
-                return (dpPos.Dir, dpPos.Lots, dpPos.CurrentPrice);
-        }
-        catch (Exception ex) { Console.WriteLine($"[{_logPrefix}] GetBrokerPosition DP error: {ex.Message}"); }
-
-        // Fallback: Finam REST
+        // DataProvider position NOT used — gRPC GetPortfolio broken
+        // Direct Finam REST only
         try
         {
             var rest = _broker.RestClient;
