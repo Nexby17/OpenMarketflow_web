@@ -139,7 +139,7 @@ public class VpScalpGridLauncher : IDisposable
             });
         }
 
-        _mainTimer = new System.Threading.Timer(MainLoopTick, null, TimeSpan.FromMilliseconds(500), TimeSpan.FromMilliseconds(500));
+        _mainTimer = new System.Threading.Timer(MainLoopTick, null, TimeSpan.FromMilliseconds(1000), TimeSpan.FromMilliseconds(1000));
         Console.WriteLine($"[{_logPrefix}] ✅ Started");
     }
 

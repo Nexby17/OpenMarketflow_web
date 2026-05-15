@@ -53,7 +53,7 @@ public class VpScalpSimpleLauncher : IDisposable
         _strategy.CurrentMode = VpScalpSimpleStrategy.Mode.Running;
         RestoreState();
         BrokerSync();
-        _mainTimer = new Timer(async _ => await MainLoop(), null, 2000, 500);
+        _mainTimer = new Timer(async _ => await MainLoop(), null, 2000, 1000);
         Console.WriteLine($"[{_logPrefix}] Started on {_ticker}");
     }
 

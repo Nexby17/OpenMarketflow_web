@@ -44,7 +44,7 @@ public class V8TrailLauncher
     public void Start()
     {
         Console.WriteLine($"[{_logPrefix}] ✅ Started on {_ticker} SL={Strategy.Params.SlPct}% EMA={Strategy.Params.EmaPeriod}");
-        _mainTimer = new System.Threading.Timer(MainLoopTick, null, TimeSpan.FromSeconds(2), TimeSpan.FromMilliseconds(500));
+        _mainTimer = new System.Threading.Timer(MainLoopTick, null, TimeSpan.FromSeconds(2), TimeSpan.FromMilliseconds(1000));
     }
 
     public async Task StopAsync()
