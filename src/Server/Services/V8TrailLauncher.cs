@@ -242,9 +242,11 @@ public class V8TrailLauncher
                 Strategy.OpenPosition(dir, price);
                 Console.WriteLine($"[{_logPrefix}] Entry {(dir == 1 ? "LONG" : "SHORT")} @ {price:F0}");
 
-                // Ставим SL limit ордер
+                // Ставим SL limit ордер (округляем до minStep)
+                int minStep = _finamSymbol.Contains("RI") ? 10 : 1;
                 double slPrice = dir == 1 ? price * (1 - Strategy.Params.SlPct / 100) : price * (1 + Strategy.Params.SlPct / 100);
-                slPrice = Math.Round(slPrice);
+                slPrice = Math.Floor(slPrice / minStep) * minStep; // округляем ВНИЗ для LONG SL, ВВЕРХ для SHORT SL
+                if (dir == -1) slPrice = Math.Ceiling(slPrice / minStep) * minStep;
                 string slSide = dir == 1 ? "SIDE_SELL" : "SIDE_BUY";
                 _slOrderId = await PlaceLimitOrderAsync(slSide, slPrice, $"{_logPrefix}-SL");
                 if (_slOrderId != null)
@@ -393,7 +395,7 @@ public class V8TrailLauncher
                 Quantity = new() { Value = "1" },
                 Side = side,
                 OrderType = "ORDER_TYPE_LIMIT",
-                Price = new() { Value = ((int)Math.Round(price)).ToString() },
+                Price = new() { Value = ((int)price).ToString() },
                 Comment = comment
             });
             return result?.OrderId;
@@ -408,6 +410,11 @@ public class V8TrailLauncher
     private async Task UpdateSLOrderAsync(double newSL)
     {
         if (Strategy.PositionDirection == 0) return;
+        // Округляем до minStep
+        int minStep = _finamSymbol.Contains("RI") ? 10 : 1;
+        if (Strategy.PositionDirection == 1) newSL = Math.Floor(newSL / minStep) * minStep;
+        else newSL = Math.Ceiling(newSL / minStep) * minStep;
+
         await CancelOrderAsync(_slOrderId ?? "");
         _slOrderId = null;
 
