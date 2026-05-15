@@ -24,6 +24,7 @@ public class V8TrailLauncher
     private System.Threading.Timer? _mainTimer;
     private int _tickCount = 0;
     private DateTime _lastCandleTime = DateTime.MinValue;
+    private double _lastCandlePrice = 0;
     private bool _clearingPaused = false;
     private int _skipTicks = 0;
 
@@ -125,8 +126,9 @@ public class V8TrailLauncher
         else if (!robotHasPos)
         {
             // Broker has position but robot doesn't — restore
-            Console.WriteLine($"[{_logPrefix}] Restore from broker: dir={brokerDir} price={brokerAvg:F0}");
-            Strategy.RestorePosition(brokerDir, brokerAvg);
+            double restorePrice = brokerAvg > 0 ? brokerAvg : _lastCandlePrice;
+            Console.WriteLine($"[{_logPrefix}] Restore from broker: dir={brokerDir} price={restorePrice:F0} (avg={brokerAvg:F0})");
+            Strategy.RestorePosition(brokerDir, restorePrice);
         }
 
         // SL fill detection: check if SL limit order filled
@@ -203,6 +205,7 @@ public class V8TrailLauncher
                 // Feed bar → get signal
                 int signal = Strategy.OnBar(close, high, low);
                 _lastCandleTime = ts;
+                _lastCandlePrice = close;
 
                 // Entry signal (only if no position)
                 if (Strategy.PositionDirection == 0 && signal != 0)
