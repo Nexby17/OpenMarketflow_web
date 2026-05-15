@@ -15,6 +15,7 @@ public class VpScalpSimpleLauncher : IDisposable
     private readonly string _ticker;
     private readonly string _finamSymbol;
     private readonly VpScalpSimpleStrategy _strategy;
+    private static readonly DataProviderClient _dpClient = new DataProviderClient("http://localhost:5060");
     private readonly string _logPrefix = "VP-SIMPLE";
     private readonly string _orderPrefix = "VPS-";
     private readonly string _stateFile = "/tmp/vp-simple-state.json";
@@ -329,6 +330,16 @@ public class VpScalpSimpleLauncher : IDisposable
 
     private (int dir, int lots, double avg) GetBrokerPosition()
     {
+        // DataProvider first
+        try
+        {
+            var dpPos = _dpClient.GetPositionAsync(_accountId, _ticker).GetAwaiter().GetResult();
+            if (dpPos != null)
+                return (dpPos.Dir, dpPos.Lots, dpPos.CurrentPrice);
+        }
+        catch (Exception ex) { Console.WriteLine($"[{_logPrefix}] GetBrokerPosition DP error: {ex.Message}"); }
+
+        // Fallback: Finam REST
         try
         {
             var rest = _broker.RestClient;
@@ -354,7 +365,7 @@ public class VpScalpSimpleLauncher : IDisposable
                 return (d, (int)Math.Abs(qty), price);
             }
         }
-        catch (Exception ex) { Console.WriteLine($"[{_logPrefix}] GetBrokerPosition error: {ex.Message}"); return (-999, 0, 0); }
+        catch (Exception ex) { Console.WriteLine($"[{_logPrefix}] GetBrokerPosition Finam error: {ex.Message}"); return (-999, 0, 0); }
         return (0, 0, 0);
     }
 
@@ -388,6 +399,31 @@ public class VpScalpSimpleLauncher : IDisposable
 
     private Candle? GetLatestCandle()
     {
+        // DataProvider first
+        try
+        {
+            var dpCandles = _dpClient.GetCandlesAsync(_finamSymbol, "M5", 7).GetAwaiter().GetResult();
+            if (dpCandles != null && dpCandles.Count > 0)
+            {
+                var latest = dpCandles[dpCandles.Count - 1];
+                var ts = DateTime.Parse(latest.Timestamp);
+                if ((DateTime.UtcNow - ts).TotalMinutes < 5 && dpCandles.Count > 1)
+                    latest = dpCandles[dpCandles.Count - 2];
+
+                return new Candle
+                {
+                    Open = latest.Open,
+                    High = latest.High,
+                    Low = latest.Low,
+                    Close = latest.Close,
+                    Volume = (long)latest.Volume,
+                    Timestamp = DateTime.Parse(latest.Timestamp)
+                };
+            }
+        }
+        catch (Exception ex) { Console.WriteLine($"[{_logPrefix}] GetLatestCandle DP error: {ex.Message}"); }
+
+        // Fallback: Finam REST
         try
         {
             var rest = _broker.RestClient;
@@ -412,7 +448,7 @@ public class VpScalpSimpleLauncher : IDisposable
                 Timestamp = DateTime.Parse(latest.Timestamp)
             };
         }
-        catch (Exception ex) { Console.WriteLine($"[{_logPrefix}] GetLatestCandle error: {ex.Message}"); return null; }
+        catch (Exception ex) { Console.WriteLine($"[{_logPrefix}] GetLatestCandle Finam error: {ex.Message}"); return null; }
     }
 
     // === ORDER HELPERS ===
