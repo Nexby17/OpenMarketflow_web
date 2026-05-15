@@ -762,7 +762,7 @@ function loadCandles(ticker, tf) {
             if (volumeSeries) volumeSeries.setData(volumes);
             window._lastCandles = candles;
             // Clear old order lines
-            clearOrderLines();
+            if (typeof clearOrderLines === 'function') clearOrderLines();
             updateChartLines();
 
             // Рассчитываем SAR и EMA на клиенте
