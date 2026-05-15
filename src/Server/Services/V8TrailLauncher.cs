@@ -63,7 +63,7 @@ public class V8TrailLauncher
             int dir = Strategy.PositionDirection;
             int lots = 1;
             // Check broker for actual lots
-            var (bDir, bLots, _) = await GetBrokerPositionAsync();
+            var (bDir, bLots, _, _) = await GetBrokerPositionAsync();
             if (bLots > 0) lots = bLots;
 
             await PlaceMarketOrderAsync(dir == 1 ? "SIDE_SELL" : "SIDE_BUY", lots, $"{_logPrefix}-CLOSE: Stop");
@@ -99,7 +99,7 @@ public class V8TrailLauncher
         if (mskTime >= new TimeSpan(23, 55, 0) || mskTime < new TimeSpan(7, 0, 0)) return;
 
         // Check broker position
-        var (brokerDir, brokerLots, brokerAvg) = await GetBrokerPositionAsync();
+        var (brokerDir, brokerLots, brokerAvg, brokerCurrentPrice) = await GetBrokerPositionAsync();
         if (brokerDir == -999) return; // API error, skip
 
         bool brokerHasPos = brokerLots > 0;
@@ -114,7 +114,7 @@ public class V8TrailLauncher
             if (robotHasPos)
             {
                 await Task.Delay(200);
-                var (recheckDir, recheckLots, _) = await GetBrokerPositionAsync();
+                var (recheckDir, recheckLots, _, _) = await GetBrokerPositionAsync();
                 if (recheckLots > 0 && recheckDir != -999) return; // flicker
                 if (recheckDir == -999) return; // still error
 
@@ -126,8 +126,8 @@ public class V8TrailLauncher
         else if (!robotHasPos)
         {
             // Broker has position but robot doesn't — restore
-            double restorePrice = brokerAvg > 0 ? brokerAvg : _lastCandlePrice;
-            Console.WriteLine($"[{_logPrefix}] Restore from broker: dir={brokerDir} price={restorePrice:F0} (avg={brokerAvg:F0})");
+            double restorePrice = brokerAvg > 0 ? brokerAvg : (brokerCurrentPrice > 0 ? brokerCurrentPrice : _lastCandlePrice);
+            Console.WriteLine($"[{_logPrefix}] Restore from broker: dir={brokerDir} price={restorePrice:F0} (avg={brokerAvg:F0} cur={brokerCurrentPrice:F0})");
             Strategy.RestorePosition(brokerDir, restorePrice);
         }
 
@@ -211,7 +211,7 @@ public class V8TrailLauncher
                 if (Strategy.PositionDirection == 0 && signal != 0)
                 {
                     // Entry guard: check broker
-                    var (guardDir, guardLots, _) = await GetBrokerPositionAsync();
+                    var (guardDir, guardLots, _, _) = await GetBrokerPositionAsync();
                     if (guardLots > 0)
                     {
                         Console.WriteLine($"[{_logPrefix}] Entry guard: broker has position, skipping");
@@ -279,7 +279,7 @@ public class V8TrailLauncher
                 _slOrderId = null;
             }
 
-            var (bDir, bLots, _) = await GetBrokerPositionAsync();
+            var (bDir, bLots, _, _) = await GetBrokerPositionAsync();
             int lots = bLots > 0 ? bLots : 1;
             int dir = Strategy.PositionDirection;
 
@@ -295,14 +295,14 @@ public class V8TrailLauncher
         }
     }
 
-    private async Task<(int dir, int lots, double avg)> GetBrokerPositionAsync()
+    private async Task<(int dir, int lots, double avg, double currentPrice)> GetBrokerPositionAsync()
     {
         try
         {
             var rest = _broker.RestClient;
-            if (rest == null) return (0, 0, 0);
+            if (rest == null) return (0, 0, 0, 0);
             var account = await rest.GetAccountAsync(_accountId);
-            if (account?.Positions == null) return (0, 0, 0);
+            if (account?.Positions == null) return (0, 0, 0, 0);
             foreach (var p in account.Positions)
             {
                 var sym = (p.Symbol ?? "").Split('@')[0];
@@ -310,16 +310,17 @@ public class V8TrailLauncher
                 long qty = p.EffectiveQuantity;
                 if (qty == 0) continue;
                 double avg = p.AveragePrice ?? 0;
+                double cp = p.CurrentPrice ?? 0;
                 int d = qty > 0 ? 1 : -1;
-                return (d, (int)Math.Abs(qty), avg);
+                return (d, (int)Math.Abs(qty), avg, cp);
             }
         }
         catch (Exception ex)
         {
             Console.WriteLine($"[{_logPrefix}] GetBrokerPosition error: {ex.Message}");
-            return (-999, 0, 0);
+            return (-999, 0, 0, 0);
         }
-        return (0, 0, 0);
+        return (0, 0, 0, 0);
     }
 
     private async Task<List<(string id, string comment)>> GetBrokerOrdersAsync()
