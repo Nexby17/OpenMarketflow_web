@@ -148,29 +148,61 @@ class FinamProvider:
         self.cache.update_order(order_state)
 
     def get_positions(self, account_id: str, ticker: str) -> dict | None:
-        """Get position via FinamPy REST call (not streamed)."""
+        """Get position via gRPC GetAccount, fallback to REST."""
         if not self.fp:
             return None
+        # Variant 1: gRPC GetAccount
         try:
-            self.fp.auth()  # Refresh JWT if needed
             from FinamPy.grpc import accounts_service_pb2 as accts
             resp = self.fp.call_function(
-                self.fp.accounts_stub.GetPortfolio,
-                accts.GetPortfolioRequest(account_id=account_id),
+                self.fp.accounts_stub.GetAccount,
+                accts.GetAccountRequest(account_id=account_id),
             )
-            if not resp:
+            if resp:
+                for pos in resp.positions:
+                    sym = pos.symbol.split('@')[0] if '@' in pos.symbol else pos.symbol
+                    if sym == ticker or pos.symbol == ticker:
+                        qty = pos.quantity
+                        return {
+                            "ticker": ticker,
+                            "account": account_id,
+                            "dir": 1 if qty > 0 else (-1 if qty < 0 else 0),
+                            "lots": abs(int(qty)),
+                            "avg_price": float(pos.average_price),
+                            "current_price": float(pos.current_price),
+                        }
+                # No position for this ticker
                 return None
-            for pos in resp.positions:
-                if pos.symbol == ticker or ticker in pos.symbol:
-                    return {
-                        "symbol": pos.symbol,
-                        "quantity": float(pos.quantity.value) if hasattr(pos.quantity, "value") else float(pos.quantity),
-                        "avg_price": float(pos.average_price.value) if hasattr(pos.average_price, "value") else float(pos.average_price),
-                        "current_price": float(pos.current_price.value) if hasattr(pos.current_price, "value") else float(pos.current_price),
-                        "pnl": float(pos.pnl.value) if hasattr(pos.pnl, "value") else float(pos.pnl),
-                    }
         except Exception as e:
-            logger.error("Error getting positions: %s", e)
+            logger.warning("gRPC GetAccount failed: %s, falling back to REST", e)
+
+        # Variant 2: REST fallback
+        try:
+            import requests
+            jwt = self.fp.jwt_token
+            if not jwt:
+                return None
+            r = requests.get(
+                f"https://api.finam.ru/v1/accounts/{account_id}",
+                headers={"Authorization": f"Bearer {jwt}"},
+                timeout=3,
+            )
+            if r.status_code == 200:
+                data = r.json()
+                for p in data.get("positions", []):
+                    sym = (p.get("symbol", "")).split('@')[0]
+                    if sym == ticker:
+                        qty = int(p.get("quantity", {}).get("value", 0))
+                        return {
+                            "ticker": ticker,
+                            "account": account_id,
+                            "dir": 1 if qty > 0 else (-1 if qty < 0 else 0),
+                            "lots": abs(qty),
+                            "avg_price": float(p.get("average_price", {}).get("value", 0)),
+                            "current_price": float(p.get("current_price", {}).get("value", 0)),
+                        }
+        except Exception as e:
+            logger.error("REST fallback failed: %s", e)
         return None
 
     def shutdown(self) -> None:

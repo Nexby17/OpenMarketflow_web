@@ -869,8 +869,12 @@ public class VpScalpGridLauncher : IDisposable
     {
         try
         {
-            // DataProvider position NOT used — gRPC GetPortfolio broken
-            // Direct Finam REST only
+            // Primary: DataProvider gRPC GetAccount
+            var pos = await _dpClient.GetPositionAsync(_accountId, _ticker);
+            if (pos != null)
+                return (pos.Dir, pos.Lots, pos.AvgPrice, pos.CurrentPrice);
+
+            // Fallback: Finam REST
             var rest = _broker.RestClient;
             if (rest == null) return (0, 0, 0, 0);
             var account = await rest.GetAccountAsync(_accountId);
