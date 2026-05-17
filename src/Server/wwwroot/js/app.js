@@ -2376,6 +2376,11 @@ function editRobot(i) {
                 <div class="metric-card"><div class="metric-label">Max Hold (мин)</div><input id="editHoldMinutes" class="input" type="number" value="${r.holdMinutes||60}" style="width:70px"></div>
                 <div class="metric-card"><div class="metric-label">VP Lookback</div><input id="editVpLookback" class="input" type="number" value="${r.vpLookback||40}" style="width:70px"></div>
                 <div class="metric-card"><div class="metric-label">VP Bins</div><input id="editVpBins" class="input" type="number" value="${r.vpBins||30}" style="width:70px"></div>
+            </div>
+            <div class="metrics-row" style="flex-wrap:wrap;margin-bottom:8px">
+                <div class="metric-card" style="background:#1a2332;border:1px solid #2D4A6D"><div class="metric-label" style="color:#60A5FA">VAH</div><div id="vpVAH" style="font-size:18px;font-weight:bold;color:#60A5FA">—</div></div>
+                <div class="metric-card" style="background:#1a2332;border:1px solid #2D4A6D"><div class="metric-label" style="color:#F59E0B">POC</div><div id="vpPOC" style="font-size:18px;font-weight:bold;color:#F59E0B">—</div></div>
+                <div class="metric-card" style="background:#1a2332;border:1px solid #2D4A6D"><div class="metric-label" style="color:#34D399">VAL</div><div id="vpVAL" style="font-size:18px;font-weight:bold;color:#34D399">—</div></div>
             </div>`;
     } else if (isVpCopy) {
         paramsHtml = `
@@ -2403,6 +2408,11 @@ function editRobot(i) {
                 <div class="metric-card"><div class="metric-label">VA %</div><input id="editVaPercent" class="input" type="number" step="0.05" value="${r.vaPercent||0.70}" style="width:70px"></div>
                 <div class="metric-card"><div class="metric-label">PnL/лот (пт)</div><input id="editMinProfit" class="input" type="number" value="${r.minProfit||28}" style="width:70px"></div>
                 <div class="metric-card" style="display:flex;align-items:center;gap:8px"><div class="metric-label">RV Adaptation</div><input id="editRvAdapt" type="checkbox" ${r.rvAdaptation!==false?'checked':''} style="width:20px;height:20px"></div>
+            </div>
+            <div class="metrics-row" style="flex-wrap:wrap;margin-bottom:8px">
+                <div class="metric-card" style="background:#1a2332;border:1px solid #2D4A6D"><div class="metric-label" style="color:#60A5FA">VAH</div><div id="vpVAH" style="font-size:18px;font-weight:bold;color:#60A5FA">—</div></div>
+                <div class="metric-card" style="background:#1a2332;border:1px solid #2D4A6D"><div class="metric-label" style="color:#F59E0B">POC</div><div id="vpPOC" style="font-size:18px;font-weight:bold;color:#F59E0B">—</div></div>
+                <div class="metric-card" style="background:#1a2332;border:1px solid #2D4A6D"><div class="metric-label" style="color:#34D399">VAL</div><div id="vpVAL" style="font-size:18px;font-weight:bold;color:#34D399">—</div></div>
             </div>`;
     } else {
         paramsHtml = `
@@ -2429,7 +2439,7 @@ function editRobot(i) {
         <div class="card-header row gap-8">
             🤖 Робот: ${r.ticker} (${r.strategy})
             <button class="btn btn-primary btn-sm" onclick="saveRobotEdit(${i})">💾 Сохранить</button>
-            <button class="btn btn-secondary btn-sm" onclick="if(_journalRefreshTimer){clearInterval(_journalRefreshTimer);_journalRefreshTimer=null;}el('robotEditPanel')?.remove()">✕</button>
+            <button class="btn btn-secondary btn-sm" onclick="if(_journalRefreshTimer){clearInterval(_journalRefreshTimer);_journalRefreshTimer=null;}if(window._vpIndTimer){clearInterval(window._vpIndTimer);window._vpIndTimer=null;}el('robotEditPanel')?.remove()">✕</button>
         </div>
         <div style="padding:12px">
             <!-- Параметры робота -->
@@ -2483,6 +2493,25 @@ function editRobot(i) {
     if (el('journalDateTo')) el('journalDateTo').value = todayStr;
     loadAccountsInto('editAccount', r.account);
     loadTradeJournal(r);
+    // Start VP indicators realtime update
+    if (isVpScalp || isVpSimple) {
+        updateVpIndicators(r);
+        if (window._vpIndTimer) clearInterval(window._vpIndTimer);
+        window._vpIndTimer = setInterval(() => updateVpIndicators(r), 2000);
+    }
+}
+
+async function updateVpIndicators(robot) {
+    if (!el('vpVAH')) return;
+    try {
+        const apiBase = getRobotApiBase(robot);
+        const resp = await fetch(apiBase + '/status');
+        if (!resp.ok) return;
+        const d = await resp.json();
+        if (d.vah != null) el('vpVAH').textContent = Math.round(d.vah);
+        if (d.poc != null) el('vpPOC').textContent = Math.round(d.poc);
+        if (d.val != null) el('vpVAL').textContent = Math.round(d.val);
+    } catch {}
 }
 
 async function loadAccountsInto(selectId, currentVal) {
