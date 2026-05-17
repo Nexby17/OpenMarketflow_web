@@ -813,7 +813,7 @@ app.MapGet("/api/orders", async (TradingService svc) =>
 });
 
 // === Trades API ===
-app.MapGet("/api/trades", async (string? date) =>
+app.MapGet("/api/trades", async (string? date, string? dateFrom, string? dateTo) =>
 {
     if (_activeConnectorName == "QUIK")
         return Results.Json(new object[] {});
@@ -821,10 +821,22 @@ app.MapGet("/api/trades", async (string? date) =>
     {
         var jwt = await GetFinamJwt();
         if (string.IsNullOrEmpty(jwt)) return Results.Json(new object[] {});
-        var targetDate = !string.IsNullOrEmpty(date) ? date : DateTime.UtcNow.ToString("yyyy-MM-dd");
-        // End date = next day 00:00 to include evening session trades
-        var endDate = DateTime.TryParse(targetDate, out var parsed) ? parsed.AddDays(1).ToString("yyyy-MM-dd") : targetDate;
-        using var req = new HttpRequestMessage(HttpMethod.Get, $"https://api.finam.ru/v1/accounts/{_finamAccountId}/trades?interval.start_time={targetDate}T00:00:00Z&interval.end_time={endDate}T00:00:00Z");
+        string startTime, endTime;
+        if (!string.IsNullOrEmpty(dateFrom) || !string.IsNullOrEmpty(dateTo))
+        {
+            var start = !string.IsNullOrEmpty(dateFrom) ? dateFrom : DateTime.UtcNow.ToString("yyyy-MM-dd");
+            var endDt = !string.IsNullOrEmpty(dateTo) ? DateTime.TryParse(dateTo, out var p) ? p.AddDays(1).ToString("yyyy-MM-dd") : dateTo : DateTime.UtcNow.AddDays(1).ToString("yyyy-MM-dd");
+            startTime = $"{start}T00:00:00Z";
+            endTime = $"{endDt}T00:00:00Z";
+        }
+        else
+        {
+            var targetDate = !string.IsNullOrEmpty(date) ? date : DateTime.UtcNow.ToString("yyyy-MM-dd");
+            var endDate = DateTime.TryParse(targetDate, out var parsed) ? parsed.AddDays(1).ToString("yyyy-MM-dd") : targetDate;
+            startTime = $"{targetDate}T00:00:00Z";
+            endTime = $"{endDate}T00:00:00Z";
+        }
+        using var req = new HttpRequestMessage(HttpMethod.Get, $"https://api.finam.ru/v1/accounts/{_finamAccountId}/trades?interval.start_time={startTime}&interval.end_time={endTime}");
         req.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", jwt);
         var resp = await finamRest.SendAsync(req);
         if (resp.IsSuccessStatusCode)

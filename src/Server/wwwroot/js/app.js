@@ -2446,7 +2446,10 @@ function editRobot(i) {
                     <option value="win">Прибыльные</option>
                     <option value="loss">Убыточные</option>
                 </select>
-                <input id="journalDate" class="input" type="date" style="width:140px" onchange="if(_journalRobot)loadTradeJournal(_journalRobot)">
+                <span style="color:#9CA3AF;font-size:13px">с</span>
+                <input id="journalDateFrom" class="input" type="date" style="width:130px" onchange="if(_journalRobot)loadTradeJournal(_journalRobot)">
+                <span style="color:#9CA3AF;font-size:13px">по</span>
+                <input id="journalDateTo" class="input" type="date" style="width:130px" onchange="if(_journalRobot)loadTradeJournal(_journalRobot)">
                 <button class="btn btn-secondary btn-sm" onclick="loadTradeJournal(robots[${i}])">🔄</button>
             </div>
             <!-- Таблица сделок -->
@@ -2471,10 +2474,13 @@ function editRobot(i) {
             <div id="journalInfo" style="font-size:12px;color:#9CA3AF;margin-top:8px">Загрузка данных...</div>
         </div>`;
     document.body.appendChild(div);
-    // Set today's date
+    // Set date range: from=30 days ago, to=today
     const today = new Date();
-    const dateStr = today.toISOString().slice(0, 10);
-    if (el('journalDate')) el('journalDate').value = dateStr;
+    const todayStr = today.toISOString().slice(0, 10);
+    const from = new Date(today); from.setDate(from.getDate() - 30);
+    const fromStr = from.toISOString().slice(0, 10);
+    if (el('journalDateFrom')) el('journalDateFrom').value = fromStr;
+    if (el('journalDateTo')) el('journalDateTo').value = todayStr;
     loadAccountsInto('editAccount', r.account);
     loadTradeJournal(r);
 }
@@ -2507,11 +2513,15 @@ async function loadTradeJournal(robot) {
     if (info) info.textContent = 'Загрузка сделок...';
     body.innerHTML = '';
     
-    const dateVal = el('journalDate')?.value;
-    const dateParam = dateVal ? `&date=${dateVal}` : '';
-    
+    const dateFrom = el('journalDateFrom')?.value;
+    const dateTo = el('journalDateTo')?.value;
+    let dateParam = '';
+    if (dateFrom) dateParam += `&dateFrom=${dateFrom}`;
+    if (dateTo) dateParam += `&dateTo=${dateTo}`;
+    const queryStr = dateParam ? '?' + dateParam.substring(1) : '';
+
     try {
-        const resp = await fetch('/api/trades' + (dateParam ? `?date=${dateVal}` : ''));
+        const resp = await fetch('/api/trades' + queryStr);
         const raw = await resp.json();
         let trades = Array.isArray(raw) ? raw : (raw.trades || []);
         
