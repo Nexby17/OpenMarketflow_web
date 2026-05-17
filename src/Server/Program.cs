@@ -2134,7 +2134,9 @@ app.MapPost("/strategy/vp-simple/config", async (HttpRequest req) =>
     if (root.TryGetProperty("slPct", out var sp)) config.SlPct = sp.GetDouble();
     if (root.TryGetProperty("maxHoldMinutes", out var mh)) config.MaxHoldMinutes = mh.GetInt32();
     if (root.TryGetProperty("vpLookback", out var vl)) config.VpLookback = vl.GetInt32();
-    return Results.Json(new { status = "updated", config = new { config.SlPct, config.MaxHoldMinutes, config.VpLookback, config.VpBins, config.Commission } });
+    if (root.TryGetProperty("vpBins", out var vb)) config.VpBins = vb.GetInt32();
+    if (root.TryGetProperty("vaPercent", out var va)) config.VaPercent = va.GetDouble();
+    return Results.Json(new { status = "updated", config = new { config.SlPct, config.MaxHoldMinutes, config.VpLookback, config.VpBins, config.VaPercent, config.Commission } });
 });
 
 app.Run();

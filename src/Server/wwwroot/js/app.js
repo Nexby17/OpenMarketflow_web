@@ -2376,6 +2376,7 @@ function editRobot(i) {
                 <div class="metric-card"><div class="metric-label">Max Hold (мин)</div><input id="editHoldMinutes" class="input" type="number" value="${r.holdMinutes||60}" style="width:70px"></div>
                 <div class="metric-card"><div class="metric-label">VP Lookback</div><input id="editVpLookback" class="input" type="number" value="${r.vpLookback||40}" style="width:70px"></div>
                 <div class="metric-card"><div class="metric-label">VP Bins</div><input id="editVpBins" class="input" type="number" value="${r.vpBins||30}" style="width:70px"></div>
+                <div class="metric-card"><div class="metric-label">VA %</div><input id="editVaPercent" class="input" type="number" step="0.05" value="${r.vaPercent||0.70}" style="width:70px"></div>
             </div>
             <div class="metrics-row" style="flex-wrap:wrap;margin-bottom:8px">
                 <div class="metric-card" style="background:#1a2332;border:1px solid #2D4A6D"><div class="metric-label" style="color:#60A5FA">VAH</div><div id="vpVAH" style="font-size:18px;font-weight:bold;color:#60A5FA">—</div></div>
@@ -2805,6 +2806,7 @@ async function saveRobotEdit(i) {
         r.holdMinutes = el('editHoldMinutes')?.value || r.holdMinutes;
         r.vpLookback = el('editVpLookback')?.value || r.vpLookback;
         r.vpBins = el('editVpBins')?.value || r.vpBins;
+        r.vaPercent = el('editVaPercent')?.value || r.vaPercent;
         try {
             await fetch('/strategy/vp-simple/config', {
                 method: 'POST',
@@ -2812,10 +2814,12 @@ async function saveRobotEdit(i) {
                 body: JSON.stringify({
                     slPct: parseFloat(r.slPct),
                     maxHoldMinutes: parseInt(r.holdMinutes),
-                    vpLookback: parseInt(r.vpLookback)
+                    vpLookback: parseInt(r.vpLookback),
+                    vpBins: parseInt(r.vpBins),
+                    vaPercent: parseFloat(r.vaPercent)
                 })
             });
-            addLog(nowTime(), 'INFO', `📤 VP Simple конфиг: SL=${r.slPct}% hold=${r.holdMinutes}мин`);
+            addLog(nowTime(), 'INFO', `📤 VP Simple конфиг: SL=${r.slPct}% hold=${r.holdMinutes}мин LB=${r.vpLookback} Bin=${r.vpBins} VA=${r.vaPercent}`);
         } catch(e) { addLog(nowTime(), 'ERROR', 'Config send failed: ' + e.message); }
     } else if (isVpCopy) {
         r.maxGrid = el('editMaxGrid')?.value || r.maxGrid;
