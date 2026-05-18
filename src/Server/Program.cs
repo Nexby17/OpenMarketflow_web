@@ -1490,6 +1490,7 @@ app.MapPost("/strategy/vp-scalp-grid/start", async (TradingService tradingSvc, H
             if (root.TryGetProperty("vpBinSize", out v)) config.VpBinSize = v.GetInt32();
             if (root.TryGetProperty("vaPercent", out v)) config.VaPercent = v.GetDouble();
             if (root.TryGetProperty("rvAdaptation", out v)) config.RvAdaptation = v.GetBoolean();
+            if (root.TryGetProperty("minProfitPerLot", out v)) config.MinProfitPerLot = v.GetInt32();
         } catch {}
     }
 
