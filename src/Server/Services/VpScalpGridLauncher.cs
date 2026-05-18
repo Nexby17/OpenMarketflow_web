@@ -843,9 +843,15 @@ public class VpScalpGridLauncher : IDisposable
         int dir = _strategy.PositionDirection;
         if (dir == 0) return;
 
-        var (_, spread) = _strategy.GetAdaptedParams();
-        double tpPrice = dir == 1 ? entryPrice + spread : entryPrice - spread;
-        _entryTpPrice = tpPrice;
+        // Entry TP на POC, не на entry±spread
+        double poc = _strategy.CurrentPOC;
+        if (poc <= 0 || double.IsNaN(poc)) return;
+        
+        // Для LONG: POC должен быть выше entry, для SHORT — ниже
+        if (dir == 1 && poc <= entryPrice) return;
+        if (dir == -1 && poc >= entryPrice) return;
+        
+        _entryTpPrice = poc;
         _entryTpOrderId = "pending";
 
         string side = dir == 1 ? "SIDE_SELL" : "SIDE_BUY";
@@ -858,11 +864,11 @@ public class VpScalpGridLauncher : IDisposable
                 Quantity = new() { Value = "1" },
                 Side = side,
                 OrderType = "ORDER_TYPE_LIMIT",
-                Price = new() { Value = ((int)tpPrice).ToString() },
+                Price = new() { Value = ((int)_entryTpPrice).ToString() },
                 Comment = "VPSG-ENTRY-TP"
             });
             _entryTpOrderId = result?.OrderId ?? "";
-            Console.WriteLine($"[{_logPrefix}] Entry-TP: {side} @ {tpPrice:F0}");
+            Console.WriteLine($"[{_logPrefix}] Entry-TP (POC): {side} @ {_entryTpPrice:F0}");
         }
         catch (Exception ex)
         {
