@@ -302,19 +302,24 @@ public class VpScalpSimpleLauncher : IDisposable
 
     private async Task ForceCloseAsync(string reason)
     {
-        var (bDir, bLots, _, _) = GetBrokerPosition();
+        var (bDir, bLots, _, bCurPrice) = GetBrokerPosition();
         if (bLots > 0)
         {
             string side = bDir == 1 ? "SIDE_SELL" : "SIDE_BUY";
             await CancelAllOrdersAsync();
             await PlaceMarketOrderAsync(side, bLots, $"{_orderPrefix}CLOSE: {reason}");
-            double pnl = _strategy.OnExit(0, reason); // simplified
-            Console.WriteLine($"[{_logPrefix}] Closed {bLots} lots: {reason} | PnL={_strategy.RealizedPnL:F0}");
+            // Wait for fill, get actual exit price
+            await Task.Delay(500);
+            var (_, _, fAvg, fCur) = GetBrokerPositionWithRetry();
+            double exitPrice = fAvg > 0 ? fAvg : (fCur > 0 ? fCur : (bCurPrice > 0 ? bCurPrice : _entryPrice));
+            double pnl = _strategy.OnExit(exitPrice, reason);
+            Console.WriteLine($"[{_logPrefix}] Closed {bLots} lots: {reason} @ {exitPrice:F0} | PnL={pnl:F0} | Total={_strategy.RealizedPnL:F0}");
         }
         else
         {
             await CancelAllOrdersAsync();
-            _strategy.OnExit(0, reason);
+            double exitPrice = bCurPrice > 0 ? bCurPrice : _entryPrice;
+            _strategy.OnExit(exitPrice, reason);
         }
     }
 
@@ -553,6 +558,7 @@ public class VpScalpSimpleLauncher : IDisposable
                 strategyDir = _strategy.PositionDir,
                 strategyPnL = _strategy.RealizedPnL,
                 strategyTrades = _strategy.TotalTrades,
+                entryTime = _entryTime?.ToString("O") ?? "",
                 ts = DateTime.UtcNow.ToString("O")
             };
             System.IO.File.WriteAllText(_stateFile, System.Text.Json.JsonSerializer.Serialize(state));
@@ -572,6 +578,8 @@ public class VpScalpSimpleLauncher : IDisposable
             _entryPrice = root.TryGetProperty("entryPrice", out var e) ? e.GetDouble() : 0;
             _currentSL = root.TryGetProperty("sl", out var s) ? s.GetDouble() : 0;
             _slOrderId = root.TryGetProperty("slOrderId", out var slo) ? slo.GetString() : null;
+            if (root.TryGetProperty("entryTime", out var et) && !string.IsNullOrEmpty(et.GetString()))
+                _entryTime = DateTime.Parse(et.GetString()!);
             if (_positionDir != 0)
                 Console.WriteLine($"[{_logPrefix}] Restored: {(_positionDir == 1 ? "LONG" : "SHORT")} @ {_entryPrice:F0}");
         }
