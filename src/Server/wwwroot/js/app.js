@@ -1557,7 +1557,9 @@ setTimeout(() => {
 
 function saveStrategyConfig() {
     const cfg = readStratCfg();
-    fetch('/strategy/grid-mm/config', {
+    // Determine active strategy endpoint
+    const ep = getConfigEndpoint();
+    fetch(ep, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(cfg)
@@ -1569,6 +1571,16 @@ function saveStrategyConfig() {
         if (saved) { saved.style.display = 'inline'; setTimeout(() => saved.style.display = 'none', 2000); }
     })
     .catch(e => addLog(nowTime(), 'ERROR', 'Config: ' + e.message));
+}
+
+function getConfigEndpoint() {
+    // Map strategy to config endpoint
+    const sel = el('strategySelect');
+    const val = sel ? sel.value : '';
+    if (val.includes('vp-scalp-grid') || val.includes('VP Scalp Grid')) return '/strategy/vp-scalp-grid/config';
+    if (val.includes('vp-simple')) return '/strategy/vp-simple/config';
+    if (val.includes('v8-trail')) return '/strategy/v8-trail/config';
+    return '/strategy/grid-mm/config';
 }
 
 function getStratCfg() {
