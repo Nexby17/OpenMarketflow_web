@@ -456,7 +456,32 @@ public class VpScalpGridLauncher : IDisposable
             return;
         }
 
-        // 4. DETECT FILLS — по tracked order IDs
+        // 4. POC EXIT — ПЕРЕД fill detection (приоритет выхода над grid/TP)
+        if (_strategy.PositionDirection != 0 && _currentPrice > 0)
+        {
+            double poc = _strategy.CurrentPOC;
+            if (poc > 0)
+            {
+                bool pocHit = (_strategy.PositionDirection == 1 && _currentPrice >= poc) ||
+                              (_strategy.PositionDirection == -1 && _currentPrice <= poc);
+                if (pocHit)
+                {
+                    double unrealized = _strategy.CalcUnrealizedPnL(_currentPrice);
+                    double perLot = _strategy.TotalLots > 0 ? unrealized / _strategy.TotalLots : 0;
+                    bool shouldClose = _strategy.TotalLots == 1 || perLot >= _strategy.Params.MinProfitPerLot;
+                    if (shouldClose)
+                    {
+                        Console.WriteLine($"[{_logPrefix}] Exit: POC hit {_strategy.DirStr}: {_currentPrice:F0} " +
+                            $"{(_strategy.PositionDirection == 1 ? ">=" : "<=")} {poc:F0} (PnL/lot={perLot:F0})");
+                        await CloseAllAsync($"POC hit {_strategy.DirStr}: {_currentPrice:F0} " +
+                            $"{(_strategy.PositionDirection == 1 ? ">=" : "<=")} {poc:F0} (PnL/lot={perLot:F0})");
+                        return;
+                    }
+                }
+            }
+        }
+
+        // 5. DETECT FILLS — по tracked order IDs
         if (fetchOrders && !string.IsNullOrEmpty(_gridOrderId) && _gridOrderId != "pending")
         {
             var gridActive = brokerOrders.Any(o => o.id == _gridOrderId && o.isActive);
@@ -464,7 +489,8 @@ public class VpScalpGridLauncher : IDisposable
             {
                 Console.WriteLine($"[{_logPrefix}] Grid fill: {_gridOrderId} @ {_gridPrice:F0} → broker lots={brokerLots}");
                 _strategy.OnGridFill(_gridLevel, _gridPrice);
-                await CancelAllOrdersAsync();
+                // Cancel only tracked orders, not all
+                await CancelTrackedOrdersAsync();
                 _gridOrderId = null;
                 _tpOrderId = null;
                 _pocOrderId = null;
@@ -485,7 +511,8 @@ public class VpScalpGridLauncher : IDisposable
                     ? Math.Abs(_tpPrice - _gridPrice) - _strategy.Params.Commission * 2
                     : 0;
                 _strategy.OnGridTpDone(pnl);
-                await CancelAllOrdersAsync();
+                // Cancel only tracked orders, not all
+                await CancelTrackedOrdersAsync();
                 _gridOrderId = null;
                 _tpOrderId = null;
                 _pocOrderId = null;
@@ -506,32 +533,7 @@ public class VpScalpGridLauncher : IDisposable
         if (_strategy.PositionDirection != 0 && _strategy.TotalLots == 1 && string.IsNullOrEmpty(_entryTpOrderId))
             await EnsurePocTpAsync();
 
-        // 6. POC EXIT — по текущей цене из брокера (не по свечам)
-        if (_strategy.PositionDirection != 0 && _currentPrice > 0)
-        {
-            double poc = _strategy.CurrentPOC;
-            if (poc > 0)
-            {
-                bool pocHit = (_strategy.PositionDirection == 1 && _currentPrice >= poc) ||
-                              (_strategy.PositionDirection == -1 && _currentPrice <= poc);
-                if (pocHit)
-                {
-                    double unrealized = _strategy.CalcUnrealizedPnL(_currentPrice);
-                    double perLot = _strategy.TotalLots > 0 ? unrealized / _strategy.TotalLots : 0;
-                    bool shouldClose = _strategy.TotalLots == 1 || perLot >= _strategy.Params.MinProfitPerLot;
-                    if (shouldClose)
-                    {
-                        Console.WriteLine($"[{_logPrefix}] Exit: POC hit {_strategy.DirStr}: {_currentPrice:F0} " +
-                            $"{( _strategy.PositionDirection == 1 ? ">=" : "<=" )} {poc:F0} (PnL/lot={perLot:F0})");
-                        await CloseAllAsync($"POC hit {_strategy.DirStr}: {_currentPrice:F0} " +
-                            $"{( _strategy.PositionDirection == 1 ? ">=" : "<=" )} {poc:F0} (PnL/lot={perLot:F0})");
-                        return;
-                    }
-                }
-            }
-        }
-
-        // 7. CANDLES — feed и timeout exit
+        // 6. CANDLES — feed и timeout exit
         await ProcessCandlesAsync();
     }
 
@@ -999,6 +1001,19 @@ public class VpScalpGridLauncher : IDisposable
             if (rest != null) await rest.CancelOrderAsync(_accountId, orderId);
         }
         catch { }
+    }
+
+    private async Task CancelTrackedOrdersAsync()
+    {
+        // Cancel only tracked order IDs, not all — preserves other active orders
+        if (!string.IsNullOrEmpty(_gridOrderId) && _gridOrderId != "pending")
+            await CancelOrderAsync(_gridOrderId);
+        if (!string.IsNullOrEmpty(_tpOrderId) && _tpOrderId != "pending")
+            await CancelOrderAsync(_tpOrderId);
+        if (!string.IsNullOrEmpty(_pocOrderId) && _pocOrderId != "pending")
+            await CancelOrderAsync(_pocOrderId);
+        if (!string.IsNullOrEmpty(_entryTpOrderId) && _entryTpOrderId != "pending")
+            await CancelOrderAsync(_entryTpOrderId);
     }
 
     private async Task CancelAllOrdersAsync()
