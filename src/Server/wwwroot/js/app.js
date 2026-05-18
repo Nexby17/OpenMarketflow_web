@@ -2265,6 +2265,10 @@ async function robotStart(i) {
             stepBase: parseInt(r.gridStep) || 15,
             spreadBase: parseInt(r.gridSpread) || 50,
             maxHoldMinutes: parseInt(r.holdMinutes) || 60,
+            vpLookback: parseInt(r.vpLookback) || 60,
+            vpBinSize: parseInt(r.vpBinSize) || 50,
+            vaPercent: parseFloat(r.vaPercent) || 0.7,
+            minProfitPerLot: parseInt(r.minProfit) || 28,
             rvAdaptation: r.rvAdaptation === true
         };
     } else {
@@ -2896,6 +2900,25 @@ async function saveRobotEdit(i) {
         r.vaPercent = el('editVaPercent')?.value || r.vaPercent;
         r.minProfit = el('editMinProfit')?.value || r.minProfit;
         r.rvAdaptation = el('editRvAdapt')?.checked ?? r.rvAdaptation;
+        // Send config to running strategy
+        try {
+            await fetch('/strategy/vp-scalp-grid/config', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({
+                    maxLevels: parseInt(r.maxGrid),
+                    stepBase: parseInt(r.gridStep),
+                    spreadBase: parseInt(r.gridSpread),
+                    maxHoldMinutes: parseInt(r.holdMinutes),
+                    vpLookback: parseInt(r.vpLookback),
+                    vpBinSize: parseInt(r.vpBinSize),
+                    vaPercent: parseFloat(r.vaPercent),
+                    minProfitPerLot: parseInt(r.minProfit),
+                    rvAdaptation: r.rvAdaptation
+                })
+            });
+            addLog(nowTime(), 'INFO', `📤 VP Scalp Grid конфиг: step=${r.gridStep} spread=${r.gridSpread} LB=${r.vpLookback} minProfit=${r.minProfit}`);
+        } catch(e) { addLog(nowTime(), 'ERROR', 'Config send failed: ' + e.message); }
     } else {
         r.account = el('editAccount')?.value || r.account;
         r.accountName = el('editAccount')?.selectedOptions?.[0]?.text || r.accountName;
