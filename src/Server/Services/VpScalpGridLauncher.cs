@@ -502,6 +502,10 @@ public class VpScalpGridLauncher : IDisposable
         if (_strategy.PositionDirection != 0 && _gridOrderId == null && _strategy.FilledLevels < _strategy.Params.MaxLevels)
             await PlaceGridAsync();
 
+        // 5b. ENSURE entry TP + POC-TP
+        if (_strategy.PositionDirection != 0 && _strategy.TotalLots == 1 && string.IsNullOrEmpty(_entryTpOrderId))
+            await EnsurePocTpAsync();
+
         // 6. POC EXIT — по текущей цене из брокера (не по свечам)
         if (_strategy.PositionDirection != 0 && _currentPrice > 0)
         {
@@ -592,14 +596,9 @@ public class VpScalpGridLauncher : IDisposable
                     // Only check timeout here
                     if (_strategy.HoldMinutes >= _strategy.Params.MaxHoldMinutes)
                     {
-                        double unrealized = _strategy.CalcUnrealizedPnL(close);
-                        double perLot = _strategy.TotalLots > 0 ? unrealized / _strategy.TotalLots : 0;
-                        if (unrealized > 0 && perLot >= _strategy.Params.MinProfitPerLot)
-                        {
-                            Console.WriteLine($"[{_logPrefix}] Exit: Timeout ({_strategy.HoldMinutes} min)");
-                            await CloseAllAsync($"Timeout ({_strategy.HoldMinutes} min)");
-                            return;
-                        }
+                        Console.WriteLine($"[{_logPrefix}] Exit: Timeout ({_strategy.HoldMinutes} min)");
+                        await CloseAllAsync($"Timeout ({_strategy.HoldMinutes} min)");
+                        return;
                     }
                 }
 
@@ -681,6 +680,7 @@ public class VpScalpGridLauncher : IDisposable
         _lastEntryDir = fillDir;
         Console.WriteLine($"[{_logPrefix}] Entry {(fillDir == 1 ? "LONG" : "SHORT")} @ {fillPrice:F0}");
         _skipTicks = 5;
+        await PlaceEntryTpAsync(fillPrice);
         await PlaceGridAsync();
         SaveState();
     }

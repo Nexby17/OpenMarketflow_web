@@ -255,57 +255,33 @@ class FinamProvider:
         return data
 
     def _fetch_orders(self, account_id: str) -> list[dict]:
-        """Raw fetch orders via gRPC GetAccount orders or REST fallback."""
-        # Try gRPC first
-        try:
-            from FinamPy.grpc import accounts_service_pb2 as accts
-            resp = self.fp.call_function(
-                self.fp.accounts_stub.GetAccount,
-                accts.GetAccountRequest(account_id=account_id),
-            )
-            if resp:
-                orders = []
-                for o in getattr(resp, 'orders', []):
-                    orders.append({
-                        "order_id": str(o.id),
-                        "symbol": o.symbol,
-                        "side": "BUY" if o.side == 1 else "SELL",
-                        "quantity": int(o.quantity),
-                        "limit_price": float(o.price) if hasattr(o, 'price') else 0,
-                        "status": "active" if o.status == 1 else "done",
-                        "comment": getattr(o, 'comment', ''),
-                    })
-                return orders
-        except Exception as e:
-            logger.warning("gRPC orders failed: %s", e)
-
-        # REST fallback
+        """Raw fetch orders via REST (gRPC GetAccount doesn't return orders)."""
         try:
             import requests
             jwt = self.fp.jwt_token
             if not jwt:
                 return []
             r = requests.get(
-                f"https://api.finam.ru/v1/accounts/{account_id}/orders",
+                f"https://api.finam.ru/v1/accounts/{account_id}",
                 headers={"Authorization": f"Bearer {jwt}"},
                 timeout=3,
             )
             if r.status_code == 200:
                 data = r.json()
                 orders = []
-                for o in data:
+                for o in data.get("orders", []):
                     orders.append({
                         "order_id": str(o.get("id", "")),
                         "symbol": o.get("symbol", ""),
                         "side": o.get("side", ""),
                         "quantity": int(float(str(o.get("quantity", {}).get("value", "0")))),
-                        "limit_price": float(str(o.get("limit_price", {}).get("value", "0"))),
+                        "limit_price": float(str(o.get("limit_price", {}).get("value", "0"))) if o.get("limit_price") else 0,
                         "status": o.get("status", ""),
                         "comment": o.get("comment", ""),
                     })
                 return orders
         except Exception as e:
-            logger.error("REST orders fallback failed: %s", e)
+            logger.error("REST orders failed: %s", e)
         return []
 
     def shutdown(self) -> None:

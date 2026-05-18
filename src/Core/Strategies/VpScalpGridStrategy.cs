@@ -203,8 +203,9 @@ public class VpScalpGridStrategy
     public double CalcUnrealizedPnL(double currentPrice)
     {
         if (_posDir == 0) return 0;
+        // Чистый unrealized без _realizedPnL — только текущая позиция
         double main = (currentPrice - _entryPrice) * _posDir * TotalLots;
-        return main + _realizedPnL - TotalLots * Params.Commission;
+        return main - TotalLots * Params.Commission;
     }
 
     // State management
