@@ -500,8 +500,9 @@ public class VpScalpGridLauncher : IDisposable
                 _gridOrderId = null;
                 _tpOrderId = null;
                 _pocOrderId = null;
-                await PlaceGridAsync();
+                // СНАЧАЛА TP, ПОТОМ grid — чтобы TP защищал позицию
                 if (_strategy.FilledLevels > 0) await PlaceTpAsync();
+                await PlaceGridAsync();
                 SaveState();
                 return;
             }
