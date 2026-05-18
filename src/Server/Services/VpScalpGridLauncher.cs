@@ -456,27 +456,59 @@ public class VpScalpGridLauncher : IDisposable
             return;
         }
 
-        // 4. POC EXIT — ПЕРЕД fill detection (приоритет выхода над grid/TP)
+        // 4. EXIT — ПЕРЕД fill detection (приоритет выхода над grid/TP)
         if (_strategy.PositionDirection != 0 && _currentPrice > 0)
         {
             double poc = _strategy.CurrentPOC;
-            if (poc > 0)
+            double unrealized = _strategy.CalcUnrealizedPnL(_currentPrice);
+            double perLot = _strategy.TotalLots > 0 ? unrealized / _strategy.TotalLots : 0;
+
+            // 4a. 1 лот → POC hit безусловно
+            if (_strategy.TotalLots == 1 && poc > 0)
             {
                 bool pocHit = (_strategy.PositionDirection == 1 && _currentPrice >= poc) ||
                               (_strategy.PositionDirection == -1 && _currentPrice <= poc);
                 if (pocHit)
                 {
-                    double unrealized = _strategy.CalcUnrealizedPnL(_currentPrice);
-                    double perLot = _strategy.TotalLots > 0 ? unrealized / _strategy.TotalLots : 0;
-                    bool shouldClose = _strategy.TotalLots == 1 || perLot >= _strategy.Params.MinProfitPerLot;
-                    if (shouldClose)
+                    Console.WriteLine($"[{_logPrefix}] Exit: POC hit {_strategy.DirStr}: {_currentPrice:F0} " +
+                        $"{(_strategy.PositionDirection == 1 ? ">=" : "<=")} {poc:F0}");
+                    await CloseAllAsync($"POC hit {_strategy.DirStr}: {_currentPrice:F0} " +
+                        $"{(_strategy.PositionDirection == 1 ? ">=" : "<=")} {poc:F0}");
+                    return;
+                }
+            }
+
+            // 4b. 2+ лота → POC hit ИЛИ PnL/lot >= MinProfitPerLot (что раньше)
+            if (_strategy.TotalLots >= 2)
+            {
+                bool shouldClose = false;
+                string reason = "";
+
+                // POC hit (без условия PnL)
+                if (poc > 0)
+                {
+                    bool pocHit = (_strategy.PositionDirection == 1 && _currentPrice >= poc) ||
+                                  (_strategy.PositionDirection == -1 && _currentPrice <= poc);
+                    if (pocHit)
                     {
-                        Console.WriteLine($"[{_logPrefix}] Exit: POC hit {_strategy.DirStr}: {_currentPrice:F0} " +
-                            $"{(_strategy.PositionDirection == 1 ? ">=" : "<=")} {poc:F0} (PnL/lot={perLot:F0})");
-                        await CloseAllAsync($"POC hit {_strategy.DirStr}: {_currentPrice:F0} " +
-                            $"{(_strategy.PositionDirection == 1 ? ">=" : "<=")} {poc:F0} (PnL/lot={perLot:F0})");
-                        return;
+                        shouldClose = true;
+                        reason = $"POC hit {_strategy.DirStr}: {_currentPrice:F0} " +
+                            $"{(_strategy.PositionDirection == 1 ? ">=" : "<=")} {poc:F0} (PnL/lot={perLot:F0})";
                     }
+                }
+
+                // PnL/lot >= MinProfit (без условия POC)
+                if (!shouldClose && perLot >= _strategy.Params.MinProfitPerLot)
+                {
+                    shouldClose = true;
+                    reason = $"PnL/lot={perLot:F0} >= {_strategy.Params.MinProfitPerLot}";
+                }
+
+                if (shouldClose)
+                {
+                    Console.WriteLine($"[{_logPrefix}] Exit: {reason}");
+                    await CloseAllAsync(reason);
+                    return;
                 }
             }
         }
