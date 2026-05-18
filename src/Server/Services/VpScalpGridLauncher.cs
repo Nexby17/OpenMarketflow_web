@@ -401,6 +401,14 @@ public class VpScalpGridLauncher : IDisposable
                 }
                 Console.WriteLine($"[{_logPrefix}] No broker position → cancel all, reset");
                 await CancelAllOrdersAsync();
+                // Delay before reset — TP/grid fills may still be processing
+                await Task.Delay(1000);
+                var (finalDir, finalLots, _, _) = await GetBrokerPositionAsync();
+                if (finalLots > 0 && finalDir != -999)
+                {
+                    Console.WriteLine($"[{_logPrefix}] Late position appeared: {finalLots} lots dir={finalDir} — skip reset");
+                    return;
+                }
                 _gridOrderId = null;
                 _tpOrderId = null;
                 _entryTpOrderId = null;
@@ -901,7 +909,7 @@ public class VpScalpGridLauncher : IDisposable
         try
         {
             // Primary: DataProviderClient
-            var dpOrders = await _dpClient.GetOrdersAsync();
+            var dpOrders = await _dpClient.GetOrdersAsync(_accountId);
             if (dpOrders != null && dpOrders.Count > 0)
             {
                 foreach (var o in dpOrders)
@@ -1032,6 +1040,12 @@ public class VpScalpGridLauncher : IDisposable
 
     private async Task RestoreFromBrokerAsync(int brokerDir, int brokerLots, double brokerAvg)
     {
+        // Guard: never restore with entry=0
+        if (brokerAvg <= 0 && (_lastEntryPrice <= 0 || _lastEntryDir != brokerDir))
+        {
+            Console.WriteLine($"[{_logPrefix}] Restore skipped: avg={brokerAvg:F0}, lastEntry={_lastEntryPrice:F0}, lastDir={_lastEntryDir}, brokerDir={brokerDir}");
+            return;
+        }
         double entry = (_lastEntryPrice > 0 && _lastEntryDir == brokerDir) ? _lastEntryPrice : brokerAvg;
         int filled = brokerLots - 1;
         if (filled < 0) filled = 0;

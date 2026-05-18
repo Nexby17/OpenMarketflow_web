@@ -25,8 +25,8 @@ public class GridMmRegimeStrategy : IStrategy
     public class Config
     {
         // SAR
-        public double SarStart { get; set; } = 0.03;
-        public double SarStep { get; set; } = 0.04;
+        public double SarStart { get; set; } = 0.04;
+        public double SarStep { get; set; } = 0.03;
         public double SarMax { get; set; } = 0.2;
         
         // EMA

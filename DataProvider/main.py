@@ -72,6 +72,8 @@ def get_candles(symbol: str, tf: str = "M5", limit: int = Query(default=100, le=
 
 @app.get("/orders")
 def get_orders(account: str = ""):
+    if the_provider and account:
+        return the_provider.get_all_orders(account)
     return the_cache.get_orders(account) if the_cache else []
 
 

@@ -49,7 +49,7 @@ namespace HedgeFund.Brokers.Finam
         [JsonPropertyName("limit_price")] public double Price { get; set; }
         [JsonPropertyName("quantity")] public double Quantity { get; set; }
         [JsonPropertyName("status")] public string Status { get; set; }
-        [JsonPropertyName("client_order_id")] public string Comment { get; set; }
+        [JsonPropertyName("comment")] public string Comment { get; set; }
     }
 
     /// <summary>
@@ -111,9 +111,10 @@ namespace HedgeFund.Brokers.Finam
             }
         }
 
-        public async Task<List<DataProviderOrder>> GetOrdersAsync()
+        public async Task<List<DataProviderOrder>> GetOrdersAsync(string account = "")
         {
-            return await GetAsync<List<DataProviderOrder>>("orders").ConfigureAwait(false);
+            var path = string.IsNullOrEmpty(account) ? "orders" : $"orders?account={account}";
+            return await GetAsync<List<DataProviderOrder>>(path).ConfigureAwait(false);
         }
 
         private async Task<T> GetAsync<T>(string path) where T : class

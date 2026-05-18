@@ -53,6 +53,7 @@ public class VpScalpSimpleLauncher : IDisposable
     {
         _strategy.CurrentMode = VpScalpSimpleStrategy.Mode.Running;
         RestoreState();
+        Warmup();
         BrokerSync();
         _mainTimer = new Timer(async _ => await MainLoop(), null, 2000, 500);
         Console.WriteLine($"[{_logPrefix}] Started on {_ticker}");
@@ -105,13 +106,13 @@ public class VpScalpSimpleLauncher : IDisposable
             // === FAST TICK: SL + POC по current_price (каждые 500мс) ===
             if (_positionDir != 0)
             {
-                var (bDir, bLots, bCurPrice) = GetBrokerPosition();
+                var (bDir, bLots, bAvg, bCurPrice) = GetBrokerPosition();
                 if (bDir == -999) return;
                 if (bLots == 0 && _positionDir != 0)
                 {
                     // Flicker check
                     await Task.Delay(200);
-                    var (rDir, rLots, _) = GetBrokerPosition();
+                    var (rDir, rLots, _, _) = GetBrokerPosition();
                     if (rLots == 0 && rDir != -999)
                     {
                         Console.WriteLine($"[{_logPrefix}] No broker position → reset");
@@ -194,19 +195,10 @@ public class VpScalpSimpleLauncher : IDisposable
                     int holdMin = (int)(DateTime.UtcNow - _entryTime.Value).TotalMinutes;
                     if (holdMin >= _strategy.Params.MaxHoldMinutes)
                     {
-                        var (bDir2, bLots2, bAvg2) = GetBrokerPosition();
-                        if (bLots2 > 0)
-                        {
-                            double unrealized = (bAvg2 - _entryPrice) * _positionDir;
-                            double perLot = unrealized;
-                            if (perLot > 0)
-                            {
-                                Console.WriteLine($"[{_logPrefix}] Exit: Timeout {holdMin}min");
-                                await ForceCloseAsync($"Timeout {holdMin}min");
-                                _positionDir = 0; _entryPrice = 0; _currentSL = 0; _entryTime = null;
-                                SaveState(); return;
-                            }
-                        }
+                        Console.WriteLine($"[{_logPrefix}] Exit: Timeout {holdMin}min");
+                        await ForceCloseAsync($"Timeout {holdMin}min");
+                        _positionDir = 0; _entryPrice = 0; _currentSL = 0; _entryTime = null;
+                        SaveState(); return;
                     }
                 }
             }
@@ -238,16 +230,16 @@ public class VpScalpSimpleLauncher : IDisposable
     private async Task ExecuteEntryAsync(int direction, double signalPrice)
     {
         // Entry guard: check broker
-        var (bDir, bLots, _) = GetBrokerPosition();
+        var (bDir, bLots, bAvg, _) = GetBrokerPosition();
         if (bDir == -999) { Console.WriteLine($"[{_logPrefix}] Entry skipped: API error"); return; }
 
         if (bLots > 0)
         {
             Console.WriteLine($"[{_logPrefix}] Entry guard: broker has {bLots} lots, syncing");
             _positionDir = bDir;
-            _entryPrice = signalPrice;
+            _entryPrice = bAvg > 0 ? bAvg : signalPrice;
             _entryTime = DateTime.UtcNow;
-            _strategy.OnEntry(bDir, signalPrice);
+            _strategy.OnEntry(bDir, _entryPrice);
             _currentSL = _strategy.CurrentSL;
             await PlaceSLOrder();
             return;
@@ -259,7 +251,7 @@ public class VpScalpSimpleLauncher : IDisposable
 
         // Confirm fill
         await Task.Delay(500);
-        var (fDir, fLots, fAvg) = GetBrokerPositionWithRetry();
+        var (fDir, fLots, fAvg, _) = GetBrokerPositionWithRetry();
         if (fLots == 0)
         {
             Console.WriteLine($"[{_logPrefix}] Entry failed: no fill");
@@ -268,7 +260,7 @@ public class VpScalpSimpleLauncher : IDisposable
         }
 
         _positionDir = fDir;
-        _entryPrice = fAvg;
+        _entryPrice = fAvg > 0 ? fAvg : signalPrice;
         _entryTime = DateTime.UtcNow;
         _strategy.OnEntry(fDir, fAvg);
         _currentSL = _strategy.CurrentSL;
@@ -310,7 +302,7 @@ public class VpScalpSimpleLauncher : IDisposable
 
     private async Task ForceCloseAsync(string reason)
     {
-        var (bDir, bLots, _) = GetBrokerPosition();
+        var (bDir, bLots, _, _) = GetBrokerPosition();
         if (bLots > 0)
         {
             string side = bDir == 1 ? "SIDE_SELL" : "SIDE_BUY";
@@ -328,14 +320,14 @@ public class VpScalpSimpleLauncher : IDisposable
 
     // === BROKER ===
 
-    private (int dir, int lots, double avg) GetBrokerPosition()
+    private (int dir, int lots, double avgPrice, double currentPrice) GetBrokerPosition()
     {
         // Primary: DataProvider gRPC GetAccount
         try
         {
             var dpPos = _dpClient.GetPositionAsync(_accountId, _ticker).GetAwaiter().GetResult();
             if (dpPos != null)
-                return (dpPos.Dir, dpPos.Lots, dpPos.CurrentPrice);
+                return (dpPos.Dir, dpPos.Lots, dpPos.AvgPrice, dpPos.CurrentPrice);
         }
         catch { }
 
@@ -343,33 +335,26 @@ public class VpScalpSimpleLauncher : IDisposable
         try
         {
             var rest = _broker.RestClient;
-            if (rest == null) return (0, 0, 0);
-            using var http = new HttpClient();
-            http.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", rest.GetJwtAsync().GetAwaiter().GetResult());
-            var resp = http.GetAsync($"https://api.finam.ru/v1/accounts/{_accountId}").GetAwaiter().GetResult();
-            if (!resp.IsSuccessStatusCode) return (-999, 0, 0);
-            var json = resp.Content.ReadAsStringAsync().GetAwaiter().GetResult();
-            var doc = System.Text.Json.JsonDocument.Parse(json);
-            if (!doc.RootElement.TryGetProperty("positions", out var positions)) return (0, 0, 0);
-            foreach (var p in positions.EnumerateArray())
+            if (rest == null) return (0, 0, 0, 0);
+            var account = rest.GetAccountAsync(_accountId).GetAwaiter().GetResult();
+            if (account?.Positions == null) return (0, 0, 0, 0);
+            foreach (var p in account.Positions)
             {
-                var sym = p.GetProperty("symbol").GetString() ?? "";
-                if (sym.Split('@')[0] != _ticker) continue;
-                var qtyStr = p.GetProperty("quantity").GetProperty("value").GetString() ?? "0";
-                long qty = long.Parse(qtyStr);
+                var sym = (p.Symbol ?? "").Split('@')[0];
+                if (sym != _ticker) continue;
+                long qty = p.EffectiveQuantity;
                 if (qty == 0) continue;
-                double price = 0;
-                if (p.TryGetProperty("current_price", out var cp) && cp.TryGetProperty("value", out var cpv))
-                    double.TryParse(cpv.GetString(), out price);
+                double avg = p.AveragePrice ?? 0;
+                double cp = p.CurrentPrice ?? 0;
                 int d = qty > 0 ? 1 : -1;
-                return (d, (int)Math.Abs(qty), price);
+                return (d, (int)Math.Abs(qty), avg, cp);
             }
         }
-        catch (Exception ex) { Console.WriteLine($"[{_logPrefix}] GetBrokerPosition Finam error: {ex.Message}"); return (-999, 0, 0); }
-        return (0, 0, 0);
+        catch (Exception ex) { Console.WriteLine($"[{_logPrefix}] GetBrokerPosition error: {ex.Message}"); return (-999, 0, 0, 0); }
+        return (0, 0, 0, 0);
     }
 
-    private (int dir, int lots, double avg) GetBrokerPositionWithRetry(int retries = 3)
+    private (int dir, int lots, double avgPrice, double currentPrice) GetBrokerPositionWithRetry(int retries = 3)
     {
         for (int i = 0; i < retries; i++)
         {
@@ -378,13 +363,33 @@ public class VpScalpSimpleLauncher : IDisposable
             if (r.dir == -999) return r;
             if (i < retries - 1) Thread.Sleep(500);
         }
-        return (0, 0, 0);
+        return (0, 0, 0, 0);    }
+
+    private void Warmup()
+    {
+        try
+        {
+            var dpCandles = _dpClient.GetCandlesAsync(_finamSymbol, "M5", _strategy.Params.VpLookback + 10).GetAwaiter().GetResult();
+            if (dpCandles != null && dpCandles.Count > 0)
+            {
+                foreach (var c in dpCandles)
+                {
+                    _vpCloses.Add(c.Close);
+                    _vpVolumes.Add(c.Volume);
+                    _lastCandleTime = DateTime.Parse(c.Timestamp);
+                }
+                if (_vpCloses.Count >= 20)
+                    _strategy.UpdateVP(_vpCloses.ToArray(), _vpVolumes.ToArray());
+                Console.WriteLine($"[{_logPrefix}] Warmup: {dpCandles.Count} candles, VAL={_strategy.VAL:F0} VAH={_strategy.VAH:F0} POC={_strategy.POC:F0}");
+            }
+        }
+        catch (Exception ex) { Console.WriteLine($"[{_logPrefix}] Warmup error: {ex.Message}"); }
     }
 
     private void BrokerSync()
     {
         if (_positionDir == 0) return;
-        var (bDir, bLots, _) = GetBrokerPosition();
+        var (bDir, bLots, _, _) = GetBrokerPosition();
         if (bDir == -999) return;
         if (bLots == 0 && _positionDir != 0)
         {
@@ -500,6 +505,24 @@ public class VpScalpSimpleLauncher : IDisposable
 
     private async Task CancelAllOrdersAsync()
     {
+        try
+        {
+            // Primary: DP cached orders
+            var dpOrders = await _dpClient.GetOrdersAsync(_accountId);
+            if (dpOrders != null && dpOrders.Count > 0)
+            {
+                foreach (var o in dpOrders)
+                {
+                    var comment = o.Comment ?? "";
+                    if (comment.StartsWith(_orderPrefix))
+                        await CancelOrderAsync(o.Id);
+                }
+                return;
+            }
+        }
+        catch { }
+
+        // Fallback: Finam REST
         try
         {
             var rest = _broker.RestClient;

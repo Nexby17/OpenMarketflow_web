@@ -142,14 +142,17 @@ public class VpScalpSimpleStrategy
     {
         if (_posDir == 0) return _currentSL;
 
-        double slDist = currentPrice * Params.SlPct / 100.0;
+        // Trailing SL от entry: SL = entry ± sl_pct% от entry, подтягивается вслед за ценой
+        double slDist = _entryPrice * Params.SlPct / 100.0;
         if (_posDir == 1)
         {
+            // LONG: SL = entry - slDist, подтягивается вверх при росте цены
             double newSL = currentPrice - slDist;
             if (newSL > _currentSL) _currentSL = newSL;
         }
         else
         {
+            // SHORT: SL = entry + slDist, подтягивается вниз при падении цены
             double newSL = currentPrice + slDist;
             if (newSL < _currentSL) _currentSL = newSL;
         }

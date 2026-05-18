@@ -2,6 +2,7 @@
 import logging
 import os
 import threading
+import time
 from typing import Optional
 
 from FinamPy import FinamPy
@@ -147,10 +148,39 @@ class FinamProvider:
         """Callback from fp.on_order."""
         self.cache.update_order(order_state)
 
+    # --- Cached position/orders (TTL-based to avoid rate limits) ---
+    _pos_cache: dict = {}  # key -> {data, ts}
+    _orders_cache: dict = {}  # key -> {data, ts}
+    _POS_TTL = 2.0  # seconds
+    _ORDERS_TTL = 2.0
+    _pos_lock = threading.Lock()
+    _orders_lock = threading.Lock()
+
     def get_positions(self, account_id: str, ticker: str) -> dict | None:
-        """Get position via gRPC GetAccount, fallback to REST."""
+        """Get position via gRPC GetAccount, with TTL cache to avoid rate limits."""
         if not self.fp:
             return None
+
+        cache_key = f"{account_id}:{ticker}"
+        now = time.time()
+
+        # Check cache
+        with self._pos_lock:
+            cached = self._pos_cache.get(cache_key)
+            if cached and (now - cached["ts"]) < self._POS_TTL:
+                return cached["data"]
+
+        # Fetch from gRPC
+        data = self._fetch_position(account_id, ticker)
+
+        # Update cache (even if None — "no position" is valid)
+        with self._pos_lock:
+            self._pos_cache[cache_key] = {"data": data, "ts": now}
+
+        return data
+
+    def _fetch_position(self, account_id: str, ticker: str) -> dict | None:
+        """Raw fetch — gRPC first, REST fallback."""
         # Variant 1: gRPC GetAccount
         try:
             from FinamPy.grpc import accounts_service_pb2 as accts
@@ -171,7 +201,6 @@ class FinamProvider:
                             "avg_price": float(pos.average_price),
                             "current_price": float(pos.current_price),
                         }
-                # No position for this ticker
                 return None
         except Exception as e:
             logger.warning("gRPC GetAccount failed: %s, falling back to REST", e)
@@ -204,6 +233,80 @@ class FinamProvider:
         except Exception as e:
             logger.error("REST fallback failed: %s", e)
         return None
+
+    def get_all_orders(self, account_id: str) -> list[dict]:
+        """Get all active orders via gRPC, with TTL cache."""
+        if not self.fp:
+            return []
+
+        now = time.time()
+        cache_key = account_id
+
+        with self._orders_lock:
+            cached = self._orders_cache.get(cache_key)
+            if cached and (now - cached["ts"]) < self._ORDERS_TTL:
+                return cached["data"]
+
+        data = self._fetch_orders(account_id)
+
+        with self._orders_lock:
+            self._orders_cache[cache_key] = {"data": data, "ts": now}
+
+        return data
+
+    def _fetch_orders(self, account_id: str) -> list[dict]:
+        """Raw fetch orders via gRPC GetAccount orders or REST fallback."""
+        # Try gRPC first
+        try:
+            from FinamPy.grpc import accounts_service_pb2 as accts
+            resp = self.fp.call_function(
+                self.fp.accounts_stub.GetAccount,
+                accts.GetAccountRequest(account_id=account_id),
+            )
+            if resp:
+                orders = []
+                for o in getattr(resp, 'orders', []):
+                    orders.append({
+                        "order_id": str(o.id),
+                        "symbol": o.symbol,
+                        "side": "BUY" if o.side == 1 else "SELL",
+                        "quantity": int(o.quantity),
+                        "limit_price": float(o.price) if hasattr(o, 'price') else 0,
+                        "status": "active" if o.status == 1 else "done",
+                        "comment": getattr(o, 'comment', ''),
+                    })
+                return orders
+        except Exception as e:
+            logger.warning("gRPC orders failed: %s", e)
+
+        # REST fallback
+        try:
+            import requests
+            jwt = self.fp.jwt_token
+            if not jwt:
+                return []
+            r = requests.get(
+                f"https://api.finam.ru/v1/accounts/{account_id}/orders",
+                headers={"Authorization": f"Bearer {jwt}"},
+                timeout=3,
+            )
+            if r.status_code == 200:
+                data = r.json()
+                orders = []
+                for o in data:
+                    orders.append({
+                        "order_id": str(o.get("id", "")),
+                        "symbol": o.get("symbol", ""),
+                        "side": o.get("side", ""),
+                        "quantity": int(float(str(o.get("quantity", {}).get("value", "0")))),
+                        "limit_price": float(str(o.get("limit_price", {}).get("value", "0"))),
+                        "status": o.get("status", ""),
+                        "comment": o.get("comment", ""),
+                    })
+                return orders
+        except Exception as e:
+            logger.error("REST orders fallback failed: %s", e)
+        return []
 
     def shutdown(self) -> None:
         logger.info("Shutting down provider...")
