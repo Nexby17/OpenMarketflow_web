@@ -33,6 +33,7 @@ public class VpScalpGridLauncher : IDisposable
     // Tracked order IDs — устанавливаются ТОЛЬКО при place
     private string? _gridOrderId;
     private double _gridPrice;
+    private readonly HashSet<double> _completedGridPrices = new();
     private int _gridLevel;
     private double _tpPrice;
     private string? _tpOrderId;
@@ -189,7 +190,7 @@ public class VpScalpGridLauncher : IDisposable
         _tpOrderId = null;
         _entryTpOrderId = null;
         _pocOrderId = null;
-        _strategy.ClearPosition();
+        _strategy.ClearPosition(); _completedGridPrices.Clear();
         SaveState();
     }
 
@@ -414,7 +415,7 @@ public class VpScalpGridLauncher : IDisposable
                 _entryTpOrderId = null;
                 _pocOrderId = null;
                 _barsSinceReset = 0;
-                _strategy.ClearPosition();
+                _strategy.ClearPosition(); _completedGridPrices.Clear();
                 SaveState();
             }
             else if (fetchOrders)
@@ -495,13 +496,16 @@ public class VpScalpGridLauncher : IDisposable
             {
                 Console.WriteLine($"[{_logPrefix}] Grid fill: {_gridOrderId} @ {_gridPrice:F0} → broker lots={brokerLots}");
                 _strategy.OnGridFill(_gridLevel, _gridPrice);
-                // Cancel only tracked orders, not all
-                await CancelTrackedOrdersAsync();
+                // НЕ трогаем TP — пусть стоит. Только cancel grid + poc
+                if (!string.IsNullOrEmpty(_gridOrderId) && _gridOrderId != "pending")
+                    await CancelOrderAsync(_gridOrderId);
+                if (!string.IsNullOrEmpty(_pocOrderId) && _pocOrderId != "pending")
+                    await CancelOrderAsync(_pocOrderId);
                 _gridOrderId = null;
-                _tpOrderId = null;
                 _pocOrderId = null;
-                // СНАЧАЛА TP, ПОТОМ grid — чтобы TP защищал позицию
-                if (_strategy.FilledLevels > 0) await PlaceTpAsync();
+                // Ставим TP для нового уровня (если ещё нет)
+                if (_strategy.FilledLevels > 0 && string.IsNullOrEmpty(_tpOrderId))
+                    await PlaceTpAsync();
                 await PlaceGridAsync();
                 SaveState();
                 return;
@@ -517,9 +521,14 @@ public class VpScalpGridLauncher : IDisposable
                 double pnl = _tpPrice > 0 && _gridPrice > 0
                     ? Math.Abs(_tpPrice - _gridPrice) - _strategy.Params.Commission * 2
                     : 0;
+                // Добавляем заполненную grid цену в completed
+                if (_gridPrice > 0) _completedGridPrices.Add(_gridPrice);
                 _strategy.OnGridTpDone(pnl);
-                // Cancel only tracked orders, not all
-                await CancelTrackedOrdersAsync();
+                // Cancel grid + poc, НЕ cancel entry-TP
+                if (!string.IsNullOrEmpty(_gridOrderId) && _gridOrderId != "pending")
+                    await CancelOrderAsync(_gridOrderId);
+                if (!string.IsNullOrEmpty(_pocOrderId) && _pocOrderId != "pending")
+                    await CancelOrderAsync(_pocOrderId);
                 _gridOrderId = null;
                 _tpOrderId = null;
                 _pocOrderId = null;
@@ -708,7 +717,7 @@ public class VpScalpGridLauncher : IDisposable
             int lots = _strategy.TotalLots;
             await PlaceMarketOrderAsync(dir == 1 ? "SIDE_SELL" : "SIDE_BUY", lots, $"VPSG-CLOSE: {reason}");
         }
-        _strategy.ClearPosition();
+        _strategy.ClearPosition(); _completedGridPrices.Clear();
         SaveState();
     }
 
@@ -770,6 +779,16 @@ public class VpScalpGridLauncher : IDisposable
         var (step, _) = _strategy.GetAdaptedParams();
         double entry = _strategy.EntryPrice;
         double gridPrice = dir == 1 ? entry - step * nextLevel : entry + step * nextLevel;
+
+        // Skip completed prices (round trip уже отработан)
+        if (_completedGridPrices.Contains(gridPrice))
+        {
+            // Try next level
+            nextLevel++;
+            if (nextLevel > _strategy.Params.MaxLevels) return;
+            gridPrice = dir == 1 ? entry - step * nextLevel : entry + step * nextLevel;
+            if (_completedGridPrices.Contains(gridPrice)) return; // too many completed
+        }
 
         // Mark pending IMMEDIATELY
         _gridOrderId = "pending";
