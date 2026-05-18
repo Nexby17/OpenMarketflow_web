@@ -1572,12 +1572,10 @@ function saveStrategyConfig() {
     .catch(e => addLog(nowTime(), 'ERROR', 'Config: ' + e.message));
 }
 
-function getStratCfgForStart() {
-    const sel = el('strategySelect');
-    const val = sel ? sel.value : '';
-    const isVpGrid = val.includes('vp-scalp-grid') || val.includes('VP Scalp Grid');
-    const isVpSimple = val.includes('vp-simple');
-    const isV8 = val.includes('v8-trail');
+function getStratCfgForStart(strategyId) {
+    const isVpGrid = (strategyId || '').includes('vp-scalp-grid');
+    const isVpSimple = (strategyId || '').includes('vp-simple');
+    const isV8 = (strategyId || '').includes('v8-trail');
     if (isVpGrid || isVpSimple || isV8) {
         return {
             maxLevels: parseInt(el('editMaxGrid')?.value) || 100,
@@ -1595,11 +1593,17 @@ function getStratCfgForStart() {
 }
 
 function getConfigEndpoint() {
-    const sel = el('strategySelect');
-    const val = sel ? sel.value : '';
-    if (val.includes('vp-scalp-grid') || val.includes('VP Scalp Grid')) return '/strategy/vp-scalp-grid/config';
-    if (val.includes('vp-simple')) return '/strategy/vp-simple/config';
-    if (val.includes('v8-trail')) return '/strategy/v8-trail/config';
+    // Find active strategy from edit panel context
+    const vpGrid = el('editVpLookback');
+    if (vpGrid) {
+        // Check which strategy panel is open by looking at edit fields
+        const vpBin = el('editVpBinSize');
+        const v8Hold = el('cfgV8MaxHold');
+        const vpSimpleHold = el('cfgVpSimpleMaxHold');
+        if (vpSimpleHold) return '/strategy/vp-simple/config';
+        if (v8Hold) return '/strategy/v8-trail/config';
+        if (vpBin) return '/strategy/vp-scalp-grid/config';
+    }
     return '/strategy/grid-mm/config';
 }
 
@@ -2156,7 +2160,7 @@ async function renderRobots() {
                     <td>—</td>
                     <td>
                         ${s.id === 'grid-mm-v7' || s.id === 'grid-mm-v8' ? `
-                            <button class="btn btn-success btn-sm" onclick="fetch('/strategy/${s.id}/start',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(Object.assign({instrument:s.instrument||'SiM6'},getStratCfgForStart()))}).then(r=>r.json()).then(d=>{addLog(nowTime(),'INFO','▶ Start '+s.id+': '+JSON.stringify(d));renderRobots();})">▶ Start</button>
+                            <button class="btn btn-success btn-sm" onclick="fetch('/strategy/${s.id}/start',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(Object.assign({instrument:s.instrument||'SiM6'},getStratCfgForStart('${s.id}')))}).then(r=>r.json()).then(d=>{addLog(nowTime(),'INFO','▶ Start '+s.id+': '+JSON.stringify(d));renderRobots();})">▶ Start</button>
                             <button class="btn btn-warning btn-sm" onclick="fetch('/strategy/${s.id}/pause',{method:'POST'})">⏸</button>
                             <button class="btn btn-danger btn-sm" onclick="fetch('/strategy/${s.id}/stop',{method:'POST'}).then(r=>r.json()).then(d=>{addLog(nowTime(),'INFO','⏹ Stop '+s.id+': '+JSON.stringify(d));renderRobots();})">⏹</button>
                             <button class="btn btn-success btn-sm" onclick="fetch('/strategy/${s.id}/resume',{method:'POST'})">▶ Resume</button>
