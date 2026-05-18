@@ -1556,8 +1556,7 @@ setTimeout(() => {
 }, 500);
 
 function saveStrategyConfig() {
-    const cfg = readStratCfg();
-    // Determine active strategy endpoint
+    const cfg = getStratCfgForStart();
     const ep = getConfigEndpoint();
     fetch(ep, {
         method: 'POST',
@@ -1573,8 +1572,29 @@ function saveStrategyConfig() {
     .catch(e => addLog(nowTime(), 'ERROR', 'Config: ' + e.message));
 }
 
+function getStratCfgForStart() {
+    const sel = el('strategySelect');
+    const val = sel ? sel.value : '';
+    const isVpGrid = val.includes('vp-scalp-grid') || val.includes('VP Scalp Grid');
+    const isVpSimple = val.includes('vp-simple');
+    const isV8 = val.includes('v8-trail');
+    if (isVpGrid || isVpSimple || isV8) {
+        return {
+            maxLevels: parseInt(el('editMaxGrid')?.value) || 100,
+            stepBase: parseInt(el('editGridStep')?.value) || 32,
+            spreadBase: parseInt(el('editGridSpread')?.value) || 32,
+            maxHoldMinutes: parseInt(el('editHoldMinutes')?.value) || 60,
+            vpLookback: parseInt(el('editVpLookback')?.value) || 60,
+            vpBinSize: parseInt(el('editVpBinSize')?.value) || 50,
+            vaPercent: parseFloat(el('editVaPercent')?.value) || 0.7,
+            minProfitPerLot: parseInt(el('editMinProfit')?.value) || 28,
+            rvAdaptation: el('editRvAdapt')?.checked || false,
+        };
+    }
+    return readStratCfg();
+}
+
 function getConfigEndpoint() {
-    // Map strategy to config endpoint
     const sel = el('strategySelect');
     const val = sel ? sel.value : '';
     if (val.includes('vp-scalp-grid') || val.includes('VP Scalp Grid')) return '/strategy/vp-scalp-grid/config';
@@ -2136,7 +2156,7 @@ async function renderRobots() {
                     <td>—</td>
                     <td>
                         ${s.id === 'grid-mm-v7' || s.id === 'grid-mm-v8' ? `
-                            <button class="btn btn-success btn-sm" onclick="fetch('/strategy/${s.id}/start',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({instrument:s.instrument||'SiM6'})}).then(r=>r.json()).then(d=>{addLog(nowTime(),'INFO','▶ Start '+s.id+': '+JSON.stringify(d));renderRobots();})">▶ Start</button>
+                            <button class="btn btn-success btn-sm" onclick="fetch('/strategy/${s.id}/start',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(Object.assign({instrument:s.instrument||'SiM6'},getStratCfgForStart()))}).then(r=>r.json()).then(d=>{addLog(nowTime(),'INFO','▶ Start '+s.id+': '+JSON.stringify(d));renderRobots();})">▶ Start</button>
                             <button class="btn btn-warning btn-sm" onclick="fetch('/strategy/${s.id}/pause',{method:'POST'})">⏸</button>
                             <button class="btn btn-danger btn-sm" onclick="fetch('/strategy/${s.id}/stop',{method:'POST'}).then(r=>r.json()).then(d=>{addLog(nowTime(),'INFO','⏹ Stop '+s.id+': '+JSON.stringify(d));renderRobots();})">⏹</button>
                             <button class="btn btn-success btn-sm" onclick="fetch('/strategy/${s.id}/resume',{method:'POST'})">▶ Resume</button>
