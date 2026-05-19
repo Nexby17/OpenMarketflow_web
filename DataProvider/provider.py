@@ -192,14 +192,23 @@ class FinamProvider:
                 for pos in resp.positions:
                     sym = pos.symbol.split('@')[0] if '@' in pos.symbol else pos.symbol
                     if sym == ticker or pos.symbol == ticker:
-                        qty = pos.quantity
+                        qty_raw = pos.quantity
+                        qty = 0
+                        try:
+                            qty = int(qty_raw)
+                        except (TypeError, ValueError):
+                            try:
+                                qty = int(float(str(qty_raw)))
+                            except:
+                                qty = 0
+                        qty = abs(qty)
                         return {
                             "ticker": ticker,
                             "account": account_id,
                             "dir": 1 if qty > 0 else (-1 if qty < 0 else 0),
-                            "lots": abs(int(qty)),
-                            "avg_price": float(pos.average_price),
-                            "current_price": float(pos.current_price),
+                            "lots": abs(qty),
+                            "avg_price": (lambda v: float(str(v)) if v and str(v) else 0.0)(pos.average_price),
+                            "current_price": (lambda v: float(str(v)) if v and str(v) else 0.0)(pos.current_price),
                         }
                 return None
         except Exception as e:

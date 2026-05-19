@@ -33,7 +33,7 @@ public class FinamApiClient : IDisposable
             MaxAutomaticRedirections = 5
         }, false) { BaseAddress = new Uri(BaseUrl) };
         _http.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
-        _http.Timeout = TimeSpan.FromSeconds(2);
+        _http.Timeout = TimeSpan.FromSeconds(5);
         _http.DefaultRequestVersion = System.Net.HttpVersion.Version11;
 
         _jsonOptions = new JsonSerializerOptions

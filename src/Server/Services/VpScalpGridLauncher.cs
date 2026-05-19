@@ -33,7 +33,6 @@ public class VpScalpGridLauncher : IDisposable
     // Tracked order IDs — устанавливаются ТОЛЬКО при place
     private string? _gridOrderId;
     private double _gridPrice;
-    private readonly HashSet<double> _completedGridPrices = new();
     private int _gridLevel;
     private double _tpPrice;
     private string? _tpOrderId;
@@ -190,7 +189,7 @@ public class VpScalpGridLauncher : IDisposable
         _tpOrderId = null;
         _entryTpOrderId = null;
         _pocOrderId = null;
-        _strategy.ClearPosition(); _completedGridPrices.Clear();
+        _strategy.ClearPosition();
         SaveState();
     }
 
@@ -415,7 +414,7 @@ public class VpScalpGridLauncher : IDisposable
                 _entryTpOrderId = null;
                 _pocOrderId = null;
                 _barsSinceReset = 0;
-                _strategy.ClearPosition(); _completedGridPrices.Clear();
+                _strategy.ClearPosition();
                 SaveState();
             }
             else if (fetchOrders)
@@ -464,12 +463,12 @@ public class VpScalpGridLauncher : IDisposable
             double unrealized = _strategy.CalcUnrealizedPnL(_currentPrice);
             double perLot = _strategy.TotalLots > 0 ? unrealized / _strategy.TotalLots : 0;
 
-            // 4a. 1 лот → POC hit при PnL/lot >= 0
+            // 4a. 1 лот → POC hit безусловно
             if (_strategy.TotalLots == 1 && poc > 0)
             {
                 bool pocHit = (_strategy.PositionDirection == 1 && _currentPrice >= poc) ||
                               (_strategy.PositionDirection == -1 && _currentPrice <= poc);
-                if (pocHit && perLot >= 0)
+                if (pocHit)
                 {
                     Console.WriteLine($"[{_logPrefix}] Exit: POC hit {_strategy.DirStr}: {_currentPrice:F0} " +
                         $"{(_strategy.PositionDirection == 1 ? ">=" : "<=")} {poc:F0}");
@@ -479,12 +478,38 @@ public class VpScalpGridLauncher : IDisposable
                 }
             }
 
-            // 4b. 2+ лота → только PnL/lot >= MinProfitPerLot
-            if (_strategy.TotalLots >= 2 && perLot >= _strategy.Params.MinProfitPerLot)
+            // 4b. 2+ лота → POC hit ИЛИ PnL/lot >= MinProfitPerLot (что раньше)
+            if (_strategy.TotalLots >= 2)
             {
-                Console.WriteLine($"[{_logPrefix}] Exit: PnL/lot={perLot:F0} >= {_strategy.Params.MinProfitPerLot}");
-                await CloseAllAsync($"PnL/lot={perLot:F0} >= {_strategy.Params.MinProfitPerLot}");
-                return;
+                bool shouldClose = false;
+                string reason = "";
+
+                // POC hit (без условия PnL)
+                if (poc > 0)
+                {
+                    bool pocHit = (_strategy.PositionDirection == 1 && _currentPrice >= poc) ||
+                                  (_strategy.PositionDirection == -1 && _currentPrice <= poc);
+                    if (pocHit)
+                    {
+                        shouldClose = true;
+                        reason = $"POC hit {_strategy.DirStr}: {_currentPrice:F0} " +
+                            $"{(_strategy.PositionDirection == 1 ? ">=" : "<=")} {poc:F0} (PnL/lot={perLot:F0})";
+                    }
+                }
+
+                // PnL/lot >= MinProfit (без условия POC)
+                if (!shouldClose && perLot >= _strategy.Params.MinProfitPerLot)
+                {
+                    shouldClose = true;
+                    reason = $"PnL/lot={perLot:F0} >= {_strategy.Params.MinProfitPerLot}";
+                }
+
+                if (shouldClose)
+                {
+                    Console.WriteLine($"[{_logPrefix}] Exit: {reason}");
+                    await CloseAllAsync(reason);
+                    return;
+                }
             }
         }
 
@@ -496,17 +521,13 @@ public class VpScalpGridLauncher : IDisposable
             {
                 Console.WriteLine($"[{_logPrefix}] Grid fill: {_gridOrderId} @ {_gridPrice:F0} → broker lots={brokerLots}");
                 _strategy.OnGridFill(_gridLevel, _gridPrice);
-                // НЕ трогаем TP — пусть стоит. Только cancel grid + poc
-                if (!string.IsNullOrEmpty(_gridOrderId) && _gridOrderId != "pending")
-                    await CancelOrderAsync(_gridOrderId);
-                if (!string.IsNullOrEmpty(_pocOrderId) && _pocOrderId != "pending")
-                    await CancelOrderAsync(_pocOrderId);
+                // Cancel only tracked orders, not all
+                await CancelTrackedOrdersAsync();
                 _gridOrderId = null;
+                _tpOrderId = null;
                 _pocOrderId = null;
-                // Ставим TP для нового уровня (если ещё нет)
-                if (_strategy.FilledLevels > 0 && string.IsNullOrEmpty(_tpOrderId))
-                    await PlaceTpAsync();
                 await PlaceGridAsync();
+                if (_strategy.FilledLevels > 0) await PlaceTpAsync();
                 SaveState();
                 return;
             }
@@ -521,14 +542,9 @@ public class VpScalpGridLauncher : IDisposable
                 double pnl = _tpPrice > 0 && _gridPrice > 0
                     ? Math.Abs(_tpPrice - _gridPrice) - _strategy.Params.Commission * 2
                     : 0;
-                // Добавляем заполненную grid цену в completed
-                if (_gridPrice > 0) _completedGridPrices.Add(_gridPrice);
                 _strategy.OnGridTpDone(pnl);
-                // Cancel grid + poc, НЕ cancel entry-TP
-                if (!string.IsNullOrEmpty(_gridOrderId) && _gridOrderId != "pending")
-                    await CancelOrderAsync(_gridOrderId);
-                if (!string.IsNullOrEmpty(_pocOrderId) && _pocOrderId != "pending")
-                    await CancelOrderAsync(_pocOrderId);
+                // Cancel only tracked orders, not all
+                await CancelTrackedOrdersAsync();
                 _gridOrderId = null;
                 _tpOrderId = null;
                 _pocOrderId = null;
@@ -717,7 +733,7 @@ public class VpScalpGridLauncher : IDisposable
             int lots = _strategy.TotalLots;
             await PlaceMarketOrderAsync(dir == 1 ? "SIDE_SELL" : "SIDE_BUY", lots, $"VPSG-CLOSE: {reason}");
         }
-        _strategy.ClearPosition(); _completedGridPrices.Clear();
+        _strategy.ClearPosition();
         SaveState();
     }
 
@@ -779,16 +795,6 @@ public class VpScalpGridLauncher : IDisposable
         var (step, _) = _strategy.GetAdaptedParams();
         double entry = _strategy.EntryPrice;
         double gridPrice = dir == 1 ? entry - step * nextLevel : entry + step * nextLevel;
-
-        // Skip completed prices (round trip уже отработан)
-        if (_completedGridPrices.Contains(gridPrice))
-        {
-            // Try next level
-            nextLevel++;
-            if (nextLevel > _strategy.Params.MaxLevels) return;
-            gridPrice = dir == 1 ? entry - step * nextLevel : entry + step * nextLevel;
-            if (_completedGridPrices.Contains(gridPrice)) return; // too many completed
-        }
 
         // Mark pending IMMEDIATELY
         _gridOrderId = "pending";
