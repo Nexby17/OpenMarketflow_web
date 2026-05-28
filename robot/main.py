@@ -272,8 +272,9 @@ class Robot:
                 entry_price = self._broker_avg if self._broker_avg > 0 else self._current_price
                 log.info(f"Entry fill detected: dir={cur_dir} lots={cur_lots} @ {entry_price:.0f}")
                 self._handle_entry_fill(cur_dir, entry_price, cur_lots)
-            elif self._last_close_time and (datetime.now(MSK) - self._last_close_time).total_seconds() < 2:
+            elif self._last_close_time and (datetime.now(MSK) - self._last_close_time).total_seconds() < 5:
                 # Just closed — ignore ghost position
+                log.info(f"Ignoring ghost position (closed {self._last_close_time.strftime('%H:%M:%S')}): dir={cur_dir} lots={cur_lots}")
                 return
             else:
                 # Orphan position — restore
