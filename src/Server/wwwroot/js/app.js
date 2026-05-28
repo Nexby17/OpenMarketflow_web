@@ -1553,6 +1553,11 @@ setTimeout(() => {
         inp.addEventListener('input', autoSaveConfig);
         inp.addEventListener('change', autoSaveConfig);
     });
+    // Python Robot config fields
+    document.querySelectorAll('[id^="cfgVp"]').forEach(inp => {
+        inp.addEventListener('input', () => { if(_cfgSaveTimer) clearTimeout(_cfgSaveTimer); _cfgSaveTimer = setTimeout(pythonRobotSaveConfig, 800); });
+        inp.addEventListener('change', () => { if(_cfgSaveTimer) clearTimeout(_cfgSaveTimer); _cfgSaveTimer = setTimeout(pythonRobotSaveConfig, 800); });
+    });
 }, 500);
 
 function saveStrategyConfig() {
@@ -2124,103 +2129,62 @@ async function renderRobots() {
     const noMsg = el('noRobots');
     if (!tbody) return;
 
-    // Загружаем активные стратегии с сервера
+    // C# server strategies removed — Python is primary
     let serverStrategies = [];
-    let brokerPositions = [];
-    try {
-        const bpResp = await fetch('/api/positions');
-        brokerPositions = await bpResp.json();
-    } catch(e) {}
-    try {
-        const resp = await fetch('/api/active-strategies');
-        const data = await resp.json();
-        if (data.strategies) {
-            serverStrategies = data.strategies.map(s => {
-                // Match broker position to strategy instrument
-                const bPos = brokerPositions.find(p => (p.ticker || '').includes(s.instrument || 'X'));
-                const brokerLots = bPos ? bPos.qty : 0;
-                const brokerAvg = bPos ? bPos.avgPrice : 0;
-                const brokerDir = bPos ? (bPos.dir === 'Buy' ? 1 : -1) : 0;
-                // Show broker data if available, otherwise strategy data
-                const showDir = brokerLots > 0 ? brokerDir : s.posDir;
-                const showPrice = brokerLots > 0 ? brokerAvg : s.entryPrice;
-                const showLots = brokerLots > 0 ? brokerLots : s.openLots;
-                const posText = showDir > 0 ? 'Лонг' : showDir < 0 ? 'Шорт' : 'Флэт';
-                const modeText = s.mode === 'Running' || s.mode === 'Waiting' ? '🟢 Работает' : s.mode === 'Paused' ? '🟡 Пауза' : '🔴 Остановлен';
-                const modeCls = s.mode === 'Running' || s.mode === 'Waiting' ? 'green' : s.mode === 'Paused' ? 'yellow' : 'red';
-                const pnlCls = v => v >= 0 ? 'green' : 'red';
-                return `<tr>
-                    <td><strong>${s.instrument}</strong></td>
-                    <td><strong>${s.name}</strong> <span class="badge">СЕРВЕР</span></td>
-                    <td>Финам</td>
-                    <td class="${showDir > 0 ? 'green' : showDir < 0 ? 'red' : ''}">${posText}${showPrice > 0 ? ' @ ' + showPrice.toFixed(0) : ''}</td>
-                    <td>—</td>
-                    <td class="${pnlCls(s.totalPnL)}">${s.totalPnL >= 0 ? '+' : ''}${s.totalPnL.toFixed(0)} ₽</td>
-                    <td>${showLots}</td>
-                    <td>—</td>
-                    <td>
-                        ${s.id === 'grid-mm-v7' || s.id === 'grid-mm-v8' ? `
-                            <button class="btn btn-success btn-sm" onclick="fetch('/strategy/${s.id}/start',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(Object.assign({instrument:s.instrument||'SiM6'},getStratCfgForStart('${s.id}')))}).then(r=>r.json()).then(d=>{addLog(nowTime(),'INFO','▶ Start '+s.id+': '+JSON.stringify(d));renderRobots();})">▶ Start</button>
-                            <button class="btn btn-warning btn-sm" onclick="fetch('/strategy/${s.id}/pause',{method:'POST'})">⏸</button>
-                            <button class="btn btn-danger btn-sm" onclick="fetch('/strategy/${s.id}/stop',{method:'POST'}).then(r=>r.json()).then(d=>{addLog(nowTime(),'INFO','⏹ Stop '+s.id+': '+JSON.stringify(d));renderRobots();})">⏹</button>
-                            <button class="btn btn-success btn-sm" onclick="fetch('/strategy/${s.id}/resume',{method:'POST'})">▶ Resume</button>
-                            <button class="btn btn-success btn-sm" onclick="fetch('/strategy/${s.id}/buy',{method:'POST'}).then(r=>r.json()).then(d=>addLog(nowTime(),'INFO','🟢 BUY: '+JSON.stringify(d)))" title="Купить по рынку">BUY</button>
-                            <button class="btn btn-danger btn-sm" onclick="fetch('/strategy/${s.id}/sell',{method:'POST'}).then(r=>r.json()).then(d=>addLog(nowTime(),'INFO','🔴 SELL: '+JSON.stringify(d)))" title="Продать по рынку">SELL</button>
-                        ` : ''}
-                        ${s.id === 'vp-scalp-grid' ? `
-                            <button class="btn btn-warning btn-sm" onclick="fetch('/strategy/vp-scalp-grid/pause',{method:'POST'})">⏸</button>
-                            <button class="btn btn-danger btn-sm" onclick="fetch('/strategy/vp-scalp-grid/stop',{method:'POST'})">⏹</button>
-                            <button class="btn btn-success btn-sm" onclick="fetch('/strategy/vp-scalp-grid/resume',{method:'POST'})">▶</button>
-                        ` : ''}
-                        ${s.id === 'vp-copy' ? `
-                            <button class="btn btn-warning btn-sm" onclick="fetch('/strategy/vp-copy/pause',{method:'POST'})">⏸</button>
-                            <button class="btn btn-danger btn-sm" onclick="fetch('/strategy/vp-copy/stop',{method:'POST'})">⏹</button>
-                            <button class="btn btn-success btn-sm" onclick="fetch('/strategy/vp-copy/resume',{method:'POST'})">▶</button>
-                        ` : ''}
-                        ${s.id === 'grid-mm' ? `
-                            <button class="btn btn-warning btn-sm" onclick="fetch('/strategy/grid-mm/pause',{method:'POST'})">⏸</button>
-                            <button class="btn btn-danger btn-sm" onclick="fetch('/strategy/grid-mm/stop',{method:'POST'})">⏹</button>
-                            <button class="btn btn-success btn-sm" onclick="fetch('/strategy/grid-mm/run',{method:'POST'})">▶</button>
-                        ` : ''}
-                        ${s.id === 'vol-rev' ? `
-                            <button class="btn btn-warning btn-sm" onclick="fetch('/strategy/vol-rev/pause',{method:'POST'})">⏸</button>
-                            <button class="btn btn-danger btn-sm" onclick="fetch('/strategy/vol-rev/stop',{method:'POST'})">⏹</button>
-                            <button class="btn btn-success btn-sm" onclick="fetch('/strategy/vol-rev/run',{method:'POST'})">▶</button>
-                        ` : ''}
-                    </td>
-                    <td class="${modeCls}">${modeText} ${s.connected ? '🔗' : '⚠️'}</td>
-                </tr>`;
-            });
-        }
-    } catch(e) { console.warn('active-strategies fetch failed:', e); }
+    try { /* no-op, kept for compatibility */ } catch(e) {}
 
-    // localStorage роботы
-    let localRows = robots.map((r, i) => {
-        const statusCls = r.status === 'running' ? 'green' : r.status === 'paused' ? 'yellow' : 'red';
-        const statusText = r.status === 'running' ? '🟢 Работает' : r.status === 'paused' ? '🟡 Пауза' : '🔴 Остановлен';
-        const posCls = r.position === 'Лонг' ? 'green' : r.position === 'Шорт' ? 'red' : '';
+    // localStorage robots removed — Python robot only
+    let localRows = [];
+    try { /* no-op */ } catch(e) {}
+
+    // Python Robot row — always visible
+    let pythonRobotRow = '';
+    if (pythonRobot && pythonRobot.status !== 'not_initialized') {
+        const s = pythonRobot;
+        const mode = s.mode || 'stopped';
+        const modeText = mode === 'running' ? '🟢 Работает' : mode === 'paused' ? '🟡 Пауза' : '🔴 Остановлен';
+        const modeCls = mode === 'running' ? 'green' : mode === 'paused' ? 'yellow' : 'red';
+        const dirText = s.direction > 0 ? 'Лонг' : s.direction < 0 ? 'Шорт' : 'Флэт';
+        const dirCls = s.direction > 0 ? 'green' : s.direction < 0 ? 'red' : '';
         const pnlCls = v => v >= 0 ? 'green' : 'red';
-        return `<tr ondblclick="editRobot(${i})" style="cursor:pointer" title="Двойной клик — торговый журнал">
-            <td><strong>${r.ticker}</strong></td>
-            <td>${r.strategy}</td>
-            <td>${r.accountName || r.account || '—'}</td>
-            <td class="${posCls}">${r.position}</td>
-            <td class="${pnlCls(r.pnlToday)}">${r.pnlToday >= 0 ? '+' : ''}${r.pnlToday.toLocaleString('ru-RU')} ₽</td>
-            <td class="${pnlCls(r.pnlTotal)}">${r.pnlTotal >= 0 ? '+' : ''}${r.pnlTotal.toLocaleString('ru-RU')} ₽</td>
-            <td>${r.lotsOpen}</td>
-            <td>${r.go.toLocaleString('ru-RU')}</td>
+        const totalPnl = (s.realized_pnl || 0) + (s.pnl || 0);
+        const paper = s.paper ? ' <span class="badge" style="background:#ff9800">PAPER</span>' : '';
+        pythonRobotRow = `<tr ondblclick="pythonRobotEditPanel()" style="cursor:pointer" title="Двойной клик — настройки робота">
+            <td><strong>SiM6</strong></td>
+            <td><strong>VP Scalp Grid</strong> <span class="badge" style="background:#2196F3">PYTHON</span>${paper}</td>
+            <td>Финам</td>
+            <td class="${dirCls}">${dirText}${s.entry_price > 0 ? ' @ ' + s.entry_price.toFixed(0) : ''}</td>
+            <td>—</td>
+            <td class="${pnlCls(totalPnl)}">${totalPnl >= 0 ? '+' : ''}${totalPnl.toFixed(0)} ₽</td>
+            <td>${s.total_lots}</td>
+            <td>—</td>
             <td>
-                <button class="btn btn-success btn-sm" onclick="robotStart(${i})" ${r.status === 'running' ? 'disabled' : ''}>▶</button>
-                <button class="btn btn-warning btn-sm" onclick="robotPause(${i})" ${r.status !== 'running' ? 'disabled' : ''}>⏸</button>
-                <button class="btn btn-danger btn-sm" onclick="robotStop(${i})" ${r.status === 'stopped' || r._stopping ? 'disabled' : ''}>${r._stopping ? '⏳' : '⏹'}</button>
-                <button class="btn btn-secondary btn-sm" onclick="robotRemove(${i})" title="Удалить">🗑</button>
+                <button class="btn btn-success btn-sm" onclick="robotApi('start')" ${mode==='running'?'disabled':''}>▶</button>
+                <button class="btn btn-warning btn-sm" onclick="robotApi('pause')" ${mode!=='running'?'disabled':''}>⏸</button>
+                <button class="btn btn-danger btn-sm" onclick="robotApi('stop')" ${mode==='stopped'?'disabled':''}>⏹</button>
+                <button class="btn btn-success btn-sm" onclick="robotApi('resume')" ${mode!=='paused'?'disabled':''}>▶</button>
             </td>
-            <td class="${statusCls}">${statusText}</td>
+            <td class="${modeCls}">${modeText} ${s.connected ? '🔗' : '⚠️'}</td>
         </tr>`;
-    });
+    } else {
+        pythonRobotRow = `<tr ondblclick="pythonRobotEditPanel()" style="cursor:pointer" title="Двойной клик — настройки робота">
+            <td><strong>SiM6</strong></td>
+            <td><strong>VP Scalp Grid</strong> <span class="badge" style="background:#2196F3">PYTHON</span></td>
+            <td>Финам</td>
+            <td>—</td>
+            <td>—</td>
+            <td>—</td>
+            <td>0</td>
+            <td>—</td>
+            <td>
+                <button class="btn btn-success btn-sm" onclick="robotApi('start')">▶</button>
+            </td>
+            <td class="red">🔴 Не запущен</td>
+        </tr>`;
+    }
 
-    const allRows = [...serverStrategies, ...localRows];
-    if (!allRows.length) { tbody.innerHTML = ''; if (noMsg) noMsg.style.display = 'block'; return; }
+    const allRows = [...serverStrategies, ...localRows, pythonRobotRow];
+    if (!allRows.filter(r=>r).length) { tbody.innerHTML = ''; if (noMsg) noMsg.style.display = 'block'; return; }
     if (noMsg) noMsg.style.display = 'none';
     tbody.innerHTML = allRows.join('');
 }
@@ -3197,4 +3161,251 @@ document.addEventListener('DOMContentLoaded', () => {
     // Проверка здоровья каждые 5 сек
     setInterval(checkHealth, 30000);
 
+    // === Python Robot Polling ===
+    setInterval(async () => { await pollPythonRobot(); renderRobots(); }, 2000);
+    pollPythonRobot();
+
 });
+
+// === PYTHON ROBOT (VP Scalp Grid) ===
+const ROBOT_API = 'http://' + window.location.hostname + ':5070';
+let pythonRobot = null;
+
+async function pollPythonRobot() {
+    try {
+        const resp = await fetch(ROBOT_API + '/status', {signal: AbortSignal.timeout(2000)});
+        pythonRobot = await resp.json();
+    } catch(e) {
+        pythonRobot = null;
+    }
+}
+
+async function robotApi(action) {
+    try {
+        // For start/stop when robot is offline — use C# proxy
+        if (action === 'start' || action === 'stop') {
+            try {
+                const proxyResp = await fetch('/api/robot/service/' + action, {method: 'POST'});
+                const proxyData = await proxyResp.json();
+                addLog(nowTime(), 'INFO', 'Robot ' + action + ' (proxy): ' + JSON.stringify(proxyData));
+                // Wait for robot to start/stop
+                await new Promise(r => setTimeout(r, action === 'start' ? 5000 : 2000));
+                await pollPythonRobot();
+                renderRobots();
+                return;
+            } catch(proxyErr) {
+                // Fallback to direct API
+            }
+        }
+        const resp = await fetch(ROBOT_API + '/' + action, {method: 'POST'});
+        const data = await resp.json();
+        addLog(nowTime(), 'INFO', 'Robot ' + action + ': ' + JSON.stringify(data));
+        setTimeout(async () => { await pollPythonRobot(); renderRobots(); }, 500);
+    } catch(e) {
+        addLog(nowTime(), 'ERROR', 'Robot ' + action + ' failed: ' + e.message);
+    }
+}
+
+async function pythonRobotLoadConfig() {
+    const defaults = {max_levels:100, step_base:31, spread_base:31, max_hold_minutes:99999999999999, min_profit_per_lot:29, vp_lookback:33, vp_bin_size:50, vp_va_percent:0.70, rv_adaptation:false};
+    let cfg = defaults;
+    try {
+        const resp = await fetch(ROBOT_API + '/api/robot/config', {signal: AbortSignal.timeout(2000)});
+        const data = await resp.json();
+        if (!data.error) { cfg = data; addLog(nowTime(), 'INFO', 'Config loaded'); }
+        else { addLog(nowTime(), 'WARN', 'Robot offline'); }
+    } catch(e) {
+        addLog(nowTime(), 'WARN', 'Robot offline');
+    }
+    if (el('cfgVpMaxLevels')) el('cfgVpMaxLevels').value = cfg.max_levels;
+    if (el('cfgVpStepBase')) el('cfgVpStepBase').value = cfg.step_base;
+    if (el('cfgVpSpreadBase')) el('cfgVpSpreadBase').value = cfg.spread_base;
+    if (el('cfgVpMaxHold')) el('cfgVpMaxHold').value = cfg.max_hold_minutes;
+    if (el('cfgVpLookback')) el('cfgVpLookback').value = cfg.vp_lookback;
+    if (el('cfgVpBinSize')) el('cfgVpBinSize').value = cfg.vp_bin_size;
+    if (el('cfgVpVaPercent')) el('cfgVpVaPercent').value = cfg.vp_va_percent;
+    if (el('cfgVpMinProfit')) el('cfgVpMinProfit').value = cfg.min_profit_per_lot;
+    if (el('cfgVpRvAdapt')) el('cfgVpRvAdapt').checked = cfg.rv_adaptation;
+}
+
+async function pythonRobotSaveConfig() {
+    const body = {
+        max_levels: parseInt(el('cfgVpMaxLevels')?.value),
+        step_base: parseInt(el('cfgVpStepBase')?.value),
+        spread_base: parseInt(el('cfgVpSpreadBase')?.value),
+        max_hold_minutes: parseInt(el('cfgVpMaxHold')?.value),
+        min_profit_per_lot: parseInt(el('cfgVpMinProfit')?.value),
+        vp_lookback: parseInt(el('cfgVpLookback')?.value),
+        vp_bin_size: parseInt(el('cfgVpBinSize')?.value),
+        vp_va_percent: parseFloat(el('cfgVpVaPercent')?.value),
+        rv_adaptation: el('cfgVpRvAdapt')?.checked || false,
+    };
+    try {
+        const resp = await fetch(ROBOT_API + '/api/robot/config', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(body)
+        });
+        const data = await resp.json();
+        addLog(nowTime(), 'INFO', '🐍 Config saved: ' + JSON.stringify(data));
+    } catch(e) {
+        addLog(nowTime(), 'ERROR', '🐍 Save config failed: ' + e.message);
+    }
+}
+
+function pythonRobotEditPanel() {
+    const existing = el('robotEditPanel');
+    if (existing) { existing.remove(); return; }
+
+    const div = document.createElement('div');
+    div.id = 'robotEditPanel';
+    div.className = 'card';
+    div.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);z-index:1000;width:900px;max-height:90vh;overflow-y:auto;box-shadow:0 8px 32px rgba(0,0,0,.5)';
+    div.innerHTML = `
+        <div class="card-header row gap-8">
+            🐍 VP Scalp Grid (PYTHON)
+            <button class="btn btn-primary btn-sm" onclick="pythonRobotSaveFromPanel()">💾 Сохранить</button>
+            <button class="btn btn-secondary btn-sm" onclick="if(window._pyVpTimer){clearInterval(window._pyVpTimer);window._pyVpTimer=null;}el('robotEditPanel')?.remove()">✕</button>
+        </div>
+        <div style="padding:12px">
+            <!-- VP индикаторы -->
+            <div class="metrics-row" style="flex-wrap:wrap;margin-bottom:12px">
+                <div class="metric-card" style="background:#1a2332;border:1px solid #2D4A6D"><div class="metric-label" style="color:#60A5FA">VAH</div><div id="pyVAH" style="font-size:18px;font-weight:bold;color:#60A5FA">—</div></div>
+                <div class="metric-card" style="background:#1a2332;border:1px solid #2D4A6D"><div class="metric-label" style="color:#F59E0B">POC</div><div id="pyPOC" style="font-size:18px;font-weight:bold;color:#F59E0B">—</div></div>
+                <div class="metric-card" style="background:#1a2332;border:1px solid #2D4A6D"><div class="metric-label" style="color:#34D399">VAL</div><div id="pyVAL" style="font-size:18px;font-weight:bold;color:#34D399">—</div></div>
+                <div class="metric-card"><div class="metric-label">Цена</div><div id="pyPrice" style="font-size:18px;font-weight:bold">—</div></div>
+                <div class="metric-card"><div class="metric-label">Позиция</div><div id="pyDir" style="font-size:18px;font-weight:bold">—</div></div>
+                <div class="metric-card"><div class="metric-label">Лоты</div><div id="pyLots" style="font-size:18px;font-weight:bold">0</div></div>
+                <div class="metric-card"><div class="metric-label">Grid</div><div id="pyGrid" style="font-size:18px;font-weight:bold">0</div></div>
+                <div class="metric-card"><div class="metric-label">Round Trips</div><div id="pyRT" style="font-size:18px;font-weight:bold">0</div></div>
+                <div class="metric-card"><div class="metric-label">PnL реал.</div><div id="pyPnlReal" style="font-size:18px;font-weight:bold">—</div></div>
+                <div class="metric-card"><div class="metric-label">PnL нереал.</div><div id="pyPnlUnreal" style="font-size:18px;font-weight:bold">—</div></div>
+                <div class="metric-card"><div class="metric-label">Hold</div><div id="pyHold" style="font-size:18px;font-weight:bold">0 мин</div></div>
+            </div>
+            <hr style="border-color:#2D2D44;margin:12px 0">
+            <!-- Параметры -->
+            <div class="metrics-row" style="flex-wrap:wrap;margin-bottom:16px">
+                <div class="metric-card"><div class="metric-label">Max Levels</div><input id="editPyMaxLevels" class="input" type="number" style="width:80px"></div>
+                <div class="metric-card"><div class="metric-label">Step Base (пт)</div><input id="editPyStepBase" class="input" type="number" style="width:80px"></div>
+                <div class="metric-card"><div class="metric-label">Spread Base (пт)</div><input id="editPySpreadBase" class="input" type="number" style="width:80px"></div>
+                <div class="metric-card"><div class="metric-label">Max Hold (мин)</div><input id="editPyMaxHold" class="input" type="number" style="width:100px"></div>
+                <div class="metric-card"><div class="metric-label">VP Lookback</div><input id="editPyLookback" class="input" type="number" style="width:70px"></div>
+                <div class="metric-card"><div class="metric-label">VP Bin Size</div><input id="editPyBinSize" class="input" type="number" style="width:70px"></div>
+                <div class="metric-card"><div class="metric-label">VA %</div><input id="editPyVaPercent" class="input" type="number" step="0.05" style="width:70px"></div>
+                <div class="metric-card"><div class="metric-label">PnL/лот (пт)</div><input id="editPyMinProfit" class="input" type="number" style="width:70px"></div>
+                <div class="metric-card"><div class="metric-label">RV Adaptation</div><br><input id="editPyRvAdapt" type="checkbox" style="width:20px;height:20px;vertical-align:middle"></div>
+            </div>
+            <hr style="border-color:#2D2D44;margin:12px 0">
+            <!-- Grid Levels -->
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+                <strong>📊 Grid Levels</strong>
+                <button class="btn btn-secondary btn-sm" onclick="pythonRobotLoadGridLevels()">🔄 Обновить</button>
+            </div>
+            <div style="max-height:250px;overflow-y:auto;border:1px solid var(--border-color);border-radius:8px">
+                <table class="data-table" style="font-size:13px">
+                    <thead><tr><th>#</th><th>Side</th><th>Цена</th><th>Статус</th><th>TP</th><th>TP Fill</th></tr></thead>
+                    <tbody id="pyGridBody"><tr><td colspan="6" style="text-align:center;color:#9CA3AF">Нажмите 🔄 для загрузки</td></tr></tbody>
+                </table>
+            </div>
+        </div>
+    `;
+    document.body.appendChild(div);
+
+    // Load config + start live VP update
+    pythonRobotLoadToPanel();
+    pythonRobotUpdateVp();
+    if (window._pyVpTimer) clearInterval(window._pyVpTimer);
+    window._pyVpTimer = setInterval(() => pythonRobotUpdateVp(), 2000);
+}
+
+function pythonRobotUpdateVp() {
+    if (!el('pyVAH')) return;
+    const s = pythonRobot;
+    if (!s) return;
+    if (s.vah) el('pyVAH').textContent = Math.round(s.vah);
+    if (s.poc) el('pyPOC').textContent = Math.round(s.poc);
+    if (s.val) el('pyVAL').textContent = Math.round(s.val);
+    if (s.current_price) el('pyPrice').textContent = s.current_price.toFixed(0);
+    const dirText = s.direction > 0 ? 'Лонг' : s.direction < 0 ? 'Шорт' : 'Флэт';
+    if (el('pyDir')) el('pyDir').textContent = dirText;
+    if (el('pyLots')) el('pyLots').textContent = s.total_lots || 0;
+    if (el('pyGrid')) el('pyGrid').textContent = (s.grid_levels||0) + ' (' + (s.filled_levels||0) + ' fill)';
+    if (el('pyRT')) el('pyRT').textContent = s.round_trips || 0;
+    if (el('pyPnlReal')) { el('pyPnlReal').textContent = (s.realized_pnl||0).toFixed(0)+'₽'; el('pyPnlReal').style.color = s.realized_pnl >= 0 ? 'var(--green)' : 'var(--red)'; }
+    if (el('pyPnlUnreal')) { el('pyPnlUnreal').textContent = (s.pnl||0).toFixed(0)+'₽'; el('pyPnlUnreal').style.color = s.pnl >= 0 ? 'var(--green)' : 'var(--red)'; }
+    if (el('pyHold')) el('pyHold').textContent = (s.hold_minutes || 0) + ' мин';
+}
+
+async function pythonRobotLoadToPanel() {
+    const defaults = {max_levels:100, step_base:31, spread_base:31, max_hold_minutes:99999999999999, min_profit_per_lot:29, vp_lookback:33, vp_bin_size:50, vp_va_percent:0.70, rv_adaptation:false};
+    let cfg = defaults;
+    try {
+        const resp = await fetch(ROBOT_API + '/api/robot/config', {signal: AbortSignal.timeout(2000)});
+        const data = await resp.json();
+        if (!data.error) cfg = data;
+    } catch(e) {}
+    if (el('editPyMaxLevels')) el('editPyMaxLevels').value = cfg.max_levels;
+    if (el('editPyStepBase')) el('editPyStepBase').value = cfg.step_base;
+    if (el('editPySpreadBase')) el('editPySpreadBase').value = cfg.spread_base;
+    if (el('editPyMaxHold')) el('editPyMaxHold').value = cfg.max_hold_minutes;
+    if (el('editPyLookback')) el('editPyLookback').value = cfg.vp_lookback;
+    if (el('editPyBinSize')) el('editPyBinSize').value = cfg.vp_bin_size;
+    if (el('editPyVaPercent')) el('editPyVaPercent').value = cfg.vp_va_percent;
+    if (el('editPyMinProfit')) el('editPyMinProfit').value = cfg.min_profit_per_lot;
+    if (el('editPyRvAdapt')) el('editPyRvAdapt').checked = cfg.rv_adaptation;
+}
+
+async function pythonRobotSaveFromPanel() {
+    const body = {
+        max_levels: parseInt(el('editPyMaxLevels')?.value),
+        step_base: parseInt(el('editPyStepBase')?.value),
+        spread_base: parseInt(el('editPySpreadBase')?.value),
+        max_hold_minutes: parseInt(el('editPyMaxHold')?.value),
+        min_profit_per_lot: parseInt(el('editPyMinProfit')?.value),
+        vp_lookback: parseInt(el('editPyLookback')?.value),
+        vp_bin_size: parseInt(el('editPyBinSize')?.value),
+        vp_va_percent: parseFloat(el('editPyVaPercent')?.value),
+        rv_adaptation: el('editPyRvAdapt')?.checked || false,
+    };
+    try {
+        const resp = await fetch(ROBOT_API + '/api/robot/config', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(body)
+        });
+        const data = await resp.json();
+        addLog(nowTime(), 'INFO', '🐍 Config saved: ' + JSON.stringify(data));
+        // Also update strategy tab fields
+        if (el('cfgVpMaxLevels')) el('cfgVpMaxLevels').value = body.max_levels;
+        if (el('cfgVpStepBase')) el('cfgVpStepBase').value = body.step_base;
+        if (el('cfgVpSpreadBase')) el('cfgVpSpreadBase').value = body.spread_base;
+        if (el('cfgVpMaxHold')) el('cfgVpMaxHold').value = body.max_hold_minutes;
+        if (el('cfgVpMinProfit')) el('cfgVpMinProfit').value = body.min_profit_per_lot;
+    } catch(e) {
+        addLog(nowTime(), 'ERROR', '🐍 Save failed: ' + e.message);
+    }
+}
+
+async function pythonRobotLoadGridLevels() {
+    const tbody = el('pyGridBody');
+    if (!tbody) return;
+    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:#9CA3AF">Загрузка...</td></tr>';
+    try {
+        const resp = await fetch(ROBOT_API + '/api/robot/grid-levels');
+        const data = await resp.json();
+        if (!data.levels.length) {
+            tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:#9CA3AF">Нет grid уровней</td></tr>';
+        } else {
+            tbody.innerHTML = data.levels.map(l => `<tr>
+                <td>${l.level}</td>
+                <td>${l.side}</td>
+                <td>${l.price.toFixed(0)}</td>
+                <td>${l.status}</td>
+                <td>${l.tp_price > 0 ? l.tp_price.toFixed(0) : '—'}</td>
+                <td>${l.tp_closed_price > 0 ? l.tp_closed_price.toFixed(0) : '—'}</td>
+            </tr>`).join('');
+        }
+    } catch(e) {
+        tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:#f44336">Ошибка: ' + e.message + '</td></tr>';
+    }
+}
