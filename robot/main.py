@@ -740,16 +740,11 @@ class Robot:
             log.error(f"Warmup error: {e}")
 
     def _ensure_orders(self):
-        """Make sure grid, TP and POC-TP orders are always placed when we have position."""
+        """Check if tracked orders are still active. Don't place new ones — let _tick handle fills."""
         if not self.strategy.has_position or not self.orders:
             return
 
-        d = self.strategy.direction
-        entry = self.strategy.entry_price
-        step = self.params.step_base if hasattr(self, 'params') else 31
-        spread = self.params.spread_base if hasattr(self, 'params') else 31
-
-        # Count how many active orders we have at broker
+        # Check if our tracked orders are still active at broker
         active_ids = set()
         try:
             from FinamPy.grpc.orders_service_pb2 import OrdersRequest
@@ -761,46 +756,44 @@ class Robot:
                 if o.status == 1:  # NEW/active
                     active_ids.add(o.order_id)
         except:
-            pass  # on error, assume all our IDs are valid
+            return  # Error — don't clear any IDs
 
-        # Check if our tracked orders are still active
+        # Only clear IDs if order is gone — but DON'T place new ones
+        # Next tick will detect the fill and handle properly
         if self._grid_order_id and self._grid_order_id not in active_ids:
-            log.info(f"Grid order {self._grid_order_id[:15]}.. no longer active, clearing")
             self._grid_order_id = None
         if self._tp_order_id and self._tp_order_id not in active_ids:
-            log.info(f"TP order {self._tp_order_id[:15]}.. no longer active, clearing")
             self._tp_order_id = None
         if self._poc_tp_order_id and self._poc_tp_order_id not in active_ids:
-            log.info(f"POC-TP order {self._poc_tp_order_id[:15]}.. no longer active, clearing")
             self._poc_tp_order_id = None
 
-        # 1. Ensure ONE pending grid order is placed
+        # Only place missing orders if NO fills are pending
+        # (broker_lots == robot_lots means no fills to process)
+        if self._broker_lots != self._robot_lots:
+            return  # Fills pending — don't place orders, let _tick handle
+
         if not self._grid_order_id:
             for g in self.strategy.grid_levels:
                 if g.status == "PENDING":
-                    # Skip levels that would fill instantly
                     if self.strategy.direction == -1 and g.price <= (self._current_price or 999999):
-                        continue  # SHORT grid SELL must be above current price
+                        continue
                     if self.strategy.direction == 1 and g.price >= (self._current_price or 0):
-                        continue  # LONG grid BUY must be below current price
+                        continue
                     grid_side = SELL if self.strategy.direction == -1 else BUY
                     po = self.orders.place_limit(grid_side, 1, g.price, f"GRID-{g.level}")
                     if po:
                         self._grid_order_id = po.order_id
                         log.info(f"Ensured grid: GRID-{g.level} @ {g.price:.0f}")
-                    break  # ONE at a time
+                    break
 
-        # 2. Ensure TP exists for filled levels
         has_filled_with_tp = any(g.status == "FILLED" and g.tp_price > 0 for g in self.strategy.grid_levels)
         if has_filled_with_tp and not self._tp_order_id:
             self._place_single_tp()
-            log.info("Ensured TP placed")
 
-        # 3. Ensure POC-TP for entry lot (only if no grid fills)
         if self.strategy.filled_levels == 0 and not self._poc_tp_order_id and self.strategy.poc > 0:
             poc = self.strategy.poc
-            side = SELL if d == 1 else BUY
-            if (d == 1 and poc > entry) or (d == -1 and poc < entry):
+            side = SELL if self.strategy.direction == 1 else BUY
+            if (self.strategy.direction == 1 and poc > self.strategy.entry_price) or (self.strategy.direction == -1 and poc < self.strategy.entry_price):
                 po = self.orders.place_limit(side, 1, poc, "POC-TP")
                 if po:
                     self._poc_tp_order_id = po.order_id
