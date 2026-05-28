@@ -1,8 +1,10 @@
-"""Main robot — orchestrates feed, strategy, orders, state, risk."""
+"""Main robot — broker-position polling at 300ms, broker = source of truth."""
 import logging
 import os
 import signal
 import sys
+import time
+import threading
 import threading
 import time
 from datetime import datetime, timezone, timedelta
@@ -12,9 +14,9 @@ from FinamPy import FinamPy
 import config
 from feed import Feed, Quote, Bar, OrderEvent, TradeEvent
 from vp import VolumeProfile
-from strategy import Strategy, StrategyParams, BUY, SELL
-from orders import OrderManager, PlacedOrder, FillInfo
-from state import StateManager, TrackedOrder
+from strategy import Strategy, StrategyParams, BUY, SELL, GridLevel, Signal
+from orders import OrderManager, PlacedOrder
+from state import StateManager
 from risk import RiskManager
 
 log = logging.getLogger("robot")
@@ -34,39 +36,39 @@ class Robot:
 
         self._paper = paper
         self._running = False
-        self._mode = "stopped"  # running, paused, stopped
+        self._mode = "stopped"
 
-        # Tracked orders: {client_order_id: PlacedOrder}
-        self._tracked: dict[str, PlacedOrder] = {}
+        # Broker position state (previous tick)
+        self._broker_dir: int = 0
+        self._broker_lots: int = 0
+        self._broker_avg: float = 0.0
 
-        # Pending entry lock
-        self._entry_pending = False
-        self._entry_pending_since: datetime | None = None
-        self._entry_pending_timeout = timedelta(seconds=30)
-
-        # Grid/TP tracking
-        self._grid_order_id: str | None = None
-        self._grid_price: float = 0
-        self._grid_level: int = 0
-        self._tp_order_id: str | None = None
-        self._tp_price: float = 0
+        # Order tracking
+        self._grid_order_id: str | None = None   # only one grid at a time
+        self._tp_order_id: str | None = None      # only one TP at a time
         self._poc_tp_order_id: str | None = None
 
-        # No-position confirmation
-        self._no_pos_ticks = 0
-        self._no_pos_confirm = 4  # 2 sec
+        # Entry pending
+        self._entry_pending = False
+        self._entry_pending_dir: int = 0
+        self._entry_pending_since: datetime | None = None
 
-        # Skip ticks
-        self._skip_ticks = 0
+        # Close cooldown
+        self._last_close_time: datetime | None = None
 
         # Last entry for recovery
         self._last_entry_price = 0.0
         self._last_direction = 0
 
+        # Price log
+        self._last_price_log: datetime = datetime.now(MSK) - timedelta(minutes=1)
+
+        # Current price (from quotes)
+        self._current_price: float = 0.0
+
     # === LIFECYCLE ===
 
     def start(self):
-        """Connect to Finam, restore state, subscribe to data."""
         log.info(f"Starting robot{' [PAPER MODE]' if self._paper else ''}...")
         self.fp = FinamPy(config.FINAM_TOKEN)
         self.orders = OrderManager(self.fp)
@@ -77,51 +79,100 @@ class Robot:
         if s.direction != 0 and s.entry_price > 0:
             self.strategy.direction = s.direction
             self.strategy.entry_price = s.entry_price
-            self.strategy.filled_levels = s.filled_levels
+            if s.grid_levels:
+                self.strategy.restore_grid(s.grid_levels)
+                log.info(f"Grid restored: {len(s.grid_levels)} levels")
+            if s.entry_time:
+                try:
+                    self.strategy.entry_time = datetime.fromisoformat(s.entry_time)
+                except:
+                    pass
             self._last_entry_price = s.last_entry_price
             self._last_direction = s.last_direction
-            log.info(f"State restored: dir={s.direction} entry={s.entry_price:.0f} levels={s.filled_levels}")
+            log.info(f"State restored: dir={s.direction} entry={s.entry_price:.0f} levels={len(s.grid_levels)}")
+        elif s.direction != 0 and s.entry_price <= 0:
+            log.warning("Corrupt state — resetting")
+            self.state.clear()
 
-        # Warmup VP from gRPC bars
         self._warmup_vp()
 
-        # Wire callbacks
+        # Wire callbacks (only for price/VP, NOT for trade logic)
         self.feed.on_quote = self._on_quote
         self.feed.on_bar = self._on_bar
-        self.feed.on_order = self._on_order_event
-        self.feed.on_trade = self._on_trade_event
         self.feed._on_stale = self._on_stale_streams
+        # Ignore gRPC order/trade events — broker polling is our truth
+        self.feed.on_order = lambda evt: None
+        self.feed.on_trade = lambda evt: None
 
-        # Subscribe to everything
         self.feed.subscribe_all()
 
-        # Sync with broker
-        self._sync_broker()
+        # Initial broker sync — and set up orders if we have position
+        self._poll_broker_position()
+
+        if self._broker_lots > 0:
+            # We have position at broker — make sure we have grid levels and orders
+            if not self.strategy.has_position:
+                # No state — restore from broker
+                entry = self._broker_avg if self._broker_avg > 0 else self._current_price
+                log.info(f"Restoring position from broker: dir={self._broker_dir} lots={self._broker_lots} @ {entry:.0f}")
+                self.strategy.direction = self._broker_dir
+                self.strategy.entry_price = entry
+                self.strategy.entry_time = datetime.now(MSK)
+                self._last_entry_price = entry
+                self._last_direction = self._broker_dir
+
+                # Create grid levels for filled lots (broker_lots - 1 = grid fills)
+                grid_fills = self._broker_lots - 1
+                step = self.strategy.params.step_base
+                spread = self.strategy.params.spread_base
+                for i in range(1, grid_fills + 1):
+                    if self._broker_dir == 1:
+                        gp = entry - step * i
+                        tp = gp + spread
+                    else:
+                        gp = entry + step * i
+                        tp = gp - spread
+                    self.strategy.grid_levels.append(GridLevel(
+                        level=i, price=gp,
+                        side=BUY if self._broker_dir == 1 else SELL,
+                        status="FILLED", tp_price=tp, tp_closed_price=0,
+                    ))
+
+                # Place next grid level
+                next_level = len(self.strategy.grid_levels) + 1
+                if next_level <= self.strategy.params.max_levels:
+                    grid_sig = self.strategy._create_grid_signal(next_level)
+                    if grid_sig:
+                        self._place_grid(grid_sig)
+
+            # ALWAYS ensure orders are placed — reset IDs to force re-creation
+            self._grid_order_id = None
+            self._tp_order_id = None
+            self._poc_tp_order_id = None
+            self._ensure_orders()
+            self._save_state()
 
         self._running = True
+        self._initialized = True  # Allow tick processing after full startup
         self._mode = "running"
         self.state.state.mode = "running"
         self.state.save()
-        log.info(f"Robot started{' [PAPER]' if self._paper else ''}. VP: VAL={self.vp.val:.0f} VAH={self.vp.vah:.0f} POC={self.vp.poc:.0f}")
+        log.info(f"Robot started. VP: VAL={self.strategy.val:.0f} VAH={self.strategy.vah:.0f} POC={self.strategy.poc:.0f}")
 
-    def stop(self, close_position: bool = True):
-        """Stop robot, optionally close position."""
+        # Start 300ms polling loop
+        self._poll_thread = threading.Thread(target=self._poll_loop, daemon=True)
+        self._poll_thread.start()
+
+    def stop(self, close_position: bool = False):
         log.info("Stopping robot...")
         self._running = False
         self._mode = "stopped"
 
         if close_position and self.strategy.has_position and self.orders:
             self._close_all("Manual stop")
-
-        # Cancel all tracked orders
-        if self.orders:
-            for oid in [self._grid_order_id, self._tp_order_id, self._poc_tp_order_id]:
-                if oid:
-                    self.orders.cancel(oid)
-
-        self._grid_order_id = None
-        self._tp_order_id = None
-        self._poc_tp_order_id = None
+        else:
+            # Don't cancel orders — just stop managing them
+            log.info("Stopping without closing position")
 
         self.feed.disconnect()
         if self.fp:
@@ -132,165 +183,162 @@ class Robot:
         log.info("Robot stopped")
 
     def pause(self):
-        """Pause trading (cancel orders, keep position)."""
         self._mode = "paused"
         if self.orders:
-            for oid in [self._grid_order_id, self._tp_order_id, self._poc_tp_order_id]:
-                if oid:
-                    self.orders.cancel(oid)
-        self._grid_order_id = None
-        self._tp_order_id = None
-        self._poc_tp_order_id = None
+            self._cancel_all_orders()
         log.info("Robot paused")
 
     def resume(self):
-        """Resume from pause."""
         self._mode = "running"
-        self._sync_broker()
+        self._poll_broker_position()
+        # Restore grid/TP orders if we have a position
+        if self.strategy.has_position and self.orders:
+            # Restore POC-TP for entry lot
+            if not self._poc_tp_order_id and self.strategy.poc > 0 and self.strategy.filled_levels == 0:
+                poc = self.strategy.poc
+                side = SELL if self.strategy.direction == 1 else BUY
+                entry = self.strategy.entry_price
+                if (self.strategy.direction == 1 and poc > entry) or (self.strategy.direction == -1 and poc < entry):
+                    po = self.orders.place_limit(side, 1, poc, "POC-TP")
+                    if po:
+                        self._poc_tp_order_id = po.order_id
+                        log.info(f"POC-TP restored @ {poc:.0f}")
+            # Restore pending grid
+            pending = self.strategy.get_active_grid()
+            if pending and not self._grid_order_id:
+                grid_side = SELL if self.strategy.direction == -1 else BUY
+                po = self.orders.place_limit(grid_side, 1, pending.price, f"GRID-{pending.level}")
+                if po:
+                    self._grid_order_id = po.order_id
+                    log.info(f"GRID-{pending.level} restored @ {pending.price:.0f}")
+            # Restore TP for last filled level
+            if self.strategy.filled_levels > 0 and not self._tp_order_id:
+                self._place_single_tp()
         log.info("Robot resumed")
 
-    # === CALLBACKS ===
+    # === 300MS POLL LOOP ===
 
-    def _on_stale_streams(self):
-        """Called by feed watchdog when streams go stale. Reconnect."""
-        log.warning("Reconnecting stale streams...")
-        self.feed.disconnect()
-        time.sleep(2)
-        self.feed.connect()
-        self._warmup_vp()
-        self.feed.subscribe_all()
-        log.info(f"Reconnected. VP: VAL={self.vp.val:.0f} VAH={self.vp.vah:.0f} POC={self.vp.poc:.0f}")
+    def _poll_loop(self):
+        """Main loop: poll broker position every 300ms."""
+        while self._running:
+            try:
+                if self._mode == "running" and not self._paper:
+                    self._tick()
+            except Exception as e:
+                log.error(f"Poll tick error: {e}")
+            time.sleep(0.3)
 
-    def _on_quote(self, q: Quote):
-        """Quote callback — update current price, check exits."""
-        if not self._running or self._mode != "running":
-            return
-        if self._skip_ticks > 0:
-            self._skip_ticks -= 1
-            return
+    def _tick(self):
+        """One polling cycle. Compare broker position with expected state."""
+        if not getattr(self, '_initialized', False):
+            return  # Skip ticks until fully initialized
 
-        self.strategy.current_price = q.last
-
-        # Periodic price log (every ~30 sec)
-        if not hasattr(self, '_last_price_log') or (datetime.now(MSK) - self._last_price_log).seconds >= 30:
-            self._last_price_log = datetime.now(MSK)
-            log.info(f"Price: {q.last:.0f} | VP: VAL={self.strategy.val:.0f} VAH={self.strategy.vah:.0f} POC={self.strategy.poc:.0f}")
-
-        if not self.strategy.has_position:
-            # Check entry on quote (price can jump outside VA between bars)
-            if (self._mode == "running" and not self._entry_pending
-                    and self.strategy.val > 0 and q.last > 0):
-                sig = self.strategy.check_entry(q.last)
-                if sig:
-                    self._execute_entry(sig)
-            return
-
-        # Check risk
-        pnl = self.strategy.calc_unrealized_pnl(q.last)
-        ok, msg = self.risk.check_pnl(pnl)
-        if not ok:
-            log.warning(f"Risk stop: {msg}")
-            self._close_all(msg)
-            return
-
-        # Check exit
-        sig = self.strategy.check_exit()
-        if sig:
-            self._close_all(sig.tag)
-            return
-
-        # Paper mode: simulate grid/TP fills
-        if self._paper and self.strategy.has_position:
-            self._paper_check_fills(q.last)
-
-    def _on_bar(self, b: Bar):
-        """Bar callback — update VP, check entry signals."""
-        if not self._running or self._mode != "running":
-            return
-
-        # Feed VP
-        self.vp.add_bar(b.close, b.volume)
-        result = self.vp.calculate()
-        if result:
-            self.strategy.poc = result.poc
-            self.strategy.vah = result.vah
-            self.strategy.val = result.val
-
-        # Check entry only if no position
-        if self.strategy.has_position:
-            return
-        if self._entry_pending:
-            if datetime.now(MSK) - self._entry_pending_since > self._entry_pending_timeout:
-                log.info("Entry pending timeout — resetting")
-                self._entry_pending = False
-            else:
-                return
-
-        sig = self.strategy.check_entry(b.close)
-        if sig:
-            self._execute_entry(sig)
-
-    def _on_order_event(self, evt: OrderEvent):
-        """Order status update from gRPC push."""
-        if not self._running:
-            return
-        log.info(f"Order event: id={evt.order_id} status={evt.status} exec_qty={evt.executed_quantity}")
-
-    def _on_trade_event(self, evt: TradeEvent):
-        """Trade (fill) from gRPC push."""
-        if not self._running:
-            return
-
-        log.info(f"Trade: {'BUY' if evt.side==1 else 'SELL'} {evt.quantity:.0f} @ {evt.price:.0f} order={evt.order_id}")
-
-        fill = FillInfo(
-            order_id=evt.order_id,
-            client_order_id="",  # Not always available in trade event
-            side=evt.side,
-            price=evt.price,
-            quantity=evt.quantity,
-            trade_id=evt.trade_id,
-            timestamp=evt.timestamp,
-        )
-        if self.orders:
-            self.orders.record_fill(fill)
-
-        # Match fill to tracked orders
-        self._process_fill(evt)
-
-    # === EXECUTION ===
-
-    def _execute_entry(self, sig):
-        """Execute entry signal."""
-        if self._paper:
-            log.info(f"[PAPER] ENTRY {'LONG' if sig.direction == 1 else 'SHORT'} @ {sig.price:.0f} — {sig.tag}")
-            # Simulate immediate fill
-            self._execute_entry_fill(sig.direction, sig.price)
-            return
-
-        if not self.orders:
-            return
-
-        # Entry guard: check broker first
         pos = self._get_broker_position()
-        if pos and pos[0] != 0 and pos[1] > 0:
-            log.info(f"Entry guard: broker has {pos[1]} lots dir={pos[0]} — syncing")
-            self._restore_position(pos[0], pos[1], pos[2])
+        prev_dir = self._broker_dir
+        prev_lots = self._broker_lots
+
+        # pos=None means gRPC error — DON'T change state, skip this tick
+        if pos is None:
             return
 
+        self._broker_dir, self._broker_lots, self._broker_avg = pos
+
+        cur_dir = self._broker_dir
+        cur_lots = self._broker_lots
+
+        # === NO POSITION at broker ===
+        if cur_lots == 0:
+            if self.strategy.has_position:
+                # Broker closed our position (TP or stop hit) — we didn't initiate
+                log.info(f"Broker position gone (was {prev_lots}). Syncing close.")
+                self._handle_broker_close()
+            elif self._entry_pending:
+                # Entry order still pending, check timeout
+                if self._entry_pending_since:
+                    elapsed = (datetime.now(MSK) - self._entry_pending_since).total_seconds()
+                    if elapsed > 10:
+                        log.warning(f"Entry pending {elapsed:.0f}s, no broker position — resetting")
+                        self._entry_pending = False
+            elif not self._entry_pending:
+                # Check for new entry signal
+                self._check_entry_signal()
+            return
+
+        # === POSITION exists at broker ===
+        if not self.strategy.has_position:
+            # Robot doesn't know about position — restore from broker
+            if self._entry_pending and self._entry_pending_dir == cur_dir:
+                # This is our entry fill
+                entry_price = self._broker_avg if self._broker_avg > 0 else self._current_price
+                log.info(f"Entry fill detected: dir={cur_dir} lots={cur_lots} @ {entry_price:.0f}")
+                self._handle_entry_fill(cur_dir, entry_price, cur_lots)
+            elif self._last_close_time and (datetime.now(MSK) - self._last_close_time).total_seconds() < 2:
+                # Just closed — ignore ghost position
+                return
+            else:
+                # Orphan position — restore
+                log.warning(f"Orphan position: dir={cur_dir} lots={cur_lots} — restoring")
+                self._handle_entry_fill(cur_dir, self._broker_avg if self._broker_avg > 0 else self._current_price, cur_lots)
+            return
+
+        # === Direction mismatch ===
+        if self.strategy.direction != cur_dir:
+            log.warning(f"Dir mismatch! Robot={self.strategy.direction} Broker={cur_dir}")
+            self._close_all("Dir mismatch")
+            return
+
+        # === Same direction, check for lot changes ===
+        robot_lots = self.strategy.total_lots
+
+        if cur_lots > robot_lots:
+            # More lots at broker = grid fill
+            delta = cur_lots - robot_lots
+            log.info(f"Grid fill detected: +{delta} lots (robot={robot_lots} broker={cur_lots})")
+            self._handle_grid_fill(delta)
+
+        elif cur_lots < robot_lots:
+            # Fewer lots at broker = TP fill or partial close
+            delta = robot_lots - cur_lots
+            if cur_lots == 0:
+                log.info(f"Position closed at broker (was {robot_lots})")
+                self._handle_broker_close()
+            else:
+                log.info(f"TP fill detected: -{delta} lots (robot={robot_lots} broker={cur_lots})")
+                self._handle_tp_fill(delta)
+
+        # Check exits for remaining position (ensure orders every 10s)
+        if self.strategy.has_position and cur_lots > 0:
+            now = time.time()
+            if not hasattr(self, '_last_ensure') or now - self._last_ensure > 10:
+                self._ensure_orders()
+                self._last_ensure = now
+            self._check_exits()
+
+    # === ENTRY ===
+
+    def _check_entry_signal(self):
+        """Check if we should enter."""
+        price = self._current_price
+        if price <= 0:
+            return
+        sig = self.strategy.check_entry(price)
+        if not sig:
+            return
+
+        # Execute entry
         side = BUY if sig.direction == 1 else SELL
         tag = f"ENTRY-{'LONG' if sig.direction == 1 else 'SHORT'}"
         po = self.orders.place_market(side, 1, tag)
-
         if po:
             self._entry_pending = True
+            self._entry_pending_dir = sig.direction
             self._entry_pending_since = datetime.now(MSK)
-            self._skip_ticks = 30  # 15 sec
+            log.info(f"Entry order sent: {tag} @ market")
         else:
-            self._skip_ticks = 60  # 30 sec on failure
+            log.warning("Entry order failed")
 
-    def _execute_entry_fill(self, direction: int, price: float):
-        """Process confirmed entry fill."""
+    def _handle_entry_fill(self, direction: int, price: float, broker_lots: int):
+        """Entry confirmed by broker. Set up grid + TP."""
         signals = self.strategy.on_entry_fill(direction, price)
         self._entry_pending = False
         self._last_entry_price = price
@@ -302,189 +350,305 @@ class Robot:
             elif sig.action == "PLACE_POC_TP":
                 self._place_poc_tp(sig)
 
+        # If broker has more lots than 1, handle grid fills too
+        if broker_lots > 1:
+            delta = broker_lots - 1
+            log.info(f"Entry fill with {delta} extra lots from grid")
+            self._handle_grid_fill(delta)
+
+        self._save_state()
+
+    # === GRID ===
+
+    def _handle_grid_fill(self, count: int):
+        """Grid fills detected. Mark them and place next grid + TP."""
+        for i in range(count):
+            # Find the PENDING grid level and mark as FILLED
+            filled = None
+            for g in self.strategy.grid_levels:
+                if g.status == "PENDING":
+                    g.status = "FILLED"
+                    filled = g
+                    break
+
+            if not filled:
+                log.warning(f"No pending grid level for fill #{i+1}")
+                continue
+
+            # Set TP price for this level
+            spread = self.strategy.params.spread_base
+            if self.strategy.direction == 1:
+                filled.tp_price = filled.price + spread
+            else:
+                filled.tp_price = filled.price - spread
+
+            # Place next PENDING grid level
+            for g in self.strategy.grid_levels:
+                if g.status == "PENDING" and g.level > filled.level:
+                    self._place_grid(Signal(
+                        action="GRID", direction=g.side, price=g.price,
+                        quantity=1, level=g.level, tag=f"Grid-{g.level}",
+                    ))
+                    break  # one at a time
+
+        # Place ONE TP for the last filled level
+        self._place_single_tp()
+        # Always ensure all orders are in place
+        self._ensure_orders()
         self._save_state()
 
     def _place_grid(self, sig):
         """Place grid limit order."""
-        if self._paper:
-            log.info(f"[PAPER] GRID-{sig.level} {'BUY' if sig.direction==1 else 'SELL'} @ {sig.price:.0f}")
-            self._grid_price = sig.price
-            self._grid_level = sig.level
+        if self._paper or not self.orders:
+            log.info(f"[PAPER] GRID-{sig.level} @ {sig.price:.0f}")
             return
-        if not self.orders:
-            return
-        # Cancel existing grid if any
+        # Cancel previous pending grid
         if self._grid_order_id:
             self.orders.cancel(self._grid_order_id)
-
+            self._grid_order_id = None
         po = self.orders.place_limit(sig.direction, sig.quantity, sig.price, f"GRID-{sig.level}")
         if po:
             self._grid_order_id = po.order_id
-            self._grid_price = sig.price
-            self._grid_level = sig.level
+            log.info(f"GRID-{sig.level} placed @ {sig.price:.0f} id={po.order_id}")
         else:
+            log.warning(f"GRID-{sig.level} failed")
+
+    # === TP ===
+
+    def _cancel_grid(self):
+        if self._grid_order_id and self.orders:
+            self.orders.cancel(self._grid_order_id)
             self._grid_order_id = None
 
-    def _place_tp(self, sig):
-        """Place TP limit order."""
-        if self._paper:
-            log.info(f"[PAPER] TP {'BUY' if sig.direction==1 else 'SELL'} @ {sig.price:.0f}")
-            self._tp_price = sig.price
-            return
-        if not self.orders:
-            return
-        # Cancel existing TP if any
-        if self._tp_order_id:
+    def _cancel_tp(self):
+        if self._tp_order_id and self.orders:
             self.orders.cancel(self._tp_order_id)
-
-        po = self.orders.place_limit(sig.direction, sig.quantity, sig.price, f"TP-{self.strategy.filled_levels}")
-        if po:
-            self._tp_order_id = po.order_id
-            self._tp_price = sig.price
-        else:
             self._tp_order_id = None
 
-    def _place_poc_tp(self, sig):
-        """Place POC-TP limit order (for entry lot)."""
-        if self._paper:
-            log.info(f"[PAPER] POC-TP {'BUY' if sig.direction==1 else 'SELL'} @ {sig.price:.0f}")
+    def _place_next_grid(self):
+        """Place ONE grid at the next PENDING level."""
+        if self._current_price <= 0:
             return
+        for g in self.strategy.grid_levels:
+            if g.status == "PENDING":
+                # Guard: grid must not fill instantly
+                if self.strategy.direction == -1 and g.price <= self._current_price:
+                    continue
+                if self.strategy.direction == 1 and g.price >= self._current_price:
+                    continue
+                grid_side = SELL if self.strategy.direction == -1 else BUY
+                po = self.orders.place_limit(grid_side, 1, g.price, f"GRID-{g.level}")
+                if po:
+                    self._grid_order_id = po.order_id
+                    log.info(f"GRID-{g.level} placed @ {g.price:.0f}")
+                return
+        log.info("No more PENDING grid levels")
+
+    def _place_single_tp(self):
+        """Place one TP for the latest filled grid level. Cancel previous TP."""
         if not self.orders:
+            return
+
+        # Cancel previous TP
+        if self._tp_order_id:
+            self.orders.cancel(self._tp_order_id)
+            self._tp_order_id = None
+
+        # Find last filled level with TP price
+        tp_level = None
+        for g in reversed(self.strategy.grid_levels):
+            if g.status == "FILLED" and g.tp_price > 0:
+                tp_level = g
+                break
+
+        if not tp_level:
+            return
+
+        tp_side = SELL if self.strategy.direction == 1 else BUY
+        po = self.orders.place_limit(tp_side, 1, tp_level.tp_price, f"TP-{tp_level.level}")
+        if po:
+            self._tp_order_id = po.order_id
+            log.info(f"TP-{tp_level.level} placed @ {tp_level.tp_price:.0f} id={po.order_id}")
+        else:
+            log.warning(f"TP-{tp_level.level} failed")
+
+    def _place_poc_tp(self, sig):
+        """Place POC-TP for entry lot."""
+        if self._paper or not self.orders:
+            log.info(f"[PAPER] POC-TP @ {sig.price:.0f}")
             return
         if self._poc_tp_order_id:
             self.orders.cancel(self._poc_tp_order_id)
-
+            self._poc_tp_order_id = None
         po = self.orders.place_limit(sig.direction, sig.quantity, sig.price, "POC-TP")
         if po:
             self._poc_tp_order_id = po.order_id
-        else:
-            self._poc_tp_order_id = None
+            log.info(f"POC-TP placed @ {sig.price:.0f} id={po.order_id}")
 
-    def _close_all(self, reason: str):
-        """Close all positions and cancel all orders."""
-        if self._paper:
-            if self.strategy.has_position:
-                pnl = self.strategy.calc_unrealized_pnl(self.strategy.current_price)
-                log.info(f"[PAPER] CLOSE ALL: {reason} | PnL={pnl:.0f} | lots={self.strategy.total_lots}")
-            self.strategy.on_close_all()
-            self._entry_pending = False
-            self._no_pos_ticks = 0
-            self._save_state()
-            return
-        if not self.orders:
-            return
+    def _handle_tp_fill(self, count: int):
+        """TP fills detected. Mark CLOSED, place next grid + TP."""
+        for i in range(count):
+            # Find first FILLED level with TP and mark CLOSED
+            for g in self.strategy.grid_levels:
+                if g.status == "FILLED" and g.tp_price > 0:
+                    g.tp_closed_price = g.tp_price
+                    g.status = "CLOSED"
+                    log.info(f"TP-{g.level} filled @ {g.tp_price:.0f}")
+                    break
 
-        # Cancel tracked
-        for oid in [self._grid_order_id, self._tp_order_id, self._poc_tp_order_id]:
-            if oid:
-                self.orders.cancel(oid)
-        self._grid_order_id = None
-        self._tp_order_id = None
-        self._poc_tp_order_id = None
+        self._robot_lots = self._broker_lots
 
-        # Close position
-        if self.strategy.has_position:
-            close_side = SELL if self.strategy.direction == 1 else BUY
-            self.orders.place_market(close_side, self.strategy.total_lots, f"CLOSE-{reason}")
+        # Cancel old TP, place new for last filled
+        self._cancel_tp()
+        self._place_single_tp()
+
+        # Place next PENDING grid (no re-use!)
+        self._cancel_grid()
+        self._place_next_grid()
+
+        # If no filled levels left but still has position (entry lot only)
+        if self.strategy.has_position and self.strategy.filled_levels == 0:
+            if not self._poc_tp_order_id and self.strategy.poc > 0:
+                poc = self.strategy.poc
+                side = SELL if self.strategy.direction == 1 else BUY
+                entry = self.strategy.entry_price
+                if (self.strategy.direction == 1 and poc > entry) or (self.strategy.direction == -1 and poc < entry):
+                    po = self.orders.place_limit(side, 1, poc, "POC-TP")
+                    if po:
+                        self._poc_tp_order_id = po.order_id
+                        log.info(f"POC-TP restored @ {poc:.0f}")
+
+        self._save_state()
+
+    def _handle_broker_close(self):
+        """Broker reports 0 lots. Close everything in robot state."""
+        if self.strategy.has_position and self.strategy.entry_price > 0:
+            pnl = self.strategy.calc_unrealized_pnl(self._current_price)
+            self.state.state.round_trips += 1
+            self.state.state.realized_pnl += pnl
+            dir_str = "LONG" if self.strategy.direction == 1 else "SHORT"
+            log.info(f"Round trip #{self.state.state.round_trips}: {dir_str} entry={self.strategy.entry_price:.0f} PnL={pnl:.0f} | Total: RT={self.state.state.round_trips} PnL={self.state.state.realized_pnl:.0f}")
 
         self.strategy.on_close_all()
-        self._entry_pending = False
-        self._no_pos_ticks = 0
+        self._cancel_all_orders()
+        self._reset_tracked()
+        self._last_close_time = datetime.now(MSK)
         self._save_state()
-        log.info(f"CloseAll: {reason}")
 
-    # === FILL PROCESSING ===
+    # === EXITS ===
 
-    def _paper_check_fills(self, price: float):
-        """Paper mode: check if price hit grid/TP levels."""
-        if not self._paper:
+    def _check_exits(self):
+        """Check exit conditions based on current state."""
+        price = self._current_price
+        if price <= 0:
             return
 
-        # Check grid fill
-        if self._grid_price > 0 and self._grid_level > 0:
-            if self.strategy.direction == 1 and price <= self._grid_price:
-                log.info(f"[PAPER] GRID-{self._grid_level} filled @ {self._grid_price:.0f}")
-                signals = self.strategy.on_grid_fill(self._grid_level, self._grid_price)
-                self._grid_price = 0
-                self._grid_level = 0
-                for sig in signals:
-                    if sig.action == "GRID":
-                        self._place_grid(sig)
-                    elif sig.action == "TP":
-                        self._place_tp(sig)
-                self._save_state()
-            elif self.strategy.direction == -1 and price >= self._grid_price:
-                log.info(f"[PAPER] GRID-{self._grid_level} filled @ {self._grid_price:.0f}")
-                signals = self.strategy.on_grid_fill(self._grid_level, self._grid_price)
-                self._grid_price = 0
-                self._grid_level = 0
-                for sig in signals:
-                    if sig.action == "GRID":
-                        self._place_grid(sig)
-                    elif sig.action == "TP":
-                        self._place_tp(sig)
-                self._save_state()
-
-        # Check TP fill
-        if self._tp_price > 0:
-            if self.strategy.direction == 1 and price >= self._tp_price:
-                log.info(f"[PAPER] TP filled @ {self._tp_price:.0f}")
-                self.strategy.on_tp_fill()
-                self._tp_price = 0
-                self._save_state()
-            elif self.strategy.direction == -1 and price <= self._tp_price:
-                log.info(f"[PAPER] TP filled @ {self._tp_price:.0f}")
-                self.strategy.on_tp_fill()
-                self._tp_price = 0
-                self._save_state()
-
-    def _process_fill(self, evt: TradeEvent):
-        """Match fill to tracked orders and process."""
-        oid = evt.order_id
-
-        # Entry fill
-        if self._entry_pending and not self.strategy.has_position:
-            self._execute_entry_fill(
-                BUY if evt.side == 1 else SELL,
-                evt.price,
-            )
+        # Risk check
+        pnl = self.strategy.calc_unrealized_pnl(price)
+        ok, msg = self.risk.check_pnl(pnl)
+        if not ok:
+            log.warning(f"Risk stop: {msg}")
+            self._close_all(msg)
             return
 
-        # Grid fill
-        if oid == self._grid_order_id:
-            log.info(f"Grid-{self._grid_level} fill @ {evt.price:.0f}")
-            self.strategy.on_grid_fill(self._grid_level, evt.price)
-            self._grid_order_id = None
+        # Strategy exit check
+        self.strategy.current_price = price
+        sig = self.strategy.check_exit()
+        if sig:
+            self._close_all(sig.tag)
 
-            # Place next grid + TP
-            grid_sig = self.strategy._next_grid_signal()
-            if grid_sig:
-                self._place_grid(grid_sig)
-            tp_sig = self.strategy._tp_signal(evt.price)
-            if tp_sig:
-                self._place_tp(tp_sig)
-            self._save_state()
+    def _close_all(self, reason: str):
+        """Close all positions — use BROKER lots, not robot state."""
+        # Get actual broker lots
+        pos = self._get_broker_position()
+        broker_lots = pos[1] if pos else 0
+        broker_dir = pos[0] if pos else self.strategy.direction
+
+        pnl = 0
+        if self.strategy.has_position and self.strategy.entry_price > 0:
+            pnl = self.strategy.calc_unrealized_pnl(self._current_price)
+            log.info(f"CLOSE ALL: {reason} | PnL={pnl:.0f} | broker_lots={broker_lots}")
+
+        if not self._paper and self.orders:
+            # Cancel all orders first
+            self._cancel_all_orders()
+            # Close position with BROKER lots
+            if broker_lots > 0:
+                close_side = SELL if broker_dir == 1 else BUY
+                self.orders.place_market(close_side, broker_lots, f"CLOSE-{reason}")
+
+        # Stats
+        if self.strategy.has_position and self.strategy.entry_price > 0:
+            self.state.state.round_trips += 1
+            self.state.state.realized_pnl += pnl
+            dir_str = "LONG" if self.strategy.direction == 1 else "SHORT"
+            log.info(f"Round trip #{self.state.state.round_trips}: {dir_str} entry={self.strategy.entry_price:.0f} PnL={pnl:.0f} | Total: RT={self.state.state.round_trips} PnL={self.state.state.realized_pnl:.0f}")
+
+        self.strategy.on_close_all()
+        self._reset_tracked()
+        self._last_close_time = datetime.now(MSK)
+        self._save_state()
+
+    # === CALLBACKS (price/VP only) ===
+
+    def _on_stale_streams(self):
+        log.warning("Reconnecting stale streams...")
+        self.feed.disconnect()
+        time.sleep(2)
+        self.feed.connect()
+        self._warmup_vp()
+        self.feed.subscribe_all()
+        log.info(f"Reconnected. VP: VAL={self.strategy.val:.0f} VAH={self.strategy.vah:.0f} POC={self.strategy.poc:.0f}")
+
+    def _on_quote(self, q: Quote):
+        """Quote callback — just update price."""
+        self._current_price = q.last
+        self.strategy.current_price = q.last
+
+        # Periodic price log
+        if (datetime.now(MSK) - self._last_price_log).seconds >= 30:
+            self._last_price_log = datetime.now(MSK)
+            log.info(f"Price: {q.last:.0f} | VP: VAL={self.strategy.val:.0f} VAH={self.strategy.vah:.0f} POC={self.strategy.poc:.0f}")
+
+    def _on_bar(self, b: Bar):
+        """Bar callback — update VP."""
+        if not self._running or self._mode != "running":
             return
 
-        # TP fill
-        if oid == self._tp_order_id:
-            log.info(f"TP fill @ {evt.price:.0f}")
-            self.strategy.on_tp_fill()
-            self._tp_order_id = None
-            self._save_state()
-            return
+        self.vp.add_bar(b.close, b.volume)
+        result = self.vp.calculate()
+        if result:
+            old_poc = self.strategy.poc
+            self.strategy.poc = result.poc
+            self.strategy.vah = result.vah
+            self.strategy.val = result.val
+            # Move POC-TP if POC changed
+            if (self.strategy.has_position and self._poc_tp_order_id
+                    and old_poc > 0 and abs(result.poc - old_poc) >= 1):
+                self._move_poc_tp(result.poc)
 
-        # POC-TP fill
-        if oid == self._poc_tp_order_id:
-            log.info(f"POC-TP fill @ {evt.price:.0f} → close all")
-            self._poc_tp_order_id = None
-            self._close_all("POC-TP filled")
+    def _move_poc_tp(self, new_poc: float):
+        if not self._poc_tp_order_id or not self.orders:
             return
+        d = self.strategy.direction
+        if d == 0:
+            return
+        if d == 1 and new_poc <= self.strategy.entry_price:
+            return
+        if d == -1 and new_poc >= self.strategy.entry_price:
+            return
+        self.orders.cancel(self._poc_tp_order_id)
+        side = SELL if d == 1 else BUY
+        po = self.orders.place_limit(side, 1, new_poc, "POC-TP")
+        if po:
+            self._poc_tp_order_id = po.order_id
+            log.info(f"POC-TP moved to {new_poc:.0f}")
 
-    # === BROKER SYNC ===
+    # === BROKER ===
 
     def _get_broker_position(self) -> tuple | None:
-        """Get broker position via gRPC. Returns (dir, lots, avg) or None."""
+        """Get broker position via gRPC. Returns (dir, lots, avg) or None on ERROR.
+        Returns (0, 0, 0.0) if successfully queried but no position."""
         if not self.fp:
             return None
         try:
@@ -494,55 +658,53 @@ class Robot:
                 GetAccountRequest(account_id=config.FINAM_ACCOUNT_ID),
             )
             if not account:
-                return None
+                return None  # error, not empty
             for pos in account.positions:
                 if config.SYMBOL in pos.symbol or config.TICKER in pos.symbol:
-                    qty = float(pos.quantity.value) if pos.quantity else 0
-                    avg = float(pos.average_price.value) if pos.average_price else 0
+                    qty = float(pos.quantity.value or '0') if pos.quantity else 0
+                    avg = float(pos.average_price.value or '0') if pos.average_price else 0
                     if qty > 0:
                         return (1, int(qty), avg)
                     elif qty < 0:
                         return (-1, int(abs(qty)), avg)
-            return None
+            return (0, 0, 0.0)  # successfully queried, no position
         except Exception as e:
             log.error(f"Broker position error: {e}")
-            return None
+            return None  # error — don't change state
 
-    def _sync_broker(self):
-        """Sync robot state with broker position."""
+    def _poll_broker_position(self):
+        """Initial broker position load."""
         pos = self._get_broker_position()
-        if pos and pos[1] > 0:
-            if not self.strategy.has_position:
-                self._restore_position(pos[0], pos[1], pos[2])
-            elif self.strategy.direction != pos[0]:
-                log.warning(f"Dir mismatch! Robot={self.strategy.direction} Broker={pos[0]}")
-                self._restore_position(pos[0], pos[1], pos[2])
-
-    def _restore_position(self, direction: int, lots: int, avg_price: float):
-        """Restore position from broker data."""
-        entry = avg_price if avg_price > 0 else self._last_entry_price if self._last_direction == direction else 0
-        if entry <= 0:
-            entry = self.strategy.current_price if self.strategy.current_price > 0 else 0
-        if entry <= 0:
-            log.warning("Cannot restore: no valid entry price")
-            return
-
-        filled = lots - 1
-        if filled < 0:
-            filled = 0
-        self.strategy.direction = direction
-        self.strategy.entry_price = entry
-        self.strategy.filled_levels = filled
-        self.strategy.entry_time = datetime.now(MSK)
-        self._last_entry_price = entry
-        self._last_direction = direction
-        self._save_state()
-        log.info(f"Restored: dir={direction} entry={entry:.0f} lots={lots}")
+        if pos:
+            self._broker_dir, self._broker_lots, self._broker_avg = pos
+        else:
+            self._broker_dir = 0
+            self._broker_lots = 0
+            self._broker_avg = 0.0
 
     # === HELPERS ===
 
+    def _cancel_all_orders(self):
+        """Cancel all tracked orders + fallback broker cancel."""
+        if not self.orders:
+            return
+        for oid in [self._grid_order_id, self._tp_order_id, self._poc_tp_order_id]:
+            if oid:
+                self.orders.cancel(oid)
+        try:
+            active = self.orders.get_active_orders()
+            for o in active:
+                if o.status == "ACTIVE":
+                    self.orders.cancel(o.order_id)
+        except:
+            pass
+
+    def _reset_tracked(self):
+        self._grid_order_id = None
+        self._tp_order_id = None
+        self._poc_tp_order_id = None
+
     def _warmup_vp(self):
-        """Load historical bars for VP warmup."""
         if not self.fp:
             return
         try:
@@ -577,19 +739,85 @@ class Robot:
         except Exception as e:
             log.error(f"Warmup error: {e}")
 
+    def _ensure_orders(self):
+        """Make sure grid, TP and POC-TP orders are always placed when we have position."""
+        if not self.strategy.has_position or not self.orders:
+            return
+
+        d = self.strategy.direction
+        entry = self.strategy.entry_price
+        step = self.params.step_base if hasattr(self, 'params') else 31
+        spread = self.params.spread_base if hasattr(self, 'params') else 31
+
+        # Count how many active orders we have at broker
+        active_ids = set()
+        try:
+            from FinamPy.grpc.orders_service_pb2 import OrdersRequest
+            resp = self.orders.fp.call_function(
+                self.orders.fp.orders_stub.GetOrders,
+                OrdersRequest(account_id=config.FINAM_ACCOUNT_ID)
+            )
+            for o in resp.orders:
+                if o.status == 1:  # NEW/active
+                    active_ids.add(o.order_id)
+        except:
+            pass  # on error, assume all our IDs are valid
+
+        # Check if our tracked orders are still active
+        if self._grid_order_id and self._grid_order_id not in active_ids:
+            log.info(f"Grid order {self._grid_order_id[:15]}.. no longer active, clearing")
+            self._grid_order_id = None
+        if self._tp_order_id and self._tp_order_id not in active_ids:
+            log.info(f"TP order {self._tp_order_id[:15]}.. no longer active, clearing")
+            self._tp_order_id = None
+        if self._poc_tp_order_id and self._poc_tp_order_id not in active_ids:
+            log.info(f"POC-TP order {self._poc_tp_order_id[:15]}.. no longer active, clearing")
+            self._poc_tp_order_id = None
+
+        # 1. Ensure ONE pending grid order is placed
+        if not self._grid_order_id:
+            for g in self.strategy.grid_levels:
+                if g.status == "PENDING":
+                    # Skip levels that would fill instantly
+                    if self.strategy.direction == -1 and g.price <= (self._current_price or 999999):
+                        continue  # SHORT grid SELL must be above current price
+                    if self.strategy.direction == 1 and g.price >= (self._current_price or 0):
+                        continue  # LONG grid BUY must be below current price
+                    grid_side = SELL if self.strategy.direction == -1 else BUY
+                    po = self.orders.place_limit(grid_side, 1, g.price, f"GRID-{g.level}")
+                    if po:
+                        self._grid_order_id = po.order_id
+                        log.info(f"Ensured grid: GRID-{g.level} @ {g.price:.0f}")
+                    break  # ONE at a time
+
+        # 2. Ensure TP exists for filled levels
+        has_filled_with_tp = any(g.status == "FILLED" and g.tp_price > 0 for g in self.strategy.grid_levels)
+        if has_filled_with_tp and not self._tp_order_id:
+            self._place_single_tp()
+            log.info("Ensured TP placed")
+
+        # 3. Ensure POC-TP for entry lot (only if no grid fills)
+        if self.strategy.filled_levels == 0 and not self._poc_tp_order_id and self.strategy.poc > 0:
+            poc = self.strategy.poc
+            side = SELL if d == 1 else BUY
+            if (d == 1 and poc > entry) or (d == -1 and poc < entry):
+                po = self.orders.place_limit(side, 1, poc, "POC-TP")
+                if po:
+                    self._poc_tp_order_id = po.order_id
+                    log.info(f"Ensured POC-TP @ {poc:.0f}")
+
     def _save_state(self):
-        """Persist current state."""
         s = self.state.state
         s.direction = self.strategy.direction
         s.entry_price = self.strategy.entry_price
         s.filled_levels = self.strategy.filled_levels
         s.entry_time = self.strategy.entry_time.isoformat() if self.strategy.entry_time else ""
+        s.grid_levels = self.strategy.serialize_grid()
         s.last_entry_price = self._last_entry_price
         s.last_direction = self._last_direction
         self.state.save()
 
     def get_status(self) -> dict:
-        """Get current status dict."""
         pnl = self.strategy.calc_unrealized_pnl(self.strategy.current_price) if self.strategy.has_position else 0
         return {
             "mode": self._mode,
@@ -599,53 +827,62 @@ class Robot:
             "entry_price": self.strategy.entry_price,
             "total_lots": self.strategy.total_lots,
             "filled_levels": self.strategy.filled_levels,
+            "grid_levels": len(self.strategy.grid_levels),
             "pnl": round(pnl, 1),
+            "round_trips": self.state.state.round_trips,
+            "realized_pnl": round(self.state.state.realized_pnl, 1),
             "poc": round(self.strategy.poc, 0),
             "vah": round(self.strategy.vah, 0),
             "val": round(self.strategy.val, 0),
             "current_price": self.strategy.current_price,
             "hold_minutes": self.strategy.hold_minutes,
             "connected": self.feed.connected,
-            "grid_order": self._grid_order_id,
-            "tp_order": self._tp_order_id,
-            "poc_tp_order": self._poc_tp_order_id,
         }
 
 
 # === ENTRY POINT ===
 
 def main():
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--paper", action="store_true")
+    args = parser.parse_args()
+
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s [%(name)s] %(levelname)s %(message)s",
         datefmt="%H:%M:%S",
     )
 
-    import argparse
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--paper", action="store_true", help="Paper trading (no real orders)")
-    args = parser.parse_args()
-
     robot = Robot(paper=args.paper)
 
     def shutdown(sig, frame):
         log.info("Shutdown signal received")
-        robot.stop(close_position=True)
+        robot.stop(close_position=False)
         sys.exit(0)
 
     signal.signal(signal.SIGINT, shutdown)
     signal.signal(signal.SIGTERM, shutdown)
 
+    import uvicorn
+    from api import app, set_robot
+    set_robot(robot)
+    api_thread = threading.Thread(
+        target=lambda: uvicorn.run(app, host="0.0.0.0", port=5070, log_level="warning"),
+        daemon=True,
+    )
+    api_thread.start()
+    log.info("API server started on port 5070")
+
     robot.start()
 
-    # Block until interrupted
     try:
         while robot._running:
             time.sleep(1)
     except KeyboardInterrupt:
         pass
 
-    robot.stop()
+    robot.stop(close_position=False)
 
 
 if __name__ == "__main__":
