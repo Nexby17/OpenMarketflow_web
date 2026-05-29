@@ -2,6 +2,7 @@
 import logging
 import os
 import sys
+import time
 
 os.chdir(os.path.dirname(os.path.abspath(__file__)))
 
@@ -50,10 +51,22 @@ app = FastAPI(title="Finam DataProvider", lifespan=lifespan)
 
 @app.get("/status")
 def get_status():
+    connected = the_provider is not None and the_provider.fp is not None
     return {
         "status": "ok",
+        "connected": connected,
         "cache": the_cache.get_status() if the_cache else {},
     }
+
+
+@app.get("/health")
+def get_health():
+    """Health check for heartbeat monitoring. Returns data freshness info."""
+    health = the_cache.get_health() if the_cache else {"healthy": False, "bars": {}, "quotes": {}}
+    connected = the_provider is not None and the_provider.fp is not None
+    health["connected"] = connected
+    health["overall"] = health["healthy"] and connected
+    return health
 
 
 @app.get("/quote/{symbol}")
@@ -62,6 +75,23 @@ def get_quote(symbol: str):
     if q is None:
         return {"error": "no data", "symbol": symbol}
     return q
+
+
+@app.post("/invalidate")
+def invalidate_cache(account: str = ""):
+    """Invalidate all caches for an account — force fresh fetch on next request."""
+    if the_provider:
+        with the_provider._pos_lock:
+            the_provider._pos_cache.clear()
+        with the_provider._orders_lock:
+            the_provider._orders_cache.clear()
+        with the_provider._account_lock:
+            the_provider._account_cache.clear()
+        # Also clear stale recent fills to prevent false detection
+        if the_cache:
+            with the_cache._lock:
+                the_cache.recent_fills.clear()
+    return {"invalidated": True, "account": account}
 
 
 @app.get("/candles/{symbol}")
@@ -81,8 +111,30 @@ def get_orders(account: str = ""):
 def get_position(account: str, ticker: str):
     pos = the_provider.get_positions(account, ticker) if the_provider else None
     if pos is None:
-        return {"error": "not found", "account": account, "ticker": ticker}
+        return {"ticker": ticker, "account": account, "dir": 0, "lots": 0,
+                "avg_price": 0.0, "current_price": 0.0}
     return pos
+
+
+@app.get("/recent-fills")
+def get_recent_fills(account: str = "", symbol: str = ""):
+    """Get recent fills from gRPC streaming (last 10 sec). For fill detection."""
+    if not the_cache:
+        return []
+    now = time.time()
+    # Prune expired fills on every read
+    with the_cache._lock:
+        the_cache.recent_fills = {k: v for k, v in the_cache.recent_fills.items() 
+                                   if now - v.get("fill_ts", 0) < 10}
+    fills = []
+    with the_cache._lock:
+        for fid, f in the_cache.recent_fills.items():
+            if account and f.get("account_id") != account:
+                continue
+            if symbol and f.get("symbol") != symbol:
+                continue
+            fills.append(f)
+    return fills
 
 
 @app.post("/subscribe/{symbol}")

@@ -121,6 +121,7 @@ public class VpScalpGridStrategy
         // Check signal only if no position
         if (_posDir != 0) return 0;
         if (double.IsNaN(VAL) || double.IsNaN(VAH) || double.IsNaN(POC)) return 0;
+        if (VAL <= 0 || VAH <= 0 || POC <= 0) return 0;
 
         if (close < VAL) return 1;   // LONG
         if (close > VAH) return -1;  // SHORT

@@ -25,3 +25,13 @@ appsettings.*.json
 *.pfx
 *.key
 credentials.json
+
+## Python
+__pycache__/
+*.pyc
+
+## Archive (deprecated)
+_archive/
+
+## State
+robot-state.json

@@ -395,6 +395,8 @@ class Robot:
         if ob_age > 3:
             return
         sig = self.strategy.check_entry(price)
+        if sig:
+            log.info(f"ENTRY SIGNAL: {sig.tag} @ {price:.0f} (bid={self._bid:.0f} ask={self._ask:.0f} ob_age={ob_age:.1f}s)")
         if not sig:
             return
 
@@ -795,12 +797,15 @@ class Robot:
             self._ob_time = datetime.now(MSK)
             mid = (best_bid + best_ask) / 2
 
-            # Update current price from OB (real market!)
             if mid != self._last_price:
                 self._last_price = mid
                 self._last_price_change = datetime.now(MSK)
             self._current_price = mid
             self.strategy.current_price = mid
+        else:
+            # No valid bid/ask — use quote price as fallback
+            if self._current_price <= 0:
+                log.warning(f"OB no bid/ask, rows={len(ob.rows)}")
 
     def _on_bar(self, b: Bar):
         """Bar callback — update VP."""

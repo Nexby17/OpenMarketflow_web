@@ -50,7 +50,16 @@ public class VpScalpGridLauncher : IDisposable
     private int _skipTicks = 0;
     private string? _pocOrderId;
     private double _pocPrice = 0;
-    private int _brokerSyncTick = 0;
+    private int _brokerSyncTick = 0; // unused after DP migration — kept for state file compat
+
+    // Entry lock: prevent duplicate entries while order is pending
+    private bool _entryPending = false;
+    private DateTime _entryPendingSince = DateTime.MinValue;
+    private static readonly TimeSpan _entryPendingTimeout = TimeSpan.FromSeconds(30);
+
+    // No-position confirmation counter (anti-flicker)
+    private int _noPositionTicks = 0;
+    private const int NO_POSITION_CONFIRM_TICKS = 4; // 4 ticks = 2 sec confirmation
 
     // Last entry для recovery
     private double _lastEntryPrice = 0;
@@ -121,11 +130,10 @@ public class VpScalpGridLauncher : IDisposable
                         Console.WriteLine($"[{_logPrefix}] Broker position restored: {bDir} entry={entry:F0} lots={bLots}");
                     }
 
-                    // Warmup candles — try DP first, fallback to REST
-                    bool warmupDone = false;
+                    // Warmup candles via DP
                     try
                     {
-                        var dpCandles = await _dpClient.GetCandlesAsync(_finamSymbol, "TIME_FRAME_M1", 120);
+                        var dpCandles = await _dpClient.GetCandlesAsync(_finamSymbol, "M1", 120);
                         if (dpCandles != null && dpCandles.Count > 0)
                         {
                             foreach (var c in dpCandles)
@@ -134,25 +142,9 @@ public class VpScalpGridLauncher : IDisposable
                                 _lastCandleTime = DateTime.Parse(c.Timestamp);
                             }
                             Console.WriteLine($"[{_logPrefix}] Warmup (DP): {dpCandles.Count} candles, VAL={_strategy.VAL:F0} VAH={_strategy.VAH:F0} POC={_strategy.POC:F0}");
-                            warmupDone = true;
                         }
                     }
-                    catch { }
-                    if (!warmupDone)
-                    {
-                        var bars = await rest.GetBarsAsync(_finamSymbol, "TIME_FRAME_M1",
-                            DateTime.UtcNow.AddMinutes(-120).ToString("o"),
-                            DateTime.UtcNow.ToString("o"));
-                        if (bars?.Bars != null)
-                        {
-                            foreach (var bar in bars.Bars)
-                            {
-                                _strategy.OnBar(double.Parse(bar.Close.Value), double.Parse(bar.Volume?.Value ?? "0"));
-                                _lastCandleTime = DateTime.Parse(bar.Timestamp);
-                            }
-                            Console.WriteLine($"[{_logPrefix}] Warmup (REST): {bars.Bars.Count} candles, VAL={_strategy.VAL:F0} VAH={_strategy.VAH:F0} POC={_strategy.POC:F0}");
-                        }
-                    }
+                    catch (Exception ex) { Console.WriteLine($"[{_logPrefix}] Warmup error: {ex.Message}"); }
                     SaveState();
                 }
                 catch (Exception ex) { Console.WriteLine($"[{_logPrefix}] Warmup error: {ex.Message}"); }
@@ -169,6 +161,7 @@ public class VpScalpGridLauncher : IDisposable
         _strategy.CurrentMode = VpScalpGridStrategy.Mode.Stopped;
         _mainTimer?.Dispose();
         _mainTimer = null;
+        await CancelTrackedOrdersAsync(); // Cancel tracked IDs first (may not be in REST yet)
         await CancelAllOrdersAsync();
         // Также снимаем ВСЕ ордера (не только VPSG)
         try
@@ -189,6 +182,7 @@ public class VpScalpGridLauncher : IDisposable
         _tpOrderId = null;
         _entryTpOrderId = null;
         _pocOrderId = null;
+        _entryPending = false; // Reset lock on stop
         _strategy.ClearPosition();
         SaveState();
     }
@@ -210,28 +204,17 @@ public class VpScalpGridLauncher : IDisposable
         Console.WriteLine($"[{_logPrefix}] ▶ Resumed");
     }
 
+    // Cached broker PnL (updated in MainLoop, read in GetStatus)
+    private double _cachedBrokerPnL = 0;
+
     public object GetStatus()
     {
-        // Get broker PnL
-        double brokerPnL = 0;
-        try
-        {
-            var rest = _broker.RestClient;
-            if (rest != null)
-            {
-                var account = rest.GetAccountAsync(_accountId).GetAwaiter().GetResult();
-                if (account?.Positions != null)
-                {
-                    foreach (var p in account.Positions)
-                    {
-                        var sym = p.Symbol?.Split('@')[0] ?? "";
-                        if (sym == _ticker)
-                            brokerPnL += p.UnrealizedProfit;
-                    }
-                }
-            }
-        }
-        catch { }
+        // Use cached broker PnL — no blocking REST calls
+        double brokerPnL = _cachedBrokerPnL;
+
+        // If we have position + current price, calc from strategy
+        if (_strategy.PositionDirection != 0 && _currentPrice > 0)
+            brokerPnL = _strategy.CalcUnrealizedPnL(_currentPrice);
 
         var (step, spread) = _strategy.GetAdaptedParams();
         return new
@@ -351,73 +334,60 @@ public class VpScalpGridLauncher : IDisposable
         }
 
         // === BROKER = SOURCE OF TRUTH ===
-        // Чередуем: чётный тик → позиция, нечётный → ордера
-        _brokerSyncTick++;
-        bool fetchPosition = _brokerSyncTick % 2 == 0;
-        bool fetchOrders = _brokerSyncTick % 2 == 1;
-
-        // Всегда запрашиваем и то и другое если нет позиции (для signal detection)
-        if (_strategy.PositionDirection == 0) { fetchPosition = true; fetchOrders = true; }
-
+        // Always fetch both position and orders (DP caches, no rate limit)
         int brokerDir = 0, brokerLots = 0;
         double brokerAvg = 0;
         List<(string id, double price, string comment, bool isActive)> brokerOrders = new();
 
-        if (fetchPosition)
-            (brokerDir, brokerLots, brokerAvg, _currentPrice) = await GetBrokerPositionAsync();
-        else
-        {
-            brokerDir = _strategy.PositionDirection;
-            brokerLots = _strategy.TotalLots;
-            brokerAvg = _lastEntryPrice;
-        }
-
-        if (fetchOrders)
-            brokerOrders = await GetBrokerOrdersAsync();
+        (brokerDir, brokerLots, brokerAvg, _currentPrice) = await GetBrokerPositionAsync();
+        brokerOrders = await GetBrokerOrdersAsync();
 
         bool brokerHasPos = brokerLots > 0 && brokerDir != -999;
         bool brokerError = brokerDir == -999;
         bool robotHasPos = _strategy.PositionDirection != 0;
 
+        // Reset no-position counter when broker confirms position
+        if (brokerHasPos) _noPositionTicks = 0;
+
         // API error → skip this tick entirely, don't touch anything
         if (brokerError && robotHasPos) return;
 
-        // 2. NO POSITION AT BROKER → flicker check, then reset
+        // 2. NO POSITION AT BROKER → confirmation check, then reset
         if (!brokerHasPos)
         {
             if (robotHasPos || _gridOrderId != null || _tpOrderId != null)
             {
-                // Flicker protection: recheck after 200ms
-                if (fetchPosition)
+                _noPositionTicks++;
+                if (_noPositionTicks < NO_POSITION_CONFIRM_TICKS)
                 {
-                    await Task.Delay(200);
-                    var (recheckDir, recheckLots, _, _) = await GetBrokerPositionAsync();
-                    if (recheckLots > 0 && recheckDir != -999)
-                    {
-                        Console.WriteLine($"[{_logPrefix}] Broker flicker — position exists ({recheckLots} lots)");
-                        return;
-                    }
-                    if (recheckDir == -999) return; // API still erroring, don't reset
-                }
-                Console.WriteLine($"[{_logPrefix}] No broker position → cancel all, reset");
-                await CancelAllOrdersAsync();
-                // Delay before reset — TP/grid fills may still be processing
-                await Task.Delay(1000);
-                var (finalDir, finalLots, _, _) = await GetBrokerPositionAsync();
-                if (finalLots > 0 && finalDir != -999)
-                {
-                    Console.WriteLine($"[{_logPrefix}] Late position appeared: {finalLots} lots dir={finalDir} — skip reset");
+                    // Not enough confirmations — wait
                     return;
                 }
+                // Enough confirmations — but do one final recheck
+                var (recheckDir, recheckLots, _, _) = await GetBrokerPositionAsync();
+                if (recheckLots > 0 && recheckDir != -999)
+                {
+                    Console.WriteLine($"[{_logPrefix}] Position reappeared ({recheckLots} lots) — aborting reset");
+                    _noPositionTicks = 0;
+                    return;
+                }
+                if (recheckDir == -999) return; // API error, don't reset
+                Console.WriteLine($"[{_logPrefix}] No broker position after {_noPositionTicks} checks → cancel tracked + REST orders, reset");
+                // Cancel TRACKED order IDs first (may not be in REST yet)
+                await CancelTrackedOrdersAsync();
+                // Then cancel any remaining VPSG orders from REST
+                await CancelAllOrdersAsync();
                 _gridOrderId = null;
                 _tpOrderId = null;
                 _entryTpOrderId = null;
                 _pocOrderId = null;
                 _barsSinceReset = 0;
+                _noPositionTicks = 0;
+                _entryPending = false; // Reset lock on position reset
                 _strategy.ClearPosition();
                 SaveState();
             }
-            else if (fetchOrders)
+            else if (brokerOrders.Count > 0)
             {
                 // Orphan cleanup
                 foreach (var o in brokerOrders)
@@ -448,7 +418,10 @@ public class VpScalpGridLauncher : IDisposable
             await CancelAllOrdersAsync();
             _gridOrderId = null;
             _tpOrderId = null;
-            double entry = _lastEntryPrice > 0 ? _lastEntryPrice : brokerAvg;
+            _entryTpOrderId = null;
+            // Use brokerAvg if available, else currentPrice — NOT lastEntryPrice from wrong direction
+            double entry = brokerAvg > 0 ? brokerAvg : _currentPrice;
+            if (entry <= 0) entry = _lastEntryPrice; // Last resort
             _strategy.RestorePosition(brokerDir, entry, brokerLots - 1, 0, 0, null);
             _lastEntryPrice = entry;
             _lastEntryDir = brokerDir;
@@ -487,27 +460,34 @@ public class VpScalpGridLauncher : IDisposable
             }
         }
 
+        // Update cached PnL for GetStatus()
+        if (brokerHasPos && _currentPrice > 0)
+            _cachedBrokerPnL = _strategy.CalcUnrealizedPnL(_currentPrice);
+        else
+            _cachedBrokerPnL = _strategy.RealizedPnL;
+
         // 5. DETECT FILLS — по tracked order IDs
-        if (fetchOrders && !string.IsNullOrEmpty(_gridOrderId) && _gridOrderId != "pending")
+        if (!string.IsNullOrEmpty(_gridOrderId) && _gridOrderId != "pending")
         {
             var gridActive = brokerOrders.Any(o => o.id == _gridOrderId && o.isActive);
             if (!gridActive)
             {
                 Console.WriteLine($"[{_logPrefix}] Grid fill: {_gridOrderId} @ {_gridPrice:F0} → broker lots={brokerLots}");
                 _strategy.OnGridFill(_gridLevel, _gridPrice);
-                // Cancel only tracked orders, not all
-                await CancelTrackedOrdersAsync();
+                // НЕ cancel TP — он может быть в процессе fill
+                // Cancel only grid order (already filled), keep TP alive
                 _gridOrderId = null;
-                _tpOrderId = null;
+                // Don't null _tpOrderId — it's still active
                 _pocOrderId = null;
                 await PlaceGridAsync();
-                if (_strategy.FilledLevels > 0) await PlaceTpAsync();
+                // Only place new TP if no TP is currently tracked
+                if (_strategy.FilledLevels > 0 && string.IsNullOrEmpty(_tpOrderId)) await PlaceTpAsync();
                 SaveState();
                 return;
             }
         }
 
-        if (fetchOrders && !string.IsNullOrEmpty(_tpOrderId) && _tpOrderId != "pending")
+        if (!string.IsNullOrEmpty(_tpOrderId) && _tpOrderId != "pending")
         {
             var tpActive = brokerOrders.Any(o => o.id == _tpOrderId && o.isActive);
             if (!tpActive)
@@ -554,7 +534,7 @@ public class VpScalpGridLauncher : IDisposable
 
             try
             {
-                var dpCandles = await _dpClient.GetCandlesAsync(_finamSymbol, "TIME_FRAME_M1", 10);
+                var dpCandles = await _dpClient.GetCandlesAsync(_finamSymbol, "M1", 10);
                 if (dpCandles != null && dpCandles.Count > 0)
                 {
                     candleData = dpCandles.Select(c => (
@@ -588,6 +568,15 @@ public class VpScalpGridLauncher : IDisposable
                 )).ToList();
             }
 
+            // Freshness check: if latest candle is > 3 min old, data is stale — skip trading
+            var latestTs = candleData[^1].ts;
+            var staleThreshold = DateTime.UtcNow.AddMinutes(-3);
+            if (latestTs < staleThreshold)
+            {
+                Console.WriteLine($"[{_logPrefix}] Candles stale: latest={latestTs:HH:mm:ss}, threshold={staleThreshold:HH:mm:ss} — skipping");
+                return;
+            }
+
             foreach (var bar in candleData)
             {
                 var ts = bar.ts;
@@ -617,9 +606,21 @@ public class VpScalpGridLauncher : IDisposable
                 _barsSinceReset++;
             }
 
-            // Check entry signal (only if no position)
+            // Check entry signal (only if no position AND no pending entry)
             if (_strategy.PositionDirection == 0 && _barsSinceReset >= MIN_BARS_AFTER_RESET)
             {
+                // Entry lock: don't send another order while one is pending
+                if (_entryPending)
+                {
+                    if (DateTime.UtcNow - _entryPendingSince > _entryPendingTimeout)
+                    {
+                        Console.WriteLine($"[{_logPrefix}] Entry pending timeout ({_entryPendingTimeout.TotalSeconds}s) — resetting lock");
+                        _entryPending = false;
+                    }
+                    // else: skip, wait for fill or timeout
+                }
+                else
+                {
                 double currentPrice = candleData.Last().close;
                 if (currentPrice > 0 && !double.IsNaN(_strategy.VAL) && !double.IsNaN(_strategy.VAH))
                 {
@@ -634,6 +635,7 @@ public class VpScalpGridLauncher : IDisposable
                         await ExecuteEntryAsync(-1, currentPrice);
                     }
                 }
+                } // end else (not entryPending)
             }
         }
         catch { }
@@ -644,42 +646,110 @@ public class VpScalpGridLauncher : IDisposable
     private async Task ExecuteEntryAsync(int direction, double signalPrice)
     {
         if (_strategy.PositionDirection != 0) return;
+        if (_entryPending) return; // Double guard
 
         // Entry guard: check broker before placing order
-        var (guardDir, guardLots, _, _) = await GetBrokerPositionAsync();
+        // Skip if we just closed position (waiting for broker to settle)
+        if (_skipTicks > 0) return;
+        var (guardDir, guardLots, guardAvg, _) = await GetBrokerPositionAsync();
         if (guardDir == -999) { Console.WriteLine($"[{_logPrefix}] Entry skipped: API error"); _skipTicks = 10; return; }
         if (guardLots > 0)
         {
             Console.WriteLine($"[{_logPrefix}] Entry guard: broker already has {guardLots} lots (dir={guardDir}), syncing");
-            double entry = signalPrice;
+            double entry = guardAvg > 0 ? guardAvg : signalPrice;
+            _entryPending = false; // Synced from broker, clear pending
             _strategy.OnEntry(guardDir, entry);
             _lastEntryPrice = entry;
             _lastEntryDir = guardDir;
             await PlaceGridAsync();
+            if (_strategy.TotalLots == 1) await PlaceEntryTpAsync(entry);
             SaveState();
             return;
         }
 
         string side = direction == 1 ? "SIDE_BUY" : "SIDE_SELL";
-        await PlaceMarketOrderAsync(side, 1, $"VPSG-ENTRY: {(direction == 1 ? "LONG" : "SHORT")}");
-        await Task.Delay(1000);
+        // Record time BEFORE sending order — we'll only accept fills newer than this
+        var orderSendTime = DateTime.UtcNow;
 
-        // Confirm fill via broker position (3 retries)
+        try
+        {
+            await PlaceMarketOrderAsync(side, 1, $"VPSG-ENTRY: {(direction == 1 ? "LONG" : "SHORT")}");
+            // Lock entry — prevent duplicates until fill confirmed or timeout
+            _entryPending = true;
+            _entryPendingSince = DateTime.UtcNow;
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[{_logPrefix}] Entry order FAILED: {ex.Message}");
+            _skipTicks = 10;
+            return;
+        }
+
         double fillPrice = 0;
         int fillDir = 0;
         int fillLots = 0;
-        for (int attempt = 0; attempt < 2; attempt++)
+
+        // orderSendTime is recorded BEFORE PlaceMarketOrder
+        double orderSendTs = ((DateTimeOffset)orderSendTime).ToUnixTimeSeconds();
+        Console.WriteLine($"[{_logPrefix}] Waiting for fill: orderSendTs={orderSendTs}");
+
+        // Wait up to 3 sec for fill — check recent-fills first (gRPC push, <100ms), then position
+        for (int attempt = 0; attempt < 15; attempt++)
         {
+            await Task.Delay(200);
+
+            // Method 1: gRPC recent-fills (fast, push-based)
+            try
+            {
+                var fills = await _dpClient.GetRecentFillsAsync(_accountId, _finamSymbol);
+                if (fills != null && fills.Count > 0)
+                {
+                    // Only accept fills with price near current market (sanity check)
+                    var freshFills = fills.Where(f => f.Price > 0 && Math.Abs(f.Price - signalPrice) < 1000).ToList();
+                    if (freshFills.Count > 0)
+                    {
+                        var f = freshFills[0];
+                        // Side: gRPC returns enum number as string (1=BUY, 2=SELL) or string name
+                        int sideVal;
+                        bool isBuy = f.Side == "1" || f.Side == "SIDE_BUY" ||
+                                     (int.TryParse(f.Side, out sideVal) && sideVal == 1);
+                        fillDir = isBuy ? 1 : -1;
+                        // Validate: fill direction must match expected direction
+                        if (fillDir != direction)
+                        {
+                            Console.WriteLine($"[{_logPrefix}] Recent-fill dir mismatch: expected {direction}, got {fillDir} (side={f.Side}). Waiting...");
+                            fillDir = 0;
+                        }
+                        else
+                        {
+                            fillLots = (int)f.Quantity;
+                            fillPrice = f.Price > 0 ? f.Price : signalPrice;
+                            Console.WriteLine($"[{_logPrefix}] Entry fill via recent-fills: {fillLots} lots dir={fillDir} @ {fillPrice:F0} ({(attempt + 1) * 200}ms)");
+                            break;
+                        }
+                    }
+                }
+            }
+            catch { }
+
+            // Method 2: Position change (slower, REST-based fallback)
             var (bDir, bLots, bAvg, _) = await GetBrokerPositionAsync();
-            if (bLots > 0) { fillDir = bDir; fillLots = bLots; fillPrice = bAvg > 0 ? bAvg : signalPrice; break; }
-            if (bDir == -999) break;
-            await Task.Delay(500);
+            if (bLots > 0 && bDir != -999)
+            {
+                fillDir = bDir;
+                fillLots = bLots;
+                fillPrice = bAvg > 0 ? bAvg : signalPrice;
+                Console.WriteLine($"[{_logPrefix}] Entry fill via position: {fillLots} lots dir={fillDir} @ {fillPrice:F0} ({(attempt + 1) * 200}ms)");
+                break;
+            }
         }
 
         if (fillPrice == 0 || fillLots == 0)
         {
-            Console.WriteLine($"[{_logPrefix}] Entry failed: no fill confirmed. Anti-spam 50 ticks.");
-            _skipTicks = 50; // ~10 sec cooldown
+            Console.WriteLine($"[{_logPrefix}] Entry pending: order sent but no fill yet. Waiting for broker sync.");
+            // Keep _entryPending = true — entry guard on next tick will skip signal
+            // Entry will be synced when broker position appears
+            _skipTicks = 3;
             return;
         }
 
@@ -707,6 +777,7 @@ public class VpScalpGridLauncher : IDisposable
             int lots = _strategy.TotalLots;
             await PlaceMarketOrderAsync(dir == 1 ? "SIDE_SELL" : "SIDE_BUY", lots, $"VPSG-CLOSE: {reason}");
         }
+        _entryPending = false; // Reset lock on close
         _strategy.ClearPosition();
         SaveState();
     }
@@ -842,76 +913,25 @@ public class VpScalpGridLauncher : IDisposable
     }
 
     /// <summary>
-    /// Place entry TP: 1 лот по entry ± spread. Guard: _entryTpOrderId must be null.
+    /// Entry-TP отключён: exit через MainLoop POC check (блок 4a).
     /// </summary>
     private async Task PlaceEntryTpAsync(double entryPrice)
     {
-        if (!string.IsNullOrEmpty(_entryTpOrderId)) return;
-
-        int dir = _strategy.PositionDirection;
-        if (dir == 0) return;
-
-        // Entry TP на POC, не на entry±spread
-        double poc = _strategy.CurrentPOC;
-        if (poc <= 0 || double.IsNaN(poc)) return;
-        
-        // Для LONG: POC должен быть выше entry, для SHORT — ниже
-        if (dir == 1 && poc <= entryPrice) return;
-        if (dir == -1 && poc >= entryPrice) return;
-        
-        _entryTpPrice = poc;
-        _entryTpOrderId = "pending";
-
-        string side = dir == 1 ? "SIDE_SELL" : "SIDE_BUY";
-        try
-        {
-            var rest = _broker.RestClient;
-            var result = await rest.PlaceOrderAsync(_accountId, new PlaceOrderRequest
-            {
-                Symbol = _finamSymbol,
-                Quantity = new() { Value = "1" },
-                Side = side,
-                OrderType = "ORDER_TYPE_LIMIT",
-                Price = new() { Value = ((int)_entryTpPrice).ToString() },
-                Comment = "VPSG-ENTRY-TP"
-            });
-            _entryTpOrderId = result?.OrderId ?? "";
-            Console.WriteLine($"[{_logPrefix}] Entry-TP (POC): {side} @ {_entryTpPrice:F0}");
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"[{_logPrefix}] Entry-TP error: {ex.Message}");
-            _entryTpOrderId = null;
-        }
+        // Disabled — MainLoop handles POC exit via current_price check
+        await Task.CompletedTask;
     }
-
     // === BROKER QUERIES ===
 
     private async Task<(int dir, int lots, double avgPrice, double currentPrice)> GetBrokerPositionAsync()
     {
         try
         {
-            // Primary: DataProvider gRPC GetAccount
+            // DataProvider only — DP has its own gRPC+REST fallback
             var pos = await _dpClient.GetPositionAsync(_accountId, _ticker);
-            if (pos != null)
+            if (pos != null && string.IsNullOrEmpty(pos.Error))
                 return (pos.Dir, pos.Lots, pos.AvgPrice, pos.CurrentPrice);
-
-            // Fallback: Finam REST
-            var rest = _broker.RestClient;
-            if (rest == null) return (0, 0, 0, 0);
-            var account = await rest.GetAccountAsync(_accountId);
-            if (account?.Positions == null) return (0, 0, 0, 0);
-            foreach (var p in account.Positions)
-            {
-                var sym = (p.Symbol ?? "").Split('@')[0];
-                if (sym != _ticker) continue;
-                long qty = p.EffectiveQuantity;
-                if (qty == 0) continue;
-                double avg = p.AveragePrice ?? 0;
-                double cp = p.CurrentPrice ?? 0;
-                int d = qty > 0 ? 1 : -1;
-                return (d, (int)Math.Abs(qty), avg, cp);
-            }
+            if (pos != null) Console.WriteLine($"[{_logPrefix}] GetBrokerPosition DP error: {pos.Error}");
+            return (0, 0, 0, 0); // DP error = no data, don't pollute Finam with extra requests
         }
         catch (Exception ex) { Console.WriteLine($"[{_logPrefix}] GetBrokerPosition error: {ex.Message}"); return (-999, 0, 0, 0); }
         return (0, 0, 0, 0);
@@ -922,63 +942,22 @@ public class VpScalpGridLauncher : IDisposable
         var result = new List<(string, double, string, bool)>();
         try
         {
-            // Primary: DataProviderClient
+            // DataProvider only — DP has unified REST cache
             var dpOrders = await _dpClient.GetOrdersAsync(_accountId);
-            if (dpOrders != null && dpOrders.Count > 0)
+            if (dpOrders != null)
             {
                 foreach (var o in dpOrders)
                 {
-                    bool isActive = o.Status == "ORDER_STATUS_NEW" || o.Status == "active";
+                    bool isActive = o.IsActive || o.Status == "ORDER_STATUS_NEW" || o.Status == "active";
                     result.Add((o.Id ?? "", o.Price, o.Comment ?? "", isActive));
                 }
-                return result;
-            }
-
-            // Fallback: Finam REST
-            Console.WriteLine($"[{_logPrefix}] GetBrokerOrders: DP empty, fallback to REST");
-            var rest = _broker.RestClient;
-            if (rest == null) return result;
-            var orders = await rest.GetOrdersAsync(_accountId);
-            if (orders?.Orders == null) return result;
-            foreach (var o in orders.Orders)
-            {
-                string comment = o.Details?.Comment ?? "";
-                double price = 0;
-                if (o.Details?.LimitPrice?.Value != null)
-                    price = double.Parse(o.Details.LimitPrice.Value);
-                bool isActive = o.Status == "ORDER_STATUS_NEW";
-                result.Add((o.OrderId, price, comment, isActive));
             }
         }
         catch { }
         return result;
     }
 
-    private async Task<double> GetLastTradePriceAsync(string side)
-    {
-        try
-        {
-            using var http = new HttpClient { BaseAddress = new Uri("http://localhost:5050") };
-            var resp = await http.GetAsync($"/api/trades?date={DateTime.UtcNow:yyyy-MM-dd}");
-            if (!resp.IsSuccessStatusCode) return 0;
-            var json = await resp.Content.ReadAsStringAsync();
-            var doc = System.Text.Json.JsonDocument.Parse(json);
-            var trades = doc.RootElement.TryGetProperty("trades", out var t) ? t : doc.RootElement;
-            double lastPrice = 0;
-            foreach (var tr in trades.EnumerateArray())
-            {
-                var s = tr.GetProperty("side").GetString() ?? "";
-                if (s.Contains(side))
-                {
-                    var p = tr.GetProperty("price");
-                    lastPrice = p.TryGetProperty("value", out var pv) ? pv.GetDouble() : p.GetDouble();
-                }
-            }
-            return lastPrice > 0 ? Math.Round(lastPrice) : 0;
-        }
-        catch { }
-        return 0;
-    }
+    // GetLastTradePriceAsync removed — dead code (not called anywhere)
 
     // === ORDER HELPERS ===
 
@@ -1067,13 +1046,20 @@ public class VpScalpGridLauncher : IDisposable
 
     private async Task RestoreFromBrokerAsync(int brokerDir, int brokerLots, double brokerAvg)
     {
-        // Guard: never restore with entry=0
-        if (brokerAvg <= 0 && (_lastEntryPrice <= 0 || _lastEntryDir != brokerDir))
+        // Determine entry price: best available source
+        double entry;
+        if (brokerAvg > 0)
+            entry = brokerAvg;
+        else if (_lastEntryPrice > 0 && _lastEntryDir == brokerDir)
+            entry = _lastEntryPrice; // Same direction, reuse last known entry
+        else if (_currentPrice > 0)
+            entry = _currentPrice; // Fallback to current price — imprecise but better than stuck
+        else
         {
-            Console.WriteLine($"[{_logPrefix}] Restore skipped: avg={brokerAvg:F0}, lastEntry={_lastEntryPrice:F0}, lastDir={_lastEntryDir}, brokerDir={brokerDir}");
+            Console.WriteLine($"[{_logPrefix}] Restore skipped: no valid entry source (avg={brokerAvg:F0}, lastEntry={_lastEntryPrice:F0}, price={_currentPrice:F0})");
             return;
         }
-        double entry = (_lastEntryPrice > 0 && _lastEntryDir == brokerDir) ? _lastEntryPrice : brokerAvg;
+
         int filled = brokerLots - 1;
         if (filled < 0) filled = 0;
         _strategy.RestorePosition(brokerDir, entry, filled, 0, 0, null);
@@ -1081,6 +1067,7 @@ public class VpScalpGridLauncher : IDisposable
         _lastEntryDir = brokerDir;
         _gridOrderId = null;
         _tpOrderId = null;
+        _entryTpOrderId = null;
         Console.WriteLine($"[{_logPrefix}] Restored from broker: {brokerDir} entry={entry:F0} lots={brokerLots}");
         // НЕ ставим grid/TP — MainLoop сделает на следующем тике
         SaveState();

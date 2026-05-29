@@ -1,46 +1,67 @@
-# ⚡ OpenMarketflow
+# OpenMarketflow — HedgeFund Trading System
 
-Алгоритмический торговый робот для Московской биржи с поддержкой усреднения.
+Automated trading system for MOEX futures (SI, RTS, MIX) with VP Scalp Grid strategy.
 
-## Требования
+## Architecture
 
-- **Windows 10/11** (WPF)
-- **.NET 8 SDK** — скачать: https://dotnet.microsoft.com/download/dotnet/8.0
+```
+┌──────────────┐     ┌──────────────────┐     ┌──────────────┐
+│  Web UI      │────▶│  Python Robot    │────▶│  Finam gRPC  │
+│  (port 5050) │◀────│  API (port 5070) │◀────│  REST API    │
+└──────────────┘     └──────────────────┘     └──────────────┘
+```
 
-## Быстрый старт
+- **Python Robot** — VP Scalp Grid strategy, gRPC feeds, FastAPI control
+- **C# Server** — static frontend hosting (OpenMarketflow UI)
+- **DataProvider** — candles, quotes, OI data cache (port 5060)
 
-### Вариант 1: Через Visual Studio
-1. Открыть `HedgeFund.sln`
-2. ПКМ на `HedgeFund.UI` → **Set as Startup Project**
-3. **F5** (или Ctrl+F5 без дебага)
+## Directories
 
-### Вариант 2: Из командной строки
+| Directory | Description |
+|-----------|-------------|
+| `robot/` | Python trading robot (main production code) |
+| `robot/tests/` | Unit tests |
+| `src/` | C# server (static hosting) |
+| `DataProvider/` | Market data cache service |
+| `backtest/src/` | Active backtest scripts |
+| `backtest/src/archive/` | Archived research scripts (209 files) |
+| `backtest/data/` | Historical CSV data |
+| `backtest/results/` | Backtest results & reports |
+| `arb/` | Arbitrage research scripts |
+| `scripts/` | Deployment & utility scripts |
+| `_archive/` | Deprecated (StockSharp, old prototypes) |
+| `docs/` | Architecture & API docs |
+
+## Robot: VP Scalp Grid
+
+**Instrument:** SiM6 (SI futures) | **TF:** M1 | **Account:** 1225953
+
+**Logic:**
+1. Entry: price < VAL → LONG, price > VAH → SHORT
+2. Grid: step=31pt against position, max 100 levels
+3. TP per level: grid_price ± 31pt
+4. Exit: 1 lot → POC hit, 2+ lots → PnL/lot ≥ 29₽, timeout disabled
+
+**Parameters (hot-update via API):**
+- max_levels=100, step_base=31, spread_base=31
+- min_profit_per_lot=29, commission=0.90₽ RT
+- vp_lookback=33, vp_bin_size=50, vp_va_percent=0.70
+- rv_adaptation=False
+
+## Quick Start
+
 ```bash
-cd src/UI
-dotnet run
+# Start robot
+systemctl start trading-robot
+
+# Check status
+curl localhost:5070/status
+
+# Web UI
+http://<server>:5050
 ```
 
-### Вариант 3: Собрать .exe
-```bash
-dotnet publish src/UI/HedgeFund.UI.csproj -c Release -r win-x64 --self-contained
-```
-Готовый `OpenMarketflow.exe` будет в:
-```
-src/UI/bin/Release/net8.0-windows/win-x64/publish/
-```
+## Git
 
-## Структура
-
-```
-src/
-├── Core/           # Ядро: модели, индикаторы, стратегии, усреднение
-├── Brokers/        # Коннекторы к брокерам (Альфа, Финам)
-└── UI/             # WPF интерфейс
-```
-
-## Возможности
-
-- 📊 Стратегии: Scalping (EMA+RSI), Breakout (BB+ATR), Spread Arbitrage
-- ⚖️ Усреднение: Фикс / Мартингейл, настраиваемый лимит
-- 🛡️ Стоп-лосс: вкл/выкл, в пунктах или %
-- 🌙 Тёмная тема
+- **Main repo:** github.com/Nexby17/OpenMarketflow.git
+- **Robot only:** github.com/n0iz3on3/Vp_sc_grid_mm_robot

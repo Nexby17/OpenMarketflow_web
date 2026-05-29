@@ -1,5 +1,6 @@
 """Thread-safe in-memory cache for candles, quotes, orders, positions."""
 import threading
+import time
 from collections import deque
 from datetime import datetime, timezone
 
@@ -34,8 +35,15 @@ class DataCache:
         # key: (account_id, symbol) -> dict with position info
         self.positions: dict[tuple[str, str], dict] = {}
 
+        # Recent fills (terminal orders) — kept for 10 sec for fill detection
+        self.recent_fills: dict[str, dict] = {}  # order_id -> {data, ts}
+
         # Active bar subscriptions: set of (symbol, tf_str)
         self.bar_subs: set[tuple[str, str]] = set()
+
+        # Last update timestamps for health monitoring
+        self._last_bar_ts: dict[tuple[str, str], float] = {}  # key -> time.time()
+        self._last_quote_ts: dict[str, float] = {}  # symbol -> time.time()
 
     # --- Candles ---
 
@@ -59,6 +67,7 @@ class DataCache:
                 q.append(d)
             else:
                 q[-1] = d  # update last bar
+            self._last_bar_ts[key] = time.time()
 
     def get_candles(self, symbol: str, tf_str: str, limit: int = 100) -> list[dict]:
         with self._lock:
@@ -84,6 +93,7 @@ class DataCache:
             }
             with self._lock:
                 self.quotes[symbol] = d
+                self._last_quote_ts[symbol] = time.time()
 
     def get_quote(self, symbol: str) -> dict | None:
         with self._lock:
@@ -117,8 +127,20 @@ class DataCache:
             terminal = {3, 5, 9, 13, 16, 19, 20, 22, 23, 28, 31}  # filled, cancelled, rejected, expired, failed, etc.
             if status_val in terminal:
                 self.orders.pop(oid, None)
+                # Keep fills for 10 sec so callers can detect them
+                if status_val == 3:  # filled
+                    # Only add to recent_fills if actually executed something
+                    exec_qty = _decimal_val(order_state.executed_quantity)
+                    if exec_qty > 0:
+                        d["fill_ts"] = time.time()
+                        self.recent_fills[oid] = d
             else:
                 self.orders[oid] = d
+
+        # Prune old fills (> 10 sec)
+        now = time.time()
+        with self._lock:
+            self.recent_fills = {k: v for k, v in self.recent_fills.items() if now - v.get("fill_ts", 0) < 10}
 
     def get_orders(self, account_id: str) -> list[dict]:
         with self._lock:
@@ -139,3 +161,26 @@ class DataCache:
                 "active_orders": len(self.orders),
                 "candle_keys": [f"{s}/{t}" for s, t in self.candles.keys()],
             }
+
+    def get_health(self) -> dict:
+        """Health check: how fresh is the data?"""
+        now = time.time()
+        with self._lock:
+            bar_health = {}
+            for key, ts in self._last_bar_ts.items():
+                sym, tf = key
+                bar_health[f"{sym}/{tf}"] = {
+                    "age_s": round(now - ts, 1),
+                    "stale": (now - ts) > 120,  # 2 min = stale
+                }
+            quote_health = {}
+            for sym, ts in self._last_quote_ts.items():
+                quote_health[sym] = {
+                    "age_s": round(now - ts, 1),
+                    "stale": (now - ts) > 30,  # 30 sec = stale
+                }
+        return {
+            "bars": bar_health,
+            "quotes": quote_health,
+            "healthy": not any(b["stale"] for b in bar_health.values()) and not any(q["stale"] for q in quote_health.values()),
+        }

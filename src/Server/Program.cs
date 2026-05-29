@@ -127,7 +127,10 @@ app.Use(async (HttpContext ctx, Func<Task> next) =>
         path.StartsWith("/api/logout") ||
         path.StartsWith("/strategy/") ||
         path.StartsWith("/api/active") ||
+        path.StartsWith("/connect-broker") || 
         path.StartsWith("/api/accounts") ||
+        path.StartsWith("/api/connectors") ||
+        path.StartsWith("/api/robot/service") ||
         path == "/health" ||
         path == "/test" ||
         path == "/heartbeat" ||
@@ -297,6 +300,36 @@ void AggregateCandleTick(double price, double volume, long ts)
 
 // === Health-check endpoint ===
 app.MapGet("/health", () => Results.Ok(new { status = "ok", time = DateTime.UtcNow })).AllowAnonymous();
+
+// === Python Robot systemd proxy ===
+app.MapPost("/api/robot/service/{action}", async (string action) =>
+{
+    try
+    {
+        var psi = new System.Diagnostics.ProcessStartInfo
+        {
+            FileName = "systemctl",
+            Arguments = action switch
+            {
+                "start" => "start trading-robot",
+                "stop" => "stop trading-robot",
+                _ => throw new ArgumentException($"Unknown action: {action}")
+            },
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false
+        };
+        var proc = System.Diagnostics.Process.Start(psi);
+        if (proc == null) return Results.Json(new { error = "Failed to start process" });
+        await proc.WaitForExitAsync();
+        var output = await proc.StandardOutput.ReadToEndAsync();
+        return Results.Json(new { action, exitCode = proc.ExitCode, output = output.Trim() });
+    }
+    catch (Exception ex)
+    {
+        return Results.Json(new { error = ex.Message });
+    }
+}).AllowAnonymous();
 
 // === Test endpoint (no auth) ===
 app.MapGet("/test", () => Results.Ok(new { message = "test endpoint works" })).AllowAnonymous();

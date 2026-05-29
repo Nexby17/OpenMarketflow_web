@@ -38,6 +38,7 @@ namespace HedgeFund.Brokers.Finam
         [JsonPropertyName("lots")] public int Lots { get; set; }
         [JsonPropertyName("avg_price")] public double AvgPrice { get; set; }
         [JsonPropertyName("current_price")] public double CurrentPrice { get; set; }
+        [JsonPropertyName("error")] public string Error { get; set; }
     }
 
     public class DataProviderOrder
@@ -50,6 +51,18 @@ namespace HedgeFund.Brokers.Finam
         [JsonPropertyName("quantity")] public double Quantity { get; set; }
         [JsonPropertyName("status")] public string Status { get; set; }
         [JsonPropertyName("comment")] public string Comment { get; set; }
+        [JsonPropertyName("is_active")] public bool IsActive { get; set; }
+    }
+
+    public class DataProviderFill
+    {
+        [JsonPropertyName("order_id")] public string OrderId { get; set; }
+        [JsonPropertyName("symbol")] public string Symbol { get; set; }
+        [JsonPropertyName("side")] public string Side { get; set; }
+        [JsonPropertyName("quantity")] public double Quantity { get; set; }
+        [JsonPropertyName("limit_price")] public double Price { get; set; }
+        [JsonPropertyName("account_id")] public string AccountId { get; set; }
+        [JsonPropertyName("fill_ts")] public double FillTs { get; set; }
     }
 
     /// <summary>
@@ -67,12 +80,18 @@ namespace HedgeFund.Brokers.Finam
 
         public DataProviderClient(string baseUrl = "http://localhost:5060")
         {
-            _http = new HttpClient
+            var handler = new SocketsHttpHandler
+            {
+                PooledConnectionLifetime = TimeSpan.FromMinutes(5),
+                PooledConnectionIdleTimeout = TimeSpan.FromMinutes(2),
+                MaxConnectionsPerServer = 4,
+                EnableMultipleHttp2Connections = true,
+            };
+            _http = new HttpClient(handler)
             {
                 BaseAddress = new Uri(baseUrl.TrimEnd('/') + "/"),
-                Timeout = TimeSpan.FromSeconds(2)
+                Timeout = TimeSpan.FromSeconds(3)
             };
-            _http.DefaultRequestHeaders.ConnectionClose = false;
         }
 
         public async Task<DataProviderQuote> GetQuoteAsync(string symbol)
@@ -100,8 +119,8 @@ namespace HedgeFund.Brokers.Finam
             {
                 var json = await _http.GetStringAsync($"position?account={account}&ticker={ticker}").ConfigureAwait(false);
                 var doc = JsonDocument.Parse(json);
-                if (doc.RootElement.TryGetProperty("error", out _))
-                    return null;
+                // "error" field means fetch failed — return position WITH error flag
+                // so caller can distinguish "no position" from "API error"
                 return JsonSerializer.Deserialize<DataProviderPosition>(json, _json);
             }
             catch (Exception ex)
@@ -129,6 +148,18 @@ namespace HedgeFund.Brokers.Finam
                 Console.WriteLine($"[DP] GET {path} error: {ex.Message}");
                 return null;
             }
+        }
+
+        public async Task<List<DataProviderFill>> GetRecentFillsAsync(string account = "", string symbol = "")
+        {
+            var path = $"recent-fills?account={account}&symbol={symbol}";
+            return await GetAsync<List<DataProviderFill>>(path).ConfigureAwait(false);
+        }
+
+        public async Task InvalidateCacheAsync(string accountId)
+        {
+            try { await _http.PostAsync($"invalidate?account={accountId}", null).ConfigureAwait(false); }
+            catch { }
         }
 
         public void Dispose() => _http.Dispose();
