@@ -332,6 +332,8 @@ class Robot:
             return
         if self._close_pending:
             return  # Don't enter while close is pending
+        if self._last_close_time and (datetime.now(MSK) - self._last_close_time).total_seconds() < 3:
+            return  # Don't re-enter within 3s after close
         sig = self.strategy.check_entry(price)
         if not sig:
             return
