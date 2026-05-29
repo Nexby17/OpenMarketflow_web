@@ -476,7 +476,7 @@ class Robot:
         spread = self.strategy.params.spread_base
 
         for i in range(count):
-            # The pending grid price is what filled
+            # Calculate grid price based on current fill count
             fp = self._current_grid_price
             if fp <= 0:
                 log.warning("No pending grid price for fill")
@@ -484,6 +484,13 @@ class Robot:
             self._filled_prices.append(fp)
             self._filled_prices.sort()
             log.info(f"Grid filled @ {fp:.0f} (filled_prices: {self._filled_prices})")
+
+            # Update _current_grid_price for next fill in batch
+            if d == 1:
+                next_g = self._filled_prices[0] - step
+            else:
+                next_g = self._filled_prices[-1] + step
+            self._current_grid_price = next_g
 
         # Cancel old TP
         self._cancel_tp()
@@ -577,18 +584,14 @@ class Robot:
                 grid_price = self._filled_prices[-1] + step
 
             # TP
-            if d == 1 and tp_price > entry:
-                self._current_tp_price = tp_price
-                po = self.orders.place_limit(SELL, 1, tp_price, "TP")
-                if po:
-                    self._tp_order_id = po.order_id
-                    log.info(f"TP placed @ {tp_price:.0f}")
-            elif d == -1 and tp_price < entry:
-                self._current_tp_price = tp_price
-                po = self.orders.place_limit(BUY, 1, tp_price, "TP")
-                if po:
-                    self._tp_order_id = po.order_id
-                    log.info(f"TP placed @ {tp_price:.0f}")
+            self._current_tp_price = tp_price
+            tp_side = SELL if d == 1 else BUY
+            po = self.orders.place_limit(tp_side, 1, tp_price, "TP")
+            if po:
+                self._tp_order_id = po.order_id
+                log.info(f"TP placed @ {tp_price:.0f}")
+            else:
+                log.warning(f"TP place FAILED @ {tp_price:.0f}")
 
             # Grid (one step back — re-use!)
             if d == 1 and grid_price < self.strategy.entry_price:
