@@ -884,10 +884,7 @@ class Robot:
 
             finam_tf, _, _ = self.fp.timeframe_to_finam_timeframe(config.TIMEFRAME)
             now = datetime.now(timezone.utc)
-            start = now - timedelta(hours=3)
-
-            # Use smaller bin_size for warmup if range is narrow
-            warmup_vp = VolumeProfile(lookback=config.WARMUP_BARS, bin_size=min(self.vp.bin_size, 25), va_percent=self.vp.va_percent)
+            start = now - timedelta(hours=24)
 
             resp = self.fp.call_function(
                 self.fp.marketdata_stub.Bars,
@@ -901,9 +898,9 @@ class Robot:
                 ),
             )
             if resp and resp.bars:
-                for bar in resp.bars[-config.WARMUP_BARS:]:
-                    warmup_vp.add_bar(float(bar.close.value), float(bar.volume.value))
-                result = warmup_vp.calculate()
+                for bar in resp.bars:
+                    self.vp.add_bar(float(bar.close.value), float(bar.volume.value))
+                result = self.vp.calculate()
                 if result:
                     self.strategy.poc = result.poc
                     self.strategy.vah = result.vah
