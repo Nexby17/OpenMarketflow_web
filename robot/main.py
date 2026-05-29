@@ -496,22 +496,13 @@ class Robot:
             else:
                 tp_price = self._filled_prices[-1] - spread
 
-            # Guard: TP must be profitable
-            if d == 1 and tp_price > entry:
-                self._current_tp_price = tp_price
-                tp_side = SELL
-                po = self.orders.place_limit(tp_side, 1, tp_price, f"TP")
-                if po:
-                    self._tp_order_id = po.order_id
-                    log.info(f"TP placed @ {tp_price:.0f}")
-
-            elif d == -1 and tp_price < entry:
-                self._current_tp_price = tp_price
-                tp_side = BUY
-                po = self.orders.place_limit(tp_side, 1, tp_price, f"TP")
-                if po:
-                    self._tp_order_id = po.order_id
-                    log.info(f"TP placed @ {tp_price:.0f}")
+            # TP always profitable with positive spread
+            self._current_tp_price = tp_price
+            tp_side = SELL if d == 1 else BUY
+            po = self.orders.place_limit(tp_side, 1, tp_price, f"TP")
+            if po:
+                self._tp_order_id = po.order_id
+                log.info(f"TP placed @ {tp_price:.0f}")
 
             # Next grid = one step deeper
             if d == 1:
