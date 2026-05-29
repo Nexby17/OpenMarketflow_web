@@ -390,11 +390,13 @@ class Robot:
             return
         if self._close_pending:
             return  # Don't enter while close is pending
-        # Don't enter if order book is stale (>5s) or empty
+        # Don't enter if order book is stale (>3s) or empty
         if self._bid <= 0 or self._ask <= 0:
+            log.warning(f"Entry blocked: no bid/ask (bid={self._bid:.0f} ask={self._ask:.0f})")
             return
         ob_age = (datetime.now(MSK) - self._ob_time).total_seconds()
         if ob_age > 3:
+            log.warning(f"Entry blocked: OB stale ({ob_age:.1f}s)")
             return
         sig = self.strategy.check_entry(price)
         if sig:
