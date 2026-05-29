@@ -396,7 +396,7 @@ class Robot:
             return
         sig = self.strategy.check_entry(price)
         if sig:
-            log.info(f"ENTRY SIGNAL: {sig.tag} @ {price:.0f} (bid={self._bid:.0f} ask={self._ask:.0f} ob_age={ob_age:.1f}s)")
+            log.info(f"ENTRY SIGNAL: {sig.tag} @ {price:.0f}")
         if not sig:
             return
 
