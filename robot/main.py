@@ -28,7 +28,7 @@ class Robot:
         # gRPC only for warmup
         self.fp: FinamPy | None = None
         self.feed = Feed()
-        self.vp = VolumeProfile(lookback=33, bin_size=50, va_percent=0.70)
+        self.vp = VolumeProfile(lookback=self.strategy.params.vp_lookback, bin_size=50, va_percent=0.70)
         self.strategy = Strategy(StrategyParams())
         self.orders: OrderManager | None = None
         self.state = StateManager("/tmp/robot-state.json")
@@ -905,7 +905,7 @@ class Robot:
             )
             if resp and resp.bars:
                 all_bars = list(resp.bars)
-                warmup_vp = VolumeProfile(lookback=len(all_bars), bin_size=50, va_percent=0.70)
+                warmup_vp = VolumeProfile(lookback=len(all_bars), bin_size=self.vp.bin_size, va_percent=self.vp.va_percent)
                 for bar in all_bars:
                     warmup_vp.add_bar(float(bar.close.value), float(bar.volume.value))
                 result = warmup_vp.calculate()
@@ -972,7 +972,9 @@ class Robot:
                 if 'spread_base' in cfg: p.spread_base = cfg['spread_base']
                 if 'max_hold_minutes' in cfg: p.max_hold_minutes = cfg['max_hold_minutes']
                 if 'min_profit_per_lot' in cfg: p.min_profit_per_lot = cfg['min_profit_per_lot']
-                if 'vp_lookback' in cfg: p.vp_lookback = cfg['vp_lookback']
+                if 'vp_lookback' in cfg:
+                    p.vp_lookback = cfg['vp_lookback']
+                    self.vp = VolumeProfile(lookback=p.vp_lookback, bin_size=self.vp.bin_size, va_percent=self.vp.va_percent)
                 if 'vp_bin_size' in cfg: p.vp_bin_size = cfg['vp_bin_size']
                 if 'vp_va_percent' in cfg: p.vp_va_percent = cfg['vp_va_percent']
                 if 'rv_adaptation' in cfg: p.rv_adaptation = cfg['rv_adaptation']
