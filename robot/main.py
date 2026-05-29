@@ -390,14 +390,15 @@ class Robot:
             return
         if self._close_pending:
             return  # Don't enter while close is pending
-        # Don't enter if order book is stale (>3s) or empty
+        # OB guard — only block if OB never received (bid=0 AND ask=0 AND no OB updates)
+        # If OB received but stale, allow entry (quote price is recent)
+        ob_age = (datetime.now(MSK) - self._ob_time).total_seconds() if self._bid > 0 or self._ask > 0 else 999
         if self._bid <= 0 or self._ask <= 0:
-            log.warning(f"Entry blocked: no bid/ask (bid={self._bid:.0f} ask={self._ask:.0f})")
-            return
-        ob_age = (datetime.now(MSK) - self._ob_time).total_seconds()
-        if ob_age > 3:
-            log.warning(f"Entry blocked: OB stale ({ob_age:.1f}s)")
-            return
+            # OB never received — check if quote price is fresh
+            price_age = (datetime.now(MSK) - self._last_price_change).total_seconds()
+            if price_age > 30:
+                log.warning(f"Entry blocked: no OB and stale quote ({price_age:.0f}s)")
+                return
         sig = self.strategy.check_entry(price)
         if sig:
             log.info(f"ENTRY SIGNAL: {sig.tag} @ {price:.0f} (bid={self._bid:.0f} ask={self._ask:.0f} ob_age={ob_age:.1f}s)")

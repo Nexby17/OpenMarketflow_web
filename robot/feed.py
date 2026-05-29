@@ -335,7 +335,9 @@ class Feed:
                 ob_list = ob_response.order_book
                 if not ob_list:
                     return
+                total_rows = 0
                 for ob in ob_list:
+                    total_rows += len(ob.rows)
                     for r in ob.rows:
                         p = r.price.value if hasattr(r.price, 'value') else str(r.price)
                         price = round(float(p), 2) if p else 0
@@ -374,6 +376,9 @@ class Feed:
                         rows=rows,
                         timestamp=datetime.now(),
                     ))
+                    if not hasattr(self, '_ob_log_ts') or (datetime.now() - self._ob_log_ts).seconds >= 30:
+                        self._ob_log_ts = datetime.now()
+                        log.info(f"OB snapshot: {len(self._ob_bids)} bids, {len(self._ob_asks)} asks")
             except Exception as e:
                 log.error(f"OrderBook parse error: {e}")
 
