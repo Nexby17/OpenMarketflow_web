@@ -5,7 +5,7 @@ import signal
 import sys
 import time
 import threading
-import time
+import requests
 from datetime import datetime, timezone, timedelta
 
 from FinamPy import FinamPy
@@ -188,6 +188,10 @@ class Robot:
             self._save_state()
 
         self._running = True
+
+        # Validate quote price against MOEX before starting
+        self._validate_price()
+
         self._initialized = True  # Allow tick processing after full startup
         self._mode = "running"
         self.state.state.mode = "running"
@@ -902,6 +906,44 @@ class Robot:
         except Exception as e:
             log.error(f"Warmup error: {e}")
 
+
+    def _get_moex_price(self) -> float:
+        """Get last price from MOEX REST API."""
+        try:
+            url = f"https://iss.moex.com/iss/engines/futures/markets/forts/securities.json?iss.only=marketdata&securities={config.TICKER}"
+            r = requests.get(url, timeout=5)
+            data = r.json()
+            cols = data['marketdata']['columns']
+            for vals in data['marketdata']['data']:
+                d = dict(zip(cols, vals))
+                if d.get('SECID') == config.TICKER:
+                    last = d.get('LAST')
+                    if last and float(last) > 0:
+                        return float(last)
+        except Exception as e:
+            log.warning(f"MOEX price error: {e}")
+        return 0
+
+    def _validate_price(self):
+        """Wait for quote price to match MOEX (reject stale 71979)."""
+        moex_price = self._get_moex_price()
+        if moex_price <= 0:
+            log.warning("MOEX price unavailable, skipping validation")
+            return
+
+        log.info(f"MOEX price: {moex_price:.0f}, waiting for quote to match...")
+        for i in range(30):  # Wait up to 30 seconds
+            if self._current_price > 0 and abs(self._current_price - moex_price) < 200:
+                log.info(f"Quote price validated: {self._current_price:.0f} (MOEX={moex_price:.0f})")
+                return
+            time.sleep(1)
+
+        # Price still stale — force MOEX price
+        log.warning(f"Quote price stale ({self._current_price:.0f}), using MOEX {moex_price:.0f}")
+        self._current_price = moex_price
+        self.strategy.current_price = moex_price
+        self._last_price = moex_price
+        self._last_price_change = datetime.now(MSK)
 
     def _load_config(self):
         """Load config from /tmp/robot-config.json if exists."""
