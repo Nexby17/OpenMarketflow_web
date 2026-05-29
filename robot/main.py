@@ -64,7 +64,7 @@ class Robot:
         # Price log
         self._last_price_log: datetime = datetime.now(MSK) - timedelta(minutes=1)
         self._last_price: float = 0
-        self._last_price_change: datetime = datetime.now(MSK)
+        self._last_price_change: datetime = datetime.now(MSK) - timedelta(minutes=5)
 
         # Zigzag grid state
         self._filled_prices: list[float] = []  # grid fill prices (sorted)
@@ -297,11 +297,6 @@ class Robot:
             return
 
         self._broker_dir, self._broker_lots, self._broker_avg = pos
-
-        # Track frozen price
-        if self._current_price != self._last_price and self._current_price > 0:
-            self._last_price = self._current_price
-            self._last_price_change = datetime.now(MSK)
 
         cur_dir = self._broker_dir
         cur_lots = self._broker_lots
@@ -758,9 +753,13 @@ class Robot:
         log.info(f"Reconnected. VP: VAL={self.strategy.val:.0f} VAH={self.strategy.vah:.0f} POC={self.strategy.poc:.0f}")
 
     def _on_quote(self, q: Quote):
-        """Quote callback — just update price."""
-        self._current_price = q.last
-        self.strategy.current_price = q.last
+        """Quote callback — update price and track frozen detection."""
+        new_price = q.last
+        if new_price != self._last_price and new_price > 0:
+            self._last_price = new_price
+            self._last_price_change = datetime.now(MSK)
+        self._current_price = new_price
+        self.strategy.current_price = new_price
 
         # Periodic price log
         if (datetime.now(MSK) - self._last_price_log).seconds >= 30:
