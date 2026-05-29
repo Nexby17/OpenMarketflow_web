@@ -50,6 +50,7 @@ class Robot:
         # Entry pending
         self._entry_pending = False
         self._entry_pending_dir: int = 0
+        self._entry_pending_price: float = 0  # price at entry signal time
         self._entry_pending_since: datetime | None = None
 
         # Close cooldown
@@ -327,9 +328,11 @@ class Robot:
         if not self.strategy.has_position:
             # Robot doesn't know about position — restore from broker
             if self._entry_pending and self._entry_pending_dir == cur_dir:
-                # This is our entry fill
-                entry_price = self._broker_avg if self._broker_avg > 0 else self._current_price
-                log.info(f"Entry fill detected: dir={cur_dir} lots={cur_lots} @ {entry_price:.0f}")
+                # This is our entry fill — use entry_pending_price (price at signal time)
+                entry_price = self._entry_pending_price if self._entry_pending_price > 0 else self._broker_avg
+                if entry_price <= 0:
+                    entry_price = self._current_price
+                log.info(f"Entry fill detected: dir={cur_dir} lots={cur_lots} @ {entry_price:.0f} (broker_avg={self._broker_avg:.0f})")
                 self._handle_entry_fill(cur_dir, entry_price, cur_lots)
             elif self._close_pending:
                 # Close sent but broker still shows position — wait
@@ -342,7 +345,8 @@ class Robot:
             else:
                 # Orphan position — restore
                 log.warning(f"Orphan position: dir={cur_dir} lots={cur_lots} — restoring")
-                self._handle_entry_fill(cur_dir, self._broker_avg if self._broker_avg > 0 else self._current_price, cur_lots)
+                ep = self._broker_avg if self._broker_avg > 0 else self._current_price
+                self._handle_entry_fill(cur_dir, ep, cur_lots)
             return
 
         # === Direction mismatch ===
@@ -400,6 +404,7 @@ class Robot:
         if po:
             self._entry_pending = True
             self._entry_pending_dir = sig.direction
+            self._entry_pending_price = price  # remember signal price
             self._entry_pending_since = datetime.now(MSK)
             log.info(f"Entry order sent: {tag} @ market")
         else:
