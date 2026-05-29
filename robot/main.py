@@ -506,13 +506,13 @@ class Robot:
                 grid_price = self._filled_prices[-1] + step
 
             # Guard: grid must not fill instantly
-            if d == 1 and grid_price < self._current_price:
+            if d == 1 and grid_price < self.strategy.entry_price:
                 self._current_grid_price = grid_price
                 po = self.orders.place_limit(BUY, 1, grid_price, f"GRID")
                 if po:
                     self._grid_order_id = po.order_id
                     log.info(f"GRID placed @ {grid_price:.0f}")
-            elif d == -1 and grid_price > self._current_price:
+            elif d == -1 and grid_price > self.strategy.entry_price:
                 self._current_grid_price = grid_price
                 po = self.orders.place_limit(SELL, 1, grid_price, f"GRID")
                 if po:
@@ -585,13 +585,13 @@ class Robot:
                     log.info(f"TP placed @ {tp_price:.0f}")
 
             # Grid (one step back — re-use!)
-            if d == 1 and grid_price < self._current_price:
+            if d == 1 and grid_price < self.strategy.entry_price:
                 self._current_grid_price = grid_price
                 po = self.orders.place_limit(BUY, 1, grid_price, "GRID")
                 if po:
                     self._grid_order_id = po.order_id
                     log.info(f"GRID placed @ {grid_price:.0f}")
-            elif d == -1 and grid_price > self._current_price:
+            elif d == -1 and grid_price > self.strategy.entry_price:
                 self._current_grid_price = grid_price
                 po = self.orders.place_limit(SELL, 1, grid_price, "GRID")
                 if po:
@@ -621,13 +621,13 @@ class Robot:
             else:
                 grid_price = entry + step
 
-            if d == 1 and grid_price < self._current_price:
+            if d == 1 and grid_price < self.strategy.entry_price:
                 self._current_grid_price = grid_price
                 po = self.orders.place_limit(BUY, 1, grid_price, "GRID")
                 if po:
                     self._grid_order_id = po.order_id
                     log.info(f"GRID-1 re-placed @ {grid_price:.0f}")
-            elif d == -1 and grid_price > self._current_price:
+            elif d == -1 and grid_price > self.strategy.entry_price:
                 self._current_grid_price = grid_price
                 po = self.orders.place_limit(SELL, 1, grid_price, "GRID")
                 if po:
