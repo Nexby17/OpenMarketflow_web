@@ -55,6 +55,7 @@ class Robot:
 
         # Close cooldown
         self._last_close_time: datetime | None = None
+        self._close_pending: bool = False
 
         # Last entry for recovery
         self._last_entry_price = 0.0
@@ -272,9 +273,13 @@ class Robot:
                 entry_price = self._broker_avg if self._broker_avg > 0 else self._current_price
                 log.info(f"Entry fill detected: dir={cur_dir} lots={cur_lots} @ {entry_price:.0f}")
                 self._handle_entry_fill(cur_dir, entry_price, cur_lots)
-            elif self._last_close_time and (datetime.now(MSK) - self._last_close_time).total_seconds() < 1:
-                # Just closed — ignore ghost position
-                log.info(f"Ignoring ghost position (closed {self._last_close_time.strftime('%H:%M:%S')}): dir={cur_dir} lots={cur_lots}")
+            elif self._close_pending:
+                # Close sent but broker still shows position — wait
+                if cur_lots == 0:
+                    self._close_pending = False
+                    log.info("Close confirmed by broker (lots=0)")
+                else:
+                    log.info(f"Waiting for close confirm: broker_lots={cur_lots}")
                 return
             else:
                 # Orphan position — restore
@@ -322,6 +327,8 @@ class Robot:
         price = self._current_price
         if price <= 0:
             return
+        if self._close_pending:
+            return  # Don't enter while close is pending
         sig = self.strategy.check_entry(price)
         if not sig:
             return
@@ -534,6 +541,7 @@ class Robot:
         self._cancel_all_orders()
         self._reset_tracked()
         self._last_close_time = datetime.now(MSK)
+        self._close_pending = True
         self._save_state()
 
     # === EXITS ===
@@ -588,6 +596,7 @@ class Robot:
         self.strategy.on_close_all()
         self._reset_tracked()
         self._last_close_time = datetime.now(MSK)
+        self._close_pending = True
         self._save_state()
 
     # === CALLBACKS (price/VP only) ===
