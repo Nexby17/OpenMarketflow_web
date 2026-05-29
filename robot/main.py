@@ -904,9 +904,11 @@ class Robot:
                 ),
             )
             if resp and resp.bars:
+                # Use wide lookback for warmup to get enough range
+                warmup_vp = VolumeProfile(lookback=200, bin_size=50, va_percent=0.70)
                 for bar in resp.bars:
-                    self.vp.add_bar(float(bar.close.value), float(bar.volume.value))
-                result = self.vp.calculate()
+                    warmup_vp.add_bar(float(bar.close.value), float(bar.volume.value))
+                result = warmup_vp.calculate()
                 if result:
                     self.strategy.poc = result.poc
                     self.strategy.vah = result.vah
