@@ -5,14 +5,13 @@ import signal
 import sys
 import time
 import threading
-import threading
 import time
 from datetime import datetime, timezone, timedelta
 
 from FinamPy import FinamPy
 
 import config
-from feed import Feed, Quote, Bar, OrderEvent, TradeEvent, OrderBookUpdate
+from feed import Feed, Quote, Bar, OrderEvent, TradeEvent
 from vp import VolumeProfile
 from strategy import Strategy, StrategyParams, BUY, SELL
 from orders import OrderManager, PlacedOrder
@@ -73,11 +72,6 @@ class Robot:
         self._current_grid_price: float = 0  # pending grid price
         self._current_tp_price: float = 0  # active TP price
 
-        # Order book state
-        self._bid: float = 0
-        self._ask: float = 0
-        self._ob_time: datetime = datetime.now(MSK) - timedelta(minutes=5)  # stale on start
-
         # Current price (from quotes)
         self._current_price: float = 0.0
 
@@ -118,7 +112,6 @@ class Robot:
         # Wire callbacks (only for price/VP, NOT for trade logic)
         self.feed.on_quote = self._on_quote
         self.feed.on_bar = self._on_bar
-        self.feed.on_orderbook = self._on_orderbook
         self.feed._on_stale = self._on_stale_streams
         # Ignore gRPC order/trade events — broker polling is our truth
         self.feed.on_order = lambda evt: None
@@ -766,32 +759,6 @@ class Robot:
         if (datetime.now(MSK) - self._last_price_log).seconds >= 30:
             self._last_price_log = datetime.now(MSK)
             log.info(f"Price: {q.last:.0f} | VP: VAL={self.strategy.val:.0f} VAH={self.strategy.vah:.0f} POC={self.strategy.poc:.0f}")
-
-    def _on_orderbook(self, ob: OrderBookUpdate):
-        """Order book callback — use bid/ask as real price."""
-        best_bid = 0
-        best_ask = 0
-        for row in ob.rows:
-            if row.buy_size > 0 and row.price > best_bid:
-                best_bid = row.price
-            if row.sell_size > 0 and (best_ask == 0 or row.price < best_ask):
-                best_ask = row.price
-
-        if best_bid > 0 and best_ask > 0:
-            self._bid = best_bid
-            self._ask = best_ask
-            self._ob_time = datetime.now(MSK)
-            mid = (best_bid + best_ask) / 2
-
-            if mid != self._last_price:
-                self._last_price = mid
-                self._last_price_change = datetime.now(MSK)
-            self._current_price = mid
-            self.strategy.current_price = mid
-        else:
-            # No valid bid/ask — use quote price as fallback
-            if self._current_price <= 0:
-                log.warning(f"OB no bid/ask, rows={len(ob.rows)}")
 
     def _on_bar(self, b: Bar):
         """Bar callback — update VP."""
