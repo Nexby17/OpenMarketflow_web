@@ -134,9 +134,8 @@ def update_config(cfg: ConfigUpdate):
     if changes:
         # Sync VP params if changed
         if 'vp_lookback' in changes or 'vp_bin_size' in changes or 'vp_va_percent' in changes:
-            _robot.vp.lookback = p.vp_lookback
-            _robot.vp.bin_size = p.vp_bin_size
-            _robot.vp.va_percent = p.vp_va_percent
+            _robot.vp = VolumeProfile(lookback=p.vp_lookback, bin_size=p.vp_bin_size, va_percent=p.vp_va_percent)
+            threading.Thread(target=_robot._warmup_vp, daemon=True).start()
         _robot._save_state()
     return {"updated": changes}
 
