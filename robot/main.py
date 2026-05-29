@@ -67,6 +67,8 @@ class Robot:
         self._last_price_change: datetime = datetime.now(MSK) - timedelta(minutes=5)
 
         self._poll_interval: float = 0.5  # seconds between ticks (backoff from 0.3)
+        self._moex_last: float = 0  # last MOEX price for sanity check
+        self._moex_check_ts: float = 0  # last MOEX check time
 
         # Zigzag grid state
         self._filled_prices: list[float] = []  # grid fill prices (sorted)
@@ -297,6 +299,14 @@ class Robot:
         """One polling cycle. Compare broker position with expected state."""
         if not getattr(self, '_initialized', False):
             return  # Skip ticks until fully initialized
+
+        # Periodic MOEX sanity check (every 60s)
+        now_ts = time.time()
+        if now_ts - self._moex_check_ts > 60:
+            moex = self._get_moex_price()
+            if moex > 0:
+                self._moex_last = moex
+                self._moex_check_ts = now_ts
 
         pos = self._get_broker_position()
         prev_dir = self._broker_dir
@@ -763,8 +773,11 @@ class Robot:
         log.info(f"Reconnected. VP: VAL={self.strategy.val:.0f} VAH={self.strategy.vah:.0f} POC={self.strategy.poc:.0f}")
 
     def _on_quote(self, q: Quote):
-        """Quote callback — update price."""
+        """Quote callback — update price with MOEX sanity check."""
         new_price = q.last
+        # Reject if price is way off MOEX reality
+        if new_price > 0 and self._moex_last > 0 and abs(new_price - self._moex_last) > 200:
+            return  # Stale quote, ignore
         if new_price != self._last_price and new_price > 0:
             self._last_price = new_price
             self._last_price_change = datetime.now(MSK)
