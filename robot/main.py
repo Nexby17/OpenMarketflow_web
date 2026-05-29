@@ -991,6 +991,7 @@ class Robot:
                 if 'vp_lookback' in cfg:
                     p.vp_lookback = cfg['vp_lookback']
                     self.vp = VolumeProfile(lookback=p.vp_lookback, bin_size=self.vp.bin_size, va_percent=self.vp.va_percent)
+                    threading.Thread(target=self._warmup_vp, daemon=True).start()
                 if 'vp_bin_size' in cfg: p.vp_bin_size = cfg['vp_bin_size']
                 if 'vp_va_percent' in cfg: p.vp_va_percent = cfg['vp_va_percent']
                 if 'rv_adaptation' in cfg: p.rv_adaptation = cfg['rv_adaptation']
