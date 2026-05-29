@@ -535,6 +535,14 @@ class Robot:
 
     def _handle_broker_close(self):
         """Broker reports 0 lots. Close everything in robot state."""
+        # Don't false-close if we just entered (< 3s)
+        if self._entry_pending:
+            return
+        if self.strategy.entry_time:
+            elapsed = (datetime.now(MSK) - self.strategy.entry_time).total_seconds()
+            if elapsed < 3:
+                log.info(f"Ignoring broker close — position opened {elapsed:.1f}s ago")
+                return
         if self.strategy.has_position and self.strategy.entry_price > 0:
             pnl = self.strategy.calc_unrealized_pnl(self._current_price)
             self.state.state.round_trips += 1
