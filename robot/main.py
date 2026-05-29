@@ -249,6 +249,9 @@ class Robot:
 
         # === NO POSITION at broker ===
         if cur_lots == 0:
+            if self._close_pending:
+                self._close_pending = False
+                log.info("Close confirmed by broker (lots=0)")
             if self.strategy.has_position:
                 # Broker closed our position (TP or stop hit) — we didn't initiate
                 log.info(f"Broker position gone (was {prev_lots}). Syncing close.")
