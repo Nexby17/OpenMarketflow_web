@@ -328,10 +328,14 @@ class Feed:
                 ob_list = ob_response.order_book
                 for ob in ob_list:
                     for r in ob.rows:
-                        price = float(r.price.value) if hasattr(r.price, 'value') else float(r.price)
-                        buy = float(r.buy_size.value) if hasattr(r.buy_size, 'value') else float(r.buy_size or 0)
-                        sell = float(r.sell_size.value) if hasattr(r.sell_size, 'value') else float(r.sell_size or 0)
-                        rows.append(OBLevel(price=price, buy_size=buy, sell_size=sell))
+                        p = r.price.value if hasattr(r.price, 'value') else str(r.price)
+                        price = float(p) if p else 0
+                        b = r.buy_size.value if hasattr(r.buy_size, 'value') else str(r.buy_size or '')
+                        buy = float(b) if b else 0
+                        s = r.sell_size.value if hasattr(r.sell_size, 'value') else str(r.sell_size or '')
+                        sell = float(s) if s else 0
+                        if price > 0:
+                            rows.append(OBLevel(price=price, buy_size=buy, sell_size=sell))
                 if rows:
                     self.on_orderbook(OrderBookUpdate(
                         symbol=symbol,
