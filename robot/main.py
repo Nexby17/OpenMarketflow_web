@@ -66,6 +66,8 @@ class Robot:
         self._last_price: float = 0
         self._last_price_change: datetime = datetime.now(MSK) - timedelta(minutes=5)
 
+        self._poll_interval: float = 0.5  # seconds between ticks (backoff from 0.3)
+
         # Zigzag grid state
         self._filled_prices: list[float] = []  # grid fill prices (sorted)
         self._current_grid_price: float = 0  # pending grid price
@@ -287,7 +289,7 @@ class Robot:
                     self._tick()
             except Exception as e:
                 log.error(f"Poll tick error: {e}")
-            time.sleep(0.2)
+            time.sleep(self._poll_interval)
 
     def _tick(self):
         """One polling cycle. Compare broker position with expected state."""
@@ -855,7 +857,11 @@ class Robot:
                 GetAccountRequest(account_id=config.FINAM_ACCOUNT_ID),
             )
             if not account:
-                return None  # error, not empty
+                # Rate limit hit — backoff
+                self._poll_interval = min(self._poll_interval * 2, 3.0)
+                return None
+            # Reset poll interval on success
+            self._poll_interval = max(self._poll_interval * 0.9, 0.5)
             for pos in account.positions:
                 if config.SYMBOL in pos.symbol or config.TICKER in pos.symbol:
                     qty = float(pos.quantity.value or '0') if pos.quantity else 0
