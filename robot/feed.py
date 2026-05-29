@@ -24,6 +24,26 @@ class Quote:
     timestamp: datetime
 
 
+class QuoteFilter:
+    """Filters anomalous quotes (spikes, stale data)."""
+    def __init__(self, max_change_pct: float = 0.005):
+        self._last_valid: float = 0
+        self._max_change_pct = max_change_pct  # 0.5% max change per tick
+
+    def filter(self, quote: Quote) -> Optional[Quote]:
+        """Return quote if valid, None if spike."""
+        if quote.last <= 0:
+            return None
+        if self._last_valid <= 0:
+            self._last_valid = quote.last
+            return quote
+        change = abs(quote.last - self._last_valid) / self._last_valid
+        if change > self._max_change_pct:
+            return None  # Spike — ignore
+        self._last_valid = quote.last
+        return quote
+
+
 @dataclass
 class Bar:
     open: float
@@ -55,6 +75,20 @@ class TradeEvent:
     timestamp: datetime
 
 
+@dataclass
+class OBLevel:
+    price: float
+    buy_size: float  # bid volume
+    sell_size: float  # ask (offer) volume
+
+
+@dataclass
+class OrderBookUpdate:
+    symbol: str
+    rows: list[OBLevel]  # aggregated levels
+    timestamp: datetime
+
+
 class Feed:
     """Manages gRPC subscriptions to Finam Trade API."""
 
@@ -65,6 +99,7 @@ class Feed:
 
         # Callbacks
         self.on_quote: Callable[[Quote], None] = lambda q: None
+        self.on_orderbook: Callable[[OrderBookUpdate], None] = lambda ob: None
         self.on_bar: Callable[[Bar], None] = lambda b: None
         self.on_order: Callable[[OrderEvent], None] = lambda e: None
         self.on_trade: Callable[[TradeEvent], None] = lambda e: None
@@ -80,6 +115,9 @@ class Feed:
         self._stale_timeout = 60  # seconds without data → reconnect
         self._watchdog_thread: Optional[threading.Thread] = None
         self._on_stale = None  # set by Robot
+
+        # Quote filter
+        self._quote_filter = QuoteFilter(max_change_pct=0.002)
 
     @property
     def latest_quote(self) -> Optional[Quote]:
@@ -145,6 +183,10 @@ class Feed:
                         q.timestamp.seconds + q.timestamp.nanos / 1e9, MSK
                     )
                     quote = Quote(bid=bid, ask=ask, last=last, timestamp=ts)
+                    # Filter spikes
+                    quote = self._quote_filter.filter(quote)
+                    if quote is None:
+                        return
                     with self._lock:
                         self._latest_quote = quote
                         self._last_quote_ts = time.time()
@@ -275,6 +317,37 @@ class Feed:
         t.start()
         self._threads.append(t)
         log.info("Subscribed to own trades")
+
+        # --- Order Book (Level 2) ---
+        def _on_ob(ob_response):
+            if not self._running:
+                return
+            try:
+                rows = []
+                for r in ob_response.orderbook.rows:
+                    price = float(r.price) if r.price else 0
+                    buy = float(r.buy_size) if r.buy_size else 0
+                    sell = float(r.sell_size) if r.sell_size else 0
+                    rows.append(OBLevel(price=price, buy_size=buy, sell_size=sell))
+                if rows:
+                    self.on_orderbook(OrderBookUpdate(
+                        symbol=symbol,
+                        rows=rows,
+                        timestamp=datetime.now(),
+                    ))
+            except Exception as e:
+                log.error(f"OrderBook parse error: {e}")
+
+        self._fp.on_order_book.subscribe(_on_ob)
+        ob_thread = threading.Thread(
+            target=self._fp.subscribe_order_book_thread,
+            args=(symbol,),
+            daemon=True,
+            name="feed-orderbook",
+        )
+        ob_thread.start()
+        self._threads.append(ob_thread)
+        log.info("Subscribed to order book")
 
         # --- Watchdog ---
         self._last_quote_ts = time.time()
