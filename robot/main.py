@@ -886,6 +886,9 @@ class Robot:
             now = datetime.now(timezone.utc)
             start = now - timedelta(hours=3)
 
+            # Use smaller bin_size for warmup if range is narrow
+            warmup_vp = VolumeProfile(lookback=config.WARMUP_BARS, bin_size=min(self.vp.bin_size, 25), va_percent=self.vp.va_percent)
+
             resp = self.fp.call_function(
                 self.fp.marketdata_stub.Bars,
                 md_pb2.BarsRequest(
@@ -899,15 +902,15 @@ class Robot:
             )
             if resp and resp.bars:
                 for bar in resp.bars[-config.WARMUP_BARS:]:
-                    self.vp.add_bar(float(bar.close.value), float(bar.volume.value))
-                result = self.vp.calculate()
+                    warmup_vp.add_bar(float(bar.close.value), float(bar.volume.value))
+                result = warmup_vp.calculate()
                 if result:
                     self.strategy.poc = result.poc
                     self.strategy.vah = result.vah
                     self.strategy.val = result.val
                     log.info(f"Warmup: {len(list(resp.bars))} bars, VAL={result.val:.0f} VAH={result.vah:.0f} POC={result.poc:.0f}")
         except Exception as e:
-            log.error(f"Warmup error: {e}")
+            log.error(f"Warmup error: {e}", exc_info=True)
 
 
     def _get_moex_price(self) -> float:
