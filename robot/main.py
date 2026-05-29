@@ -63,6 +63,8 @@ class Robot:
 
         # Price log
         self._last_price_log: datetime = datetime.now(MSK) - timedelta(minutes=1)
+        self._last_price: float = 0
+        self._last_price_change: datetime = datetime.now(MSK)
 
         # Current price (from quotes)
         self._current_price: float = 0.0
@@ -244,6 +246,11 @@ class Robot:
 
         self._broker_dir, self._broker_lots, self._broker_avg = pos
 
+        # Track frozen price
+        if self._current_price != self._last_price and self._current_price > 0:
+            self._last_price = self._current_price
+            self._last_price_change = datetime.now(MSK)
+
         cur_dir = self._broker_dir
         cur_lots = self._broker_lots
 
@@ -332,8 +339,10 @@ class Robot:
             return
         if self._close_pending:
             return  # Don't enter while close is pending
-        if self._last_close_time and (datetime.now(MSK) - self._last_close_time).total_seconds() < 3:
-            return  # Don't re-enter within 3s after close
+        # Don't enter if price is frozen (stale feed / thin market)
+        price_age = (datetime.now(MSK) - self._last_price_change).total_seconds()
+        if price_age > 30:
+            return
         sig = self.strategy.check_entry(price)
         if not sig:
             return
