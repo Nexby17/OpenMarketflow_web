@@ -14,7 +14,7 @@ import config
 from feed import Feed, Quote, Bar, OrderEvent, TradeEvent
 from vp import VolumeProfile
 from strategy import Strategy, StrategyParams, BUY, SELL
-from orders import OrderManager, PlacedOrder
+from orders_dp import OrderManager, PlacedOrder
 from state import StateManager
 from risk import RiskManager
 
@@ -25,6 +25,7 @@ MSK = timezone(timedelta(hours=3))
 
 class Robot:
     def __init__(self, paper: bool = False):
+        # gRPC only for warmup
         self.fp: FinamPy | None = None
         self.feed = Feed()
         self.vp = VolumeProfile(lookback=33, bin_size=50, va_percent=0.70)
@@ -66,7 +67,6 @@ class Robot:
         self._last_price: float = 0
         self._last_price_change: datetime = datetime.now(MSK) - timedelta(minutes=5)
 
-        self._poll_interval: float = 0.5  # seconds between ticks (backoff from 0.3)
         self._moex_last: float = 0  # last MOEX price for sanity check
         self._moex_check_ts: float = 0  # last MOEX check time
 
@@ -86,8 +86,7 @@ class Robot:
         # Load saved config
         self._load_config()
 
-        self.fp = FinamPy(config.FINAM_TOKEN)
-        self.orders = OrderManager(self.fp)
+        self.orders = OrderManager(dp_url="http://localhost:5060", account=config.FINAM_ACCOUNT_ID, symbol=config.SYMBOL)
         self.feed.connect()
 
         # Restore state
@@ -216,8 +215,10 @@ class Robot:
             log.info("Stopping without closing position")
 
         self.feed.disconnect()
+        # Close warmup connection if exists
         if self.fp:
-            self.fp.close_channel()
+            try: self.fp.close_channel()
+            except: pass
 
         self.state.state.mode = "stopped"
         self.state.save()
@@ -293,7 +294,7 @@ class Robot:
                     self._tick()
             except Exception as e:
                 log.error(f"Poll tick error: {e}")
-            time.sleep(self._poll_interval)
+            time.sleep(0.5)
 
     def _tick(self):
         """One polling cycle. Compare broker position with expected state."""
@@ -826,34 +827,23 @@ class Robot:
     # === BROKER ===
 
     def _get_broker_position(self) -> tuple | None:
-        """Get broker position via gRPC. Returns (dir, lots, avg) or None on ERROR.
-        Returns (0, 0, 0.0) if successfully queried but no position."""
-        if not self.fp:
-            return None
+        """Get broker position via DataProvider REST."""
         try:
-            from FinamPy.grpc.accounts_service_pb2 import GetAccountRequest
-            account = self.fp.call_function(
-                self.fp.accounts_stub.GetAccount,
-                GetAccountRequest(account_id=config.FINAM_ACCOUNT_ID),
+            r = requests.get(
+                "http://localhost:5060/position",
+                params={"account": config.FINAM_ACCOUNT_ID, "ticker": config.TICKER},
+                timeout=2,
             )
-            if not account:
-                # Rate limit hit — backoff
-                self._poll_interval = min(self._poll_interval * 2, 3.0)
-                return None
-            # Reset poll interval on success
-            self._poll_interval = max(self._poll_interval * 0.9, 0.5)
-            for pos in account.positions:
-                if config.SYMBOL in pos.symbol or config.TICKER in pos.symbol:
-                    qty = float(pos.quantity.value or '0') if pos.quantity else 0
-                    avg = float(pos.average_price.value or '0') if pos.average_price else 0
-                    if qty > 0:
-                        return (1, int(qty), avg)
-                    elif qty < 0:
-                        return (-1, int(abs(qty)), avg)
-            return (0, 0, 0.0)  # successfully queried, no position
+            data = r.json()
+            d = data.get("dir", 0)
+            l = data.get("lots", 0)
+            a = data.get("avg_price", 0.0)
+            if d != 0 and l > 0:
+                return (d, l, a)
+            return (0, 0, 0.0)
         except Exception as e:
-            log.error(f"Broker position error: {e}")
-            return None  # error — don't change state
+            log.debug(f"Position error: {e}")
+            return None
 
     def _poll_broker_position(self):
         """Initial broker position load."""
@@ -888,19 +878,22 @@ class Robot:
         self._poc_tp_order_id = None
 
     def _warmup_vp(self):
-        if not self.fp:
+        try:
+            fp = FinamPy(config.FINAM_TOKEN)
+        except Exception as e:
+            log.error(f"Warmup connect error: {e}")
             return
         try:
             from google.protobuf.timestamp_pb2 import Timestamp
             from google.type.interval_pb2 import Interval
             import FinamPy.grpc.marketdata_service_pb2 as md_pb2
 
-            finam_tf, _, _ = self.fp.timeframe_to_finam_timeframe(config.TIMEFRAME)
+            finam_tf, _, _ = fp.timeframe_to_finam_timeframe(config.TIMEFRAME)
             now = datetime.now(timezone.utc)
             start = now - timedelta(hours=24)
 
-            resp = self.fp.call_function(
-                self.fp.marketdata_stub.Bars,
+            resp = fp.call_function(
+                fp.marketdata_stub.Bars,
                 md_pb2.BarsRequest(
                     symbol=config.SYMBOL,
                     timeframe=finam_tf,
@@ -921,6 +914,8 @@ class Robot:
                     log.info(f"Warmup: {len(list(resp.bars))} bars, VAL={result.val:.0f} VAH={result.vah:.0f} POC={result.poc:.0f}")
         except Exception as e:
             log.error(f"Warmup error: {e}", exc_info=True)
+        finally:
+            fp.close_channel()
 
 
     def _get_moex_price(self) -> float:

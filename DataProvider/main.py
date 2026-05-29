@@ -153,6 +153,75 @@ def unsubscribe(symbol: str, tf: str = "M5"):
     return {"symbol": symbol, "tf": tf, "unsubscribed": True}
 
 
+# === Order proxy endpoints ===
+@app.post("/order/place")
+def place_order(account: str, symbol: str, side: str, quantity: int, price: float = 0, order_type: str = "market", tag: str = ""):
+    """Place order via DP gRPC connection."""
+    if not the_provider or not the_provider.fp:
+        return {"error": "not connected"}
+    try:
+        from FinamPy.grpc import orders_service_pb2 as ord_pb2
+        from google.protobuf.wrappers_pb2 import StringValue, Int64Value
+        import time as _t
+
+        client_order_id = str(int(_t.time() * 1000))[:13]
+
+        if order_type == "market":
+            req = ord_pb2.PlaceOrderRequest(
+                account_id=account,
+                symbol=symbol,
+                side=ord_pb2.OrderSide.SIDE_BUY if side == "buy" else ord_pb2.OrderSide.SIDE_SELL,
+                type=ord_pb2.OrderType.ORDER_TYPE_MARKET,
+                quantity=ord_pb2.Quantity(value=str(quantity)),
+                client_order_id=client_order_id,
+            )
+        else:
+            req = ord_pb2.PlaceOrderRequest(
+                account_id=account,
+                symbol=symbol,
+                side=ord_pb2.OrderSide.SIDE_BUY if side == "buy" else ord_pb2.OrderSide.SIDE_SELL,
+                type=ord_pb2.OrderType.ORDER_TYPE_LIMIT,
+                quantity=ord_pb2.Quantity(value=str(quantity)),
+                limit_price=ord_pb2.Price(value=str(int(price))),
+                client_order_id=client_order_id,
+            )
+
+        resp = the_provider.fp.call_function(
+            the_provider.fp.orders_stub.PlaceOrder, req
+        )
+        if resp and resp.order_id:
+            return {"order_id": resp.order_id, "client_order_id": client_order_id, "status": "placed"}
+        return {"error": "no response", "client_order_id": client_order_id}
+    except Exception as e:
+        return {"error": str(e)}
+
+
+@app.post("/order/cancel")
+def cancel_order(account: str, order_id: str):
+    """Cancel order via DP gRPC connection."""
+    if not the_provider or not the_provider.fp:
+        return {"error": "not connected"}
+    try:
+        from FinamPy.grpc import orders_service_pb2 as ord_pb2
+        resp = the_provider.fp.call_function(
+            the_provider.fp.orders_stub.CancelOrder,
+            ord_pb2.CancelOrderRequest(account_id=account, order_id=order_id)
+        )
+        return {"status": "cancelled", "order_id": order_id}
+    except Exception as e:
+        return {"error": str(e), "order_id": order_id}
+
+
+@app.get("/active-orders")
+def get_active_orders(account: str = ""):
+    """Get active orders from cache or gRPC."""
+    if the_cache and account:
+        return the_cache.get_orders(account)
+    if the_provider and account:
+        return the_provider.get_all_orders(account)
+    return []
+
+
 if __name__ == "__main__":
     import uvicorn
     cfg = cfg_mod.load_config()

@@ -132,6 +132,7 @@ app.Use(async (HttpContext ctx, Func<Task> next) =>
         path.StartsWith("/api/connectors") ||
         path.StartsWith("/api/robot/service") ||
         path.StartsWith("/api/robot/status") ||
+        path.StartsWith("/api/robot/config") ||
         path == "/health" ||
         path == "/test" ||
         path == "/heartbeat" ||

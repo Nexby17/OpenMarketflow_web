@@ -3328,10 +3328,10 @@ function pythonRobotUpdateVp() {
     if (!el('pyVAH')) return;
     const s = pythonRobot;
     if (!s) return;
-    if (s.vah) el('pyVAH').textContent = Math.round(s.vah);
-    if (s.poc) el('pyPOC').textContent = Math.round(s.poc);
-    if (s.val) el('pyVAL').textContent = Math.round(s.val);
-    if (s.current_price) el('pyPrice').textContent = s.current_price.toFixed(0);
+    if (s.vah !== undefined && s.vah !== null) el('pyVAH').textContent = s.vah > 0 ? Math.round(s.vah) : '—';
+    if (s.poc !== undefined && s.poc !== null) el('pyPOC').textContent = s.poc > 0 ? Math.round(s.poc) : '—';
+    if (s.val !== undefined && s.val !== null) el('pyVAL').textContent = s.val > 0 ? Math.round(s.val) : '—';
+    if (s.current_price !== undefined && s.current_price !== null) el('pyPrice').textContent = s.current_price > 0 ? s.current_price.toFixed(0) : '—';
     const dirText = s.direction > 0 ? 'Лонг' : s.direction < 0 ? 'Шорт' : 'Флэт';
     if (el('pyDir')) el('pyDir').textContent = dirText;
     if (el('pyLots')) el('pyLots').textContent = s.total_lots || 0;
@@ -3404,14 +3404,13 @@ async function pythonRobotSaveFromPanel() {
             addLog(nowTime(), 'ERROR', '🐍 Save failed: ' + e2.message);
         }
     }
-        // Also update strategy tab fields
+    // Also update strategy tab fields
+    if (saved) {
         if (el('cfgVpMaxLevels')) el('cfgVpMaxLevels').value = body.max_levels;
         if (el('cfgVpStepBase')) el('cfgVpStepBase').value = body.step_base;
         if (el('cfgVpSpreadBase')) el('cfgVpSpreadBase').value = body.spread_base;
         if (el('cfgVpMaxHold')) el('cfgVpMaxHold').value = body.max_hold_minutes;
         if (el('cfgVpMinProfit')) el('cfgVpMinProfit').value = body.min_profit_per_lot;
-    } catch(e) {
-        addLog(nowTime(), 'ERROR', '🐍 Save failed: ' + e.message);
     }
 }
 
