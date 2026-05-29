@@ -112,7 +112,7 @@ class Feed:
         # Stale detection
         self._last_quote_ts: float = 0  # time.time() of last quote
         self._last_bar_ts: float = 0
-        self._stale_timeout = 30  # seconds without data → reconnect
+        self._stale_timeout = 60  # seconds without data → reconnect
         self._watchdog_thread: Optional[threading.Thread] = None
         self._on_stale = None  # set by Robot
 
@@ -402,7 +402,7 @@ class Feed:
     def _watchdog_loop(self):
         """Check if data is flowing. Reconnect if stale."""
         while self._running:
-            time.sleep(5)
+            time.sleep(15)
             if not self._running:
                 return
 
