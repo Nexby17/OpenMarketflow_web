@@ -66,6 +66,11 @@ class Robot:
         self._last_price: float = 0
         self._last_price_change: datetime = datetime.now(MSK)
 
+        # Zigzag grid state
+        self._filled_prices: list[float] = []  # grid fill prices (sorted)
+        self._current_grid_price: float = 0  # pending grid price
+        self._current_tp_price: float = 0  # active TP price
+
         # Current price (from quotes)
         self._current_price: float = 0.0
 
@@ -82,9 +87,13 @@ class Robot:
         if s.direction != 0 and s.entry_price > 0:
             self.strategy.direction = s.direction
             self.strategy.entry_price = s.entry_price
-            if s.grid_levels:
-                self.strategy.restore_grid(s.grid_levels)
-                log.info(f"Grid restored: {len(s.grid_levels)} levels")
+            # Restore filled_prices from state
+            if s.grid_levels and isinstance(s.grid_levels, list):
+                if len(s.grid_levels) > 0 and isinstance(s.grid_levels[0], (int, float)):
+                    self._filled_prices = sorted([float(x) for x in s.grid_levels])
+                else:
+                    # Old format (list of dicts) — extract prices
+                    self._filled_prices = sorted([float(g.get('price', 0)) for g in s.grid_levels if g.get('status') == 'FILLED'])
             if s.entry_time:
                 try:
                     self.strategy.entry_time = datetime.fromisoformat(s.entry_time)
@@ -92,7 +101,7 @@ class Robot:
                     pass
             self._last_entry_price = s.last_entry_price
             self._last_direction = s.last_direction
-            log.info(f"State restored: dir={s.direction} entry={s.entry_price:.0f} levels={len(s.grid_levels)}")
+            log.info(f"State restored: dir={s.direction} entry={s.entry_price:.0f} fills={self._filled_prices}")
         elif s.direction != 0 and s.entry_price <= 0:
             log.warning("Corrupt state — resetting")
             self.state.clear()
@@ -124,29 +133,47 @@ class Robot:
                 self._last_entry_price = entry
                 self._last_direction = self._broker_dir
 
-                # Create grid levels for filled lots (broker_lots - 1 = grid fills)
+                # Create filled_prices for grid fills (broker_lots - 1 = grid fills)
                 grid_fills = self._broker_lots - 1
                 step = self.strategy.params.step_base
-                spread = self.strategy.params.spread_base
                 for i in range(1, grid_fills + 1):
                     if self._broker_dir == 1:
                         gp = entry - step * i
-                        tp = gp + spread
                     else:
                         gp = entry + step * i
-                        tp = gp - spread
-                    self.strategy.grid_levels.append(GridLevel(
-                        level=i, price=gp,
-                        side=BUY if self._broker_dir == 1 else SELL,
-                        status="FILLED", tp_price=tp, tp_closed_price=0,
-                    ))
+                    self._filled_prices.append(gp)
+                self._filled_prices.sort()
 
-                # Place next grid level
-                next_level = len(self.strategy.grid_levels) + 1
-                if next_level <= self.strategy.params.max_levels:
-                    grid_sig = self.strategy._create_grid_signal(next_level)
-                    if grid_sig:
-                        self._place_grid(grid_sig)
+                # Place next grid + TP
+                if self._filled_prices:
+                    spread = self.strategy.params.spread_base
+                    if self._broker_dir == 1:
+                        tp_price = self._filled_prices[0] + spread
+                        grid_price = self._filled_prices[0] - step
+                        grid_side = BUY
+                        tp_side = SELL
+                    else:
+                        tp_price = self._filled_prices[-1] - spread
+                        grid_price = self._filled_prices[-1] + step
+                        grid_side = SELL
+                        tp_side = BUY
+                    po = self.orders.place_limit(tp_side, 1, tp_price, "TP")
+                    if po:
+                        self._tp_order_id = po.order_id
+                    po = self.orders.place_limit(grid_side, 1, grid_price, "GRID")
+                    if po:
+                        self._grid_order_id = po.order_id
+                else:
+                    # Entry lot only — place first grid + POC-TP
+                    if self._broker_dir == 1:
+                        gp = entry - step
+                        gs = BUY
+                    else:
+                        gp = entry + step
+                        gs = SELL
+                    po = self.orders.place_limit(gs, 1, gp, "GRID")
+                    if po:
+                        self._grid_order_id = po.order_id
 
             # ALWAYS ensure orders are placed — reset IDs to force re-creation
             self._grid_order_id = None
@@ -360,17 +387,44 @@ class Robot:
             log.warning("Entry order failed")
 
     def _handle_entry_fill(self, direction: int, price: float, broker_lots: int):
-        """Entry confirmed by broker. Set up grid + TP."""
-        signals = self.strategy.on_entry_fill(direction, price)
+        """Entry confirmed by broker. Set up first grid + POC-TP."""
+        self.strategy.direction = direction
+        self.strategy.entry_price = price
+        self.strategy.entry_time = datetime.now(MSK)
+        self.strategy.grid_levels = []  # no pre-created levels
         self._entry_pending = False
         self._last_entry_price = price
         self._last_direction = direction
+        self._filled_prices = []
 
-        for sig in signals:
-            if sig.action == "GRID":
-                self._place_grid(sig)
-            elif sig.action == "PLACE_POC_TP":
-                self._place_poc_tp(sig)
+        # Place first grid
+        step = self.strategy.params.step_base
+        if direction == 1:
+            grid_price = price - step
+            grid_side = BUY
+        else:
+            grid_price = price + step
+            grid_side = SELL
+
+        self._current_grid_price = grid_price
+        po = self.orders.place_limit(grid_side, 1, grid_price, "GRID-1")
+        if po:
+            self._grid_order_id = po.order_id
+            log.info(f"GRID-1 placed @ {grid_price:.0f}")
+
+        # POC-TP for entry lot
+        poc = self.strategy.poc
+        if poc > 0:
+            if direction == 1 and poc > price:
+                po = self.orders.place_limit(SELL, 1, poc, "POC-TP")
+                if po:
+                    self._poc_tp_order_id = po.order_id
+                    log.info(f"POC-TP placed @ {poc:.0f}")
+            elif direction == -1 and poc < price:
+                po = self.orders.place_limit(BUY, 1, poc, "POC-TP")
+                if po:
+                    self._poc_tp_order_id = po.order_id
+                    log.info(f"POC-TP placed @ {poc:.0f}")
 
         # If broker has more lots than 1, handle grid fills too
         if broker_lots > 1:
@@ -383,40 +437,73 @@ class Robot:
     # === GRID ===
 
     def _handle_grid_fill(self, count: int):
-        """Grid fills detected. Mark them and place next grid + TP."""
+        """Grid fills detected. Add to filled_prices, place next grid + TP (zigzag)."""
+        d = self.strategy.direction
+        entry = self.strategy.entry_price
+        step = self.strategy.params.step_base
+        spread = self.strategy.params.spread_base
+
         for i in range(count):
-            # Find the PENDING grid level and mark as FILLED
-            filled = None
-            for g in self.strategy.grid_levels:
-                if g.status == "PENDING":
-                    g.status = "FILLED"
-                    filled = g
-                    break
+            # The pending grid price is what filled
+            fp = self._current_grid_price
+            if fp <= 0:
+                log.warning("No pending grid price for fill")
+                break
+            self._filled_prices.append(fp)
+            self._filled_prices.sort()
+            log.info(f"Grid filled @ {fp:.0f} (filled_prices: {self._filled_prices})")
 
-            if not filled:
-                log.warning(f"No pending grid level for fill #{i+1}")
-                continue
+        # Cancel old TP
+        self._cancel_tp()
+        # Cancel old grid
+        self._cancel_grid()
 
-            # Set TP price for this level
-            spread = self.strategy.params.spread_base
-            if self.strategy.direction == 1:
-                filled.tp_price = filled.price + spread
+        if self._filled_prices:
+            # TP = deepest filled + spread (LONG) or highest filled - spread (SHORT)
+            if d == 1:
+                tp_price = self._filled_prices[0] + spread
             else:
-                filled.tp_price = filled.price - spread
+                tp_price = self._filled_prices[-1] - spread
 
-            # Place next PENDING grid level
-            for g in self.strategy.grid_levels:
-                if g.status == "PENDING" and g.level > filled.level:
-                    self._place_grid(Signal(
-                        action="GRID", direction=g.side, price=g.price,
-                        quantity=1, level=g.level, tag=f"Grid-{g.level}",
-                    ))
-                    break  # one at a time
+            # Guard: TP must be profitable
+            if d == 1 and tp_price > entry:
+                self._current_tp_price = tp_price
+                tp_side = SELL
+                po = self.orders.place_limit(tp_side, 1, tp_price, f"TP")
+                if po:
+                    self._tp_order_id = po.order_id
+                    log.info(f"TP placed @ {tp_price:.0f}")
 
-        # Place ONE TP for the last filled level
-        self._place_single_tp()
-        # Always ensure all orders are in place
-        self._ensure_orders()
+            elif d == -1 and tp_price < entry:
+                self._current_tp_price = tp_price
+                tp_side = BUY
+                po = self.orders.place_limit(tp_side, 1, tp_price, f"TP")
+                if po:
+                    self._tp_order_id = po.order_id
+                    log.info(f"TP placed @ {tp_price:.0f}")
+
+            # Next grid = one step deeper
+            if d == 1:
+                grid_price = self._filled_prices[0] - step
+            else:
+                grid_price = self._filled_prices[-1] + step
+
+            # Guard: grid must not fill instantly
+            if d == 1 and grid_price < self._current_price:
+                self._current_grid_price = grid_price
+                po = self.orders.place_limit(BUY, 1, grid_price, f"GRID")
+                if po:
+                    self._grid_order_id = po.order_id
+                    log.info(f"GRID placed @ {grid_price:.0f}")
+            elif d == -1 and grid_price > self._current_price:
+                self._current_grid_price = grid_price
+                po = self.orders.place_limit(SELL, 1, grid_price, f"GRID")
+                if po:
+                    self._grid_order_id = po.order_id
+                    log.info(f"GRID placed @ {grid_price:.0f}")
+            else:
+                log.info(f"Grid price {grid_price:.0f} would fill instantly — skipping")
+
         self._save_state()
 
     def _place_grid(self, sig):
@@ -508,37 +595,103 @@ class Robot:
             log.info(f"POC-TP placed @ {sig.price:.0f} id={po.order_id}")
 
     def _handle_tp_fill(self, count: int):
-        """TP fills detected. Mark CLOSED, place next grid + TP."""
+        """TP fills detected. Remove from filled_prices, place grid back + new TP (zigzag)."""
+        d = self.strategy.direction
+        entry = self.strategy.entry_price
+        step = self.strategy.params.step_base
+        spread = self.strategy.params.spread_base
+
         for i in range(count):
-            # Find first FILLED level with TP and mark CLOSED
-            for g in self.strategy.grid_levels:
-                if g.status == "FILLED" and g.tp_price > 0:
-                    g.tp_closed_price = g.tp_price
-                    g.status = "CLOSED"
-                    log.info(f"TP-{g.level} filled @ {g.tp_price:.0f}")
-                    break
+            if not self._filled_prices:
+                log.info("TP fill but no filled prices — entry lot TP")
+                break
 
-        self._robot_lots = self._broker_lots
+            # Remove the TP'd price from filled_prices
+            if d == 1:
+                tp_price = self._filled_prices[0] + spread  # first TP target
+                removed = self._filled_prices.pop(0)  # remove lowest
+            else:
+                tp_price = self._filled_prices[-1] - spread  # first TP target
+                removed = self._filled_prices.pop()  # remove highest
 
-        # Cancel old TP, place new for last filled
-        self._cancel_tp()
-        self._place_single_tp()
+            log.info(f"TP filled @ {tp_price:.0f}, removed grid @ {removed:.0f} (remaining: {len(self._filled_prices)})")
 
-        # Place next PENDING grid (no re-use!)
+        # Cancel old grid + TP
         self._cancel_grid()
-        self._place_next_grid()
+        self._cancel_tp()
 
-        # If no filled levels left but still has position (entry lot only)
-        if self.strategy.has_position and self.strategy.filled_levels == 0:
-            if not self._poc_tp_order_id and self.strategy.poc > 0:
+        if self._filled_prices:
+            # Still have grid positions — place new TP and grid
+            if d == 1:
+                tp_price = self._filled_prices[0] + spread
+                grid_price = self._filled_prices[0] - step
+            else:
+                tp_price = self._filled_prices[-1] - spread
+                grid_price = self._filled_prices[-1] + step
+
+            # TP
+            if d == 1 and tp_price > entry:
+                self._current_tp_price = tp_price
+                po = self.orders.place_limit(SELL, 1, tp_price, "TP")
+                if po:
+                    self._tp_order_id = po.order_id
+                    log.info(f"TP placed @ {tp_price:.0f}")
+            elif d == -1 and tp_price < entry:
+                self._current_tp_price = tp_price
+                po = self.orders.place_limit(BUY, 1, tp_price, "TP")
+                if po:
+                    self._tp_order_id = po.order_id
+                    log.info(f"TP placed @ {tp_price:.0f}")
+
+            # Grid (one step back — re-use!)
+            if d == 1 and grid_price < self._current_price:
+                self._current_grid_price = grid_price
+                po = self.orders.place_limit(BUY, 1, grid_price, "GRID")
+                if po:
+                    self._grid_order_id = po.order_id
+                    log.info(f"GRID placed @ {grid_price:.0f}")
+            elif d == -1 and grid_price > self._current_price:
+                self._current_grid_price = grid_price
+                po = self.orders.place_limit(SELL, 1, grid_price, "GRID")
+                if po:
+                    self._grid_order_id = po.order_id
+                    log.info(f"GRID placed @ {grid_price:.0f}")
+            else:
+                log.info(f"Grid {grid_price:.0f} would fill instantly — skipping")
+
+        else:
+            # No more grid fills — entry lot only, restore POC-TP
+            if self.strategy.poc > 0:
                 poc = self.strategy.poc
-                side = SELL if self.strategy.direction == 1 else BUY
-                entry = self.strategy.entry_price
-                if (self.strategy.direction == 1 and poc > entry) or (self.strategy.direction == -1 and poc < entry):
-                    po = self.orders.place_limit(side, 1, poc, "POC-TP")
+                if d == 1 and poc > entry:
+                    po = self.orders.place_limit(SELL, 1, poc, "POC-TP")
                     if po:
                         self._poc_tp_order_id = po.order_id
                         log.info(f"POC-TP restored @ {poc:.0f}")
+                elif d == -1 and poc < entry:
+                    po = self.orders.place_limit(BUY, 1, poc, "POC-TP")
+                    if po:
+                        self._poc_tp_order_id = po.order_id
+                        log.info(f"POC-TP restored @ {poc:.0f}")
+
+            # Re-place first grid
+            if d == 1:
+                grid_price = entry - step
+            else:
+                grid_price = entry + step
+
+            if d == 1 and grid_price < self._current_price:
+                self._current_grid_price = grid_price
+                po = self.orders.place_limit(BUY, 1, grid_price, "GRID")
+                if po:
+                    self._grid_order_id = po.order_id
+                    log.info(f"GRID-1 re-placed @ {grid_price:.0f}")
+            elif d == -1 and grid_price > self._current_price:
+                self._current_grid_price = grid_price
+                po = self.orders.place_limit(SELL, 1, grid_price, "GRID")
+                if po:
+                    self._grid_order_id = po.order_id
+                    log.info(f"GRID-1 re-placed @ {grid_price:.0f}")
 
         self._save_state()
 
@@ -562,6 +715,9 @@ class Robot:
         self.strategy.on_close_all()
         self._cancel_all_orders()
         self._reset_tracked()
+        self._filled_prices = []
+        self._current_grid_price = 0
+        self._current_tp_price = 0
         self._last_close_time = datetime.now(MSK)
         self._close_pending = True
         self._save_state()
@@ -574,19 +730,40 @@ class Robot:
         if price <= 0:
             return
 
+        d = self.strategy.direction
+        if d == 0:
+            return
+
+        total_lots = 1 + len(self._filled_prices)  # entry + grid fills
+
         # Risk check
-        pnl = self.strategy.calc_unrealized_pnl(price)
+        entry = self.strategy.entry_price
+        if d == 1:
+            pnl = (price - entry) * total_lots
+        else:
+            pnl = (entry - price) * total_lots
+
         ok, msg = self.risk.check_pnl(pnl)
         if not ok:
             log.warning(f"Risk stop: {msg}")
             self._close_all(msg)
             return
 
-        # Strategy exit check
-        self.strategy.current_price = price
-        sig = self.strategy.check_exit()
-        if sig:
-            self._close_all(sig.tag)
+        # 1 lot: POC hit
+        if total_lots == 1 and self.strategy.poc > 0:
+            if d == 1 and price >= self.strategy.poc:
+                self._close_all(f"POC hit LONG: {price:.0f} >= {self.strategy.poc:.0f}")
+                return
+            if d == -1 and price <= self.strategy.poc:
+                self._close_all(f"POC hit SHORT: {price:.0f} <= {self.strategy.poc:.0f}")
+                return
+
+        # 2+ lots: PnL/lot >= min_profit
+        if total_lots >= 2:
+            per_lot = pnl / total_lots
+            if per_lot >= self.strategy.params.min_profit_per_lot:
+                self._close_all(f"PnL/lot={per_lot:.0f} >= {self.strategy.params.min_profit_per_lot}")
+                return
 
     def _close_all(self, reason: str):
         """Close all positions — use BROKER lots, not robot state."""
@@ -617,6 +794,9 @@ class Robot:
 
         self.strategy.on_close_all()
         self._reset_tracked()
+        self._filled_prices = []
+        self._current_grid_price = 0
+        self._current_tp_price = 0
         self._last_close_time = datetime.now(MSK)
         self._close_pending = True
         self._save_state()
@@ -835,31 +1015,38 @@ class Robot:
         s = self.state.state
         s.direction = self.strategy.direction
         s.entry_price = self.strategy.entry_price
-        s.filled_levels = self.strategy.filled_levels
+        s.filled_levels = len(self._filled_prices)
         s.entry_time = self.strategy.entry_time.isoformat() if self.strategy.entry_time else ""
-        s.grid_levels = self.strategy.serialize_grid()
+        s.grid_levels = self._filled_prices  # save fill prices for recovery
         s.last_entry_price = self._last_entry_price
         s.last_direction = self._last_direction
         self.state.save()
 
     def get_status(self) -> dict:
-        pnl = self.strategy.calc_unrealized_pnl(self.strategy.current_price) if self.strategy.has_position else 0
+        d = self.strategy.direction
+        total_lots = (1 + len(self._filled_prices)) if d != 0 else 0
+        entry = self.strategy.entry_price
+        price = self.strategy.current_price
+        if d != 0 and price > 0 and entry > 0:
+            pnl = (price - entry) * total_lots if d == 1 else (entry - price) * total_lots
+        else:
+            pnl = 0
         return {
             "mode": self._mode,
             "paper": self._paper,
-            "direction": self.strategy.direction,
-            "dir_str": "LONG" if self.strategy.direction == 1 else "SHORT" if self.strategy.direction == -1 else "FLAT",
-            "entry_price": self.strategy.entry_price,
-            "total_lots": self.strategy.total_lots,
-            "filled_levels": self.strategy.filled_levels,
-            "grid_levels": len(self.strategy.grid_levels),
+            "direction": d,
+            "dir_str": "LONG" if d == 1 else "SHORT" if d == -1 else "FLAT",
+            "entry_price": entry,
+            "total_lots": total_lots,
+            "filled_levels": len(self._filled_prices),
+            "grid_levels": len(self._filled_prices),
             "pnl": round(pnl, 1),
             "round_trips": self.state.state.round_trips,
             "realized_pnl": round(self.state.state.realized_pnl, 1),
             "poc": round(self.strategy.poc, 0),
             "vah": round(self.strategy.vah, 0),
             "val": round(self.strategy.val, 0),
-            "current_price": self.strategy.current_price,
+            "current_price": price,
             "hold_minutes": self.strategy.hold_minutes,
             "connected": self.feed.connected,
         }
