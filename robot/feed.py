@@ -324,13 +324,14 @@ class Feed:
                 return
             try:
                 rows = []
-                # SubscribeOrderBookResponse has 'order_book' field with StreamOrderBook inside
-                ob = getattr(ob_response, 'order_book', None) or ob_response
-                for r in ob.rows:
-                    price = float(r.price.value) if hasattr(r.price, 'value') else float(r.price)
-                    buy = float(r.buy_size.value) if hasattr(r.buy_size, 'value') else float(r.buy_size or 0)
-                    sell = float(r.sell_size.value) if hasattr(r.sell_size, 'value') else float(r.sell_size or 0)
-                    rows.append(OBLevel(price=price, buy_size=buy, sell_size=sell))
+                # order_book is a list of StreamOrderBook, each with rows
+                ob_list = ob_response.order_book
+                for ob in ob_list:
+                    for r in ob.rows:
+                        price = float(r.price.value) if hasattr(r.price, 'value') else float(r.price)
+                        buy = float(r.buy_size.value) if hasattr(r.buy_size, 'value') else float(r.buy_size or 0)
+                        sell = float(r.sell_size.value) if hasattr(r.sell_size, 'value') else float(r.sell_size or 0)
+                        rows.append(OBLevel(price=price, buy_size=buy, sell_size=sell))
                 if rows:
                     self.on_orderbook(OrderBookUpdate(
                         symbol=symbol,
