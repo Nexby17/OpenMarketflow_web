@@ -3176,7 +3176,13 @@ async function pollPythonRobot() {
         const resp = await fetch(ROBOT_API + '/status', {signal: AbortSignal.timeout(2000)});
         pythonRobot = await resp.json();
     } catch(e) {
-        pythonRobot = null;
+        // Robot API down — try C# proxy for cached state
+        try {
+            const proxyResp = await fetch('/api/robot/status', {signal: AbortSignal.timeout(2000)});
+            pythonRobot = await proxyResp.json();
+        } catch(e2) {
+            pythonRobot = null;
+        }
     }
 }
 
@@ -3337,13 +3343,19 @@ function pythonRobotUpdateVp() {
 }
 
 async function pythonRobotLoadToPanel() {
-    const defaults = {max_levels:100, step_base:31, spread_base:31, max_hold_minutes:99999999999999, min_profit_per_lot:29, vp_lookback:33, vp_bin_size:50, vp_va_percent:0.70, rv_adaptation:false};
+    const defaults = {max_levels:100, step_base:31, spread_base:31, max_hold_minutes:99999999999999, min_profit_per_lot:35, vp_lookback:33, vp_bin_size:50, vp_va_percent:0.70, rv_adaptation:false};
     let cfg = defaults;
     try {
         const resp = await fetch(ROBOT_API + '/api/robot/config', {signal: AbortSignal.timeout(2000)});
         const data = await resp.json();
         if (!data.error) cfg = data;
-    } catch(e) {}
+    } catch(e) {
+        try {
+            const resp = await fetch('/api/robot/config', {signal: AbortSignal.timeout(2000)});
+            const data = await resp.json();
+            if (!data.error) cfg = data;
+        } catch(e2) {}
+    }
     if (el('editPyMaxLevels')) el('editPyMaxLevels').value = cfg.max_levels;
     if (el('editPyStepBase')) el('editPyStepBase').value = cfg.step_base;
     if (el('editPySpreadBase')) el('editPySpreadBase').value = cfg.spread_base;
@@ -3367,6 +3379,8 @@ async function pythonRobotSaveFromPanel() {
         vp_va_percent: parseFloat(el('editPyVaPercent')?.value),
         rv_adaptation: el('editPyRvAdapt')?.checked || false,
     };
+    // Try live robot first, then C# proxy
+    let saved = false;
     try {
         const resp = await fetch(ROBOT_API + '/api/robot/config', {
             method: 'POST',
@@ -3374,7 +3388,22 @@ async function pythonRobotSaveFromPanel() {
             body: JSON.stringify(body)
         });
         const data = await resp.json();
-        addLog(nowTime(), 'INFO', '🐍 Config saved: ' + JSON.stringify(data));
+        addLog(nowTime(), 'INFO', '🐍 Config saved (live): ' + JSON.stringify(data));
+        saved = true;
+    } catch(e) {
+        try {
+            const resp = await fetch('/api/robot/config', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(body)
+            });
+            const data = await resp.json();
+            addLog(nowTime(), 'INFO', '🐍 Config saved (proxy): ' + JSON.stringify(data));
+            saved = true;
+        } catch(e2) {
+            addLog(nowTime(), 'ERROR', '🐍 Save failed: ' + e2.message);
+        }
+    }
         // Also update strategy tab fields
         if (el('cfgVpMaxLevels')) el('cfgVpMaxLevels').value = body.max_levels;
         if (el('cfgVpStepBase')) el('cfgVpStepBase').value = body.step_base;

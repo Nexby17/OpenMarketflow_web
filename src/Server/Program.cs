@@ -131,6 +131,7 @@ app.Use(async (HttpContext ctx, Func<Task> next) =>
         path.StartsWith("/api/accounts") ||
         path.StartsWith("/api/connectors") ||
         path.StartsWith("/api/robot/service") ||
+        path.StartsWith("/api/robot/status") ||
         path == "/health" ||
         path == "/test" ||
         path == "/heartbeat" ||
@@ -329,6 +330,41 @@ app.MapPost("/api/robot/service/{action}", async (string action) =>
     {
         return Results.Json(new { error = ex.Message });
     }
+}).AllowAnonymous();
+
+// === Robot status proxy (when robot API is down) ===
+app.MapGet("/api/robot/config", () =>
+{
+    try
+    {
+        var cfgPath = "/tmp/robot-config.json";
+        if (System.IO.File.Exists(cfgPath))
+        {
+            var json = System.IO.File.ReadAllText(cfgPath);
+            return Results.Content(json, "application/json");
+        }
+    } catch { }
+    var defaults = System.Text.Json.JsonSerializer.Serialize(new { max_levels = 100, step_base = 31, spread_base = 31, max_hold_minutes = 99999999999999L, min_profit_per_lot = 35, vp_lookback = 33, vp_bin_size = 50, vp_va_percent = 0.70, rv_adaptation = false });
+    return Results.Content(defaults, "application/json");
+}).AllowAnonymous();
+app.MapPost("/api/robot/config", async (HttpRequest req) =>
+{
+    try
+    {
+        using var reader = new System.IO.StreamReader(req.Body);
+        var body = await reader.ReadToEndAsync();
+        // Save to file for robot to pick up
+        System.IO.File.WriteAllText("/tmp/robot-config.json", body);
+        // Also try to push to live robot
+        try {
+            using var client = new System.Net.Http.HttpClient();
+            client.Timeout = System.TimeSpan.FromSeconds(2);
+            var content = new System.Net.Http.StringContent(body, System.Text.Encoding.UTF8, "application/json");
+            await client.PostAsync("http://localhost:5070/api/robot/config", content);
+        } catch { }
+        return Results.Content(body, "application/json");
+    }
+    catch (Exception ex) { return Results.Json(new { error = ex.Message }); }
 }).AllowAnonymous();
 
 // === Test endpoint (no auth) ===

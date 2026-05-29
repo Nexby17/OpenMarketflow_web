@@ -80,6 +80,10 @@ class Robot:
 
     def start(self):
         log.info(f"Starting robot{' [PAPER MODE]' if self._paper else ''}...")
+
+        # Load saved config
+        self._load_config()
+
         self.fp = FinamPy(config.FINAM_TOKEN)
         self.orders = OrderManager(self.fp)
         self.feed.connect()
@@ -898,6 +902,28 @@ class Robot:
         except Exception as e:
             log.error(f"Warmup error: {e}")
 
+
+    def _load_config(self):
+        """Load config from /tmp/robot-config.json if exists."""
+        try:
+            import json
+            path = "/tmp/robot-config.json"
+            if os.path.exists(path):
+                with open(path) as f:
+                    cfg = json.load(f)
+                p = self.strategy.params
+                if 'max_levels' in cfg: p.max_levels = cfg['max_levels']
+                if 'step_base' in cfg: p.step_base = cfg['step_base']
+                if 'spread_base' in cfg: p.spread_base = cfg['spread_base']
+                if 'max_hold_minutes' in cfg: p.max_hold_minutes = cfg['max_hold_minutes']
+                if 'min_profit_per_lot' in cfg: p.min_profit_per_lot = cfg['min_profit_per_lot']
+                if 'vp_lookback' in cfg: p.vp_lookback = cfg['vp_lookback']
+                if 'vp_bin_size' in cfg: p.vp_bin_size = cfg['vp_bin_size']
+                if 'vp_va_percent' in cfg: p.vp_va_percent = cfg['vp_va_percent']
+                if 'rv_adaptation' in cfg: p.rv_adaptation = cfg['rv_adaptation']
+                log.info(f"Config loaded from file: step={p.step_base} spread={p.spread_base}")
+        except Exception as e:
+            log.warning(f"Config load error: {e}")
 
     def _save_state(self):
         s = self.state.state
