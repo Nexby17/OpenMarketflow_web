@@ -909,12 +909,10 @@ class Robot:
                 for bar in all_bars:
                     warmup_vp.add_bar(float(bar.close.value), float(bar.volume.value))
                 result = warmup_vp.calculate()
-                # If lookback too narrow (flat market), try with more bars
-                if result is None and len(all_bars) > self.strategy.params.vp_lookback:
-                    warmup_vp = VolumeProfile(lookback=len(all_bars), bin_size=self.vp.bin_size, va_percent=self.vp.va_percent)
-                    for bar in all_bars:
-                        warmup_vp.add_bar(float(bar.close.value), float(bar.volume.value))
-                    result = warmup_vp.calculate()
+                if result:
+                    log.info(f"Warmup ({len(all_bars[-self.strategy.params.vp_lookback:])} bars, lookback={self.strategy.params.vp_lookback}): VAL={result.val:.0f} VAH={result.vah:.0f} POC={result.poc:.0f}")
+                else:
+                    log.info(f"Warmup: lookback={self.strategy.params.vp_lookback} range too narrow, VP will build from live bars")
                 if result:
                     self.strategy.poc = result.poc
                     self.strategy.vah = result.vah
