@@ -324,7 +324,8 @@ class Feed:
                 return
             try:
                 rows = []
-                ob = ob_response.orderbook if hasattr(ob_response, 'orderbook') else ob_response
+                # SubscribeOrderBookResponse has 'order_book' field with StreamOrderBook inside
+                ob = getattr(ob_response, 'order_book', None) or ob_response
                 for r in ob.rows:
                     price = float(r.price.value) if hasattr(r.price, 'value') else float(r.price)
                     buy = float(r.buy_size.value) if hasattr(r.buy_size, 'value') else float(r.buy_size or 0)
