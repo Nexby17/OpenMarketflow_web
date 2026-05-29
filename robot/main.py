@@ -905,19 +905,31 @@ class Robot:
             )
             if resp and resp.bars:
                 all_bars = list(resp.bars)
-                warmup_vp = VolumeProfile(lookback=self.strategy.params.vp_lookback, bin_size=self.vp.bin_size, va_percent=self.vp.va_percent)
-                for bar in all_bars:
+                lb = self.strategy.params.vp_lookback
+                bs = self.vp.bin_size
+                # Feed only last `lookback` bars into warmup VP
+                warmup_vp = VolumeProfile(lookback=lb, bin_size=bs, va_percent=self.vp.va_percent)
+                for bar in all_bars[-lb:]:
                     warmup_vp.add_bar(float(bar.close.value), float(bar.volume.value))
                 result = warmup_vp.calculate()
-                if result:
-                    log.info(f"Warmup ({len(all_bars[-self.strategy.params.vp_lookback:])} bars, lookback={self.strategy.params.vp_lookback}): VAL={result.val:.0f} VAH={result.vah:.0f} POC={result.poc:.0f}")
-                else:
-                    log.info(f"Warmup: lookback={self.strategy.params.vp_lookback} range too narrow, VP will build from live bars")
+                # If range < bin_size, auto-shrink bin_size so VP always returns a result
+                if result is None and warmup_vp._buffer:
+                    prices = [p for p, v in warmup_vp._buffer]
+                    price_range = max(prices) - min(prices)
+                    if price_range > 0:
+                        adjusted_bs = max(1, int(price_range // 2))
+                        warmup_vp = VolumeProfile(lookback=lb, bin_size=adjusted_bs, va_percent=self.vp.va_percent)
+                        for bar in all_bars[-lb:]:
+                            warmup_vp.add_bar(float(bar.close.value), float(bar.volume.value))
+                        result = warmup_vp.calculate()
+                        log.info(f"Warmup: bin_size {bs}→{adjusted_bs} (range={price_range:.0f})")
                 if result:
                     self.strategy.poc = result.poc
                     self.strategy.vah = result.vah
                     self.strategy.val = result.val
-                    log.info(f"Warmup: {len(list(resp.bars))} bars, VAL={result.val:.0f} VAH={result.vah:.0f} POC={result.poc:.0f}")
+                    log.info(f"Warmup ({lb} bars): VAL={result.val:.0f} VAH={result.vah:.0f} POC={result.poc:.0f}")
+                else:
+                    log.warning(f"Warmup: no VP result with lookback={lb}")
         except Exception as e:
             log.error(f"Warmup error: {e}", exc_info=True)
         finally:
