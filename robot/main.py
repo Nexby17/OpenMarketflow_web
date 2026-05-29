@@ -28,8 +28,8 @@ class Robot:
         # gRPC only for warmup
         self.fp: FinamPy | None = None
         self.feed = Feed()
-        self.vp = VolumeProfile(lookback=self.strategy.params.vp_lookback, bin_size=50, va_percent=0.70)
         self.strategy = Strategy(StrategyParams())
+        self.vp = VolumeProfile(lookback=self.strategy.params.vp_lookback, bin_size=50, va_percent=0.70)
         self.orders: OrderManager | None = None
         self.state = StateManager("/tmp/robot-state.json")
         self.risk = RiskManager()
@@ -905,10 +905,16 @@ class Robot:
             )
             if resp and resp.bars:
                 all_bars = list(resp.bars)
-                warmup_vp = VolumeProfile(lookback=len(all_bars), bin_size=self.vp.bin_size, va_percent=self.vp.va_percent)
+                warmup_vp = VolumeProfile(lookback=self.strategy.params.vp_lookback, bin_size=self.vp.bin_size, va_percent=self.vp.va_percent)
                 for bar in all_bars:
                     warmup_vp.add_bar(float(bar.close.value), float(bar.volume.value))
                 result = warmup_vp.calculate()
+                # If lookback too narrow (flat market), try with more bars
+                if result is None and len(all_bars) > self.strategy.params.vp_lookback:
+                    warmup_vp = VolumeProfile(lookback=len(all_bars), bin_size=self.vp.bin_size, va_percent=self.vp.va_percent)
+                    for bar in all_bars:
+                        warmup_vp.add_bar(float(bar.close.value), float(bar.volume.value))
+                    result = warmup_vp.calculate()
                 if result:
                     self.strategy.poc = result.poc
                     self.strategy.vah = result.vah
