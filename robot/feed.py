@@ -319,24 +319,56 @@ class Feed:
         log.info("Subscribed to own trades")
 
         # --- Order Book (Level 2) ---
+        # Local order book state: aggregate incremental updates
+        self._ob_bids: dict[float, float] = {}  # price → size
+        self._ob_asks: dict[float, float] = {}  # price → size
+        # ACTION constants from Finam protobuf
+        ACTION_UNKNOWN = 0
+        ACTION_ADD = 1
+        ACTION_UPDATE = 2
+        ACTION_DELETE = 3
+
         def _on_ob(ob_response):
             if not self._running:
                 return
             try:
-                rows = []
-                # order_book is a list of StreamOrderBook, each with rows
                 ob_list = ob_response.order_book
+                if not ob_list:
+                    return
                 for ob in ob_list:
                     for r in ob.rows:
                         p = r.price.value if hasattr(r.price, 'value') else str(r.price)
-                        price = float(p) if p else 0
+                        price = round(float(p), 2) if p else 0
+                        if price <= 0:
+                            continue
                         b = r.buy_size.value if hasattr(r.buy_size, 'value') else str(r.buy_size or '')
                         buy = float(b) if b else 0
                         s = r.sell_size.value if hasattr(r.sell_size, 'value') else str(r.sell_size or '')
                         sell = float(s) if s else 0
-                        if price > 0:
-                            rows.append(OBLevel(price=price, buy_size=buy, sell_size=sell))
-                if rows:
+                        action = r.action
+
+                        # Update local book
+                        if action == ACTION_DELETE:
+                            self._ob_bids.pop(price, None)
+                            self._ob_asks.pop(price, None)
+                        else:
+                            # ADD or UPDATE
+                            if buy > 0:
+                                self._ob_bids[price] = buy
+                            elif price in self._ob_bids:
+                                self._ob_bids.pop(price, None)
+                            if sell > 0:
+                                self._ob_asks[price] = sell
+                            elif price in self._ob_asks:
+                                self._ob_asks.pop(price, None)
+
+                # Build snapshot from local book
+                if self._ob_bids or self._ob_asks:
+                    rows = []
+                    for p, sz in self._ob_bids.items():
+                        rows.append(OBLevel(price=p, buy_size=sz, sell_size=0))
+                    for p, sz in self._ob_asks.items():
+                        rows.append(OBLevel(price=p, buy_size=0, sell_size=sz))
                     self.on_orderbook(OrderBookUpdate(
                         symbol=symbol,
                         rows=rows,
