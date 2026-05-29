@@ -1,6 +1,7 @@
 """FastAPI web API for robot control."""
 import logging
 import threading
+from vp import VolumeProfile
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
