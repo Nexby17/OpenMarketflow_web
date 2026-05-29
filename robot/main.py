@@ -287,7 +287,7 @@ class Robot:
                     self._tick()
             except Exception as e:
                 log.error(f"Poll tick error: {e}")
-            time.sleep(0.3)
+            time.sleep(0.2)
 
     def _tick(self):
         """One polling cycle. Compare broker position with expected state."""
@@ -320,7 +320,7 @@ class Robot:
                 # Entry order still pending, check timeout
                 if self._entry_pending_since:
                     elapsed = (datetime.now(MSK) - self._entry_pending_since).total_seconds()
-                    if elapsed > 10:
+                    if elapsed > 5:
                         log.warning(f"Entry pending {elapsed:.0f}s, no broker position — resetting")
                         self._entry_pending = False
             elif not self._entry_pending:
@@ -392,7 +392,7 @@ class Robot:
         if self._bid <= 0 or self._ask <= 0:
             return
         ob_age = (datetime.now(MSK) - self._ob_time).total_seconds()
-        if ob_age > 5:
+        if ob_age > 3:
             return
         sig = self.strategy.check_entry(price)
         if not sig:
@@ -650,7 +650,7 @@ class Robot:
             return
         if self.strategy.entry_time:
             elapsed = (datetime.now(MSK) - self.strategy.entry_time).total_seconds()
-            if elapsed < 3:
+            if elapsed < 2:
                 log.info(f"Ignoring broker close — position opened {elapsed:.1f}s ago")
                 return
         if self.strategy.has_position and self.strategy.entry_price > 0:
