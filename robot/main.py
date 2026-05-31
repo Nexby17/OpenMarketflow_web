@@ -190,14 +190,24 @@ class Robot:
 
         self._running = True
 
-        # Validate quote price against MOEX before starting
-        self._validate_price()
+        # Reset VP — will be recalculated by warmup
+        self.strategy.val = 0
+        self.strategy.vah = 0
+        self.strategy.poc = 0
 
-        self._initialized = True  # Allow tick processing after full startup
+        # Start immediately, validate price + warmup VP in background
+        self._initialized = True
         self._mode = "running"
         self.state.state.mode = "running"
         self.state.save()
-        log.info(f"Robot started. VP: VAL={self.strategy.val:.0f} VAH={self.strategy.vah:.0f} POC={self.strategy.poc:.0f}")
+        log.info(f"Robot started (VP loading in background)")
+
+        # Background: validate price + warmup VP
+        def _bg_startup():
+            self._validate_price()
+            self._warmup_vp()
+            log.info(f"VP ready: VAL={self.strategy.val:.0f} VAH={self.strategy.vah:.0f} POC={self.strategy.poc:.0f}")
+        threading.Thread(target=_bg_startup, daemon=True).start()
 
         # Start 300ms polling loop
         self._poll_thread = threading.Thread(target=self._poll_loop, daemon=True)
@@ -405,6 +415,9 @@ class Robot:
         if price <= 0:
             return
         if self._close_pending:
+            return
+        # Don't enter until VP is ready (after warmup)
+        if self.strategy.val <= 0 or self.strategy.vah <= 0:
             return
         # Frozen price guard — don't enter if price hasn't changed in 30s
         price_age = (datetime.now(MSK) - self._last_price_change).total_seconds()
@@ -890,7 +903,7 @@ class Robot:
 
             finam_tf, _, _ = fp.timeframe_to_finam_timeframe(config.TIMEFRAME)
             now = datetime.now(timezone.utc)
-            start = now - timedelta(hours=24)
+            start = now - timedelta(days=7)  # 7 days to cover weekends
 
             resp = fp.call_function(
                 fp.marketdata_stub.Bars,
@@ -949,6 +962,10 @@ class Robot:
                     last = d.get('LAST')
                     if last and float(last) > 0:
                         return float(last)
+                    # Fallback to settle price (available on weekends)
+                    settle = d.get('SETTLEPRICE')
+                    if settle and float(settle) > 0:
+                        return float(settle)
         except Exception as e:
             log.warning(f"MOEX price error: {e}")
         return 0
@@ -961,6 +978,8 @@ class Robot:
             return
 
         log.info(f"MOEX price: {moex_price:.0f}, waiting for quote to match...")
+        # Set quote filter baseline from MOEX
+        self.feed._quote_filter.set_baseline(moex_price)
         for i in range(30):  # Wait up to 30 seconds
             if self._current_price > 0 and abs(self._current_price - moex_price) < 200:
                 log.info(f"Quote price validated: {self._current_price:.0f} (MOEX={moex_price:.0f})")

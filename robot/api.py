@@ -1,6 +1,9 @@
 """FastAPI web API for robot control."""
 import logging
+import os
 import threading
+from datetime import datetime, timedelta
+import httpx
 from vp import VolumeProfile
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -97,47 +100,93 @@ def active_strategies():
     }
 
 
+CONFIG_FILE = os.environ.get('ROBOT_CONFIG_FILE', '/tmp/robot-config.json')
+
+
+def _read_config_file():
+    """Read config from file (works even when robot is stopped)."""
+    try:
+        with open(CONFIG_FILE, 'r') as f:
+            import json
+            return json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError):
+        return {
+            "max_levels": 100, "step_base": 31, "spread_base": 31,
+            "max_hold_minutes": 99999999999999, "min_profit_per_lot": 35,
+            "vp_lookback": 33, "vp_bin_size": 50, "vp_va_percent": 0.7,
+            "rv_adaptation": False
+        }
+
+
+def _write_config_file(cfg: dict):
+    """Write config to file."""
+    import json
+    with open(CONFIG_FILE, 'w') as f:
+        json.dump(cfg, f, indent=2)
+    log.info(f"Config saved to {CONFIG_FILE}")
+
+
 @app.get("/api/robot/config")
 def get_config():
-    """Get current strategy parameters."""
-    if not _robot:
-        return {"error": "Robot not initialized"}
-    p = _robot.strategy.params
-    return {
-        "max_levels": p.max_levels,
-        "step_base": p.step_base,
-        "spread_base": p.spread_base,
-        "max_hold_minutes": p.max_hold_minutes,
-        "min_profit_per_lot": p.min_profit_per_lot,
-        "commission": p.commission,
-        "vp_lookback": p.vp_lookback,
-        "vp_bin_size": p.vp_bin_size,
-        "vp_va_percent": p.vp_va_percent,
-        "rv_adaptation": p.rv_adaptation,
-    }
+    """Get current strategy parameters (from robot or file)."""
+    if _robot:
+        p = _robot.strategy.params
+        return {
+            "max_levels": p.max_levels,
+            "step_base": p.step_base,
+            "spread_base": p.spread_base,
+            "max_hold_minutes": p.max_hold_minutes,
+            "min_profit_per_lot": p.min_profit_per_lot,
+            "commission": p.commission,
+            "vp_lookback": p.vp_lookback,
+            "vp_bin_size": p.vp_bin_size,
+            "vp_va_percent": p.vp_va_percent,
+            "rv_adaptation": p.rv_adaptation,
+        }
+    return _read_config_file()
 
 
 @app.post("/api/robot/config")
 def update_config(cfg: ConfigUpdate):
-    """Hot-update strategy parameters."""
-    if not _robot:
-        return {"error": "Robot not initialized"}
-
-    p = _robot.strategy.params
+    """Hot-update strategy parameters (and persist to file)."""
     changes = {}
-    for field, val in cfg.dict(exclude_none=True).items():
-        if hasattr(p, field):
-            old = getattr(p, field)
-            setattr(p, field, val)
-            changes[field] = {"old": old, "new": val}
-            log.info(f"Config hot-update: {field} {old} → {val}")
 
-    if changes:
-        # Sync VP params if changed
-        if 'vp_lookback' in changes or 'vp_bin_size' in changes or 'vp_va_percent' in changes:
-            _robot.vp = VolumeProfile(lookback=p.vp_lookback, bin_size=p.vp_bin_size, va_percent=p.vp_va_percent)
+    # Always save to file
+    current = _read_config_file()
+    for field, val in cfg.dict(exclude_none=True).items():
+        current[field] = val
+        changes[field] = {"new": val}
+    _write_config_file(current)
+
+    # If robot is running, also hot-update live
+    if _robot:
+        p = _robot.strategy.params
+        for field, val in cfg.dict(exclude_none=True).items():
+            if hasattr(p, field):
+                old = getattr(p, field)
+                setattr(p, field, val)
+                changes[field] = {"old": old, "new": val}
+                log.info(f"Config hot-update: {field} {old} → {val}")
+
+        if any(k in changes for k in ('vp_lookback', 'vp_bin_size', 'vp_va_percent')):
+            # Update VP params and recalculate from existing data
+            _robot.vp.lookback = p.vp_lookback
+            _robot.vp.bin_size = p.vp_bin_size
+            _robot.vp.va_percent = p.vp_va_percent
+            # Rebuild buffer and recalculate
+            _robot.vp._buffer = _robot.vp._raw_history[-p.vp_lookback:] if _robot.vp._raw_history else []
+            result = _robot.vp.calculate()
+            if result:
+                _robot.strategy.poc = result.poc
+                _robot.strategy.vah = result.vah
+                _robot.strategy.val = result.val
+                log.info(f"VP hot-recalc (LB={p.vp_lookback}): VAL={result.val:.0f} VAH={result.vah:.0f} POC={result.poc:.0f}")
+            else:
+                log.warning(f"VP hot-recalc: no result with lookback={p.vp_lookback}")
+            # Also try warmup from Finam for more data
             threading.Thread(target=_robot._warmup_vp, daemon=True).start()
         _robot._save_state()
+
     return {"updated": changes}
 
 
@@ -178,6 +227,54 @@ def resume():
 @app.get("/health")
 def health():
     return {"status": "ok"}
+
+
+# === TRADES FROM FINAM (QScalp-style journal) ===
+
+FINAM_TOKEN = os.environ.get("FINAM_TOKEN", "")
+FINAM_ACCOUNT_ID = os.environ.get("FINAM_ACCOUNT_ID", "")
+
+
+@app.get("/api/trades")
+async def get_trades(date: str = None, dateFrom: str = None, dateTo: str = None):
+    """Fetch trades from Finam REST API for the journal."""
+    if not FINAM_TOKEN or not FINAM_ACCOUNT_ID:
+        return []
+    try:
+        # Build time range
+        if dateFrom or dateTo:
+            start_str = dateFrom or datetime.utcnow().strftime("%Y-%m-%d")
+            end_str = dateTo or datetime.utcnow().strftime("%Y-%m-%d")
+            try:
+                end_dt = datetime.strptime(end_str, "%Y-%m-%d") + timedelta(days=1)
+                end_str = end_dt.strftime("%Y-%m-%d")
+            except ValueError:
+                pass
+        else:
+            target = date or datetime.utcnow().strftime("%Y-%m-%d")
+            start_str = target
+            try:
+                end_dt = datetime.strptime(target, "%Y-%m-%d") + timedelta(days=1)
+                end_str = end_dt.strftime("%Y-%m-%d")
+            except ValueError:
+                end_str = target
+
+        start_time = f"{start_str}T00:00:00Z"
+        end_time = f"{end_str}T00:00:00Z"
+
+        async with httpx.AsyncClient() as client:
+            resp = await client.get(
+                f"https://api.finam.ru/v1/accounts/{FINAM_ACCOUNT_ID}/trades",
+                params={"interval.start_time": start_time, "interval.end_time": end_time},
+                headers={"Authorization": f"Bearer {FINAM_TOKEN}"},
+                timeout=10,
+            )
+            if resp.status_code == 200:
+                return resp.json()
+            log.warning(f"Finam trades API: {resp.status_code} {resp.text[:200]}")
+    except Exception as e:
+        log.error(f"Trade fetch error: {e}")
+    return []
 
 
 # === GRID LEVELS DETAIL ===

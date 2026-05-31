@@ -143,15 +143,19 @@
 
     <!-- ==================== ТЕСТИРОВАНИЕ ==================== -->
     <div id="testing" class="tab-content">
-        <!-- Верхняя панель: параметры + кнопка -->
+        <!-- VP Scalp Grid — параметры теста -->
         <div class="card" style="margin-bottom:16px">
-            <div class="card-header row gap-8">
-                🧪 Параметры теста
-                <button class="btn btn-primary" onclick="runBacktest()" id="btnRunTest">▶ Запустить</button>
+            <div class="card-header" style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+                🐍 VP Scalp Grid <span class="badge" style="background:#2196F3">PYTHON</span>
+                <span style="flex:1"></span>
+                <button class="btn btn-success btn-sm" onclick="startVpTest()" id="btnRunVpTest">▶️ Начать тестирование</button>
+                <button class="btn btn-primary btn-sm" onclick="createVpRobotFromTest()">🤖 Создать робота</button>
+                <button class="btn btn-danger btn-sm" onclick="clearTestResults()">🗑 Удалить</button>
                 <span id="testStatus" class="text-secondary"></span>
             </div>
             <div class="card-body">
-                <div class="metrics-row" style="flex-wrap:wrap">
+                <!-- Строка 1: Инструмент + период -->
+                <div class="metrics-row" style="flex-wrap:wrap;margin-bottom:12px">
                     <div class="metric-card" style="min-width:180px"><div class="metric-label">Инструмент</div><input id="testTicker" class="input" value="SiM6" list="tickerList2" style="width:120px"><datalist id="tickerList2"><option value="SiM6"><option value="SiU6"><option value="SiH7"><option value="MXM6"><option value="GDM6"><option value="BRK6"><option value="RIU6"><option value="SBRF"><option value="GAZP"><option value="LKOH"></datalist></div>
                     <div class="metric-card" style="min-width:100px"><div class="metric-label">Таймфрейм</div>
                         <select id="testTf" class="input" style="width:80px">
@@ -161,18 +165,17 @@
                     </div>
                     <div class="metric-card" style="min-width:140px"><div class="metric-label">Дата с</div><input type="date" id="testFrom" class="input"></div>
                     <div class="metric-card" style="min-width:140px"><div class="metric-label">Дата по</div><input type="date" id="testTo" class="input"></div>
-                    <div class="metric-card" style="min-width:100px"><div class="metric-label">Или свечей</div><input type="number" id="testCandles" class="input" placeholder="напр. 5000" style="width:100px"></div>
-                    <div class="metric-card" style="min-width:80px"><div class="metric-label">SAR Start</div><input id="tstSarStart" class="input" type="number" step="0.001" value="0.005" style="width:70px"></div>
-                    <div class="metric-card" style="min-width:80px"><div class="metric-label">SAR Step</div><input id="tstSarStep" class="input" type="number" step="0.001" value="0.01" style="width:70px"></div>
-                    <div class="metric-card" style="min-width:80px"><div class="metric-label">SAR Max</div><input id="tstSarMax" class="input" type="number" step="0.01" value="0.2" style="width:70px"></div>
-                    <div class="metric-card" style="min-width:80px"><div class="metric-label">EMA</div><input id="tstEma" class="input" type="number" value="30" style="width:60px"></div>
-                    <div class="metric-card" style="min-width:80px"><div class="metric-label">Grid Step</div><input id="tstGridStep" class="input" type="number" value="30" style="width:60px"></div>
-                    <div class="metric-card" style="min-width:80px"><div class="metric-label">Grid Spread</div><input id="tstGridSpread" class="input" type="number" value="40" style="width:60px"></div>
-                    <div class="metric-card" style="min-width:80px"><div class="metric-label">Max Levels</div><input id="tstMaxGrid" class="input" type="number" value="50" style="width:60px"></div>
-                    <div class="metric-card" style="min-width:80px"><div class="metric-label">Min Profit</div><input id="tstMinProfit" class="input" type="number" value="28" style="width:60px"></div>
-                    <div class="metric-card" style="min-width:80px"><div class="metric-label">Close %</div><input id="tstClosePct" class="input" type="number" step="0.01" value="0.50" style="width:60px"></div>
-                    <div class="metric-card" style="min-width:80px"><div class="metric-label">Комиссия</div><input id="tstComm" class="input" type="number" step="0.1" value="0.9" style="width:60px"></div>
-                    <div class="metric-card" style="min-width:60px"><div class="metric-label">Лоты</div><input id="tstLots" class="input" type="number" value="3" style="width:50px"></div>
+                </div>
+                <!-- Строка 2: Параметры стратегии -->
+                <div class="metrics-row" style="flex-wrap:wrap">
+                    <div class="metric-card" style="min-width:120px"><div class="metric-label">Max Levels</div><input id="tstVpMaxLevels" class="input" type="number" value="100" style="width:70px"></div>
+                    <div class="metric-card" style="min-width:120px"><div class="metric-label">Step Base (пт)</div><input id="tstVpStepBase" class="input" type="number" value="31" style="width:70px"></div>
+                    <div class="metric-card" style="min-width:120px"><div class="metric-label">Spread Base (пт)</div><input id="tstVpSpreadBase" class="input" type="number" value="31" style="width:70px"></div>
+                    <div class="metric-card" style="min-width:120px"><div class="metric-label">PnL/лот (пт)</div><input id="tstVpMinProfit" class="input" type="number" value="35" style="width:70px"></div>
+                    <div class="metric-card" style="min-width:120px"><div class="metric-label">VP Lookback</div><input id="tstVpLookback" class="input" type="number" value="33" style="width:70px"></div>
+                    <div class="metric-card" style="min-width:120px"><div class="metric-label">VP Bin Size</div><input id="tstVpBinSize" class="input" type="number" value="50" style="width:70px"></div>
+                    <div class="metric-card" style="min-width:120px"><div class="metric-label">VA %</div><input id="tstVpVaPercent" class="input" type="number" step="0.05" value="0.70" style="width:70px"></div>
+                    <div class="metric-card" style="min-width:120px"><div class="metric-label">Комиссия</div><input id="tstVpComm" class="input" type="number" step="0.1" value="0.9" style="width:70px"></div>
                 </div>
             </div>
         </div>
@@ -240,6 +243,7 @@
         <!-- VP Scalp Grid — Python Robot -->
         <div class="strategy-item" style="padding:16px; gap:12px; align-items:center; flex-wrap:wrap; margin-top:12px; border-top:1px solid var(--border-color)">
             <strong style="min-width:100px">🐍 VP Scalp Grid</strong> <span class="badge" style="background:#2196F3">PYTHON</span>
+            <div class="metric-card" style="min-width:140px"><div class="metric-label">Инструмент</div><select id="cfgVpTicker" class="input" style="width:120px"><option value="SiM6">SiM6 (Si)</option><option value="SiU6">SiU6 (Si)</option><option value="MXM6">MXM6 (MOEX)</option><option value="MXU6">MXU6 (MOEX)</option><option value="GDM6">GDM6 (Золото)</option><option value="BRK6">BRK6 (Нефть)</option><option value="RIM6">RIM6 (RTS)</option><option value="RIU6">RIU6 (RTS)</option></select></div>
             <div class="metric-card" style="min-width:120px"><div class="metric-label">Max Levels</div><input id="cfgVpMaxLevels" class="input" type="number" step="1" value="100" style="width:70px"></div>
             <div class="metric-card" style="min-width:120px"><div class="metric-label">Step Base (пт)</div><input id="cfgVpStepBase" class="input" type="number" step="1" value="31" style="width:70px"></div>
             <div class="metric-card" style="min-width:120px"><div class="metric-label">Spread Base (пт)</div><input id="cfgVpSpreadBase" class="input" type="number" step="1" value="31" style="width:70px"></div>
@@ -250,7 +254,8 @@
             <div class="metric-card" style="min-width:120px"><div class="metric-label">PnL/лот (пт)</div><input id="cfgVpMinProfit" class="input" type="number" step="1" value="29" style="width:70px"></div>
             <div class="metric-card" style="min-width:120px"><div class="metric-label">RV Adaptation</div><input id="cfgVpRvAdapt" type="checkbox" style="width:20px;height:20px;vertical-align:middle"></div>
             <button class="btn btn-success btn-sm" onclick="pythonRobotSaveConfig()">💾 Сохранить</button>
-            <button class="btn btn-secondary btn-sm" onclick="pythonRobotLoadConfig()">🔄 Загрузить</button>
+            <button class="btn btn-warning btn-sm" onclick="pythonRobotTest()">🧪 Тестирование</button>
+            <button class="btn btn-primary btn-sm" onclick="pythonRobotCreate()">🤖 Создать робота</button>
         </div>
 
     </div>
@@ -386,6 +391,6 @@
         </div>
     </div>
 
-    <script src="/js/app.js?v=52"></script>
+    <script src="/js/app.js?v=59"></script>
 </body>
 </html>

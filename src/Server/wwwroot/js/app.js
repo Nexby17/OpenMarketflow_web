@@ -2133,9 +2133,33 @@ async function renderRobots() {
     let serverStrategies = [];
     try { /* no-op, kept for compatibility */ } catch(e) {}
 
-    // localStorage robots removed — Python robot only
+    // localStorage robots
     let localRows = [];
-    try { /* no-op */ } catch(e) {}
+    try {
+        robots.forEach((r, idx) => {
+            const ticker = r.ticker || 'SiM6';
+            const strat = r.strategy || 'VP Scalp Grid';
+            const step = r.gridStep || '?';
+            const spread = r.gridSpread || '?';
+            const statusCls = r.status === 'running' ? 'green' : 'red';
+            const statusText = r.status === 'running' ? '🟢 Работает' : '🔴 Остановлен';
+            localRows.push(`<tr ondblclick="openRobotEditPanel(${idx})" style="cursor:pointer" title="Двойной клик — настройки робота">
+                <td><strong>${ticker}</strong></td>
+                <td><strong>${strat}</strong> <span class="badge" style="background:#2196F3">PYTHON</span></td>
+                <td>Финам</td>
+                <td>${r.position || '—'}</td>
+                <td>—</td>
+                <td>${r.pnlTotal >= 0 ? '+' : ''}${(r.pnlTotal||0).toFixed(0)} ₽</td>
+                <td>${r.lotsOpen || 0}</td>
+                <td>step=${step} spread=${spread}</td>
+                <td>
+                    <button class="btn btn-success btn-sm" onclick="startLocalStorageRobot(${idx})">▶</button>
+                    <button class="btn btn-danger btn-sm" onclick="deleteRobot(${idx})">🗑</button>
+                </td>
+                <td class="${statusCls}">${statusText}</td>
+            </tr>`);
+        });
+    } catch(e) { console.error('renderRobots local error:', e); }
 
     // Python Robot row — always visible
     let pythonRobotRow = '';
@@ -2269,6 +2293,201 @@ async function robotStart(i) {
         saveRobots(); renderRobots();
         addLog(nowTime(), 'INFO', `🤖 Робот ${r.strategy} ${r.ticker} запущен`);
     } catch (e) { addLog(nowTime(), 'ERROR', e.message); }
+}
+
+async function startLocalStorageRobot(idx) {
+    const r = robots[idx];
+    if (!r) return;
+    // Update config.py with this robot's ticker
+    const ticker = r.ticker || 'SiM6';
+    try {
+        await fetch('/api/robot/ticker', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ ticker: ticker })
+        });
+    } catch(e) {}
+    // Save this robot's params to /tmp/robot-config.json
+    const body = {
+        max_levels: parseInt(r.maxGrid) || 100,
+        step_base: parseInt(r.gridStep) || 31,
+        spread_base: parseInt(r.gridSpread) || 31,
+        min_profit_per_lot: parseInt(r.minProfit) || 35,
+        vp_lookback: parseInt(r.vpLookback) || 33,
+        vp_bin_size: parseInt(r.vpBinSize) || 50,
+        vp_va_percent: parseFloat(r.vpVaPercent) || 0.70,
+        rv_adaptation: r.rvAdaptation || false,
+        max_hold_minutes: parseInt(r.holdMinutes) || 99999999999999
+    };
+    try {
+        await fetch('/api/robot/config', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(body)
+        });
+    } catch(e) {}
+    addLog(nowTime(), 'INFO', '▶ Запуск ' + ticker + ' step=' + body.step_base + ' spread=' + body.spread_base);
+    // Now start the robot
+    robotApi('start');
+}
+
+function openRobotEditPanel(idx) {
+    // If no idx, open for live Python robot
+    if (idx === undefined || idx === null) { pythonRobotEditPanel(); return; }
+    const r = robots[idx];
+    if (!r) { pythonRobotEditPanel(); return; }
+    
+    const existing = el('robotEditPanel');
+    if (existing) { existing.remove(); return; }
+
+    const div = document.createElement('div');
+    div.id = 'robotEditPanel';
+    div.className = 'card';
+    div.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);z-index:1000;width:900px;max-height:90vh;overflow-y:auto;box-shadow:0 8px 32px rgba(0,0,0,.5)';
+    div.innerHTML = `
+        <div class="card-header row gap-8">
+            🐍 VP Scalp Grid (PYTHON)
+            <button class="btn btn-primary btn-sm" onclick="saveRobotFromPanel(${idx})">💾 Сохранить</button>
+            <button class="btn btn-secondary btn-sm" onclick="if(window._pyVpTimer){clearInterval(window._pyVpTimer);window._pyVpTimer=null;}el('robotEditPanel')?.remove()">✕</button>
+        </div>
+        <div style="padding:12px">
+            <!-- VP индикаторы -->
+            <div class="metrics-row" style="flex-wrap:wrap;margin-bottom:12px">
+                <div class="metric-card" style="background:#1a2332;border:1px solid #2D4A6D"><div class="metric-label" style="color:#60A5FA">VAH</div><div id="pyVAH" style="font-size:18px;font-weight:bold;color:#60A5FA">—</div></div>
+                <div class="metric-card" style="background:#1a2332;border:1px solid #2D4A6D"><div class="metric-label" style="color:#F59E0B">POC</div><div id="pyPOC" style="font-size:18px;font-weight:bold;color:#F59E0B">—</div></div>
+                <div class="metric-card" style="background:#1a2332;border:1px solid #2D4A6D"><div class="metric-label" style="color:#34D399">VAL</div><div id="pyVAL" style="font-size:18px;font-weight:bold;color:#34D399">—</div></div>
+                <div class="metric-card"><div class="metric-label">Цена</div><div id="pyPrice" style="font-size:18px;font-weight:bold">—</div></div>
+                <div class="metric-card"><div class="metric-label">Позиция</div><div id="pyDir" style="font-size:18px;font-weight:bold">—</div></div>
+                <div class="metric-card"><div class="metric-label">Лоты</div><div id="pyLots" style="font-size:18px;font-weight:bold">0</div></div>
+                <div class="metric-card"><div class="metric-label">Grid</div><div id="pyGrid" style="font-size:18px;font-weight:bold">0</div></div>
+                <div class="metric-card"><div class="metric-label">Round Trips</div><div id="pyRT" style="font-size:18px;font-weight:bold">0</div></div>
+                <div class="metric-card"><div class="metric-label">PnL реал.</div><div id="pyPnlReal" style="font-size:18px;font-weight:bold">—</div></div>
+                <div class="metric-card"><div class="metric-label">PnL нереал.</div><div id="pyPnlUnreal" style="font-size:18px;font-weight:bold">—</div></div>
+                <div class="metric-card"><div class="metric-label">Hold</div><div id="pyHold" style="font-size:18px;font-weight:bold">0 мин</div></div>
+            </div>
+            <hr style="border-color:#2D2D44;margin:12px 0">
+            <!-- Параметры -->
+            <div class="metrics-row" style="flex-wrap:wrap;margin-bottom:16px">
+                <div class="metric-card"><div class="metric-label">Max Levels</div><input id="editPyMaxLevels" class="input" type="number" value="${r.maxGrid||100}" style="width:80px"></div>
+                <div class="metric-card"><div class="metric-label">Step Base (пт)</div><input id="editPyStepBase" class="input" type="number" value="${r.gridStep||31}" style="width:80px"></div>
+                <div class="metric-card"><div class="metric-label">Spread Base (пт)</div><input id="editPySpreadBase" class="input" type="number" value="${r.gridSpread||31}" style="width:80px"></div>
+                <div class="metric-card"><div class="metric-label">Max Hold (мин)</div><input id="editPyMaxHold" class="input" type="number" value="${r.holdMinutes||99999999999999}" style="width:100px"></div>
+                <div class="metric-card"><div class="metric-label">VP Lookback</div><input id="editPyLookback" class="input" type="number" value="${r.vpLookback||33}" style="width:70px"></div>
+                <div class="metric-card"><div class="metric-label">VP Bin Size</div><input id="editPyBinSize" class="input" type="number" value="${r.vpBinSize||50}" style="width:70px"></div>
+                <div class="metric-card"><div class="metric-label">VA %</div><input id="editPyVaPercent" class="input" type="number" step="0.05" value="${r.vpVaPercent||0.70}" style="width:70px"></div>
+                <div class="metric-card"><div class="metric-label">PnL/лот (пт)</div><input id="editPyMinProfit" class="input" type="number" value="${r.minProfit||35}" style="width:70px"></div>
+                <div class="metric-card"><div class="metric-label">RV Adaptation</div><br><input id="editPyRvAdapt" type="checkbox" style="width:20px;height:20px;vertical-align:middle" ${r.rvAdaptation?'checked':''}></div>
+            </div>
+            <hr style="border-color:#2D2D44;margin:12px 0">
+            <!-- Торговый журнал -->
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+                <strong>📋 Торговый журнал</strong>
+            </div>
+            <div id="pyJournalSummary" class="metrics-row" style="flex-wrap:wrap;margin-bottom:12px"></div>
+            <div style="display:flex;gap:8px;margin-bottom:12px;align-items:center">
+                <select id="pyJournalFilter" class="input" style="width:120px" onchange="pyRenderJournal()">
+                    <option value="all">Все позиции</option>
+                    <option value="LONG">Лонги</option>
+                    <option value="SHORT">Шорты</option>
+                    <option value="win">Прибыльные</option>
+                    <option value="loss">Убыточные</option>
+                </select>
+                <span style="color:#9CA3AF;font-size:13px">с</span>
+                <input id="pyJournalDateFrom" class="input" type="date" style="width:130px" onchange="pyLoadJournal()">
+                <span style="color:#9CA3AF;font-size:13px">по</span>
+                <input id="pyJournalDateTo" class="input" type="date" style="width:130px" onchange="pyLoadJournal()">
+                <button class="btn btn-secondary btn-sm" onclick="pyLoadJournal()">🔄</button>
+            </div>
+            <div style="max-height:350px;overflow-y:auto;border:1px solid var(--border-color);border-radius:8px">
+                <table style="width:100%;border-collapse:collapse;font-size:13px">
+                    <thead style="position:sticky;top:0;z-index:1">
+                        <tr style="background:var(--card);border-bottom:2px solid var(--accent)">
+                            <th style="padding:8px;text-align:left">📅 Дата</th>
+                            <th style="padding:8px;text-align:left">⏰ Вход</th>
+                            <th style="padding:8px;text-align:left">⏰ Выход</th>
+                            <th style="padding:8px;text-align:center">↔️</th>
+                            <th style="padding:8px;text-align:right">💰 Вход</th>
+                            <th style="padding:8px;text-align:right">💰 Выход</th>
+                            <th style="padding:8px;text-align:right">Лоты</th>
+                            <th style="padding:8px;text-align:right">PnL</th>
+                            <th style="padding:8px;text-align:right">Кумул.</th>
+                        </tr>
+                    </thead>
+                    <tbody id="pyJournalBody" style="background:var(--bg)"><tr><td colspan="9" style="text-align:center;padding:24px;color:#9CA3AF">Нет данных</td></tr></tbody>
+                </table>
+            </div>
+            <div id="pyJournalInfo" style="font-size:12px;color:#9CA3AF;margin-top:8px"></div>
+        </div>
+    `;
+    document.body.appendChild(div);
+
+    // Live VP update
+    pythonRobotUpdateVp();
+    if (window._pyVpTimer) clearInterval(window._pyVpTimer);
+    window._pyVpTimer = setInterval(() => pythonRobotUpdateVp(), 2000);
+    // Load trade journal
+    setTimeout(() => pyLoadJournal(), 300);
+}
+
+async function saveRobotFromPanel(idx) {
+    if (idx === undefined || idx < 0 || idx >= robots.length) return;
+    const r = robots[idx];
+    r.maxGrid = el('editPyMaxLevels')?.value || r.maxGrid;
+    r.gridStep = el('editPyStepBase')?.value || r.gridStep;
+    r.gridSpread = el('editPySpreadBase')?.value || r.gridSpread;
+    r.holdMinutes = el('editPyMaxHold')?.value || r.holdMinutes;
+    r.vpLookback = el('editPyLookback')?.value || r.vpLookback;
+    r.vpBinSize = el('editPyBinSize')?.value || r.vpBinSize;
+    r.vpVaPercent = el('editPyVaPercent')?.value || r.vpVaPercent;
+    r.minProfit = el('editPyMinProfit')?.value || r.minProfit;
+    r.rvAdaptation = el('editPyRvAdapt')?.checked || false;
+    saveRobots();
+    // Try live robot API first (triggers VP hot-update), then C# proxy
+    const cfg = {
+        max_levels: parseInt(r.maxGrid),
+        step_base: parseInt(r.gridStep),
+        spread_base: parseInt(r.gridSpread),
+        min_profit_per_lot: parseInt(r.minProfit),
+        vp_lookback: parseInt(r.vpLookback),
+        vp_bin_size: parseInt(r.vpBinSize),
+        vp_va_percent: parseFloat(r.vpVaPercent),
+        rv_adaptation: r.rvAdaptation,
+        max_hold_minutes: parseInt(r.holdMinutes)
+    };
+    let saved = false;
+    try {
+        const resp = await fetch(ROBOT_API + '/api/robot/config', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(cfg)
+        });
+        const data = await resp.json();
+        addLog(nowTime(), 'INFO', '💾 Config saved (live): ' + JSON.stringify(data));
+        saved = true;
+    } catch(e) {
+        try {
+            const resp = await fetch('/api/robot/config', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(cfg)
+            });
+            addLog(nowTime(), 'INFO', '💾 Config saved (proxy)');
+            saved = true;
+        } catch(e2) {
+            addLog(nowTime(), 'ERROR', '💾 Save failed');
+        }
+    }
+    addLog(nowTime(), 'INFO', '💾 Параметры робота ' + r.ticker + ' сохранены');
+}
+
+function deleteRobot(idx) {
+    if (idx >= 0 && idx < robots.length) {
+        const r = robots[idx];
+        robots.splice(idx, 1);
+        saveRobots();
+        renderRobots();
+        addLog(nowTime(), 'INFO', '🗑 Робот ' + (r.ticker||'') + ' удалён');
+    }
 }
 
 function getRobotApiBase(r) {
@@ -3157,6 +3376,9 @@ document.addEventListener('DOMContentLoaded', () => {
         el('txHost').value = localStorage.getItem('txHost') || 'tr.finam.ru';
         el('txPort').value = localStorage.getItem('txPort') || '39000';
     }
+
+    // Load VP Scalp Grid params from saved config
+    pythonRobotLoadConfig();
     
     // Проверка здоровья каждые 5 сек
     setInterval(checkHealth, 30000);
@@ -3215,13 +3437,13 @@ async function robotApi(action) {
 async function pythonRobotLoadConfig() {
     const defaults = {max_levels:100, step_base:31, spread_base:31, max_hold_minutes:99999999999999, min_profit_per_lot:29, vp_lookback:33, vp_bin_size:50, vp_va_percent:0.70, rv_adaptation:false};
     let cfg = defaults;
-    try {
-        const resp = await fetch(ROBOT_API + '/api/robot/config', {signal: AbortSignal.timeout(2000)});
-        const data = await resp.json();
-        if (!data.error) { cfg = data; addLog(nowTime(), 'INFO', 'Config loaded'); }
-        else { addLog(nowTime(), 'WARN', 'Robot offline'); }
-    } catch(e) {
-        addLog(nowTime(), 'WARN', 'Robot offline');
+    // Try robot API (5070), then C# proxy (5050)
+    for (const base of [ROBOT_API, '']) {
+        try {
+            const resp = await fetch(base + '/api/robot/config', {signal: AbortSignal.timeout(2000)});
+            const data = await resp.json();
+            if (!data.error) { cfg = data; addLog(nowTime(), 'INFO', 'Config loaded'); break; }
+        } catch(e) { continue; }
     }
     if (el('cfgVpMaxLevels')) el('cfgVpMaxLevels').value = cfg.max_levels;
     if (el('cfgVpStepBase')) el('cfgVpStepBase').value = cfg.step_base;
@@ -3246,17 +3468,22 @@ async function pythonRobotSaveConfig() {
         vp_va_percent: parseFloat(el('cfgVpVaPercent')?.value),
         rv_adaptation: el('cfgVpRvAdapt')?.checked || false,
     };
-    try {
-        const resp = await fetch(ROBOT_API + '/api/robot/config', {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify(body)
-        });
-        const data = await resp.json();
-        addLog(nowTime(), 'INFO', '🐍 Config saved: ' + JSON.stringify(data));
-    } catch(e) {
-        addLog(nowTime(), 'ERROR', '🐍 Save config failed: ' + e.message);
+    const json = JSON.stringify(body);
+    // Try robot API (5070), then C# proxy (5050)
+    let saved = false;
+    for (const base of [ROBOT_API, '']) {
+        try {
+            const resp = await fetch(base + '/api/robot/config', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: json
+            });
+            const data = await resp.json();
+            addLog(nowTime(), 'INFO', '💾 Config saved: ' + JSON.stringify(body));
+            saved = true; break;
+        } catch(e) { continue; }
     }
+    if (!saved) addLog(nowTime(), 'ERROR', '💾 Save failed — all endpoints down');
 }
 
 function pythonRobotEditPanel() {
@@ -3302,17 +3529,44 @@ function pythonRobotEditPanel() {
                 <div class="metric-card"><div class="metric-label">RV Adaptation</div><br><input id="editPyRvAdapt" type="checkbox" style="width:20px;height:20px;vertical-align:middle"></div>
             </div>
             <hr style="border-color:#2D2D44;margin:12px 0">
-            <!-- Grid Levels -->
+            <!-- Торговый журнал (QScalp style) -->
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
-                <strong>📊 Grid Levels</strong>
-                <button class="btn btn-secondary btn-sm" onclick="pythonRobotLoadGridLevels()">🔄 Обновить</button>
+                <strong>📋 Торговый журнал</strong>
             </div>
-            <div style="max-height:250px;overflow-y:auto;border:1px solid var(--border-color);border-radius:8px">
-                <table class="data-table" style="font-size:13px">
-                    <thead><tr><th>#</th><th>Side</th><th>Цена</th><th>Статус</th><th>TP</th><th>TP Fill</th></tr></thead>
-                    <tbody id="pyGridBody"><tr><td colspan="6" style="text-align:center;color:#9CA3AF">Нажмите 🔄 для загрузки</td></tr></tbody>
+            <div id="pyJournalSummary" class="metrics-row" style="flex-wrap:wrap;margin-bottom:12px"></div>
+            <div style="display:flex;gap:8px;margin-bottom:12px;align-items:center">
+                <select id="pyJournalFilter" class="input" style="width:120px" onchange="pyRenderJournal()">
+                    <option value="all">Все позиции</option>
+                    <option value="LONG">Лонги</option>
+                    <option value="SHORT">Шорты</option>
+                    <option value="win">Прибыльные</option>
+                    <option value="loss">Убыточные</option>
+                </select>
+                <span style="color:#9CA3AF;font-size:13px">с</span>
+                <input id="pyJournalDateFrom" class="input" type="date" style="width:130px" onchange="pyLoadJournal()">
+                <span style="color:#9CA3AF;font-size:13px">по</span>
+                <input id="pyJournalDateTo" class="input" type="date" style="width:130px" onchange="pyLoadJournal()">
+                <button class="btn btn-secondary btn-sm" onclick="pyLoadJournal()">🔄</button>
+            </div>
+            <div style="max-height:350px;overflow-y:auto;border:1px solid var(--border-color);border-radius:8px">
+                <table style="width:100%;border-collapse:collapse;font-size:13px">
+                    <thead style="position:sticky;top:0;z-index:1">
+                        <tr style="background:var(--card);border-bottom:2px solid var(--accent)">
+                            <th style="padding:8px;text-align:left">📅 Дата</th>
+                            <th style="padding:8px;text-align:left">⏰ Вход</th>
+                            <th style="padding:8px;text-align:left">⏰ Выход</th>
+                            <th style="padding:8px;text-align:center">↔️</th>
+                            <th style="padding:8px;text-align:right">💰 Вход</th>
+                            <th style="padding:8px;text-align:right">💰 Выход</th>
+                            <th style="padding:8px;text-align:right">Лоты</th>
+                            <th style="padding:8px;text-align:right">PnL</th>
+                            <th style="padding:8px;text-align:right">Кумул.</th>
+                        </tr>
+                    </thead>
+                    <tbody id="pyJournalBody" style="background:var(--bg)"><tr><td colspan="9" style="text-align:center;padding:24px;color:#9CA3AF">Загрузка...</td></tr></tbody>
                 </table>
             </div>
+            <div id="pyJournalInfo" style="font-size:12px;color:#9CA3AF;margin-top:8px">Загрузка данных...</div>
         </div>
     `;
     document.body.appendChild(div);
@@ -3322,6 +3576,9 @@ function pythonRobotEditPanel() {
     pythonRobotUpdateVp();
     if (window._pyVpTimer) clearInterval(window._pyVpTimer);
     window._pyVpTimer = setInterval(() => pythonRobotUpdateVp(), 2000);
+
+    // Load trade journal
+    setTimeout(() => pyLoadJournal(), 300);
 }
 
 function pythonRobotUpdateVp() {
@@ -3340,6 +3597,187 @@ function pythonRobotUpdateVp() {
     if (el('pyPnlReal')) { el('pyPnlReal').textContent = (s.realized_pnl||0).toFixed(0)+'₽'; el('pyPnlReal').style.color = s.realized_pnl >= 0 ? 'var(--green)' : 'var(--red)'; }
     if (el('pyPnlUnreal')) { el('pyPnlUnreal').textContent = (s.pnl||0).toFixed(0)+'₽'; el('pyPnlUnreal').style.color = s.pnl >= 0 ? 'var(--green)' : 'var(--red)'; }
     if (el('pyHold')) el('pyHold').textContent = (s.hold_minutes || 0) + ' мин';
+}
+
+// === Python Robot Trade Journal ===
+let _pyJournalTrades = [];
+let _pyJournalPositions = [];
+
+async function pyLoadJournal() {
+    const info = el('pyJournalInfo');
+    const body = el('pyJournalBody');
+    if (!body) return;
+
+    // Set default date range
+    const today = new Date().toISOString().slice(0, 10);
+    const weekAgo = new Date(Date.now() - 7 * 86400000).toISOString().slice(0, 10);
+    if (el('pyJournalDateFrom') && !el('pyJournalDateFrom').value) el('pyJournalDateFrom').value = weekAgo;
+    if (el('pyJournalDateTo') && !el('pyJournalDateTo').value) el('pyJournalDateTo').value = today;
+
+    if (info) info.textContent = 'Загрузка сделок...';
+    body.innerHTML = '<tr><td colspan="9" style="text-align:center;padding:16px;color:#9CA3AF">⏳ Загрузка...</td></tr>';
+
+    const dateFrom = el('pyJournalDateFrom')?.value;
+    const dateTo = el('pyJournalDateTo')?.value;
+    let params = '';
+    if (dateFrom) params += `&dateFrom=${dateFrom}`;
+    if (dateTo) params += `&dateTo=${dateTo}`;
+    params = params ? '?' + params.substring(1) : '';
+
+    // Try Python robot API first (port 5070), then C# server (port 5050)
+    let trades = [];
+    for (const base of ['http://localhost:5070', 'http://localhost:5050']) {
+        try {
+            const resp = await fetch(base + '/api/trades' + params, {signal: AbortSignal.timeout(5000)});
+            if (resp.ok) {
+                const raw = await resp.json();
+                trades = Array.isArray(raw) ? raw : (raw.trades || []);
+                if (trades.length > 0) break;
+            }
+        } catch (e) { /* skip */ }
+    }
+
+    // Normalize
+    _pyJournalTrades = trades.map(t => ({
+        time: t.timestamp || t.time || t.trade_date || t.datetime || '',
+        ticker: t.symbol || t.ticker || t.Ticker || '',
+        dir: (t.side || t.direction || t.dir || '').replace('SIDE_', '').toUpperCase(),
+        price: parseFloat((t.price && t.price.value) ? t.price.value : (t.price || t.Price || 0)),
+        lots: parseInt((t.size && t.size.value) ? t.size.value : (t.quantity || t.lots || t.Lots || t.qty || 0)),
+        comment: t.comment || t.Comment || ''
+    })).filter(t => t.price > 0 && t.lots > 0);
+
+    _pyJournalTrades.sort((a, b) => a.time.localeCompare(b.time));
+    _pyJournalPositions = pyGroupPositions(_pyJournalTrades);
+    pyRenderJournal();
+}
+
+function pyGroupPositions(trades) {
+    const positions = [];
+    let current = null;
+    let netPos = 0;
+    let cumPnl = 0;
+
+    trades.forEach(t => {
+        const isBuy = t.dir === 'BUY' || t.dir === '1' || t.dir === 'B';
+        const lots = isBuy ? t.lots : -t.lots;
+
+        if (!current) {
+            current = {
+                entryTime: t.time, exitTime: t.time,
+                direction: isBuy ? 'LONG' : 'SHORT',
+                entryPrice: t.price, exitPrice: t.price,
+                maxLots: t.lots, trades: [t],
+                realizedPnL: 0, commission: Math.round(t.lots * 0.90),
+                cumPnl: 0, comments: t.comment ? [t.comment] : []
+            };
+            netPos = lots;
+        } else {
+            const prevNet = netPos;
+            netPos += lots;
+            if ((prevNet > 0 && !isBuy) || (prevNet < 0 && isBuy)) {
+                const closingLots = Math.min(Math.abs(lots), Math.abs(prevNet));
+                const pnlPerLot = prevNet > 0 ? (t.price - current.exitPrice) : (current.exitPrice - t.price);
+                current.realizedPnL += pnlPerLot * closingLots;
+            }
+            current.exitTime = t.time;
+            current.exitPrice = t.price;
+            current.maxLots = Math.max(current.maxLots, Math.abs(netPos));
+            current.trades.push(t);
+            current.commission += Math.round(t.lots * 0.90);
+            if (t.comment && !current.comments.includes(t.comment)) current.comments.push(t.comment);
+
+            if (netPos === 0) {
+                current.totalLots = current.maxLots;
+                current.netPnL = current.realizedPnL - current.commission;
+                cumPnl += current.netPnL;
+                current.cumPnl = cumPnl;
+                positions.push(current);
+                current = null; netPos = 0;
+            }
+        }
+    });
+    if (current) {
+        current.totalLots = current.maxLots;
+        current.netPnL = current.realizedPnL - current.commission;
+        current.isOpen = true;
+        cumPnl += current.netPnL;
+        current.cumPnl = cumPnl;
+        positions.push(current);
+    }
+    return positions;
+}
+
+function pyRenderJournal() {
+    const body = el('pyJournalBody');
+    const info = el('pyJournalInfo');
+    const summary = el('pyJournalSummary');
+    if (!body) return;
+
+    const filter = el('pyJournalFilter')?.value || 'all';
+    let positions = _pyJournalPositions;
+    if (filter === 'LONG') positions = positions.filter(p => p.direction === 'LONG');
+    else if (filter === 'SHORT') positions = positions.filter(p => p.direction === 'SHORT');
+    else if (filter === 'win') positions = positions.filter(p => p.netPnL > 0);
+    else if (filter === 'loss') positions = positions.filter(p => p.netPnL < 0);
+
+    const wins = positions.filter(p => p.netPnL > 0);
+    const losses = positions.filter(p => p.netPnL < 0);
+    const winRate = positions.length ? (wins.length / positions.length * 100).toFixed(1) : '—';
+    const totalPnl = positions.reduce((s, p) => s + p.netPnL, 0);
+    const avgWin = wins.length ? wins.reduce((s, p) => s + p.netPnL, 0) / wins.length : 0;
+    const avgLoss = losses.length ? losses.reduce((s, p) => s + p.netPnL, 0) / losses.length : 0;
+    const grossProfit = wins.reduce((s, p) => s + p.netPnL, 0);
+    const grossLoss = Math.abs(losses.reduce((s, p) => s + p.netPnL, 0));
+    const pf = grossLoss > 0 ? (grossProfit / grossLoss).toFixed(2) : grossProfit > 0 ? '∞' : '—';
+    const totalComm = positions.reduce((s, p) => s + p.commission, 0);
+    let maxDD = 0, peak = 0;
+    positions.forEach(p => { if (p.cumPnl > peak) peak = p.cumPnl; const dd = peak - p.cumPnl; if (dd > maxDD) maxDD = dd; });
+
+    if (summary) {
+        summary.innerHTML = `
+            <div class="metric-card"><div class="metric-label">Позиций</div><div style="font-size:1.1em;font-weight:700;color:var(--accent)">${positions.length}</div></div>
+            <div class="metric-card"><div class="metric-label">W / L</div><div style="font-size:1.1em;font-weight:700"><span style="color:var(--green)">${wins.length}</span> / <span style="color:var(--red)">${losses.length}</span></div></div>
+            <div class="metric-card"><div class="metric-label">WR</div><div style="font-size:1.1em;font-weight:700;color:${parseFloat(winRate) >= 50 ? 'var(--green)' : 'var(--red)'}">${winRate}%</div></div>
+            <div class="metric-card"><div class="metric-label">PnL нетто</div><div style="font-size:1.1em;font-weight:700;color:${totalPnl >= 0 ? 'var(--green)' : 'var(--red)'}">${totalPnl >= 0 ? '+' : ''}${totalPnl.toFixed(0)} ₽</div></div>
+            <div class="metric-card"><div class="metric-label">PF</div><div style="font-size:1.1em;font-weight:700">${pf}</div></div>
+            <div class="metric-card"><div class="metric-label">Avg W</div><div style="font-size:1.1em;font-weight:700;color:var(--green)">${avgWin >= 0 ? '+' : ''}${avgWin.toFixed(0)}₽</div></div>
+            <div class="metric-card"><div class="metric-label">Avg L</div><div style="font-size:1.1em;font-weight:700;color:var(--red)">${avgLoss.toFixed(0)}₽</div></div>
+            <div class="metric-card"><div class="metric-label">Комиссия</div><div style="font-size:1.1em;font-weight:700;color:#9CA3AF">${totalComm.toLocaleString('ru-RU')}₽</div></div>
+            <div class="metric-card"><div class="metric-label">Max DD</div><div style="font-size:1.1em;font-weight:700;color:var(--red)">${maxDD > 0 ? '-' : ''}${maxDD.toFixed(0)}₽</div></div>
+        `;
+    }
+
+    if (!positions.length) {
+        body.innerHTML = '<tr><td colspan="9" style="text-align:center;padding:24px;color:#9CA3AF">Нет сделок за выбранный период</td></tr>';
+        if (info) info.textContent = 'Нет данных';
+        return;
+    }
+
+    const sorted = [...positions].reverse();
+    body.innerHTML = sorted.map((p, idx) => {
+        const pnlCls = p.netPnL >= 0 ? 'var(--green)' : 'var(--red)';
+        const dirCls = p.direction === 'LONG' ? 'var(--green)' : 'var(--red)';
+        const dirIcon = p.direction === 'LONG' ? '🟢' : '🔴';
+        const entryT = p.entryTime ? p.entryTime.replace(/\.\d+Z$/, '').replace('T', ' ').slice(11, 19) : '—';
+        const exitT = p.exitTime ? p.exitTime.replace(/\.\d+Z$/, '').replace('T', ' ').slice(11, 19) : '—';
+        const dateStr = p.entryTime ? p.entryTime.slice(0, 10) : '';
+        const bg = p.isOpen ? 'rgba(255,215,0,0.05)' : (idx % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.02)');
+        const openBadge = p.isOpen ? ' <span style="color:#FFD700;font-size:10px">⚡ОТКРЫТА</span>' : '';
+        return `<tr style="border-bottom:1px solid #2D2D44;background:${bg}">
+            <td style="padding:6px 8px;font-size:11px;color:#9CA3AF">${dateStr}</td>
+            <td style="padding:6px 8px;font-family:monospace;font-size:12px">${entryT}</td>
+            <td style="padding:6px 8px;font-family:monospace;font-size:12px">${exitT}${openBadge}</td>
+            <td style="padding:6px 8px;text-align:center;color:${dirCls};font-weight:700;font-size:12px">${dirIcon}</td>
+            <td style="padding:6px 8px;text-align:right;font-weight:600">${p.entryPrice.toFixed(2)}</td>
+            <td style="padding:6px 8px;text-align:right;font-weight:600">${p.exitPrice.toFixed(2)}</td>
+            <td style="padding:6px 8px;text-align:right">${p.totalLots}</td>
+            <td style="padding:6px 8px;text-align:right;font-weight:700;color:${pnlCls}">${p.netPnL >= 0 ? '+' : ''}${p.netPnL.toFixed(0)} ₽</td>
+            <td style="padding:6px 8px;text-align:right;font-size:11px;color:${p.cumPnl >= 0 ? 'var(--green)' : 'var(--red)'}">${p.cumPnl >= 0 ? '+' : ''}${p.cumPnl.toFixed(0)}</td>
+        </tr>`;
+    }).join('');
+
+    if (info) info.textContent = `${positions.length} позиций · ${wins.length}W / ${losses.length}L · PnL ${totalPnl >= 0 ? '+' : ''}${totalPnl.toFixed(0)}₽`;
 }
 
 async function pythonRobotLoadToPanel() {
@@ -3436,4 +3874,280 @@ async function pythonRobotLoadGridLevels() {
     } catch(e) {
         tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:#f44336">Ошибка: ' + e.message + '</td></tr>';
     }
+}
+
+function createVpRobotFromTest() {
+    // Read params from testing tab
+    const ticker = el('testTicker')?.value || 'SiM6';
+    const params = {
+        max_levels: parseInt(el('tstVpMaxLevels')?.value) || 100,
+        step_base: parseInt(el('tstVpStepBase')?.value) || 31,
+        spread_base: parseInt(el('tstVpSpreadBase')?.value) || 31,
+        min_profit_per_lot: parseInt(el('tstVpMinProfit')?.value) || 35,
+        vp_lookback: parseInt(el('tstVpLookback')?.value) || 33,
+        vp_bin_size: parseInt(el('tstVpBinSize')?.value) || 50,
+        vp_va_percent: parseFloat(el('tstVpVaPercent')?.value) || 0.70,
+        rv_adaptation: false,
+        max_hold_minutes: 99999999999999,
+        ticker: ticker
+    };
+    // Save config to server (writes /tmp/robot-config.json)
+    fetch('/api/robot/config', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(params)
+    }).then(r => r.json()).then(data => {
+        addLog(nowTime(), 'INFO', '💾 Config сохранён: ' + ticker + ' step=' + params.step_base + ' spread=' + params.spread_base);
+    }).catch(e => {
+        addLog(nowTime(), 'WARN', 'Config save fallback: ' + e.message);
+    });
+    // Update config.py with new ticker
+    fetch('/api/robot/ticker', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ ticker: ticker })
+    }).catch(() => {});
+    // Create robot in UI
+    const robot = {
+        id: Date.now(),
+        ticker: ticker,
+        account: '',
+        accountName: '',
+        strategy: 'VP Scalp Grid',
+        gridStep: String(params.step_base),
+        gridSpread: String(params.spread_base),
+        maxGrid: String(params.max_levels),
+        vpLookback: String(params.vp_lookback),
+        vpBinSize: String(params.vp_bin_size),
+        vpVaPercent: String(params.vp_va_percent),
+        minProfit: String(params.min_profit_per_lot),
+        holdMinutes: String(params.max_hold_minutes),
+        status: 'stopped',
+        position: '—',
+        pnlToday: 0, pnlTotal: 0,
+        lotsOpen: 0, go: 0,
+        exchangeStatus: '—'
+    };
+    robots.push(robot);
+    saveRobots();
+    renderRobots();
+    // Switch to monitoring tab
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+    document.querySelector('[data-tab="monitoring"]').classList.add('active');
+    el('monitoring')?.classList.add('active');
+    addLog(nowTime(), 'INFO', '🤖 Робот создан: ' + ticker + ' step=' + params.step_base + ' spread=' + params.spread_base + ' levels=' + params.max_levels);
+}
+
+function pythonRobotTest() {
+    // Copy params from strategy tab to testing tab fields
+    const map = {'cfgVpMaxLevels':'tstVpMaxLevels','cfgVpStepBase':'tstVpStepBase','cfgVpSpreadBase':'tstVpSpreadBase','cfgVpMinProfit':'tstVpMinProfit','cfgVpLookback':'tstVpLookback','cfgVpBinSize':'tstVpBinSize','cfgVpVaPercent':'tstVpVaPercent'};
+    for (const [src, dst] of Object.entries(map)) {
+        if (el(src) && el(dst)) el(dst).value = el(src).value;
+    }
+    // Copy instrument
+    const ticker = el('cfgVpTicker')?.value || 'SiM6';
+    if (el('testTicker')) el('testTicker').value = ticker;
+    // Switch to testing tab
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+    document.querySelector('[data-tab="testing"]').classList.add('active');
+    el('testing')?.classList.add('active');
+    addLog(nowTime(), 'INFO', '📋 Параметры ' + ticker + ' перенесены на вкладку тестирования');
+}
+
+function clearTestResults() {
+    // Reset all metric values
+    ['btPnl','btPpd','btAvgTrade','btAvgWin','btAvgLoss','btMaxDD','btMaxWin','btMaxLoss','btCommission'].forEach(id => {
+        const e = el(id); if(e) { e.textContent = '—'; e.className = 'metric-value'; }
+    });
+    ['btTrades','btRtpd','btWR','btPF','btSharpe','btMaxDDpct','btMaxDDdur','btMaxPos','btMaxGO','btSessions','btSessionsWR','btMedSession','btMaxWinsStreak','btMaxLossStreak'].forEach(id => {
+        const e = el(id); if(e) e.textContent = '—';
+    });
+    // Clear charts
+    ['testEquityChart','testCandleChart'].forEach(id => {
+        const e = el(id); if(e) e.innerHTML = '';
+    });
+    // Clear trades table
+    const tbody = el('testTradesTable');
+    if(tbody) tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:24px;color:#9CA3AF">Нет данных</td></tr>';
+    // Hide results
+    el('testResults').style.display = 'none';
+    el('testStatus').textContent = '';
+}
+
+function startVpTest() {
+    const params = {
+        ticker: el('testTicker')?.value || 'SiM6',
+        tf: parseInt(el('testTf')?.value) || 5,
+        max_levels: parseInt(el('tstVpMaxLevels')?.value) || 100,
+        step_base: parseInt(el('tstVpStepBase')?.value) || 31,
+        spread_base: parseInt(el('tstVpSpreadBase')?.value) || 31,
+        min_profit: parseInt(el('tstVpMinProfit')?.value) || 35,
+        vp_lookback: parseInt(el('tstVpLookback')?.value) || 33,
+        vp_bin_size: parseInt(el('tstVpBinSize')?.value) || 50,
+        vp_va_percent: parseFloat(el('tstVpVaPercent')?.value) || 0.70,
+        commission: parseFloat(el('tstVpComm')?.value) || 0.90,
+        from: el('testFrom')?.value || undefined,
+        to: el('testTo')?.value || undefined,
+    };
+    el('testResults').style.display = 'block';
+    const status = el('testStatus');
+    if (status) status.textContent = '⏳ Тестирование...';
+    addLog(nowTime(), 'INFO', '🧪 VP Scalp Grid: ' + params.ticker + ' step=' + params.step_base + ' spread=' + params.spread_base + ' levels=' + params.max_levels);
+    fetch('/api/vp-backtest', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(params),
+        signal: AbortSignal.timeout(120000)
+    }).then(r => r.json()).then(r => {
+        if (r.error) { if (status) status.textContent = '❌ ' + r.error; return; }
+        if (status) status.textContent = '✅ Готово';
+        const fmt = v => (v||0).toLocaleString('ru-RU',{maximumFractionDigits:0});
+        const cls = v => v >= 0 ? 'metric-value green' : 'metric-value red';
+        const setVal = (id, v, s='') => { const e = el(id); if(e) { e.textContent = (v>=0?'+':'')+fmt(v)+s; e.className = cls(v); } };
+        const setTxt = (id, v) => { const e = el(id); if(e) e.textContent = v; };
+        setVal('btPnl', r.pnl, ' ₽');
+        setVal('btPpd', r.ppd, ' ₽/д');
+        setTxt('btTrades', r.sessions);
+        setTxt('btRtpd', r.rtpd);
+        setTxt('btWR', r.winRate + '%');
+        setTxt('btPF', r.profitFactor);
+        setTxt('btSharpe', '—');
+        setVal('btAvgTrade', r.avgTrade, ' ₽');
+        setVal('btAvgWin', r.avgWin, ' ₽');
+        setVal('btAvgLoss', r.avgLoss, ' ₽');
+        setVal('btMaxDD', r.maxDD, ' ₽');
+        setTxt('btMaxDDpct', r.days > 0 ? (Math.abs(r.maxDD) / (r.maxDD + r.pnl || 1) * 100).toFixed(1) + '%' : '—');
+        setTxt('btMaxDDdur', r.maxDDdur + ' сделок');
+        setTxt('btMaxPos', r.maxPos);
+        setTxt('btMaxGO', r.maxGO ? fmt(r.maxGO) + ' ₽' : '—');
+        setTxt('btSessions', r.sessions);
+        setTxt('btSessionsWR', r.winRate + '%');
+        setTxt('btMedSession', '—');
+        setVal('btMaxWin', r.maxWin, ' ₽');
+        setVal('btMaxLoss', r.maxLoss, ' ₽');
+        setTxt('btMaxWinsStreak', r.winStreak);
+        setTxt('btMaxLossStreak', r.lossStreak);
+        setVal('btCommission', r.totalComm, ' ₽');
+        // Trades table
+        const tbody = el('testTradesTable');
+        if (tbody && r.trades) {
+            tbody.innerHTML = r.trades.map(t => `<tr>
+                <td>${t.et||''}</td><td>${t.xt||''}</td>
+                <td style="color:${t.dir==='LONG'?'var(--green)':'var(--red)'}">${t.dir}</td>
+                <td>${t.ep}</td><td>${t.xp}</td><td>${t.lots}</td>
+                <td style="color:${t.pnl>=0?'var(--green)':'var(--red)'}">${t.pnl>=0?'+':''}${t.pnl}</td>
+                <td>1</td></tr>`).join('');
+        }
+        // Equity chart
+        drawVpEquity(r.equity || []);
+        // Candle chart with trades
+        drawVpCandles(r.candles || [], r.markers || []);
+        addLog(nowTime(), 'INFO', '🧪 Результат: PnL=' + r.pnl + ' WR=' + r.winRate + '% PF=' + r.profitFactor);
+    }).catch(e => {
+        if (status) status.textContent = '❌ ' + e.message;
+        addLog(nowTime(), 'ERROR', '🧪 Ошибка: ' + e.message);
+    });
+}
+
+function drawVpEquity(pts) {
+    const container = el('testEquityChart');
+    if (!container || !pts.length) return;
+    const W = container.clientWidth || 600, H = container.clientHeight || 300;
+    const vals = pts.map(p => p.e);
+    const mn = Math.min(...vals), mx = Math.max(...vals);
+    const range = mx - mn || 1;
+    let pathD = '';
+    pts.forEach((p, i) => {
+        const x = (i / (pts.length - 1)) * (W - 20) + 10;
+        const y = H - 10 - ((p.e - mn) / range) * (H - 20);
+        pathD += (i === 0 ? 'M' : 'L') + x.toFixed(1) + ',' + y.toFixed(1);
+    });
+    const color = vals[vals.length-1] >= 0 ? '#4CAF50' : '#f44336';
+    container.innerHTML = `<svg width="100%" height="100%" viewBox="0 0 ${W} ${H}">
+        <text x="10" y="15" fill="#888" font-size="11">${fmtN(mx)}</text>
+        <text x="10" y="${H-2}" fill="#888" font-size="11">${fmtN(mn)}</text>
+        <path d="${pathD}" fill="none" stroke="${color}" stroke-width="1.5"/>
+        <line x1="10" y1="${H-10-((0-mn)/range)*(H-20)}" x2="${W-10}" y2="${H-10-((0-mn)/range)*(H-20)}" stroke="#555" stroke-width="0.5" stroke-dasharray="4"/>
+    </svg>`;
+}
+
+function drawVpCandles(candles, markers) {
+    const container = el('testCandleChart');
+    if (!container || !candles.length) return;
+    const W = container.clientWidth || 600, H = container.clientHeight || 400;
+    const closes = candles.map(c => c.c);
+    const allH = candles.map(c => c.h), allL = candles.map(c => c.l);
+    const mn = Math.min(...allL), mx = Math.max(...allH);
+    const range = mx - mn || 1;
+    const bw = Math.max(1, (W - 20) / candles.length * 0.7);
+    const step = (W - 20) / candles.length;
+    let svg = `<svg width="100%" height="100%" viewBox="0 0 ${W} ${H}">`;
+    // Zero line
+    candles.forEach((c, i) => {
+        const x = 10 + i * step + step/2;
+        const yO = H - 10 - ((c.o - mn) / range) * (H - 20);
+        const yC = H - 10 - ((c.c - mn) / range) * (H - 20);
+        const yH = H - 10 - ((c.h - mn) / range) * (H - 20);
+        const yL = H - 10 - ((c.l - mn) / range) * (H - 20);
+        const up = c.c >= c.o;
+        const col = up ? '#4CAF50' : '#f44336';
+        svg += `<line x1="${x}" y1="${yH}" x2="${x}" y2="${yL}" stroke="${col}" stroke-width="0.5"/>`;
+        svg += `<rect x="${x-bw/2}" y="${Math.min(yO,yC)}" width="${bw}" height="${Math.max(Math.abs(yC-yO),1)}" fill="${col}"/>`;
+    });
+    // Trade markers
+    const markerMap = {};
+    markers.forEach(m => { markerMap[m.et] = m; });
+    candles.forEach((c, i) => {
+        const m = markerMap[c.t];
+        if (!m) return;
+        const x = 10 + i * step + step/2;
+        if (m.dir === 'LONG') {
+            const y = H - 10 - ((m.ep - mn) / range) * (H - 20) + 12;
+            svg += `<polygon points="${x},${y-10} ${x-5},${y} ${x+5},${y}" fill="#4CAF50"/>`;
+        } else {
+            const y = H - 10 - ((m.ep - mn) / range) * (H - 20) - 12;
+            svg += `<polygon points="${x},${y+10} ${x-5},${y} ${x+5},${y}" fill="#f44336"/>`;
+        }
+    });
+    svg += `<text x="10" y="15" fill="#888" font-size="11">${fmtN(mx)}</text>`;
+    svg += `<text x="10" y="${H-2}" fill="#888" font-size="11">${fmtN(mn)}</text>`;
+    svg += '</svg>';
+    container.innerHTML = svg;
+}
+
+function fmtN(v) { return Math.round(v).toLocaleString('ru-RU'); }
+
+function pythonRobotCreate() {
+    const params = {
+        max_levels: parseInt(el('cfgVpMaxLevels')?.value) || 100,
+        step_base: parseInt(el('cfgVpStepBase')?.value) || 31,
+        spread_base: parseInt(el('cfgVpSpreadBase')?.value) || 31,
+        min_profit: parseInt(el('cfgVpMinProfit')?.value) || 29,
+        vp_lookback: parseInt(el('cfgVpLookback')?.value) || 33,
+        vp_bin_size: parseInt(el('cfgVpBinSize')?.value) || 50,
+        vp_va_percent: parseFloat(el('cfgVpVaPercent')?.value) || 0.70,
+    };
+    // Save config to robot (creates persistent config file)
+    fetch(ROBOT_API + '/api/robot/config', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({
+            max_levels: params.max_levels,
+            step_base: params.step_base,
+            spread_base: params.spread_base,
+            min_profit_per_lot: params.min_profit,
+            vp_lookback: params.vp_lookback,
+            vp_bin_size: params.vp_bin_size,
+            vp_va_percent: params.vp_va_percent,
+        })
+    }).then(r => r.json()).then(data => {
+        addLog(nowTime(), 'INFO', '🤖 Робот создан: ' + JSON.stringify(params));
+        addLog(nowTime(), 'INFO', '✅ Config сохранён. Нажмите ▶ на вкладке Роботы для запуска');
+    }).catch(e => {
+        // Robot offline — save locally
+        localStorage.setItem('vp_robot_params', JSON.stringify(params));
+        addLog(nowTime(), 'INFO', '🤖 Робот создан (offline, сохранено локально)');
+    });
 }

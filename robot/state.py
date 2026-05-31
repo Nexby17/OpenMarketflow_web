@@ -30,7 +30,6 @@ class RobotState:
     entry_price: float = 0.0
     filled_levels: int = 0
     entry_time: str = ""         # ISO format
-    grid_levels: list = field(default_factory=list)  # Persisted grid levels
 
     # Recovery
     last_entry_price: float = 0.0
@@ -82,7 +81,6 @@ class StateManager:
                     entry_price=data.get("entry_price", 0),
                     filled_levels=data.get("filled_levels", 0),
                     entry_time=data.get("entry_time", ""),
-                    grid_levels=data.get("grid_levels", []),
                     last_entry_price=data.get("last_entry_price", 0),
                     last_direction=data.get("last_direction", 0),
                     tracked_orders=data.get("tracked_orders", []),

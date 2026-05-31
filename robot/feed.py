@@ -30,6 +30,11 @@ class QuoteFilter:
         self._last_valid: float = 0
         self._max_change_pct = max_change_pct  # 0.5% max change per tick
 
+    def set_baseline(self, price: float):
+        """Set initial baseline from MOEX or other trusted source."""
+        if price > 0:
+            self._last_valid = price
+
     def filter(self, quote: Quote) -> Optional[Quote]:
         """Return quote if valid, None if spike."""
         if quote.last <= 0:

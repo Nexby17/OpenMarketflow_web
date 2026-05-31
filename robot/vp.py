@@ -19,6 +19,7 @@ class VolumeProfile:
         self.va_percent = va_percent
 
         self._buffer: list[tuple[float, float]] = []  # (price, volume)
+        self._raw_history: list[tuple[float, float]] = []  # all bars for hot-recalc
         self._last_result: VPResult | None = None
 
     @property
@@ -39,13 +40,24 @@ class VolumeProfile:
 
     def add_bar(self, close: float, volume: float):
         """Add a bar's close price and volume to the buffer."""
+        self._raw_history.append((close, volume))
+        # Keep raw history manageable (last 2000 bars)
+        if len(self._raw_history) > 2000:
+            self._raw_history = self._raw_history[-2000:]
         self._buffer.append((close, volume))
         if len(self._buffer) > self.lookback:
             self._buffer.pop(0)
 
+    def recalculate_with_lookback(self, new_lookback: int) -> VPResult | None:
+        """Recalculate VP from raw history with a different lookback."""
+        self.lookback = new_lookback
+        # Rebuild buffer from raw history
+        self._buffer = self._raw_history[-new_lookback:] if self._raw_history else []
+        return self.calculate()
+
     def calculate(self) -> VPResult | None:
         """Recalculate VP from current buffer. Returns None if not enough data."""
-        if len(self._buffer) < 20:
+        if len(self._buffer) < min(10, self.lookback):
             return None
 
         prices = [p for p, _ in self._buffer]

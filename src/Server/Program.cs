@@ -133,6 +133,8 @@ app.Use(async (HttpContext ctx, Func<Task> next) =>
         path.StartsWith("/api/robot/service") ||
         path.StartsWith("/api/robot/status") ||
         path.StartsWith("/api/robot/config") ||
+        path.StartsWith("/api/vp-backtest") ||
+        path.StartsWith("/api/robot/ticker") ||
         path == "/health" ||
         path == "/test" ||
         path == "/heartbeat" ||
@@ -334,6 +336,26 @@ app.MapPost("/api/robot/service/{action}", async (string action) =>
 }).AllowAnonymous();
 
 // === Robot status proxy (when robot API is down) ===
+app.MapGet("/api/robot/status", async () =>
+{
+    try {
+        using var client = new System.Net.Http.HttpClient();
+        client.Timeout = System.TimeSpan.FromSeconds(2);
+        var resp = await client.GetAsync("http://localhost:5070/status");
+        var body = await resp.Content.ReadAsStringAsync();
+        return Results.Text(body, "application/json");
+    } catch {
+        try {
+            var statePath = "/tmp/robot-state.json";
+            if (System.IO.File.Exists(statePath)) {
+                var json = System.IO.File.ReadAllText(statePath);
+                return Results.Text(json, "application/json");
+            }
+        } catch { }
+        return Results.Json(new { status = "offline", mode = "stopped" });
+    }
+}).AllowAnonymous();
+
 app.MapGet("/api/robot/config", () =>
 {
     try
@@ -366,6 +388,37 @@ app.MapPost("/api/robot/config", async (HttpRequest req) =>
         return Results.Content(body, "application/json");
     }
     catch (Exception ex) { return Results.Json(new { error = ex.Message }); }
+}).AllowAnonymous();
+
+// === Update robot ticker in config.py ===
+app.MapPost("/api/robot/ticker", async (HttpRequest req) =>
+{
+    try {
+        using var reader = new StreamReader(req.Body);
+        var body = await reader.ReadToEndAsync();
+        var json = System.Text.Json.JsonDocument.Parse(body);
+        var ticker = json.RootElement.GetProperty("ticker").GetString() ?? "SiM6";
+        // Map ticker to Finam symbol
+        var symbolMap = new Dictionary<string,string> {
+            {"SiM6", "SiM6@RTSX"}, {"SiU6", "SiU6@RTSX"}, {"SiH7", "SiH7@RTSX"},
+            {"MXM6", "MXM6@RTSX"}, {"MXU6", "MXU6@RTSX"},
+            {"GDM6", "GDM6@RTSX"}, {"BRK6", "BRK6@RTSX"},
+            {"RIM6", "RIM6@RTSX"}, {"RIU6", "RIU6@RTSX"}
+        };
+        var symbol = symbolMap.GetValueOrDefault(ticker, ticker + "@RTSX");
+        var configPath = "/root/.openclaw/workspace/HedgeFund/robot/config.py";
+        var content = File.ReadAllText(configPath);
+        // Replace SYMBOL and TICKER lines
+        // Rewrite SYMBOL and TICKER lines
+        var lines = content.Split('\n');
+        for (int li = 0; li < lines.Length; li++) {
+            if (lines[li].StartsWith("SYMBOL =")) lines[li] = $"SYMBOL = \"{symbol}\"";
+            if (lines[li].StartsWith("TICKER =")) lines[li] = $"TICKER = \"{ticker}\"";
+        }
+        content = string.Join('\n', lines);
+        File.WriteAllText(configPath, content);
+        return Results.Json(new { ticker, symbol, updated = true });
+    } catch (Exception ex) { return Results.Json(new { error = ex.Message }); }
 }).AllowAnonymous();
 
 // === Test endpoint (no auth) ===
@@ -620,6 +673,35 @@ app.MapPost("/api/backtest", async (HttpRequest req) =>
         return Results.Text(output, "application/json");
     } catch (Exception ex) { return Results.Json(new { error = ex.Message }, statusCode: 500); }
 });
+
+// === VP Scalp Grid backtest ===
+app.MapPost("/api/vp-backtest", async (HttpRequest req) =>
+{
+    try {
+        using var reader = new StreamReader(req.Body);
+        var body = await reader.ReadToEndAsync();
+        var scriptPath = "/root/.openclaw/workspace/HedgeFund/backtest/src/vp_scalp_grid_api.py";
+        if (!File.Exists(scriptPath)) return Results.Json(new { error = "vp_scalp_grid_api.py not found" }, statusCode: 404);
+        var psi = new System.Diagnostics.ProcessStartInfo {
+            FileName = "python3",
+            Arguments = $"\"{scriptPath}\"",
+            RedirectStandardInput = true,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false,
+            CreateNoWindow = true
+        };
+        using var proc = System.Diagnostics.Process.Start(psi);
+        if (proc == null) return Results.Json(new { error = "Failed to start python" }, statusCode: 500);
+        await proc.StandardInput.WriteAsync(body);
+        proc.StandardInput.Close();
+        var output = await proc.StandardOutput.ReadToEndAsync();
+        var err = await proc.StandardError.ReadToEndAsync();
+        await proc.WaitForExitAsync();
+        if (proc.ExitCode != 0) return Results.Json(new { error = err.Length > 500 ? err[..500] : err }, statusCode: 500);
+        return Results.Text(output, "application/json");
+    } catch (Exception ex) { return Results.Json(new { error = ex.Message }, statusCode: 500); }
+}).AllowAnonymous();
 
 // === Unified Data Provider API ===
 app.MapGet("/transaq/health", (TradingService svc) =>
