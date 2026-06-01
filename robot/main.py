@@ -763,7 +763,12 @@ class Robot:
 
         pnl = 0
         if self.strategy.has_position and self.strategy.entry_price > 0:
-            pnl = self.strategy.calc_unrealized_pnl(self._current_price)
+            # Calculate unrealized PnL the same way as get_status (avg entry)
+            total_lots = 1 + len(self._filled_prices)
+            total_cost = self.strategy.entry_price + sum(self._filled_prices)
+            avg_entry = total_cost / total_lots if total_lots > 0 else self.strategy.entry_price
+            commission = total_lots * self.strategy.params.commission
+            pnl = (self._current_price - avg_entry) * total_lots * self.strategy.direction - commission
             log.info(f"CLOSE ALL: {reason} | PnL={pnl:.0f} | broker_lots={broker_lots}")
 
         if not self._paper and self.orders:
@@ -778,11 +783,9 @@ class Robot:
         if self.strategy.has_position and self.strategy.entry_price > 0:
             # Use broker PnL difference for accurate round trip PnL
             broker_pnl_now = self._get_broker_daily_pnl()
-            if broker_pnl_now > 0 and self._broker_pnl_at_entry > 0:
+            if broker_pnl_now != 0 and self._broker_pnl_at_entry != 0:
                 pnl = broker_pnl_now - self._broker_pnl_at_entry
-            else:
-                # Fallback to calculated PnL
-                pnl = self.strategy.calc_unrealized_pnl(self._current_price)
+            # else: keep calculated pnl from above (avg entry method)
             self.state.state.round_trips += 1
             self.state.state.realized_pnl += pnl
             dir_str = "LONG" if self.strategy.direction == 1 else "SHORT"
@@ -1101,8 +1104,13 @@ class Robot:
         total_lots = (1 + len(self._filled_prices)) if d != 0 else 0
         entry = self.strategy.entry_price
         price = self.strategy.current_price
-        if d != 0 and price > 0 and entry > 0:
-            pnl = (price - entry) * total_lots if d == 1 else (entry - price) * total_lots
+        # Unrealized PnL: (current_price - avg_entry) × lots × direction - commission
+        if d != 0 and price > 0 and entry > 0 and total_lots > 0:
+            # Avg entry = (entry + sum(grid fills)) / total_lots
+            total_cost = entry + sum(self._filled_prices)
+            avg_entry = total_cost / total_lots
+            commission = total_lots * self.strategy.params.commission
+            pnl = (price - avg_entry) * total_lots * d - commission
         else:
             pnl = 0
         return {
