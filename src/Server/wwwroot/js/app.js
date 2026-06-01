@@ -2597,7 +2597,8 @@ function openRobotEditPanel(idx) {
     pythonRobotUpdateVp();
     if (window._pyVpTimer) clearInterval(window._pyVpTimer);
     window._pyVpTimer = setInterval(() => pythonRobotUpdateVp(), 2000);
-    // Load trade journal
+    // Load trade journal filtered by robot ticker
+    _pyJournalTicker = r.ticker || 'SiM6';
     setTimeout(() => pyLoadJournal(), 300);
 }
 
@@ -3826,7 +3827,8 @@ function pythonRobotEditPanel() {
     if (window._pyVpTimer) clearInterval(window._pyVpTimer);
     window._pyVpTimer = setInterval(() => pythonRobotUpdateVp(), 2000);
 
-    // Load trade journal
+    // Load trade journal for main robot (SiM6)
+    _pyJournalTicker = 'SiM6';
     setTimeout(() => pyLoadJournal(), 300);
 }
 
@@ -3875,6 +3877,8 @@ function pythonRobotUpdateVp() {
 let _pyJournalTrades = [];
 let _pyJournalPositions = [];
 
+let _pyJournalTicker = 'SiM6';
+
 async function pyLoadJournal() {
     const info = el('pyJournalInfo');
     const body = el('pyJournalBody');
@@ -3916,7 +3920,8 @@ async function pyLoadJournal() {
         price: parseFloat((t.price && t.price.value) ? t.price.value : (t.price || t.Price || 0)),
         lots: parseInt((t.size && t.size.value) ? t.size.value : (t.quantity || t.lots || t.Lots || t.qty || 0)),
         comment: t.comment || t.Comment || ''
-    })).filter(t => t.price > 0 && t.lots > 0);
+    })).filter(t => t.price > 0 && t.lots > 0)
+      .filter(t => !_pyJournalTicker || t.ticker.includes(_pyJournalTicker.replace('@RTSX','')));
 
     _pyJournalTrades.sort((a, b) => a.time.localeCompare(b.time));
     _pyJournalPositions = pyGroupPositions(_pyJournalTrades);
