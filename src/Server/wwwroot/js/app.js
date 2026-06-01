@@ -3819,9 +3819,10 @@ function pythonRobotEditPanel() {
     `;
     document.body.appendChild(div);
 
-    // Load config + start live VP update
+    // Load config + start live VP update + journal
     pythonRobotLoadToPanel();
     pythonRobotUpdateVp();
+    setTimeout(() => pyLoadJournal(), 300);
     if (window._pyVpTimer) clearInterval(window._pyVpTimer);
     window._pyVpTimer = setInterval(() => pythonRobotUpdateVp(), 2000);
 
@@ -3895,17 +3896,16 @@ async function pyLoadJournal() {
     if (dateTo) params += `&dateTo=${dateTo}`;
     params = params ? '?' + params.substring(1) : '';
 
-    // Try Python robot API first (port 5070), then C# server (port 5050)
+    // Fetch from C# server (Finam API)
     let trades = [];
-    for (const base of ['http://localhost:5070', 'http://localhost:5050']) {
-        try {
-            const resp = await fetch(base + '/api/trades' + params, {signal: AbortSignal.timeout(5000)});
-            if (resp.ok) {
-                const raw = await resp.json();
-                trades = Array.isArray(raw) ? raw : (raw.trades || []);
-                if (trades.length > 0) break;
-            }
-        } catch (e) { /* skip */ }
+    try {
+        const resp = await fetch('/api/trades' + params, {signal: AbortSignal.timeout(15000)});
+        if (resp.ok) {
+            const raw = await resp.json();
+            trades = Array.isArray(raw) ? raw : (raw.trades || []);
+        }
+    } catch (e) {
+        console.error('pyLoadJournal error:', e);
     }
 
     // Normalize

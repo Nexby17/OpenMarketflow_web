@@ -135,6 +135,7 @@ app.Use(async (HttpContext ctx, Func<Task> next) =>
         path.StartsWith("/api/robot/config") ||
         path.StartsWith("/api/vp-backtest") ||
         path.StartsWith("/api/robot/ticker") ||
+        path.StartsWith("/api/trades") ||
         path.StartsWith("/api/instance/") ||
         path == "/health" ||
         path == "/test" ||
@@ -199,11 +200,16 @@ async Task<string> GetFinamJwt()
         if (!string.IsNullOrEmpty(_finamJwt) && DateTime.UtcNow < _finamJwtExpiry.AddMinutes(-1))
             return _finamJwt;
     }
+    // Use API key to get JWT for REST API (FINAM_TOKEN is gRPC-only)
     try
     {
+        var apiKey = !string.IsNullOrEmpty(_finamApiKey) ? _finamApiKey : Environment.GetEnvironmentVariable("FINAM_API_KEY") ?? "";
+        Console.WriteLine($"[DEBUG] GetFinamJwt: apiKey={(!string.IsNullOrEmpty(apiKey) ? "SET("+apiKey.Length+")" : "EMPTY")}");
+        if (string.IsNullOrEmpty(apiKey)) return "";
         var resp = await new HttpClient().PostAsync("https://api.finam.ru/v1/sessions",
-            new StringContent($"{{\"secret\": \"{_finamApiKey}\"}}", System.Text.Encoding.UTF8, "application/json"));
+            new StringContent($"{{\"secret\": \"{apiKey}\"}}", System.Text.Encoding.UTF8, "application/json"));
         var json = await resp.Content.ReadAsStringAsync();
+        Console.WriteLine($"[DEBUG] Sessions response: status={resp.StatusCode} body={json.Substring(0, Math.Min(json.Length, 100))}");
         var doc = JsonDocument.Parse(json);
         var token = doc.RootElement.GetProperty("token").GetString() ?? "";
         lock (_finamJwtLock)
@@ -216,7 +222,7 @@ async Task<string> GetFinamJwt()
     catch { return ""; }
 }
 
-var finamRest = new HttpClient { Timeout = TimeSpan.FromSeconds(5) };
+var finamRest = new HttpClient { Timeout = TimeSpan.FromSeconds(15) };
 
 app.MapGet("/api/connectors", () => Results.Json(new
 {
@@ -970,35 +976,38 @@ app.MapGet("/api/orders", async (TradingService svc) =>
 // === Trades API ===
 app.MapGet("/api/trades", async (string? date, string? dateFrom, string? dateTo) =>
 {
-    // Read from robot journal file first
-    var journalFile = "/tmp/robot-trades.json";
-    if (File.Exists(journalFile))
+    try
     {
-        try
+        var jwt = await GetFinamJwt();
+        if (string.IsNullOrEmpty(jwt)) return Results.Json(new object[] {});
+        string startTime, endTime;
+        if (!string.IsNullOrEmpty(dateFrom) || !string.IsNullOrEmpty(dateTo))
         {
-            var json = await File.ReadAllTextAsync(journalFile);
-            var trades = JsonSerializer.Deserialize<List<JsonElement>>(json);
-            if (trades != null && trades.Count > 0)
-            {
-                // Filter by date
-                var filtered = trades.Where(t =>
-                {
-                    var entryTime = t.GetProperty("entry_time").GetString();
-                    if (string.IsNullOrEmpty(entryTime)) return true;
-                    var tradeDate = DateTime.TryParse(entryTime, out var dt) ? dt.Date : (DateTime?)null;
-                    if (!tradeDate.HasValue) return true;
-                    if (!string.IsNullOrEmpty(dateFrom) && DateTime.TryParse(dateFrom, out var start) && tradeDate < start.Date) return false;
-                    if (!string.IsNullOrEmpty(dateTo) && DateTime.TryParse(dateTo, out var end) && tradeDate > end.Date) return false;
-                    return true;
-                }).ToList();
-                return Results.Json(filtered);
-            }
+            var start = !string.IsNullOrEmpty(dateFrom) ? dateFrom : DateTime.UtcNow.ToString("yyyy-MM-dd");
+            var endDt = !string.IsNullOrEmpty(dateTo) ? DateTime.TryParse(dateTo, out var p) ? p.AddDays(1).ToString("yyyy-MM-dd") : dateTo : DateTime.UtcNow.AddDays(1).ToString("yyyy-MM-dd");
+            startTime = $"{start}T00:00:00Z";
+            endTime = $"{endDt}T00:00:00Z";
         }
-        catch { }
+        else
+        {
+            var targetDate = !string.IsNullOrEmpty(date) ? date : DateTime.UtcNow.ToString("yyyy-MM-dd");
+            var endDate = DateTime.TryParse(targetDate, out var parsed) ? parsed.AddDays(1).ToString("yyyy-MM-dd") : targetDate;
+            startTime = $"{targetDate}T00:00:00Z";
+            endTime = $"{endDate}T00:00:00Z";
+        }
+        using var req = new HttpRequestMessage(HttpMethod.Get, $"https://api.finam.ru/v1/accounts/{_finamAccountId}/trades?interval.start_time={startTime}&interval.end_time={endTime}");
+        req.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", jwt);
+        var tradesResp = await finamRest.SendAsync(req);
+        Console.WriteLine($"[DEBUG] Trades response: status={tradesResp.StatusCode} url={req.RequestUri}");
+        if (tradesResp.IsSuccessStatusCode)
+        {
+            var body = await tradesResp.Content.ReadAsStringAsync();
+            return Results.Text(body, "application/json");
+        }
     }
-    // Fallback: empty or error
+    catch { }
     return Results.Json(new object[] {});
-});
+}).AllowAnonymous();
 
 app.MapGet("/api/quote", async (string ticker) =>
 {
