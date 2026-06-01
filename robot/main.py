@@ -701,17 +701,23 @@ class Robot:
 
         total_lots = 1 + len(self._filled_prices)  # entry + grid fills
 
-        # Real PnL: entry lot + each grid fill from its own price
-        entry = self.strategy.entry_price
-        if d == 1:
-            pnl = price - entry  # entry lot
-            for fp in self._filled_prices:
-                pnl += price - fp  # grid fills bought lower
+        # Average price: use broker's avg_price (true average), or calc from fills
+        if self._broker_avg > 0:
+            avg = self._broker_avg
         else:
-            pnl = entry - price  # entry lot
+            # Fallback: calculate from entry + grid fills
+            total_price = self.strategy.entry_price
             for fp in self._filled_prices:
-                pnl += fp - price  # grid fills sold higher
-        pnl -= total_lots * self.strategy.params.commission  # subtract commission
+                total_price += fp
+            avg = total_price / total_lots if total_lots > 0 else self.strategy.entry_price
+
+        # Real PnL/lot: (current_price - avg_price) * direction - commission/lot
+        per_lot_commission = self.strategy.params.commission  # RT commission per lot
+        if d == 1:
+            pnl_per_lot = (price - avg) - per_lot_commission
+        else:
+            pnl_per_lot = (avg - price) - per_lot_commission
+        pnl = pnl_per_lot * total_lots
 
         ok, msg = self.risk.check_pnl(pnl)
         if not ok:
