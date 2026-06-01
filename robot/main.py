@@ -122,17 +122,34 @@ class Robot:
             log.warning("Corrupt state — resetting")
             self.state.clear()
 
-        self._warmup_vp()
+        self._running = True
 
-        # Wire callbacks (only for price/VP, NOT for trade logic)
+        # Reset VP — will be recalculated by warmup
+        self.strategy.val = 0
+        self.strategy.vah = 0
+        self.strategy.poc = 0
+
+        # Start immediately, validate price + warmup VP in background
+        self._initialized = True
+        self._mode = "running"
+        self.state.state.mode = "running"
+        log.info(f"Robot started (VP loading in background)")
+
+        # Wire callbacks
         self.feed.on_quote = self._on_quote
         self.feed.on_bar = self._on_bar
         self.feed._on_stale = self._on_stale_streams
-        # Ignore gRPC order/trade events — broker polling is our truth
         self.feed.on_order = lambda evt: None
         self.feed.on_trade = lambda evt: None
-
         self.feed.subscribe_all()
+
+        # Background: validate price + warmup VP
+        def _bg_startup():
+            self._validate_price()
+            self._warmup_vp()
+            log.info(f"VP ready: VAL={self.strategy.val:.0f} VAH={self.strategy.vah:.0f} POC={self.strategy.poc:.0f}")
+
+        threading.Thread(target=_bg_startup, daemon=True).start()
 
         # Initial broker sync — and set up orders if we have position
         self._poll_broker_position()
@@ -210,13 +227,6 @@ class Robot:
         self.state.state.mode = "running"
         self.state.save()
         log.info(f"Robot started (VP loading in background)")
-
-        # Background: validate price + warmup VP
-        def _bg_startup():
-            self._validate_price()
-            self._warmup_vp()
-            log.info(f"VP ready: VAL={self.strategy.val:.0f} VAH={self.strategy.vah:.0f} POC={self.strategy.poc:.0f}")
-        threading.Thread(target=_bg_startup, daemon=True).start()
 
         # Start 300ms polling loop
         self._poll_thread = threading.Thread(target=self._poll_loop, daemon=True)
