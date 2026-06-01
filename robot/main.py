@@ -43,6 +43,7 @@ class Robot:
         self._broker_dir: int = 0
         self._broker_lots: int = 0
         self._broker_avg: float = 0.0
+        self._broker_pnl_at_entry: float = 0.0  # daily PnL when position opened
 
         # Order tracking
         self._grid_order_id: str | None = None   # only one grid at a time
@@ -467,6 +468,7 @@ class Robot:
         self._last_entry_price = price
         self._last_direction = direction
         self._filled_prices = []
+        self._broker_pnl_at_entry = self._get_broker_daily_pnl()  # save broker PnL at entry
 
         # Place first grid
         step = self.strategy.params.step_base
@@ -764,6 +766,13 @@ class Robot:
 
         # Stats
         if self.strategy.has_position and self.strategy.entry_price > 0:
+            # Use broker PnL difference for accurate round trip PnL
+            broker_pnl_now = self._get_broker_daily_pnl()
+            if broker_pnl_now > 0 and self._broker_pnl_at_entry > 0:
+                pnl = broker_pnl_now - self._broker_pnl_at_entry
+            else:
+                # Fallback to calculated PnL
+                pnl = self.strategy.calc_unrealized_pnl(self._current_price)
             self.state.state.round_trips += 1
             self.state.state.realized_pnl += pnl
             dir_str = "LONG" if self.strategy.direction == 1 else "SHORT"
@@ -838,6 +847,22 @@ class Robot:
     def _move_poc_tp(self, new_poc: float):
         # POC-TP disabled — close by market on POC cross
         pass
+
+    def _get_broker_daily_pnl(self) -> float:
+        """Get daily PnL from broker API."""
+        try:
+            r = requests.get(
+                "http://localhost:5060/pnl",
+                params={"account": config.FINAM_ACCOUNT_ID, "symbol": config.SYMBOL},
+                timeout=2
+            )
+            data = r.json()
+            pnl = data.get("pnl", 0)
+            if isinstance(pnl, (int, float)):
+                return float(pnl)
+        except Exception as e:
+            log.debug(f"Failed to get broker PnL: {e}")
+        return 0.0
 
     # === BROKER ===
 
