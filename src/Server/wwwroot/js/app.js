@@ -3941,19 +3941,16 @@ function pyGroupPositions(trades) {
                 maxLots: t.lots, trades: [t],
                 netPnL: 0, commission: Math.round(t.lots * 0.90),
                 cumPnl: 0, comments: t.comment ? [t.comment] : [],
-                // Track weighted entry: sum(price * lots) for opening trades
-                _entryCost: t.price * t.lots, // cost of opening trades
-                _entryLots: isBuy ? t.lots : 0, // opening lots (buy for long)
+                _buyCost: 0, _buyLots: 0,
+                _sellCost: 0, _sellLots: 0
             };
+            if (isBuy) { current._buyCost = t.price * t.lots; current._buyLots = t.lots; }
+            else { current._sellCost = t.price * t.lots; current._sellLots = t.lots; }
             netPos = lots;
         } else {
             netPos += lots;
-            // Track opening trades for avg entry calculation
-            const isOpening = (current.direction === 'LONG' && isBuy) || (current.direction === 'SHORT' && !isBuy);
-            if (isOpening) {
-                current._entryCost += t.price * t.lots;
-                current._entryLots += t.lots;
-            }
+            if (isBuy) { current._buyCost += t.price * t.lots; current._buyLots += t.lots; }
+            else { current._sellCost += t.price * t.lots; current._sellLots += t.lots; }
             current.exitTime = t.time;
             current.exitPrice = t.price;
             current.maxLots = Math.max(current.maxLots, Math.abs(netPos));
@@ -3963,15 +3960,12 @@ function pyGroupPositions(trades) {
 
             if (netPos === 0) {
                 current.totalLots = current.maxLots;
-                // PnL = (exit_price - avg_entry_price) × total_lots × direction - commission
-                const avgEntry = current._entryLots > 0 ? current._entryCost / current._entryLots : current.entryPrice;
-                const totalLots = current.maxLots;
-                if (current.direction === 'LONG') {
-                    current.netPnL = (current.exitPrice - avgEntry) * totalLots - current.commission;
-                } else {
-                    current.netPnL = (avgEntry - current.exitPrice) * totalLots - current.commission;
-                }
-                current.entryPrice = Math.round(avgEntry);
+                // PnL like broker: total sell proceeds - total buy cost - commission
+                const totalSell = current._sellCost;
+                const totalBuy = current._buyCost;
+                current.netPnL = totalSell - totalBuy - current.commission;
+                current.entryPrice = current._buyLots > 0 ? Math.round(current._buyCost / current._buyLots) : Math.round(current._sellCost / current._sellLots);
+                current.exitPrice = current._sellLots > 0 ? Math.round(current._sellCost / current._sellLots) : Math.round(current._buyCost / current._buyLots);
                 cumPnl += current.netPnL;
                 current.cumPnl = cumPnl;
                 positions.push(current);
@@ -3981,13 +3975,11 @@ function pyGroupPositions(trades) {
     });
     if (current) {
         current.totalLots = current.maxLots;
-        const avgEntry = current._entryLots > 0 ? current._entryCost / current._entryLots : current.entryPrice;
-        if (current.direction === 'LONG') {
-            current.netPnL = (current.exitPrice - avgEntry) * current.totalLots - current.commission;
-        } else {
-            current.netPnL = (avgEntry - current.exitPrice) * current.totalLots - current.commission;
-        }
-        current.entryPrice = Math.round(avgEntry);
+        const totalSell = current._sellCost;
+        const totalBuy = current._buyCost;
+        current.netPnL = totalSell - totalBuy - current.commission;
+        current.entryPrice = current._buyLots > 0 ? Math.round(current._buyCost / current._buyLots) : Math.round(current._sellCost / current._sellLots);
+        current.exitPrice = current._sellLots > 0 ? Math.round(current._sellCost / current._sellLots) : Math.round(current._buyCost / current._buyLots);
         current.isOpen = true;
         cumPnl += current.netPnL;
         current.cumPnl = cumPnl;
