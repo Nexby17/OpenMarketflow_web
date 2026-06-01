@@ -3939,17 +3939,20 @@ function pyGroupPositions(trades) {
                 direction: isBuy ? 'LONG' : 'SHORT',
                 entryPrice: t.price, exitPrice: t.price,
                 maxLots: t.lots, trades: [t],
-                realizedPnL: 0, commission: Math.round(t.lots * 0.90),
-                cumPnl: 0, comments: t.comment ? [t.comment] : []
+                netPnL: 0, commission: Math.round(t.lots * 0.90),
+                cumPnl: 0, comments: t.comment ? [t.comment] : [],
+                // Track weighted entry: sum(price * lots) for opening trades
+                _entryCost: t.price * t.lots, // cost of opening trades
+                _entryLots: isBuy ? t.lots : 0, // opening lots (buy for long)
             };
             netPos = lots;
         } else {
-            const prevNet = netPos;
             netPos += lots;
-            if ((prevNet > 0 && !isBuy) || (prevNet < 0 && isBuy)) {
-                const closingLots = Math.min(Math.abs(lots), Math.abs(prevNet));
-                const pnlPerLot = prevNet > 0 ? (t.price - current.exitPrice) : (current.exitPrice - t.price);
-                current.realizedPnL += pnlPerLot * closingLots;
+            // Track opening trades for avg entry calculation
+            const isOpening = (current.direction === 'LONG' && isBuy) || (current.direction === 'SHORT' && !isBuy);
+            if (isOpening) {
+                current._entryCost += t.price * t.lots;
+                current._entryLots += t.lots;
             }
             current.exitTime = t.time;
             current.exitPrice = t.price;
@@ -3960,7 +3963,15 @@ function pyGroupPositions(trades) {
 
             if (netPos === 0) {
                 current.totalLots = current.maxLots;
-                current.netPnL = current.realizedPnL - current.commission;
+                // PnL = (exit_price - avg_entry_price) × total_lots × direction - commission
+                const avgEntry = current._entryLots > 0 ? current._entryCost / current._entryLots : current.entryPrice;
+                const totalLots = current.maxLots;
+                if (current.direction === 'LONG') {
+                    current.netPnL = (current.exitPrice - avgEntry) * totalLots - current.commission;
+                } else {
+                    current.netPnL = (avgEntry - current.exitPrice) * totalLots - current.commission;
+                }
+                current.entryPrice = Math.round(avgEntry);
                 cumPnl += current.netPnL;
                 current.cumPnl = cumPnl;
                 positions.push(current);
@@ -3970,7 +3981,13 @@ function pyGroupPositions(trades) {
     });
     if (current) {
         current.totalLots = current.maxLots;
-        current.netPnL = current.realizedPnL - current.commission;
+        const avgEntry = current._entryLots > 0 ? current._entryCost / current._entryLots : current.entryPrice;
+        if (current.direction === 'LONG') {
+            current.netPnL = (current.exitPrice - avgEntry) * current.totalLots - current.commission;
+        } else {
+            current.netPnL = (avgEntry - current.exitPrice) * current.totalLots - current.commission;
+        }
+        current.entryPrice = Math.round(avgEntry);
         current.isOpen = true;
         cumPnl += current.netPnL;
         current.cumPnl = cumPnl;
