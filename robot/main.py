@@ -94,13 +94,20 @@ class Robot:
         if s.direction != 0 and s.entry_price > 0:
             self.strategy.direction = s.direction
             self.strategy.entry_price = s.entry_price
-            # Restore filled_prices from state
-            if s.grid_levels and isinstance(s.grid_levels, list):
-                if len(s.grid_levels) > 0 and isinstance(s.grid_levels[0], (int, float)):
-                    self._filled_prices = sorted([float(x) for x in s.grid_levels])
-                else:
-                    # Old format (list of dicts) — extract prices
-                    self._filled_prices = sorted([float(g.get('price', 0)) for g in s.grid_levels if g.get('status') == 'FILLED'])
+            # Restore filled_prices from state JSON
+            try:
+                import json as _json
+                state_path = os.environ.get('ROBOT_STATE_FILE', '/tmp/robot-state.json')
+                with open(state_path) as _f:
+                    raw = _json.load(_f)
+                gl = raw.get('grid_levels', [])
+                if gl and isinstance(gl, list):
+                    if len(gl) > 0 and isinstance(gl[0], (int, float)):
+                        self._filled_prices = sorted([float(x) for x in gl])
+                    else:
+                        self._filled_prices = sorted([float(g.get('price', 0)) for g in gl if g.get('status') == 'FILLED'])
+            except Exception:
+                pass
             if s.entry_time:
                 try:
                     self.strategy.entry_time = datetime.fromisoformat(s.entry_time)
@@ -694,12 +701,17 @@ class Robot:
 
         total_lots = 1 + len(self._filled_prices)  # entry + grid fills
 
-        # Risk check
+        # Real PnL: entry lot + each grid fill from its own price
         entry = self.strategy.entry_price
         if d == 1:
-            pnl = (price - entry) * total_lots
+            pnl = price - entry  # entry lot
+            for fp in self._filled_prices:
+                pnl += price - fp  # grid fills bought lower
         else:
-            pnl = (entry - price) * total_lots
+            pnl = entry - price  # entry lot
+            for fp in self._filled_prices:
+                pnl += fp - price  # grid fills sold higher
+        pnl -= total_lots * self.strategy.params.commission  # subtract commission
 
         ok, msg = self.risk.check_pnl(pnl)
         if not ok:
