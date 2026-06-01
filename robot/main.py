@@ -1,4 +1,5 @@
 """Main robot — broker-position polling at 300ms, broker = source of truth."""
+import json
 import logging
 import os
 import signal
@@ -766,6 +767,18 @@ class Robot:
             self.state.state.round_trips += 1
             self.state.state.realized_pnl += pnl
             dir_str = "LONG" if self.strategy.direction == 1 else "SHORT"
+            exit_price = self._current_price
+            self._save_trade(
+                entry_time=self.strategy.entry_time.isoformat() if self.strategy.entry_time else "",
+                exit_time=datetime.now(MSK).isoformat(),
+                direction=self.strategy.direction,
+                dir_str=dir_str,
+                entry_price=self.strategy.entry_price,
+                exit_price=exit_price,
+                lots=broker_lots,
+                pnl=pnl,
+                reason=reason
+            )
             log.info(f"Round trip #{self.state.state.round_trips}: {dir_str} entry={self.strategy.entry_price:.0f} PnL={pnl:.0f} | Total: RT={self.state.state.round_trips} PnL={self.state.state.realized_pnl:.0f}")
 
         self.strategy.on_close_all()
@@ -1017,6 +1030,36 @@ class Robot:
         s.last_entry_price = self._last_entry_price
         s.last_direction = self._last_direction
         self.state.save()
+
+    def _save_trade(self, entry_time: str, exit_time: str, direction: int, dir_str: str,
+                    entry_price: float, exit_price: float, lots: int, pnl: float, reason: str):
+        """Save trade to journal file for UI display."""
+        trades_file = os.environ.get('ROBOT_TRADES_FILE', '/tmp/robot-trades.json')
+        trade = {
+            "entry_time": entry_time,
+            "exit_time": exit_time,
+            "direction": direction,
+            "dir_str": dir_str,
+            "entry_price": round(entry_price, 2),
+            "exit_price": round(exit_price, 2),
+            "lots": lots,
+            "pnl": round(pnl, 2),
+            "reason": reason
+        }
+        try:
+            # Load existing trades
+            if os.path.exists(trades_file):
+                with open(trades_file, 'r') as f:
+                    trades = json.load(f)
+            else:
+                trades = []
+            # Append new trade
+            trades.append(trade)
+            # Save
+            with open(trades_file, 'w') as f:
+                json.dump(trades, f, indent=2)
+        except Exception as e:
+            log.error(f"Failed to save trade: {e}")
 
     def get_status(self) -> dict:
         d = self.strategy.direction
