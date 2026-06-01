@@ -274,17 +274,7 @@ class Robot:
             else:
                 # Entry lot only — POC-TP + first grid
                 poc = self.strategy.poc
-                if poc > 0:
-                    if d == 1 and poc > entry:
-                        po = self.orders.place_limit(SELL, 1, poc, "POC-TP")
-                        if po:
-                            self._poc_tp_order_id = po.order_id
-                            log.info(f"POC-TP restored @ {poc:.0f}")
-                    elif d == -1 and poc < entry:
-                        po = self.orders.place_limit(BUY, 1, poc, "POC-TP")
-                        if po:
-                            self._poc_tp_order_id = po.order_id
-                            log.info(f"POC-TP restored @ {poc:.0f}")
+                # POC-TP disabled — close by market on POC cross
 
                 grid_price = entry - step if d == 1 else entry + step
                 grid_side = BUY if d == 1 else SELL
@@ -318,6 +308,26 @@ class Robot:
             if moex > 0:
                 self._moex_last = moex
                 self._moex_check_ts = now_ts
+
+        # Get fresh price from DataProvider (broker = source of truth)
+        try:
+            r = requests.get(f"http://localhost:5060/quote/{config.SYMBOL}", timeout=1)
+            data = r.json()
+            bid = data.get('bid', 0)
+            ask = data.get('ask', 0)
+            last = data.get('last', 0)
+            if bid > 0 and ask > 0:
+                fresh_price = (bid + ask) / 2
+            elif last > 0:
+                fresh_price = last
+            else:
+                fresh_price = 0
+            if fresh_price > 0:
+                self._current_price = fresh_price
+                self.strategy.current_price = fresh_price
+                self._last_price = fresh_price
+        except Exception:
+            pass  # Fallback to feed price
 
         pos = self._get_broker_position()
         prev_dir = self._broker_dir
@@ -419,10 +429,7 @@ class Robot:
         # Don't enter until VP is ready (after warmup)
         if self.strategy.val <= 0 or self.strategy.vah <= 0:
             return
-        # Frozen price guard — don't enter if price hasn't changed in 30s
-        price_age = (datetime.now(MSK) - self._last_price_change).total_seconds()
-        if price_age > 30:
-            return
+        # Skip entry guard removed — always process signals
         sig = self.strategy.check_entry(price)
         if sig:
             log.info(f"ENTRY SIGNAL: {sig.tag} @ {price:.0f}")
@@ -468,19 +475,7 @@ class Robot:
             self._grid_order_id = po.order_id
             log.info(f"GRID-1 placed @ {grid_price:.0f}")
 
-        # POC-TP for entry lot
-        poc = self.strategy.poc
-        if poc > 0:
-            if direction == 1 and poc > price:
-                po = self.orders.place_limit(SELL, 1, poc, "POC-TP")
-                if po:
-                    self._poc_tp_order_id = po.order_id
-                    log.info(f"POC-TP placed @ {poc:.0f}")
-            elif direction == -1 and poc < price:
-                po = self.orders.place_limit(BUY, 1, poc, "POC-TP")
-                if po:
-                    self._poc_tp_order_id = po.order_id
-                    log.info(f"POC-TP placed @ {poc:.0f}")
+        # POC-TP disabled — close by market on POC cross
 
         # If broker has more lots than 1, handle grid fills too
         if broker_lots > 1:
@@ -635,18 +630,7 @@ class Robot:
 
         else:
             # No more grid fills — entry lot only, restore POC-TP
-            if self.strategy.poc > 0:
-                poc = self.strategy.poc
-                if d == 1 and poc > entry:
-                    po = self.orders.place_limit(SELL, 1, poc, "POC-TP")
-                    if po:
-                        self._poc_tp_order_id = po.order_id
-                        log.info(f"POC-TP restored @ {poc:.0f}")
-                elif d == -1 and poc < entry:
-                    po = self.orders.place_limit(BUY, 1, poc, "POC-TP")
-                    if po:
-                        self._poc_tp_order_id = po.order_id
-                        log.info(f"POC-TP restored @ {poc:.0f}")
+            # POC-TP disabled — close by market on POC cross
 
             # Re-place first grid
             if d == 1:
@@ -821,21 +805,8 @@ class Robot:
                 self._move_poc_tp(result.poc)
 
     def _move_poc_tp(self, new_poc: float):
-        if not self._poc_tp_order_id or not self.orders:
-            return
-        d = self.strategy.direction
-        if d == 0:
-            return
-        if d == 1 and new_poc <= self.strategy.entry_price:
-            return
-        if d == -1 and new_poc >= self.strategy.entry_price:
-            return
-        self.orders.cancel(self._poc_tp_order_id)
-        side = SELL if d == 1 else BUY
-        po = self.orders.place_limit(side, 1, new_poc, "POC-TP")
-        if po:
-            self._poc_tp_order_id = po.order_id
-            log.info(f"POC-TP moved to {new_poc:.0f}")
+        # POC-TP disabled — close by market on POC cross
+        pass
 
     # === BROKER ===
 

@@ -161,29 +161,32 @@ def place_order(account: str, symbol: str, side: str, quantity: int, price: floa
         return {"error": "not connected"}
     try:
         from FinamPy.grpc import orders_service_pb2 as ord_pb2
-        from google.protobuf.wrappers_pb2 import StringValue, Int64Value
+        from google.type import decimal_pb2
         import time as _t
 
         client_order_id = str(int(_t.time() * 1000))[:13]
+        side_val = 1 if side == "buy" else 2  # SIDE_BUY=1, SIDE_SELL=2
 
         if order_type == "market":
-            req = ord_pb2.PlaceOrderRequest(
+            req = ord_pb2.Order(
                 account_id=account,
                 symbol=symbol,
-                side=ord_pb2.OrderSide.SIDE_BUY if side == "buy" else ord_pb2.OrderSide.SIDE_SELL,
-                type=ord_pb2.OrderType.ORDER_TYPE_MARKET,
-                quantity=ord_pb2.Quantity(value=str(quantity)),
+                side=side_val,
+                type=ord_pb2.ORDER_TYPE_MARKET,
+                quantity=decimal_pb2.Decimal(value=str(quantity)),
                 client_order_id=client_order_id,
+                comment=tag,
             )
         else:
-            req = ord_pb2.PlaceOrderRequest(
+            req = ord_pb2.Order(
                 account_id=account,
                 symbol=symbol,
-                side=ord_pb2.OrderSide.SIDE_BUY if side == "buy" else ord_pb2.OrderSide.SIDE_SELL,
-                type=ord_pb2.OrderType.ORDER_TYPE_LIMIT,
-                quantity=ord_pb2.Quantity(value=str(quantity)),
-                limit_price=ord_pb2.Price(value=str(int(price))),
+                side=side_val,
+                type=ord_pb2.ORDER_TYPE_LIMIT,
+                quantity=decimal_pb2.Decimal(value=str(quantity)),
+                limit_price=decimal_pb2.Decimal(value=str(int(price))),
                 client_order_id=client_order_id,
+                comment=tag,
             )
 
         resp = the_provider.fp.call_function(

@@ -181,9 +181,13 @@ class Feed:
                     bid = _safe_float(q.bid)
                     ask = _safe_float(q.ask)
                     last = _safe_float(q.last)
-                    # Fallback: use mid if last is 0
-                    if last == 0 and bid > 0 and ask > 0:
+                    # Use best available price from order book (more current than last trade)
+                    if bid > 0 and ask > 0:
                         last = (bid + ask) / 2
+                    elif bid > 0:
+                        last = bid
+                    elif ask > 0:
+                        last = ask
                     ts = datetime.fromtimestamp(
                         q.timestamp.seconds + q.timestamp.nanos / 1e9, MSK
                     )

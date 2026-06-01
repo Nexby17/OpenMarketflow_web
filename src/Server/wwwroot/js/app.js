@@ -2129,6 +2129,26 @@ async function renderRobots() {
     const noMsg = el('noRobots');
     if (!tbody) return;
 
+    // Poll instance statuses in background via C# proxy
+    robots.forEach((r, idx) => {
+        if ((r.isInstance || r.port) && r.port) {
+            fetch('/api/instance/status', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ port: r.port })
+            }).then(resp => resp.json()).then(data => {
+                if (!data.error) {
+                    r.status = data.mode || 'running';
+                    r.position = data.direction > 0 ? 'Лонг' : data.direction < 0 ? 'Шорт' : '—';
+                    r.pnlTotal = data.realized_pnl || 0;
+                    r.lotsOpen = data.total_lots || 0;
+                } else {
+                    r.status = 'stopped';
+                }
+            }).catch(() => { r.status = 'stopped'; });
+        }
+    });
+
     // C# server strategies removed — Python is primary
     let serverStrategies = [];
     try { /* no-op, kept for compatibility */ } catch(e) {}
@@ -2154,6 +2174,8 @@ async function renderRobots() {
                 <td>step=${step} spread=${spread}</td>
                 <td>
                     <button class="btn btn-success btn-sm" onclick="startLocalStorageRobot(${idx})">▶</button>
+                    <button class="btn btn-warning btn-sm" onclick="pauseLocalStorageRobot(${idx})">⏸</button>
+                    <button class="btn btn-danger btn-sm" onclick="stopLocalStorageRobot(${idx})">⏹</button>
                     <button class="btn btn-danger btn-sm" onclick="deleteRobot(${idx})">🗑</button>
                 </td>
                 <td class="${statusCls}">${statusText}</td>
@@ -2298,16 +2320,89 @@ async function robotStart(i) {
 async function startLocalStorageRobot(idx) {
     const r = robots[idx];
     if (!r) return;
-    // Update config.py with this robot's ticker
+
+    // Instance robot — start via launcher
+    if (r.isInstance || r.port) {
+        try {
+            const resp = await fetch('/api/instance/start', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ id: r.id, port: r.port })
+            });
+            const data = await resp.json();
+            if (data.error) {
+                addLog(nowTime(), 'ERROR', '❌ Ошибка запуска: ' + data.error);
+            } else {
+                r.status = 'starting';
+                saveRobots();
+                renderRobots();
+                addLog(nowTime(), 'INFO', '▶ ' + r.ticker + ' запускается (port=' + r.port + ')');
+                // Poll for status
+                setTimeout(() => pollInstanceStatus(idx), 3000);
+            }
+        } catch(e) {
+            addLog(nowTime(), 'ERROR', '❌ Ошибка: ' + e.message);
+        }
+        return;
+    }
+
+    // Legacy robot without instance — auto-create instance if needed
     const ticker = r.ticker || 'SiM6';
+
+    // For non-SiM6 robots, auto-create instance
+    if (ticker !== 'SiM6') {
+        const usedPorts = robots.map(rb => rb.port || 0).filter(p => p > 0);
+        let port = 5071;
+        while (usedPorts.includes(port)) port++;
+        const id = ticker + '_' + port;
+
+        // Create instance on server
+        const params = {
+            ticker: ticker,
+            port: port,
+            max_levels: parseInt(r.maxGrid) || 100,
+            step_base: parseInt(r.gridStep) || 31,
+            spread_base: parseInt(r.gridSpread) || 31,
+            min_profit_per_lot: parseInt(r.minProfit) || 35,
+            vp_lookback: parseInt(r.vpLookback) || 33,
+            vp_bin_size: parseInt(r.vpBinSize) || 50,
+            vp_va_percent: parseFloat(r.vpVaPercent) || 0.70,
+            max_hold_minutes: parseInt(r.holdMinutes) || 99999999999999,
+            id: id
+        };
+        try {
+            await fetch('/api/instance/create', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(params)
+            });
+        } catch(e) {}
+
+        // Upgrade robot to instance
+        r.isInstance = true;
+        r.port = port;
+        r.id = id;
+        r.max_levels = params.max_levels;
+        r.step_base = params.step_base;
+        r.spread_base = params.spread_base;
+        r.vp_lookback = params.vp_lookback;
+        r.vp_bin_size = params.vp_bin_size;
+        r.vp_va_percent = params.vp_va_percent;
+        r.min_profit = params.min_profit_per_lot;
+        saveRobots();
+
+        // Now start via instance API
+        return startLocalStorageRobot(idx);
+    }
+
+    // SiM6 legacy — use main robot
     try {
         await fetch('/api/robot/ticker', {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({ ticker: ticker })
+            body: JSON.stringify({ ticker: 'SiM6' })
         });
     } catch(e) {}
-    // Save this robot's params to /tmp/robot-config.json
     const body = {
         max_levels: parseInt(r.maxGrid) || 100,
         step_base: parseInt(r.gridStep) || 31,
@@ -2327,8 +2422,68 @@ async function startLocalStorageRobot(idx) {
         });
     } catch(e) {}
     addLog(nowTime(), 'INFO', '▶ Запуск ' + ticker + ' step=' + body.step_base + ' spread=' + body.spread_base);
-    // Now start the robot
     robotApi('start');
+}
+
+async function pollInstanceStatus(idx) {
+    const r = robots[idx];
+    if (!r || !r.port) return;
+    try {
+        const resp = await fetch('/api/instance/status', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ port: r.port })
+        });
+        const data = await resp.json();
+        if (!data.error) {
+            r.status = 'running';
+            r.position = data.direction > 0 ? 'Лонг' : data.direction < 0 ? 'Шорт' : '—';
+            r.pnlTotal = data.realized_pnl || 0;
+            r.lotsOpen = data.total_lots || 0;
+        } else {
+            r.status = 'stopped';
+        }
+    } catch(e) {
+        r.status = 'stopped';
+    }
+    saveRobots();
+    renderRobots();
+}
+
+async function stopLocalStorageRobot(idx) {
+    const r = robots[idx];
+    if (!r || (!r.isInstance && !r.port)) return;
+    try {
+        await fetch('/api/instance/stop', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ id: r.id })
+        });
+        r.status = 'stopped';
+        saveRobots();
+        renderRobots();
+        addLog(nowTime(), 'INFO', '⏹ ' + r.ticker + ' остановлен');
+    } catch(e) {
+        addLog(nowTime(), 'ERROR', '❌ Ошибка остановки: ' + e.message);
+    }
+}
+
+async function pauseLocalStorageRobot(idx) {
+    const r = robots[idx];
+    if (!r || !r.port) return;
+    try {
+        await fetch('/api/instance/status', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ port: r.port, action: 'pause' })
+        });
+        r.status = 'paused';
+        saveRobots();
+        renderRobots();
+        addLog(nowTime(), 'INFO', '⏸ ' + r.ticker + ' на паузе');
+    } catch(e) {
+        addLog(nowTime(), 'ERROR', '❌ Ошибка паузы: ' + e.message);
+    }
 }
 
 function openRobotEditPanel(idx) {
@@ -2337,6 +2492,20 @@ function openRobotEditPanel(idx) {
     const r = robots[idx];
     if (!r) { pythonRobotEditPanel(); return; }
     
+    // Normalize params — support both old and new format
+    const p = {
+        maxLevels: r.isInstance ? (r.max_levels||100) : (r.maxGrid||100),
+        stepBase: r.isInstance ? (r.step_base||31) : (r.gridStep||31),
+        spreadBase: r.isInstance ? (r.spread_base||31) : (r.gridSpread||31),
+        holdMinutes: r.isInstance ? (r.hold_minutes||99999999999999) : (r.holdMinutes||99999999999999),
+        lookback: r.isInstance ? (r.vp_lookback||33) : (r.vpLookback||33),
+        binSize: r.isInstance ? (r.vp_bin_size||50) : (r.vpBinSize||50),
+        vaPercent: r.isInstance ? (r.vp_va_percent||0.70) : (r.vpVaPercent||0.70),
+        minProfit: r.isInstance ? (r.min_profit||35) : (r.minProfit||35),
+        rvAdapt: r.rvAdaptation||false
+    };
+    const robotPort = r.isInstance ? r.port : 5070;
+
     const existing = el('robotEditPanel');
     if (existing) { existing.remove(); return; }
 
@@ -2346,7 +2515,7 @@ function openRobotEditPanel(idx) {
     div.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);z-index:1000;width:900px;max-height:90vh;overflow-y:auto;box-shadow:0 8px 32px rgba(0,0,0,.5)';
     div.innerHTML = `
         <div class="card-header row gap-8">
-            🐍 VP Scalp Grid (PYTHON)
+            🐍 ${r.ticker} VP Scalp Grid (PYTHON)
             <button class="btn btn-primary btn-sm" onclick="saveRobotFromPanel(${idx})">💾 Сохранить</button>
             <button class="btn btn-secondary btn-sm" onclick="if(window._pyVpTimer){clearInterval(window._pyVpTimer);window._pyVpTimer=null;}el('robotEditPanel')?.remove()">✕</button>
         </div>
@@ -2368,15 +2537,15 @@ function openRobotEditPanel(idx) {
             <hr style="border-color:#2D2D44;margin:12px 0">
             <!-- Параметры -->
             <div class="metrics-row" style="flex-wrap:wrap;margin-bottom:16px">
-                <div class="metric-card"><div class="metric-label">Max Levels</div><input id="editPyMaxLevels" class="input" type="number" value="${r.maxGrid||100}" style="width:80px"></div>
-                <div class="metric-card"><div class="metric-label">Step Base (пт)</div><input id="editPyStepBase" class="input" type="number" value="${r.gridStep||31}" style="width:80px"></div>
-                <div class="metric-card"><div class="metric-label">Spread Base (пт)</div><input id="editPySpreadBase" class="input" type="number" value="${r.gridSpread||31}" style="width:80px"></div>
-                <div class="metric-card"><div class="metric-label">Max Hold (мин)</div><input id="editPyMaxHold" class="input" type="number" value="${r.holdMinutes||99999999999999}" style="width:100px"></div>
-                <div class="metric-card"><div class="metric-label">VP Lookback</div><input id="editPyLookback" class="input" type="number" value="${r.vpLookback||33}" style="width:70px"></div>
-                <div class="metric-card"><div class="metric-label">VP Bin Size</div><input id="editPyBinSize" class="input" type="number" value="${r.vpBinSize||50}" style="width:70px"></div>
-                <div class="metric-card"><div class="metric-label">VA %</div><input id="editPyVaPercent" class="input" type="number" step="0.05" value="${r.vpVaPercent||0.70}" style="width:70px"></div>
-                <div class="metric-card"><div class="metric-label">PnL/лот (пт)</div><input id="editPyMinProfit" class="input" type="number" value="${r.minProfit||35}" style="width:70px"></div>
-                <div class="metric-card"><div class="metric-label">RV Adaptation</div><br><input id="editPyRvAdapt" type="checkbox" style="width:20px;height:20px;vertical-align:middle" ${r.rvAdaptation?'checked':''}></div>
+                <div class="metric-card"><div class="metric-label">Max Levels</div><input id="editPyMaxLevels" class="input" type="number" value="${p.maxLevels}" style="width:80px"></div>
+                <div class="metric-card"><div class="metric-label">Step Base (пт)</div><input id="editPyStepBase" class="input" type="number" value="${p.stepBase}" style="width:80px"></div>
+                <div class="metric-card"><div class="metric-label">Spread Base (пт)</div><input id="editPySpreadBase" class="input" type="number" value="${p.spreadBase}" style="width:80px"></div>
+                <div class="metric-card"><div class="metric-label">Max Hold (мин)</div><input id="editPyMaxHold" class="input" type="number" value="${p.holdMinutes}" style="width:100px"></div>
+                <div class="metric-card"><div class="metric-label">VP Lookback</div><input id="editPyLookback" class="input" type="number" value="${p.lookback}" style="width:70px"></div>
+                <div class="metric-card"><div class="metric-label">VP Bin Size</div><input id="editPyBinSize" class="input" type="number" value="${p.binSize}" style="width:70px"></div>
+                <div class="metric-card"><div class="metric-label">VA %</div><input id="editPyVaPercent" class="input" type="number" step="0.05" value="${p.vaPercent}" style="width:70px"></div>
+                <div class="metric-card"><div class="metric-label">PnL/лот (пт)</div><input id="editPyMinProfit" class="input" type="number" value="${p.minProfit}" style="width:70px"></div>
+                <div class="metric-card"><div class="metric-label">RV Adaptation</div><br><input id="editPyRvAdapt" type="checkbox" style="width:20px;height:20px;vertical-align:middle" ${p.rvAdapt?'checked':''}></div>
             </div>
             <hr style="border-color:#2D2D44;margin:12px 0">
             <!-- Торговый журнал -->
@@ -2421,6 +2590,9 @@ function openRobotEditPanel(idx) {
     `;
     document.body.appendChild(div);
 
+    // Store port for VP updates
+    window._editRobotPort = robotPort;
+
     // Live VP update
     pythonRobotUpdateVp();
     if (window._pyVpTimer) clearInterval(window._pyVpTimer);
@@ -2432,28 +2604,77 @@ function openRobotEditPanel(idx) {
 async function saveRobotFromPanel(idx) {
     if (idx === undefined || idx < 0 || idx >= robots.length) return;
     const r = robots[idx];
-    r.maxGrid = el('editPyMaxLevels')?.value || r.maxGrid;
-    r.gridStep = el('editPyStepBase')?.value || r.gridStep;
-    r.gridSpread = el('editPySpreadBase')?.value || r.gridSpread;
-    r.holdMinutes = el('editPyMaxHold')?.value || r.holdMinutes;
-    r.vpLookback = el('editPyLookback')?.value || r.vpLookback;
-    r.vpBinSize = el('editPyBinSize')?.value || r.vpBinSize;
-    r.vpVaPercent = el('editPyVaPercent')?.value || r.vpVaPercent;
-    r.minProfit = el('editPyMinProfit')?.value || r.minProfit;
-    r.rvAdaptation = el('editPyRvAdapt')?.checked || false;
-    saveRobots();
-    // Try live robot API first (triggers VP hot-update), then C# proxy
-    const cfg = {
-        max_levels: parseInt(r.maxGrid),
-        step_base: parseInt(r.gridStep),
-        spread_base: parseInt(r.gridSpread),
-        min_profit_per_lot: parseInt(r.minProfit),
-        vp_lookback: parseInt(r.vpLookback),
-        vp_bin_size: parseInt(r.vpBinSize),
-        vp_va_percent: parseFloat(r.vpVaPercent),
-        rv_adaptation: r.rvAdaptation,
-        max_hold_minutes: parseInt(r.holdMinutes)
+    // Save to robot object (support both formats)
+    const vals = {
+        maxLevels: el('editPyMaxLevels')?.value,
+        stepBase: el('editPyStepBase')?.value,
+        spreadBase: el('editPySpreadBase')?.value,
+        holdMinutes: el('editPyMaxHold')?.value,
+        lookback: el('editPyLookback')?.value,
+        binSize: el('editPyBinSize')?.value,
+        vaPercent: el('editPyVaPercent')?.value,
+        minProfit: el('editPyMinProfit')?.value,
+        rvAdapt: el('editPyRvAdapt')?.checked || false
     };
+    if (r.isInstance || r.port) {
+        r.max_levels = parseInt(vals.maxLevels) || r.max_levels;
+        r.step_base = parseInt(vals.stepBase) || r.step_base;
+        r.spread_base = parseInt(vals.spreadBase) || r.spread_base;
+        r.hold_minutes = parseInt(vals.holdMinutes) || r.hold_minutes;
+        r.vp_lookback = parseInt(vals.lookback) || r.vp_lookback;
+        r.vp_bin_size = parseInt(vals.binSize) || r.vp_bin_size;
+        r.vp_va_percent = parseFloat(vals.vaPercent) || r.vp_va_percent;
+        r.min_profit = parseInt(vals.minProfit) || r.min_profit;
+    } else {
+        r.maxGrid = vals.maxLevels || r.maxGrid;
+        r.gridStep = vals.stepBase || r.gridStep;
+        r.gridSpread = vals.spreadBase || r.gridSpread;
+        r.holdMinutes = vals.holdMinutes || r.holdMinutes;
+        r.vpLookback = vals.lookback || r.vpLookback;
+        r.vpBinSize = vals.binSize || r.vpBinSize;
+        r.vpVaPercent = vals.vaPercent || r.vpVaPercent;
+        r.minProfit = vals.minProfit || r.minProfit;
+        r.rvAdaptation = vals.rvAdapt;
+    }
+    saveRobots();
+
+    const cfg = {
+        max_levels: parseInt(vals.maxLevels),
+        step_base: parseInt(vals.stepBase),
+        spread_base: parseInt(vals.spreadBase),
+        min_profit_per_lot: parseInt(vals.minProfit),
+        vp_lookback: parseInt(vals.lookback),
+        vp_bin_size: parseInt(vals.binSize),
+        vp_va_percent: parseFloat(vals.vaPercent),
+        rv_adaptation: vals.rvAdapt,
+        max_hold_minutes: parseInt(vals.holdMinutes)
+    };
+
+    // For instances — send config + VP hot-update to instance API via proxy
+    if (r.port && r.port !== 5070) {
+        // Update instance config file
+        try {
+            await fetch('/api/instance/create', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ ...cfg, ticker: r.ticker, port: r.port, id: r.id })
+            });
+        } catch(e) {}
+        // VP hot-update via proxy
+        try {
+            const resp = await fetch('/api/instance/status', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ port: r.port, action: 'update_config', config: cfg })
+            });
+            addLog(nowTime(), 'INFO', '💾 Config saved (instance): VP LB=' + cfg.vp_lookback);
+        } catch(e) {
+            addLog(nowTime(), 'WARN', 'Config saved locally, instance offline');
+        }
+        return;
+    }
+
+    // Main robot or legacy
     let saved = false;
     try {
         const resp = await fetch(ROBOT_API + '/api/robot/config', {
@@ -2466,7 +2687,7 @@ async function saveRobotFromPanel(idx) {
         saved = true;
     } catch(e) {
         try {
-            const resp = await fetch('/api/robot/config', {
+            await fetch('/api/robot/config', {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
                 body: JSON.stringify(cfg)
@@ -2483,6 +2704,19 @@ async function saveRobotFromPanel(idx) {
 function deleteRobot(idx) {
     if (idx >= 0 && idx < robots.length) {
         const r = robots[idx];
+        if (r.isInstance || r.port) {
+            // Stop + delete instance on server
+            fetch('/api/instance/stop', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ id: r.id })
+            }).catch(() => {});
+            fetch('/api/instance/delete', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ id: r.id })
+            }).catch(() => {});
+        }
         robots.splice(idx, 1);
         saveRobots();
         renderRobots();
@@ -3490,13 +3724,27 @@ function pythonRobotEditPanel() {
     const existing = el('robotEditPanel');
     if (existing) { existing.remove(); return; }
 
+    // Read current values from pythonRobot or strategy tab config
+    const s = pythonRobot || {};
+    const cfgML = el('cfgVpMaxLevels')?.value || '100';
+    const cfgStep = el('cfgVpStepBase')?.value || '31';
+    const cfgSpread = el('cfgVpSpreadBase')?.value || '31';
+    const cfgHold = el('cfgVpMaxHold')?.value || '99999999999999';
+    const cfgLB = el('cfgVpLookback')?.value || '33';
+    const cfgBin = el('cfgVpBinSize')?.value || '50';
+    const cfgVA = el('cfgVpVaPercent')?.value || '0.70';
+    const cfgMinP = el('cfgVpMinProfit')?.value || '35';
+
+    // Store port for main robot
+    window._editRobotPort = 5070;
+
     const div = document.createElement('div');
     div.id = 'robotEditPanel';
     div.className = 'card';
     div.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);z-index:1000;width:900px;max-height:90vh;overflow-y:auto;box-shadow:0 8px 32px rgba(0,0,0,.5)';
     div.innerHTML = `
         <div class="card-header row gap-8">
-            🐍 VP Scalp Grid (PYTHON)
+            🐍 SiM6 VP Scalp Grid (PYTHON)
             <button class="btn btn-primary btn-sm" onclick="pythonRobotSaveFromPanel()">💾 Сохранить</button>
             <button class="btn btn-secondary btn-sm" onclick="if(window._pyVpTimer){clearInterval(window._pyVpTimer);window._pyVpTimer=null;}el('robotEditPanel')?.remove()">✕</button>
         </div>
@@ -3518,14 +3766,14 @@ function pythonRobotEditPanel() {
             <hr style="border-color:#2D2D44;margin:12px 0">
             <!-- Параметры -->
             <div class="metrics-row" style="flex-wrap:wrap;margin-bottom:16px">
-                <div class="metric-card"><div class="metric-label">Max Levels</div><input id="editPyMaxLevels" class="input" type="number" style="width:80px"></div>
-                <div class="metric-card"><div class="metric-label">Step Base (пт)</div><input id="editPyStepBase" class="input" type="number" style="width:80px"></div>
-                <div class="metric-card"><div class="metric-label">Spread Base (пт)</div><input id="editPySpreadBase" class="input" type="number" style="width:80px"></div>
-                <div class="metric-card"><div class="metric-label">Max Hold (мин)</div><input id="editPyMaxHold" class="input" type="number" style="width:100px"></div>
-                <div class="metric-card"><div class="metric-label">VP Lookback</div><input id="editPyLookback" class="input" type="number" style="width:70px"></div>
-                <div class="metric-card"><div class="metric-label">VP Bin Size</div><input id="editPyBinSize" class="input" type="number" style="width:70px"></div>
-                <div class="metric-card"><div class="metric-label">VA %</div><input id="editPyVaPercent" class="input" type="number" step="0.05" style="width:70px"></div>
-                <div class="metric-card"><div class="metric-label">PnL/лот (пт)</div><input id="editPyMinProfit" class="input" type="number" style="width:70px"></div>
+                <div class="metric-card"><div class="metric-label">Max Levels</div><input id="editPyMaxLevels" class="input" type="number" value="${cfgML}" style="width:80px"></div>
+                <div class="metric-card"><div class="metric-label">Step Base (пт)</div><input id="editPyStepBase" class="input" type="number" value="${cfgStep}" style="width:80px"></div>
+                <div class="metric-card"><div class="metric-label">Spread Base (пт)</div><input id="editPySpreadBase" class="input" type="number" value="${cfgSpread}" style="width:80px"></div>
+                <div class="metric-card"><div class="metric-label">Max Hold (мин)</div><input id="editPyMaxHold" class="input" type="number" value="${cfgHold}" style="width:100px"></div>
+                <div class="metric-card"><div class="metric-label">VP Lookback</div><input id="editPyLookback" class="input" type="number" value="${cfgLB}" style="width:70px"></div>
+                <div class="metric-card"><div class="metric-label">VP Bin Size</div><input id="editPyBinSize" class="input" type="number" value="${cfgBin}" style="width:70px"></div>
+                <div class="metric-card"><div class="metric-label">VA %</div><input id="editPyVaPercent" class="input" type="number" step="0.05" value="${cfgVA}" style="width:70px"></div>
+                <div class="metric-card"><div class="metric-label">PnL/лот (пт)</div><input id="editPyMinProfit" class="input" type="number" value="${cfgMinP}" style="width:70px"></div>
                 <div class="metric-card"><div class="metric-label">RV Adaptation</div><br><input id="editPyRvAdapt" type="checkbox" style="width:20px;height:20px;vertical-align:middle"></div>
             </div>
             <hr style="border-color:#2D2D44;margin:12px 0">
@@ -3583,6 +3831,29 @@ function pythonRobotEditPanel() {
 
 function pythonRobotUpdateVp() {
     if (!el('pyVAH')) return;
+    const port = window._editRobotPort || 5070;
+    if (port !== 5070) {
+        // Fetch from instance API via C# proxy (CORS fix)
+        fetch('/api/instance/status', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ port: port })
+        }).then(r=>r.json()).then(s => {
+            if (s.vah !== undefined && s.vah !== null) el('pyVAH').textContent = s.vah > 0 ? Math.round(s.vah) : '—';
+            if (s.poc !== undefined && s.poc !== null) el('pyPOC').textContent = s.poc > 0 ? Math.round(s.poc) : '—';
+            if (s.val !== undefined && s.val !== null) el('pyVAL').textContent = s.val > 0 ? Math.round(s.val) : '—';
+            if (s.current_price !== undefined && s.current_price !== null) el('pyPrice').textContent = s.current_price > 0 ? s.current_price.toFixed(0) : '—';
+            const dirText = s.direction > 0 ? 'Лонг' : s.direction < 0 ? 'Шорт' : 'Флэт';
+            if (el('pyDir')) el('pyDir').textContent = dirText;
+            if (el('pyLots')) el('pyLots').textContent = s.total_lots || 0;
+            if (el('pyGrid')) el('pyGrid').textContent = (s.grid_levels||0) + ' (' + (s.filled_levels||0) + ' fill)';
+            if (el('pyRT')) el('pyRT').textContent = s.round_trips || 0;
+            if (el('pyPnlReal')) { el('pyPnlReal').textContent = (s.realized_pnl||0).toFixed(0)+'₽'; el('pyPnlReal').style.color = s.realized_pnl >= 0 ? 'var(--green)' : 'var(--red)'; }
+            if (el('pyPnlUnreal')) { el('pyPnlUnreal').textContent = (s.pnl||0).toFixed(0)+'₽'; el('pyPnlUnreal').style.color = s.pnl >= 0 ? 'var(--green)' : 'var(--red)'; }
+        }).catch(() => {});
+        return;
+    }
+    // Main robot (port 5070)
     const s = pythonRobot;
     if (!s) return;
     if (s.vah !== undefined && s.vah !== null) el('pyVAH').textContent = s.vah > 0 ? Math.round(s.vah) : '—';
@@ -3877,7 +4148,6 @@ async function pythonRobotLoadGridLevels() {
 }
 
 function createVpRobotFromTest() {
-    // Read params from testing tab
     const ticker = el('testTicker')?.value || 'SiM6';
     const params = {
         max_levels: parseInt(el('tstVpMaxLevels')?.value) || 100,
@@ -3891,42 +4161,43 @@ function createVpRobotFromTest() {
         max_hold_minutes: 99999999999999,
         ticker: ticker
     };
-    // Save config to server (writes /tmp/robot-config.json)
-    fetch('/api/robot/config', {
+    // Find next available port (5071+)
+    const usedPorts = robots.map(r => r.port || 0);
+    let port = 5071;
+    while (usedPorts.includes(port)) port++;
+    params.port = port;
+    const id = ticker + '_' + port;
+
+    // Create instance on server
+    fetch('/api/instance/create', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify(params)
+        body: JSON.stringify({ ...params, id })
     }).then(r => r.json()).then(data => {
-        addLog(nowTime(), 'INFO', '💾 Config сохранён: ' + ticker + ' step=' + params.step_base + ' spread=' + params.spread_base);
+        addLog(nowTime(), 'INFO', '🤖 Инстанс создан: ' + ticker + ' port=' + port);
     }).catch(e => {
-        addLog(nowTime(), 'WARN', 'Config save fallback: ' + e.message);
+        addLog(nowTime(), 'WARN', 'Instance create: ' + e.message);
     });
-    // Update config.py with new ticker
-    fetch('/api/robot/ticker', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({ ticker: ticker })
-    }).catch(() => {});
+
     // Create robot in UI
     const robot = {
-        id: Date.now(),
+        id: id,
         ticker: ticker,
-        account: '',
-        accountName: '',
         strategy: 'VP Scalp Grid',
-        gridStep: String(params.step_base),
-        gridSpread: String(params.spread_base),
-        maxGrid: String(params.max_levels),
-        vpLookback: String(params.vp_lookback),
-        vpBinSize: String(params.vp_bin_size),
-        vpVaPercent: String(params.vp_va_percent),
-        minProfit: String(params.min_profit_per_lot),
-        holdMinutes: String(params.max_hold_minutes),
+        port: port,
+        step_base: params.step_base,
+        spread_base: params.spread_base,
+        max_levels: params.max_levels,
+        vp_lookback: params.vp_lookback,
+        vp_bin_size: params.vp_bin_size,
+        vp_va_percent: params.vp_va_percent,
+        min_profit: params.min_profit_per_lot,
+        hold_minutes: params.max_hold_minutes,
         status: 'stopped',
         position: '—',
         pnlToday: 0, pnlTotal: 0,
         lotsOpen: 0, go: 0,
-        exchangeStatus: '—'
+        isInstance: true
     };
     robots.push(robot);
     saveRobots();
@@ -3936,7 +4207,7 @@ function createVpRobotFromTest() {
     document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
     document.querySelector('[data-tab="monitoring"]').classList.add('active');
     el('monitoring')?.classList.add('active');
-    addLog(nowTime(), 'INFO', '🤖 Робот создан: ' + ticker + ' step=' + params.step_base + ' spread=' + params.spread_base + ' levels=' + params.max_levels);
+    addLog(nowTime(), 'INFO', '🤖 Робот создан: ' + ticker + ' step=' + params.step_base + ' spread=' + params.spread_base + ' port=' + port);
 }
 
 function pythonRobotTest() {

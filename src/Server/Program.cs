@@ -135,13 +135,15 @@ app.Use(async (HttpContext ctx, Func<Task> next) =>
         path.StartsWith("/api/robot/config") ||
         path.StartsWith("/api/vp-backtest") ||
         path.StartsWith("/api/robot/ticker") ||
+        path.StartsWith("/api/instance/") ||
         path == "/health" ||
         path == "/test" ||
         path == "/heartbeat" ||
         path == "/login.html" ||
         path.StartsWith("/css/") || 
         path.StartsWith("/js/") || 
-        path.StartsWith("/favicon"))
+        path.StartsWith("/favicon") ||
+        path.StartsWith("/trading"))
     {
         await next();
         return;
@@ -2293,5 +2295,152 @@ app.MapPost("/strategy/vp-simple/config", async (HttpRequest req) =>
     if (root.TryGetProperty("vaPercent", out var va)) config.VaPercent = va.GetDouble();
     return Results.Json(new { status = "updated", config = new { config.SlPct, config.MaxHoldMinutes, config.VpLookback, config.VpBins, config.VaPercent, config.Commission } });
 });
+
+// === Robot Instance Management (independent robots) ===
+var launcherPath = "/root/.openclaw/workspace/HedgeFund/robot_instance/launcher.py";
+var instancesBase = "/tmp/robot-instances";
+
+app.MapPost("/api/instance/create", async (HttpRequest req) => {
+    try {
+        using var reader = new StreamReader(req.Body);
+        var body = await reader.ReadToEndAsync();
+        var json = System.Text.Json.JsonDocument.Parse(body);
+        var ticker = json.RootElement.GetProperty("ticker").GetString() ?? "SiM6";
+        var port = json.RootElement.TryGetProperty("port", out var p) ? p.GetInt32() : 5071;
+        var id = $"{ticker}_{port}";
+        var dir = Path.Combine(instancesBase, id);
+        Directory.CreateDirectory(dir);
+        // Write config.json
+        File.WriteAllText(Path.Combine(dir, "config.json"), body);
+        return Results.Json(new { id, dir, port, ticker, created = true });
+    } catch (Exception ex) { return Results.Json(new { error = ex.Message }); }
+}).AllowAnonymous();
+
+app.MapPost("/api/instance/start", async (HttpRequest req) => {
+    try {
+        using var reader = new StreamReader(req.Body);
+        var body = await reader.ReadToEndAsync();
+        var json = System.Text.Json.JsonDocument.Parse(body);
+        var id = json.RootElement.GetProperty("id").GetString();
+        var dir = Path.Combine(instancesBase, id);
+        var port = json.RootElement.GetProperty("port").GetInt32();
+        if (!Directory.Exists(dir)) return Results.Json(new { error = "Instance not found" });
+        var psi = new System.Diagnostics.ProcessStartInfo {
+            FileName = "python3",
+            Arguments = $"\"{launcherPath}\" start \"{dir}\" {port}",
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false
+        };
+        var proc = System.Diagnostics.Process.Start(psi);
+        var output = await proc!.StandardOutput.ReadToEndAsync();
+        await proc.WaitForExitAsync();
+        return Results.Json(new { id, port, output = output.Trim(), started = true });
+    } catch (Exception ex) { return Results.Json(new { error = ex.Message }); }
+}).AllowAnonymous();
+
+app.MapPost("/api/instance/stop", async (HttpRequest req) => {
+    try {
+        using var reader = new StreamReader(req.Body);
+        var body = await reader.ReadToEndAsync();
+        var json = System.Text.Json.JsonDocument.Parse(body);
+        var id = json.RootElement.GetProperty("id").GetString();
+        var dir = Path.Combine(instancesBase, id);
+        var port = json.RootElement.TryGetProperty("port", out var po) ? po.GetInt32() : 0;
+        // Kill by port using fuser
+        if (port > 0) {
+            try {
+                var killPsi = new System.Diagnostics.ProcessStartInfo {
+                    FileName = "/bin/bash",
+                    Arguments = $"-c \"fuser -k {port}/tcp 2>/dev/null\"",
+                    UseShellExecute = false
+                };
+                System.Diagnostics.Process.Start(killPsi)?.WaitForExit(3000);
+            } catch {}
+        }
+        // Also try pid file
+        var pidPath = Path.Combine(dir, "pid");
+        if (File.Exists(pidPath)) {
+            try {
+                var pid = int.Parse(File.ReadAllText(pidPath).Trim());
+                var killPsi2 = new System.Diagnostics.ProcessStartInfo {
+                    FileName = "/bin/bash",
+                    Arguments = $"-c \"kill -TERM {pid} 2>/dev/null; kill -TERM -{pid} 2>/dev/null\"",
+                    UseShellExecute = false
+                };
+                System.Diagnostics.Process.Start(killPsi2)?.WaitForExit(2000);
+            } catch {}
+            try { File.Delete(pidPath); } catch {}
+        }
+        return Results.Json(new { id, stopped = true });
+    } catch (Exception ex) { return Results.Json(new { error = ex.Message }); }
+}).AllowAnonymous();
+
+app.MapGet("/api/instance/list", () => {
+    try {
+        if (!Directory.Exists(instancesBase)) return Results.Json(new { instances = Array.Empty<object>() });
+        var result = new List<object>();
+        foreach (var dir in Directory.GetDirectories(instancesBase)) {
+            var id = Path.GetFileName(dir);
+            var cfgPath = Path.Combine(dir, "config.json");
+            if (!File.Exists(cfgPath)) continue;
+            var cfg = System.Text.Json.JsonDocument.Parse(File.ReadAllText(cfgPath));
+            var ticker = cfg.RootElement.TryGetProperty("ticker", out var t) ? t.GetString() : "?";
+            var port = cfg.RootElement.TryGetProperty("port", out var p) ? p.GetInt32() : 5071;
+            // Check if running
+            var pidPath = Path.Combine(dir, "pid");
+            bool running = false;
+            if (File.Exists(pidPath)) {
+                try {
+                    var pid = int.Parse(File.ReadAllText(pidPath).Trim());
+                    System.Diagnostics.Process.GetProcessById(pid);
+                    running = true;
+                } catch { running = false; }
+            }
+            // Try get status from robot API
+            string status = "unknown";
+            try {
+                using var http = new HttpClient(); http.Timeout = TimeSpan.FromSeconds(2);
+                var resp = http.GetAsync($"http://localhost:{port}/status").Result;
+                if (resp.IsSuccessStatusCode) status = "running";
+            } catch { status = running ? "starting" : "stopped"; }
+            result.Add(new { id, ticker, port, running, status });
+        }
+        return Results.Json(new { instances = result });
+    } catch (Exception ex) { return Results.Json(new { error = ex.Message }); }
+}).AllowAnonymous();
+
+app.MapPost("/api/instance/status", async (HttpRequest req) => {
+    try {
+        using var reader = new StreamReader(req.Body);
+        var body = await reader.ReadToEndAsync();
+        var json = System.Text.Json.JsonDocument.Parse(body);
+        var port = json.RootElement.GetProperty("port").GetInt32();
+        // Check if this is a config update
+        if (json.RootElement.TryGetProperty("action", out var action) && action.GetString() == "update_config") {
+            using var http = new HttpClient(); http.Timeout = TimeSpan.FromSeconds(3);
+            var resp = await http.PostAsync($"http://localhost:{port}/api/robot/config",
+                new StringContent(json.RootElement.GetProperty("config").GetRawText(), System.Text.Encoding.UTF8, "application/json"));
+            var data = await resp.Content.ReadAsStringAsync();
+            return Results.Text(data, "application/json");
+        }
+        using var http2 = new HttpClient(); http2.Timeout = TimeSpan.FromSeconds(3);
+        var resp2 = await http2.GetAsync($"http://localhost:{port}/status");
+        var data2 = await resp2.Content.ReadAsStringAsync();
+        return Results.Text(data2, "application/json");
+    } catch (Exception ex) { return Results.Json(new { error = ex.Message, status = "offline" }); }
+}).AllowAnonymous();
+
+app.MapPost("/api/instance/delete", (HttpRequest req) => {
+    try {
+        using var reader = new StreamReader(req.Body);
+        var body = reader.ReadToEnd();
+        var json = System.Text.Json.JsonDocument.Parse(body);
+        var id = json.RootElement.GetProperty("id").GetString();
+        var dir = Path.Combine(instancesBase, id);
+        if (Directory.Exists(dir)) Directory.Delete(dir, true);
+        return Results.Json(new { id, deleted = true });
+    } catch (Exception ex) { return Results.Json(new { error = ex.Message }); }
+}).AllowAnonymous();
 
 app.Run();
