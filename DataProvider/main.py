@@ -225,6 +225,58 @@ def get_active_orders(account: str = ""):
     return []
 
 
+@app.get("/pnl")
+def get_pnl(account: str = Query(default=""), symbol: str = Query(default="")):
+    """Calculate real PnL from broker trades."""
+    if not the_provider:
+        return {"error": "provider not connected"}
+    try:
+        import requests
+        jwt = the_provider.fp.jwt_token
+        if not jwt:
+            return {"error": "no JWT token"}
+        account_id = account or cfg_mod.FINAM_ACCOUNT_ID
+        # Today's trades
+        start = time.strftime("%Y-%m-%dT00:00:00Z")
+        end = time.strftime("%Y-%m-%dT23:59:59Z")
+        r = requests.get(
+            f"https://api.finam.ru/v1/accounts/{account_id}/trades?interval.start_time={start}&interval.end_time={end}",
+            headers={"Authorization": f"Bearer {jwt}"},
+            timeout=10
+        )
+        if r.status_code != 200:
+            return {"error": f"Finam API error: {r.status_code}"}
+        data = r.json()
+        trades = data.get("trades", [])
+        if not trades:
+            return {"pnl": 0, "trades": 0}
+        # Filter by symbol and calculate PnL
+        # Symbol format: "SiM6@RTSX" -> match "SiM6"
+        symbol_filter = symbol.split("@")[0] if "@" in symbol else symbol
+        buy_total = 0
+        sell_total = 0
+        count = 0
+        for t in trades:
+            t_symbol = t.get("symbol", "").split("@")[0]
+            if symbol_filter and t_symbol != symbol_filter:
+                continue
+            price = float((t.get("price", {}) or {}).get("value", 0))
+            qty = float((t.get("quantity", {}) or {}).get("value", 0))
+            side = t.get("side", "")
+            if side == "SIDE_BUY":
+                buy_total += price * qty
+            elif side == "SIDE_SELL":
+                sell_total += price * qty
+            count += 1
+        # Commission: 0.90₽ per lot RT = 0.45₽ per side
+        # Not counted here — trade count × 0.90
+        commission = count * 0.90
+        pnl = sell_total - buy_total - commission
+        return {"pnl": round(pnl, 2), "trades": count}
+    except Exception as e:
+        return {"error": str(e)}
+
+
 if __name__ == "__main__":
     import uvicorn
     cfg = cfg_mod.load_config()
