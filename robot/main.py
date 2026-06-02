@@ -771,13 +771,18 @@ class Robot:
             self._close_all(msg)
             return
 
-        # 1 lot: POC hit
-        if total_lots == 1 and self.strategy.poc > 0:
-            if d == 1 and price >= self.strategy.poc:
-                self._close_all(f"POC hit LONG: {price:.0f} >= {self.strategy.poc:.0f}")
-                return
-            if d == -1 and price <= self.strategy.poc:
-                self._close_all(f"POC hit SHORT: {price:.0f} <= {self.strategy.poc:.0f}")
+        # 1 lot: POC hit OR PnL/lot >= min_profit
+        if total_lots == 1:
+            if self.strategy.poc > 0:
+                if d == 1 and price >= self.strategy.poc:
+                    self._close_all(f"POC hit LONG: {price:.0f} >= {self.strategy.poc:.0f}")
+                    return
+                if d == -1 and price <= self.strategy.poc:
+                    self._close_all(f"POC hit SHORT: {price:.0f} <= {self.strategy.poc:.0f}")
+                    return
+            # Also check PnL/lot for 1 lot (exit after TP fill)
+            if pnl_per_lot >= self.strategy.params.min_profit_per_lot:
+                self._close_all(f"PnL/lot(1)={pnl_per_lot:.0f} >= {self.strategy.params.min_profit_per_lot}")
                 return
 
         # 2+ lots: PnL/lot >= min_profit
