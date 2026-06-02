@@ -469,6 +469,9 @@ class Robot:
             return
         if self._close_pending:
             return
+        # Don't enter if broker still has position (previous close not confirmed)
+        if self._broker_lots != 0:
+            return
         # Don't enter until VP is ready (after warmup)
         if self.strategy.val <= 0 or self.strategy.vah <= 0:
             return
@@ -477,6 +480,12 @@ class Robot:
         if sig:
             log.info(f"ENTRY SIGNAL: {sig.tag} @ {price:.0f}")
         if not sig:
+            return
+
+        # Double-check: no broker position before entry
+        pos = self._get_broker_position()
+        if pos and pos[1] != 0:
+            log.warning(f"Skip entry: broker still has position lots={pos[1]}")
             return
 
         # Execute entry
