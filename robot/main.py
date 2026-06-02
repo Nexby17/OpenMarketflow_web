@@ -774,7 +774,7 @@ class Robot:
                 total_price += fp
             avg = total_price / total_lots if total_lots > 0 else self.strategy.entry_price
 
-        # Real PnL/lot: (current_price - avg_price) * direction - commission/lot
+        # PnL per lot (for display)
         per_lot_commission = self.strategy.params.commission  # RT commission per lot
         if d == 1:
             pnl_per_lot = (price - avg) - per_lot_commission
@@ -782,32 +782,29 @@ class Robot:
             pnl_per_lot = (avg - price) - per_lot_commission
         pnl = pnl_per_lot * total_lots
 
+        # Trade PnL = realized + unrealized for this trade
+        trade_pnl = self.state.state.realized_pnl + pnl
+
         ok, msg = self.risk.check_pnl(pnl)
         if not ok:
             log.warning(f"Risk stop: {msg}")
             self._close_all(msg)
             return
 
-        # 1 lot: POC hit OR PnL/lot >= min_profit
-        if total_lots == 1:
-            if self.strategy.poc > 0:
-                if d == 1 and price >= self.strategy.poc:
-                    self._close_all(f"POC hit LONG: {price:.0f} >= {self.strategy.poc:.0f}")
-                    return
-                if d == -1 and price <= self.strategy.poc:
-                    self._close_all(f"POC hit SHORT: {price:.0f} <= {self.strategy.poc:.0f}")
-                    return
-            # Also check PnL/lot for 1 lot (exit after TP fill)
-            if pnl_per_lot >= self.strategy.params.min_profit_per_lot:
-                self._close_all(f"PnL/lot(1)={pnl_per_lot:.0f} >= {self.strategy.params.min_profit_per_lot}")
+        # POC hit (any lot count)
+        if self.strategy.poc > 0:
+            if d == 1 and price >= self.strategy.poc:
+                self._close_all(f"POC hit LONG: {price:.0f} >= {self.strategy.poc:.0f}")
+                return
+            if d == -1 and price <= self.strategy.poc:
+                self._close_all(f"POC hit SHORT: {price:.0f} <= {self.strategy.poc:.0f}")
                 return
 
-        # 2+ lots: PnL/lot >= min_profit
-        if total_lots >= 2:
-            per_lot = pnl / total_lots
-            if per_lot >= self.strategy.params.min_profit_per_lot:
-                self._close_all(f"PnL/lot={per_lot:.0f} >= {self.strategy.params.min_profit_per_lot}")
-                return
+        # Close condition: trade PnL >= min_profit × lots
+        threshold = self.strategy.params.min_profit_per_lot * total_lots
+        if trade_pnl >= threshold:
+            self._close_all(f"Trade PnL={trade_pnl:.0f} >= {threshold:.0f} ({self.strategy.params.min_profit_per_lot}×{total_lots})")
+            return
 
     def _close_all(self, reason: str):
         """Close all positions — use BROKER lots, not robot state."""
@@ -1187,9 +1184,11 @@ class Robot:
             commission = total_lots * self.strategy.params.commission
             pnl = (price - avg_entry) * total_lots * d - commission
             pnl_per_lot = (price - avg_entry) * d - self.strategy.params.commission
+            trade_pnl = self.state.state.realized_pnl + pnl
         else:
             pnl = 0
             pnl_per_lot = 0
+            trade_pnl = 0
         return {
             "mode": self._mode,
             "paper": self._paper,
@@ -1199,8 +1198,9 @@ class Robot:
             "total_lots": total_lots,
             "filled_levels": len(self._filled_prices),
             "grid_levels": len(self._filled_prices),
-            "pnl": round(pnl, 1) if d != 0 else 0,
+            "pnl": round(trade_pnl, 1) if d != 0 else 0,
             "pnl_per_lot": round(pnl_per_lot, 1) if d != 0 else 0,
+            "unrealized_pnl": round(pnl, 1) if d != 0 else 0,
             "round_trips": self.state.state.round_trips,
             "realized_pnl": round(self.state.state.realized_pnl, 1),
             "poc": round(self.strategy.poc, 0),
