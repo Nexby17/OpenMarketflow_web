@@ -26,7 +26,7 @@ public class GridMmRegimeStrategy : IStrategy
     {
         // SAR
         public double SarStart { get; set; } = 0.02;
-        public double SarStep { get; set; } = 0.06;
+        public double SarStep { get; set; } = 0.08;
         public double SarMax { get; set; } = 0.2;
         
         // EMA
@@ -34,10 +34,10 @@ public class GridMmRegimeStrategy : IStrategy
         
         // Grid
         public double GridStep { get; set; } = 1.0;
-        public double GridSpread { get; set; } = 70.0;
+        public double GridSpread { get; set; } = 90.0;
         public int MaxGridLevels { get; set; } = 70;
         public double MinProfitPerLot { get; set; } = 35.0;
-        public double ClosePct { get; set; } = 0.15;
+        public double ClosePct { get; set; } = 0.10;
         
         // Commission
         public double Commission { get; set; } = 0.90;

@@ -386,10 +386,10 @@ class Robot:
         if not self.strategy.has_position:
             # Robot doesn't know about position — restore from broker
             if self._entry_pending and self._entry_pending_dir == cur_dir:
-                # This is our entry fill — use entry_pending_price (price at signal time)
-                entry_price = self._entry_pending_price if self._entry_pending_price > 0 else self._broker_avg
+                # Entry fill — use broker avg_price (real execution price)
+                entry_price = self._broker_avg if self._broker_avg > 0 else self._get_last_fill_price()
                 if entry_price <= 0:
-                    entry_price = self._current_price
+                    entry_price = self._entry_pending_price if self._entry_pending_price > 0 else self._current_price
                 log.info(f"Entry fill detected: dir={cur_dir} lots={cur_lots} @ {entry_price:.0f} (broker_avg={self._broker_avg:.0f})")
                 self._handle_entry_fill(cur_dir, entry_price, cur_lots)
             elif self._close_pending:
@@ -875,6 +875,23 @@ class Robot:
                 return float(pnl)
         except Exception as e:
             log.debug(f"Failed to get broker PnL: {e}")
+        return 0.0
+
+    def _get_last_fill_price(self) -> float:
+        """Get last fill price from DataProvider."""
+        try:
+            r = requests.get(
+                "http://localhost:5060/recent-fills",
+                params={"account": config.FINAM_ACCOUNT_ID, "symbol": config.SYMBOL},
+                timeout=2
+            )
+            fills = r.json()
+            if fills and isinstance(fills, list) and len(fills) > 0:
+                p = fills[0].get('price', 0)
+                if isinstance(p, (int, float)) and p > 0:
+                    return float(p)
+        except Exception:
+            pass
         return 0.0
 
     # === BROKER ===

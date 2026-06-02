@@ -202,19 +202,31 @@ class FinamProvider:
                             except:
                                 qty = 0
                         qty = abs(qty)
-                        return {
+                        avg_p = (lambda v: float(str(v)) if v and str(v) else 0.0)(pos.average_price)
+                        cur_p = (lambda v: float(str(v)) if v and str(v) else 0.0)(pos.current_price)
+                        result = {
                             "ticker": ticker,
                             "account": account_id,
                             "dir": 1 if qty > 0 else (-1 if qty < 0 else 0),
-                            "lots": abs(qty),
-                            "avg_price": (lambda v: float(str(v)) if v and str(v) else 0.0)(pos.average_price),
-                            "current_price": (lambda v: float(str(v)) if v and str(v) else 0.0)(pos.current_price),
+                            "lots": qty,
+                            "avg_price": avg_p,
+                            "current_price": cur_p,
                         }
+                        # If gRPC didn't give avg_price, try REST fallback
+                        if qty > 0 and avg_p == 0:
+                            rest_result = self._fetch_position_rest(account_id, ticker)
+                            if rest_result and rest_result.get('avg_price', 0) > 0:
+                                result['avg_price'] = rest_result['avg_price']
+                        return result
                 return None
         except Exception as e:
             logger.warning("gRPC GetAccount failed: %s, falling back to REST", e)
 
         # Variant 2: REST fallback
+        return self._fetch_position_rest(account_id, ticker)
+
+    def _fetch_position_rest(self, account_id: str, ticker: str) -> dict | None:
+        """REST fallback for position."""
         try:
             import requests
             jwt = self.fp.jwt_token
