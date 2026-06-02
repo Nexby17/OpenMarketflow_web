@@ -328,25 +328,49 @@ class Robot:
                 self._moex_last = moex
                 self._moex_check_ts = now_ts
 
-        # Get fresh price from DataProvider (broker = source of truth)
+        # Get fresh price from DataProvider /pnl endpoint (has real price)
+        try:
+            r = requests.get(f"http://localhost:5060/position?account={config.FINAM_ACCOUNT_ID}&ticker={config.TICKER}", timeout=2)
+            data = r.json()
+            cp = data.get('current_price', 0)
+            if cp > 0:
+                self._current_price = float(cp)
+                self.strategy.current_price = float(cp)
+                self._last_price = float(cp)
+        except Exception:
+            pass
+
+        # Also try quote cache as backup
         try:
             r = requests.get(f"http://localhost:5060/quote/{config.SYMBOL}", timeout=1)
             data = r.json()
             bid = data.get('bid', 0)
             ask = data.get('ask', 0)
             last = data.get('last', 0)
-            if bid > 0 and ask > 0:
-                fresh_price = (bid + ask) / 2
-            elif last > 0:
-                fresh_price = last
-            else:
-                fresh_price = 0
-            if fresh_price > 0:
-                self._current_price = fresh_price
-                self.strategy.current_price = fresh_price
-                self._last_price = fresh_price
+            ts = data.get('timestamp', '')
+            # Only use quote if fresh (less than 60s old)
+            is_stale = False
+            if ts:
+                try:
+                    from datetime import datetime as _dt
+                    quote_time = _dt.fromisoformat(ts.replace('Z', '+00:00'))
+                    age = (_dt.now(timezone.utc) - quote_time).total_seconds()
+                    is_stale = age > 60
+                except Exception:
+                    pass
+            if not is_stale:
+                if bid > 0 and ask > 0:
+                    fresh_price = (bid + ask) / 2
+                elif last > 0:
+                    fresh_price = last
+                else:
+                    fresh_price = 0
+                if fresh_price > 0:
+                    self._current_price = fresh_price
+                    self.strategy.current_price = fresh_price
+                    self._last_price = fresh_price
         except Exception:
-            pass  # Fallback to feed price
+            pass
 
         pos = self._get_broker_position()
         prev_dir = self._broker_dir
