@@ -512,6 +512,8 @@ class Robot:
         self._last_direction = direction
         self._filled_prices = []
         self._broker_pnl_at_entry = self._get_broker_daily_pnl()  # save broker PnL at entry
+        # Reset realized PnL for new trade
+        self.state.state.realized_pnl = 0
 
         # Place first grid from entry price (not current price)
         step = self.strategy.params.step_base
