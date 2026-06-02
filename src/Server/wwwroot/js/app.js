@@ -2529,8 +2529,8 @@ function openRobotEditPanel(idx) {
                 <div class="metric-card"><div class="metric-label">Позиция</div><div id="pyDir" style="font-size:18px;font-weight:bold">—</div></div>
                 <div class="metric-card"><div class="metric-label">Лоты</div><div id="pyLots" style="font-size:18px;font-weight:bold">0</div></div>
                 <div class="metric-card"><div class="metric-label">Grid</div><div id="pyGrid" style="font-size:18px;font-weight:bold">0</div></div>
-                <div class="metric-card"><div class="metric-label">Round Trips</div><div id="pyRT" style="font-size:18px;font-weight:bold">0</div></div>
-                <div class="metric-card"><div class="metric-label">PnL реал.</div><div id="pyPnlReal" style="font-size:18px;font-weight:bold">—</div></div>
+                <div class="metric-card"><div class="metric-label">Ср. цена</div><div id="pyAvgPrice" style="font-size:18px;font-weight:bold">—</div></div>
+                <div class="metric-card"><div class="metric-label">PnL/лот</div><div id="pyPnlPerLot" style="font-size:18px;font-weight:bold">—</div></div>
                 <div class="metric-card"><div class="metric-label">PnL нереал.</div><div id="pyPnlUnreal" style="font-size:18px;font-weight:bold">—</div></div>
                 <div class="metric-card"><div class="metric-label">Hold</div><div id="pyHold" style="font-size:18px;font-weight:bold">0 мин</div></div>
             </div>
@@ -3759,8 +3759,8 @@ function pythonRobotEditPanel() {
                 <div class="metric-card"><div class="metric-label">Позиция</div><div id="pyDir" style="font-size:18px;font-weight:bold">—</div></div>
                 <div class="metric-card"><div class="metric-label">Лоты</div><div id="pyLots" style="font-size:18px;font-weight:bold">0</div></div>
                 <div class="metric-card"><div class="metric-label">Grid</div><div id="pyGrid" style="font-size:18px;font-weight:bold">0</div></div>
-                <div class="metric-card"><div class="metric-label">Round Trips</div><div id="pyRT" style="font-size:18px;font-weight:bold">0</div></div>
-                <div class="metric-card"><div class="metric-label">PnL реал.</div><div id="pyPnlReal" style="font-size:18px;font-weight:bold">—</div></div>
+                <div class="metric-card"><div class="metric-label">Ср. цена</div><div id="pyAvgPrice" style="font-size:18px;font-weight:bold">—</div></div>
+                <div class="metric-card"><div class="metric-label">PnL/лот</div><div id="pyPnlPerLot" style="font-size:18px;font-weight:bold">—</div></div>
                 <div class="metric-card"><div class="metric-label">PnL нереал.</div><div id="pyPnlUnreal" style="font-size:18px;font-weight:bold">—</div></div>
                 <div class="metric-card"><div class="metric-label">Hold</div><div id="pyHold" style="font-size:18px;font-weight:bold">0 мин</div></div>
             </div>
@@ -3850,8 +3850,16 @@ function pythonRobotUpdateVp() {
             if (el('pyDir')) el('pyDir').textContent = dirText;
             if (el('pyLots')) el('pyLots').textContent = s.total_lots || 0;
             if (el('pyGrid')) el('pyGrid').textContent = (s.grid_levels||0) + ' (' + (s.filled_levels||0) + ' fill)';
-            if (el('pyRT')) el('pyRT').textContent = s.round_trips || 0;
-            if (el('pyPnlReal')) { el('pyPnlReal').textContent = (s.realized_pnl||0).toFixed(0)+'₽'; el('pyPnlReal').style.color = s.realized_pnl >= 0 ? 'var(--green)' : 'var(--red)'; }
+            if (el('pyAvgPrice')) {
+                const avgP = (s.total_lots > 0 && s.entry_price > 0) ? Math.round(s.entry_price + (s.filled_levels||0) > 0 ? 0 : 0) : 0;
+                el('pyAvgPrice').textContent = s.direction !== 0 ? s.entry_price.toFixed(0) : '—';
+            }
+            if (el('pyPnlPerLot')) {
+                const lots = s.total_lots || 0;
+                const perLot = lots > 0 ? (s.pnl / lots) : 0;
+                el('pyPnlPerLot').textContent = s.direction !== 0 ? perLot.toFixed(0) + '₽' : '—';
+                el('pyPnlPerLot').style.color = perLot >= 0 ? 'var(--green)' : 'var(--red)';
+            }
             if (el('pyPnlUnreal')) { el('pyPnlUnreal').textContent = (s.pnl||0).toFixed(0)+'₽'; el('pyPnlUnreal').style.color = s.pnl >= 0 ? 'var(--green)' : 'var(--red)'; }
         }).catch(() => {});
         return;
@@ -3867,8 +3875,15 @@ function pythonRobotUpdateVp() {
     if (el('pyDir')) el('pyDir').textContent = dirText;
     if (el('pyLots')) el('pyLots').textContent = s.total_lots || 0;
     if (el('pyGrid')) el('pyGrid').textContent = (s.grid_levels||0) + ' (' + (s.filled_levels||0) + ' fill)';
-    if (el('pyRT')) el('pyRT').textContent = s.round_trips || 0;
-    if (el('pyPnlReal')) { el('pyPnlReal').textContent = (s.realized_pnl||0).toFixed(0)+'₽'; el('pyPnlReal').style.color = s.realized_pnl >= 0 ? 'var(--green)' : 'var(--red)'; }
+    if (el('pyAvgPrice')) {
+        el('pyAvgPrice').textContent = s.direction !== 0 ? s.entry_price.toFixed(0) : '—';
+    }
+    if (el('pyPnlPerLot')) {
+        const lots = s.total_lots || 0;
+        const perLot = lots > 0 ? (s.pnl / lots) : 0;
+        el('pyPnlPerLot').textContent = s.direction !== 0 ? perLot.toFixed(0) + '₽' : '—';
+        el('pyPnlPerLot').style.color = perLot >= 0 ? 'var(--green)' : 'var(--red)';
+    }
     if (el('pyPnlUnreal')) { el('pyPnlUnreal').textContent = (s.pnl||0).toFixed(0)+'₽'; el('pyPnlUnreal').style.color = s.pnl >= 0 ? 'var(--green)' : 'var(--red)'; }
     if (el('pyHold')) el('pyHold').textContent = (s.hold_minutes || 0) + ' мин';
 }
