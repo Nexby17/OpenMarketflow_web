@@ -420,10 +420,12 @@ class Robot:
         if not self.strategy.has_position:
             # Robot doesn't know about position — restore from broker
             if self._entry_pending and self._entry_pending_dir == cur_dir:
-                # Entry fill — use broker avg_price (real execution price)
-                entry_price = self._broker_avg if self._broker_avg > 0 else self._get_last_fill_price()
+                # Entry fill — get real execution price from broker
+                entry_price = self._get_last_fill_price()
                 if entry_price <= 0:
-                    entry_price = self._entry_pending_price if self._entry_pending_price > 0 else self._current_price
+                    entry_price = self._broker_avg if self._broker_avg > 0 else self._entry_pending_price
+                if entry_price <= 0:
+                    entry_price = self._current_price
                 log.info(f"Entry fill detected: dir={cur_dir} lots={cur_lots} @ {entry_price:.0f} (broker_avg={self._broker_avg:.0f})")
                 self._handle_entry_fill(cur_dir, entry_price, cur_lots)
             elif self._close_pending:
@@ -559,9 +561,12 @@ class Robot:
         step = self.strategy.params.step_base
         spread = self.strategy.params.spread_base
 
+        # Try to get real fill price from broker trades
+        real_fill_price = self._get_last_fill_price()
+
         for i in range(count):
-            # Calculate grid price based on current fill count
-            fp = self._current_grid_price
+            # Use real broker price if available, otherwise pending grid price
+            fp = real_fill_price if real_fill_price > 0 else self._current_grid_price
             if fp <= 0:
                 log.warning("No pending grid price for fill")
                 break
@@ -928,18 +933,21 @@ class Robot:
         return 0.0
 
     def _get_last_fill_price(self) -> float:
-        """Get last fill price from DataProvider."""
+        """Get last fill price from broker trades API."""
         try:
             r = requests.get(
-                "http://localhost:5060/recent-fills",
-                params={"account": config.FINAM_ACCOUNT_ID, "symbol": config.SYMBOL},
-                timeout=2
+                "http://localhost:5050/api/trades",
+                params={"dateFrom": datetime.now(MSK).strftime('%Y-%m-%d'), "dateTo": datetime.now(MSK).strftime('%Y-%m-%d')},
+                timeout=3
             )
-            fills = r.json()
-            if fills and isinstance(fills, list) and len(fills) > 0:
-                p = fills[0].get('price', 0)
-                if isinstance(p, (int, float)) and p > 0:
-                    return float(p)
+            trades = r.json()
+            if isinstance(trades, list) and len(trades) > 0:
+                # Last trade = most recent
+                t = trades[-1]
+                p = t.get('price', {})
+                price = float(p.get('value', 0)) if isinstance(p, dict) else float(t.get('price', 0))
+                if price > 0:
+                    return price
         except Exception:
             pass
         return 0.0
