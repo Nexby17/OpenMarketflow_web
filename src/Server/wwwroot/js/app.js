@@ -2749,11 +2749,24 @@ async function robotPause(i) {
 async function robotStop(i) {
     const r = robots[i];
     if (!r) return;
-    const apiBase = getRobotApiBase(r);
     r._stopping = true; renderRobots();
     addLog(nowTime(), 'INFO', `⏹ Остановка робота ${r.ticker}, закрытие позиций...`);
     try {
-        const resp = await fetch(apiBase + '/stop', { method: 'POST' });
+        // For Python robots: call via C# proxy to correct port
+        let resp;
+        if (r.port || r.isInstance) {
+            resp = await fetch('/api/instance/stop', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ id: r.id, port: r.port })
+            });
+        } else if (r.strategy && r.strategy.includes('PYTHON')) {
+            // Main Python robot via C# proxy
+            resp = await fetch('/api/robot/stop', { method: 'POST' });
+        } else {
+            const apiBase = getRobotApiBase(r);
+            resp = await fetch(apiBase + '/stop', { method: 'POST' });
+        }
         const data = await resp.json();
         r.status = 'stopped';
         r._stopping = false;

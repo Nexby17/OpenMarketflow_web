@@ -344,6 +344,34 @@ app.MapPost("/api/robot/service/{action}", async (string action) =>
 }).AllowAnonymous();
 
 // === Robot status proxy (when robot API is down) ===
+app.MapPost("/api/robot/stop", async () => {
+    try {
+        using var client = new System.Net.Http.HttpClient();
+        client.Timeout = System.TimeSpan.FromSeconds(5);
+        var resp = await client.PostAsync("http://localhost:5070/stop", null);
+        var body = await resp.Content.ReadAsStringAsync();
+        return Results.Text(body, "application/json");
+    } catch (Exception ex) { return Results.Json(new { error = ex.Message }, statusCode: 500); }
+});
+app.MapPost("/api/robot/pause", async () => {
+    try {
+        using var client = new System.Net.Http.HttpClient();
+        client.Timeout = System.TimeSpan.FromSeconds(3);
+        var resp = await client.PostAsync("http://localhost:5070/pause", null);
+        var body = await resp.Content.ReadAsStringAsync();
+        return Results.Text(body, "application/json");
+    } catch (Exception ex) { return Results.Json(new { error = ex.Message }, statusCode: 500); }
+});
+app.MapPost("/api/robot/resume", async () => {
+    try {
+        using var client = new System.Net.Http.HttpClient();
+        client.Timeout = System.TimeSpan.FromSeconds(3);
+        var resp = await client.PostAsync("http://localhost:5070/resume", null);
+        var body = await resp.Content.ReadAsStringAsync();
+        return Results.Text(body, "application/json");
+    } catch (Exception ex) { return Results.Json(new { error = ex.Message }, statusCode: 500); }
+});
+
 app.MapGet("/api/robot/status", async () =>
 {
     try {
@@ -2352,6 +2380,14 @@ app.MapPost("/api/instance/stop", async (HttpRequest req) => {
         var id = json.RootElement.GetProperty("id").GetString();
         var dir = Path.Combine(instancesBase, id);
         var port = json.RootElement.TryGetProperty("port", out var po) ? po.GetInt32() : 0;
+        // First: call robot /stop to close position gracefully
+        if (port > 0) {
+            try {
+                using var http = new HttpClient();
+                http.Timeout = TimeSpan.FromSeconds(5);
+                await http.PostAsync($"http://127.0.0.1:{port}/stop", null);
+            } catch {}
+        }
         // Kill by port using fuser
         if (port > 0) {
             try {
