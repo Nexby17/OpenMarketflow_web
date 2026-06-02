@@ -237,10 +237,20 @@ class Robot:
         self._running = False
         self._mode = "stopped"
 
-        if close_position and self.strategy.has_position and self.orders:
-            self._close_all("Manual stop")
+        if close_position:
+            # Always cancel orders and close position on stop
+            self._cancel_all_orders()
+            pos = self._get_broker_position()
+            broker_lots = pos[1] if pos else 0
+            broker_dir = pos[0] if pos else self.strategy.direction
+            if broker_lots > 0 and self.orders:
+                close_side = SELL if broker_dir == 1 else BUY
+                self.orders.place_market(close_side, broker_lots, "MANUAL-STOP")
+                log.info(f"Stop: closed {broker_lots} lots dir={broker_dir}")
+            elif self.orders:
+                self._cancel_all_orders()
+                log.info("Stop: no position, orders cancelled")
         else:
-            # Don't cancel orders — just stop managing them
             log.info("Stopping without closing position")
 
         self.feed.disconnect()
