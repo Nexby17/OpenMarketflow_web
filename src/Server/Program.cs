@@ -318,6 +318,16 @@ app.MapPost("/api/robot/service/{action}", async (string action) =>
 {
     try
     {
+        // For stop: first tell robot to close positions, then stop service
+        if (action == "stop")
+        {
+            try {
+                using var http = new System.Net.Http.HttpClient();
+                http.Timeout = System.TimeSpan.FromSeconds(5);
+                await http.PostAsync("http://127.0.0.1:5070/stop", null);
+            } catch {}
+            await Task.Delay(2000); // wait for robot to close position
+        }
         var psi = new System.Diagnostics.ProcessStartInfo
         {
             FileName = "systemctl",
