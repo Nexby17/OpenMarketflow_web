@@ -3868,8 +3868,7 @@ function pythonRobotUpdateVp() {
                 el('pyAvgPrice').textContent = s.direction !== 0 ? s.entry_price.toFixed(0) : '—';
             }
             if (el('pyPnlPerLot')) {
-                const lots = s.total_lots || 0;
-                const perLot = lots > 0 ? (s.pnl / lots) : 0;
+                const perLot = s.pnl_per_lot || 0;
                 el('pyPnlPerLot').textContent = s.direction !== 0 ? perLot.toFixed(0) + '₽' : '—';
                 el('pyPnlPerLot').style.color = perLot >= 0 ? 'var(--green)' : 'var(--red)';
             }
@@ -3892,8 +3891,7 @@ function pythonRobotUpdateVp() {
         el('pyAvgPrice').textContent = s.direction !== 0 ? s.entry_price.toFixed(0) : '—';
     }
     if (el('pyPnlPerLot')) {
-        const lots = s.total_lots || 0;
-        const perLot = lots > 0 ? (s.pnl / lots) : 0;
+        const perLot = s.pnl_per_lot || 0;
         el('pyPnlPerLot').textContent = s.direction !== 0 ? perLot.toFixed(0) + '₽' : '—';
         el('pyPnlPerLot').style.color = perLot >= 0 ? 'var(--green)' : 'var(--red)';
     }
