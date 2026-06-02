@@ -1166,8 +1166,11 @@ class Robot:
             avg_entry = total_cost / total_lots
             commission = total_lots * self.strategy.params.commission
             pnl = (price - avg_entry) * total_lots * d - commission
+            # Display PnL = realized + unrealized for current session
+            display_pnl = self.state.state.realized_pnl + pnl
         else:
             pnl = 0
+            display_pnl = 0
         return {
             "mode": self._mode,
             "paper": self._paper,
@@ -1177,7 +1180,7 @@ class Robot:
             "total_lots": total_lots,
             "filled_levels": len(self._filled_prices),
             "grid_levels": len(self._filled_prices),
-            "pnl": round(pnl, 1),
+            "pnl": round(display_pnl, 1) if d != 0 else 0,
             "round_trips": self.state.state.round_trips,
             "realized_pnl": round(self.state.state.realized_pnl, 1),
             "poc": round(self.strategy.poc, 0),
