@@ -43,6 +43,7 @@ class FinamProvider:
         logger.info("Connected. Accounts: %s", self.fp.account_ids)
 
         # Wire up event handlers
+        self._quote_logged: set = set()
         self.fp.on_new_bar.subscribe(self._on_bar)
         self.fp.on_quote.subscribe(self._on_quote)
         self.fp.on_order.subscribe(self._on_order)
@@ -143,6 +144,14 @@ class FinamProvider:
     def _on_quote(self, event) -> None:
         """Callback from fp.on_quote. event is SubscribeQuoteResponse."""
         self.cache.update_quote(event)
+        # Log first quote for each symbol
+        for q in event.quote:
+            sym = q.symbol
+            if sym not in self._quote_logged:
+                bid = q.bid
+                ask = q.ask
+                logger.info("Quote stream active: %s bid=%s ask=%s", sym, bid, ask)
+                self._quote_logged.add(sym)
 
     def _on_order(self, order_state) -> None:
         """Callback from fp.on_order."""
