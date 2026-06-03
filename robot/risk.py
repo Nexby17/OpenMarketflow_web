@@ -7,7 +7,7 @@ MSK = timezone(timedelta(hours=3))
 class RiskManager:
     def __init__(
         self,
-        max_loss: float = -7000,
+        max_loss: float = -999999,
         max_lots: int = 101,
         no_trade_start: int = 2350,  # MSK HHMM
         no_trade_end: int = 700,
