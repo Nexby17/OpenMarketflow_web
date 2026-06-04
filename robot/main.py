@@ -60,6 +60,9 @@ class Robot:
         self._last_close_time: datetime | None = None
         self._close_pending: bool = False
 
+        # Max lots for threshold calculation
+        self._max_lots: int = 0
+
         # Last entry for recovery
         self._last_entry_price = 0.0
         self._last_direction = 0
@@ -526,6 +529,7 @@ class Robot:
         self._broker_pnl_at_entry = self._get_broker_daily_pnl()  # save broker PnL at entry
         # Reset realized PnL for new trade
         self.state.state.realized_pnl = 0
+        self._max_lots = 0
 
         # Place first grid from entry price (not current price)
         step = self.strategy.params.step_base
@@ -768,6 +772,12 @@ class Robot:
 
         total_lots = 1 + len(self._filled_prices)  # entry + grid fills remaining
 
+        # Track max lots for threshold
+        if total_lots > self._max_lots:
+            self._max_lots = total_lots
+        if self._max_lots == 0:
+            self._max_lots = total_lots
+
         # Average price: always calc from entry + remaining grid fills
         # (broker_avg doesn't update after TP fills)
         total_price = self.strategy.entry_price
@@ -802,10 +812,10 @@ class Robot:
                     self._close_all(f"POC hit SHORT: {price:.0f} <= {self.strategy.poc:.0f}")
                     return
 
-        # Close condition: trade PnL >= min_profit × lots
-        threshold = self.strategy.params.min_profit_per_lot * total_lots
+        # Close condition: trade PnL >= min_profit × max_lots
+        threshold = self.strategy.params.min_profit_per_lot * self._max_lots
         if trade_pnl >= threshold:
-            self._close_all(f"Trade PnL={trade_pnl:.0f} >= {threshold:.0f} ({self.strategy.params.min_profit_per_lot}×{total_lots})")
+            self._close_all(f"Trade PnL={trade_pnl:.0f} >= {threshold:.0f} ({self.strategy.params.min_profit_per_lot}×{self._max_lots})")
             return
 
     def _close_all(self, reason: str):
@@ -1002,6 +1012,7 @@ class Robot:
     def _reset_tracked(self):
         self._grid_order_id = None
         self._tp_order_id = None
+        self._max_lots = 0
         self._poc_tp_order_id = None
 
     def _warmup_vp(self):
