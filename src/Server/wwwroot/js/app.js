@@ -3864,8 +3864,8 @@ function pythonRobotUpdateVp() {
             if (el('pyLots')) el('pyLots').textContent = s.total_lots || 0;
             if (el('pyGrid')) el('pyGrid').textContent = (s.grid_levels||0) + ' (' + (s.filled_levels||0) + ' fill)';
             if (el('pyAvgPrice')) {
-                const avgP = (s.total_lots > 0 && s.entry_price > 0) ? Math.round(s.entry_price + (s.filled_levels||0) > 0 ? 0 : 0) : 0;
-                el('pyAvgPrice').textContent = s.direction !== 0 ? s.entry_price.toFixed(0) : '—';
+                const avgP = s.avg_price || s.entry_price;
+                el('pyAvgPrice').textContent = s.direction !== 0 ? avgP.toFixed(0) : '—';
             }
             if (el('pyPnlPerLot')) {
                 const perLot = s.pnl_per_lot || 0;
@@ -3888,7 +3888,7 @@ function pythonRobotUpdateVp() {
     if (el('pyLots')) el('pyLots').textContent = s.total_lots || 0;
     if (el('pyGrid')) el('pyGrid').textContent = (s.grid_levels||0) + ' (' + (s.filled_levels||0) + ' fill)';
     if (el('pyAvgPrice')) {
-        el('pyAvgPrice').textContent = s.direction !== 0 ? s.entry_price.toFixed(0) : '—';
+        el('pyAvgPrice').textContent = s.direction !== 0 ? (s.avg_price || s.entry_price).toFixed(0) : '—';
     }
     if (el('pyPnlPerLot')) {
         const perLot = s.pnl_per_lot || 0;

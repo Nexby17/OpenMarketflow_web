@@ -762,17 +762,14 @@ class Robot:
         if d == 0:
             return
 
-        total_lots = 1 + len(self._filled_prices)  # entry + grid fills
+        total_lots = 1 + len(self._filled_prices)  # entry + grid fills remaining
 
-        # Average price: use broker's avg_price (true average), or calc from fills
-        if self._broker_avg > 0:
-            avg = self._broker_avg
-        else:
-            # Fallback: calculate from entry + grid fills
-            total_price = self.strategy.entry_price
-            for fp in self._filled_prices:
-                total_price += fp
-            avg = total_price / total_lots if total_lots > 0 else self.strategy.entry_price
+        # Average price: always calc from entry + remaining grid fills
+        # (broker_avg doesn't update after TP fills)
+        total_price = self.strategy.entry_price
+        for fp in self._filled_prices:
+            total_price += fp
+        avg = total_price / total_lots if total_lots > 0 else self.strategy.entry_price
 
         # PnL per lot (for display)
         per_lot_commission = self.strategy.params.commission  # RT commission per lot
@@ -1196,6 +1193,7 @@ class Robot:
             "direction": d,
             "dir_str": "LONG" if d == 1 else "SHORT" if d == -1 else "FLAT",
             "entry_price": entry,
+            "avg_price": round(avg_entry, 1) if d != 0 else 0,
             "total_lots": total_lots,
             "filled_levels": len(self._filled_prices),
             "grid_levels": len(self._filled_prices),
