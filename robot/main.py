@@ -658,6 +658,10 @@ class Robot:
                 removed = self._filled_prices.pop()  # remove highest
 
             log.info(f"TP filled @ {tp_price:.0f}, removed grid @ {removed:.0f} (remaining: {len(self._filled_prices)})")
+            # Accumulate realized PnL from this TP fill (round trip)
+            tp_profit = (tp_price - removed) * d - self.strategy.params.commission
+            self.state.state.realized_pnl += tp_profit
+            log.info(f"TP profit: {tp_profit:.1f}₽ (realized total: {self.state.state.realized_pnl:.1f}₽)")
 
         # Cancel old grid + TP
         self._cancel_grid()
