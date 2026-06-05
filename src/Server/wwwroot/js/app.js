@@ -1919,7 +1919,7 @@ function onStratInstrChange() {
 function vpScalpGridCreateRobot() {
     const robot = {
         id: Date.now(),
-        ticker: 'SiM6',
+        ticker: el('cfgVpTicker')?.value || 'SiM6',
         account: '',
         accountName: '',
         strategy: 'VP Scalp Grid',
@@ -1946,7 +1946,7 @@ function vpScalpGridCreateRobot() {
 function vpCopyCreateRobot() {
     const robot = {
         id: Date.now(),
-        ticker: 'SiM6',
+        ticker: el('cfgVpTicker')?.value || 'SiM6',
         account: '',
         accountName: '',
         strategy: 'VP Scalp Grid Copy',
