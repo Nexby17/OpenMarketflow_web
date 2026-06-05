@@ -204,8 +204,8 @@ def start():
 def stop():
     if not _robot:
         return {"error": "Robot not initialized"}
-    threading.Thread(target=lambda: _robot.stop(close_position=True), daemon=True).start()
-    return {"status": "stopping"}
+    _robot.stop(close_position=True)
+    return {"status": "stopped"}
 
 
 @app.post("/pause")
