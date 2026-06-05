@@ -391,13 +391,6 @@ app.MapGet("/api/robot/status", async () =>
         var body = await resp.Content.ReadAsStringAsync();
         return Results.Text(body, "application/json");
     } catch {
-        try {
-            var statePath = "/tmp/robot-state.json";
-            if (System.IO.File.Exists(statePath)) {
-                var json = System.IO.File.ReadAllText(statePath);
-                return Results.Text(json, "application/json");
-            }
-        } catch { }
         return Results.Json(new { status = "offline", mode = "stopped" });
     }
 }).AllowAnonymous();
