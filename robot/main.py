@@ -1301,12 +1301,13 @@ def main():
     import uvicorn
     from api import app, set_robot
     set_robot(robot)
+    api_port = int(os.environ.get('ROBOT_PORT', '5070'))
     api_thread = threading.Thread(
-        target=lambda: uvicorn.run(app, host="0.0.0.0", port=5070, log_level="warning"),
+        target=lambda: uvicorn.run(app, host="0.0.0.0", port=api_port, log_level="warning"),
         daemon=True,
     )
     api_thread.start()
-    log.info("API server started on port 5070")
+    log.info(f"API server started on port {api_port}")
 
     robot.start()
 
