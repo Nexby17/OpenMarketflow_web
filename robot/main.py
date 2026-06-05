@@ -475,7 +475,7 @@ class Robot:
         if self.strategy.direction != 0 and cur_lots > 0:
             self._check_exits()
             # Reconnect grid+TP after clearing (orders wiped by exchange)
-            if self._grid_order_id is None and self._tp_order_id is None:
+            if not self._close_pending and self._grid_order_id is None and self._tp_order_id is None:
                 log.info("No grid/TP orders — re-establishing after clearing")
                 self._reestablish_orders()
 
