@@ -2353,6 +2353,15 @@ app.MapPost("/api/instance/create", async (HttpRequest req) => {
         var id = $"{ticker}_{port}";
         var dir = Path.Combine(instancesBase, id);
         Directory.CreateDirectory(dir);
+        // Clean old state and pid on create
+        var stateFile = Path.Combine(dir, "state.json");
+        if (File.Exists(stateFile)) File.Delete(stateFile);
+        var pidFile = Path.Combine(dir, "pid");
+        if (File.Exists(pidFile)) File.Delete(pidFile);
+        var stdoutLog = Path.Combine(dir, "stdout.log");
+        if (File.Exists(stdoutLog)) File.Delete(stdoutLog);
+        var stderrLog = Path.Combine(dir, "stderr.log");
+        if (File.Exists(stderrLog)) File.Delete(stderrLog);
         // Write config.json
         File.WriteAllText(Path.Combine(dir, "config.json"), body);
         return Results.Json(new { id, dir, port, ticker, created = true });
