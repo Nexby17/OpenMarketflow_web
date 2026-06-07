@@ -236,7 +236,7 @@ class Robot:
         self._poll_thread.start()
 
     def stop(self, close_position: bool = False):
-        log.info("Stopping robot...")
+        log.info(f"Stopping robot... close_position={close_position} mode={self._mode}")
         self._running = False
         self._mode = "stopped"
 
@@ -246,10 +246,16 @@ class Robot:
             pos = self._get_broker_position()
             broker_lots = pos[1] if pos else 0
             broker_dir = pos[0] if pos else self.strategy.direction
+            log.info(f"Stop: broker_pos={pos} broker_lots={broker_lots} broker_dir={broker_dir} strategy_lots={self.strategy.total_lots} has_orders={bool(self.orders)}")
             if broker_lots > 0 and self.orders:
                 close_side = SELL if broker_dir == 1 else BUY
                 self.orders.place_market(close_side, broker_lots, "MANUAL-STOP")
                 log.info(f"Stop: closed {broker_lots} lots dir={broker_dir}")
+            elif self.strategy.total_lots > 0 and self.orders:
+                # Fallback: close using internal state
+                close_side = SELL if self.strategy.direction == 1 else BUY
+                self.orders.place_market(close_side, self.strategy.total_lots, "MANUAL-STOP-FALLBACK")
+                log.warning(f"Stop FALLBACK: closed {self.strategy.total_lots} lots dir={self.strategy.direction} (broker returned 0)")
             elif self.orders:
                 self._cancel_all_orders()
                 log.info("Stop: no position, orders cancelled")
@@ -1291,7 +1297,10 @@ def main():
     robot = Robot(paper=args.paper)
 
     def shutdown(sig, frame):
-        log.info("Shutdown signal received")
+        log.info(f"Shutdown signal received: sig={sig}, mode={robot._mode}")
+        if robot._mode == "stopped":
+            log.info("Shutdown: already stopped, just exit")
+            sys.exit(0)
         robot.stop(close_position=False)
         sys.exit(0)
 
