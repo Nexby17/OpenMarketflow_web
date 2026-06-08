@@ -32,7 +32,10 @@ class Robot:
         self.strategy = Strategy(StrategyParams())
         self.vp = VolumeProfile(lookback=self.strategy.params.vp_lookback, bin_size=50, va_percent=0.70)
         self.orders: OrderManager | None = None
-        self.state = StateManager("/tmp/robot-state.json")
+        state_path = os.path.join(os.getcwd(), 'state.json')
+        if not os.path.exists(state_path) and os.path.exists('/tmp/robot-state.json'):
+            state_path = '/tmp/robot-state.json'
+        self.state = StateManager(state_path)
         self.risk = RiskManager()
 
         self._paper = paper
@@ -102,7 +105,9 @@ class Robot:
             # Restore filled_prices from state JSON
             try:
                 import json as _json
-                state_path = os.environ.get('ROBOT_STATE_FILE', '/tmp/robot-state.json')
+                state_path = os.environ.get('ROBOT_STATE_FILE', os.path.join(os.getcwd(), 'state.json'))
+                if not os.path.exists(state_path):
+                    state_path = '/tmp/robot-state.json'
                 with open(state_path) as _f:
                     raw = _json.load(_f)
                 gl = raw.get('grid_levels', [])
@@ -1173,10 +1178,13 @@ class Robot:
         self._last_price_change = datetime.now(MSK)
 
     def _load_config(self):
-        """Load config from /tmp/robot-config.json if exists."""
+        """Load config from strategy.json (cwd) or /tmp/robot-config.json."""
         try:
             import json
-            path = "/tmp/robot-config.json"
+            # Instance: strategy.json in cwd first
+            path = os.path.join(os.getcwd(), 'strategy.json')
+            if not os.path.exists(path):
+                path = "/tmp/robot-config.json"
             if os.path.exists(path):
                 with open(path) as f:
                     cfg = json.load(f)
@@ -1310,7 +1318,7 @@ def main():
     import uvicorn
     from api import app, set_robot
     set_robot(robot)
-    api_port = int(os.environ.get('ROBOT_PORT', '5070'))
+    api_port = getattr(config, 'API_PORT', None) or int(os.environ.get('ROBOT_PORT', '5070'))
     api_thread = threading.Thread(
         target=lambda: uvicorn.run(app, host="0.0.0.0", port=api_port, log_level="warning"),
         daemon=True,

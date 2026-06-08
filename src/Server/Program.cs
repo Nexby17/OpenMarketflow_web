@@ -2345,19 +2345,18 @@ app.MapPost("/api/instance/create", async (HttpRequest req) => {
         var port = json.RootElement.TryGetProperty("port", out var p) ? p.GetInt32() : 5071;
         var id = $"{ticker}_{port}";
         var dir = Path.Combine(instancesBase, id);
-        Directory.CreateDirectory(dir);
-        // Clean old state and pid on create
-        var stateFile = Path.Combine(dir, "state.json");
-        if (File.Exists(stateFile)) File.Delete(stateFile);
-        var pidFile = Path.Combine(dir, "pid");
-        if (File.Exists(pidFile)) File.Delete(pidFile);
-        var stdoutLog = Path.Combine(dir, "stdout.log");
-        if (File.Exists(stdoutLog)) File.Delete(stdoutLog);
-        var stderrLog = Path.Combine(dir, "stderr.log");
-        if (File.Exists(stderrLog)) File.Delete(stderrLog);
-        // Write config.json
-        File.WriteAllText(Path.Combine(dir, "config.json"), body);
-        return Results.Json(new { id, dir, port, ticker, created = true });
+        // Call launcher create — handles dir, config.py, symlinks, strategy.json
+        var psi = new System.Diagnostics.ProcessStartInfo {
+            FileName = "python3",
+            Arguments = $"\"{launcherPath}\" create \"{dir}\" {port} {ticker} '{body}'",
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false
+        };
+        var proc = System.Diagnostics.Process.Start(psi);
+        var output = await proc!.StandardOutput.ReadToEndAsync();
+        await proc.WaitForExitAsync();
+        return Results.Json(new { id, dir, port, ticker, created = true, output = output.Trim() });
     } catch (Exception ex) { return Results.Json(new { error = ex.Message }); }
 }).AllowAnonymous();
 
