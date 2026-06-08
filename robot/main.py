@@ -443,16 +443,10 @@ class Robot:
                 log.info(f"Entry fill detected: dir={cur_dir} lots={cur_lots} @ {entry_price:.0f} (broker_avg={self._broker_avg:.0f})")
                 self._handle_entry_fill(cur_dir, entry_price, cur_lots)
             elif self._close_pending:
-                # Close sent but broker still shows position
+                # Close sent but broker still shows position — wait
                 if cur_lots == 0:
                     self._close_pending = False
                     log.info("Close confirmed by broker (lots=0)")
-                elif cur_dir != 0 and cur_dir != self.strategy.direction:
-                    # Direction flipped = TP filled during close, over-sold
-                    log.warning(f"Close race: dir flipped to {cur_dir}, closing {cur_lots} lots")
-                    close_side = SELL if cur_dir == 1 else BUY
-                    self.orders.place_market(close_side, cur_lots, "CLOSE-race-flip")
-                    # Don't return — let next iteration confirm lots=0
                 else:
                     log.info(f"Waiting for close confirm: broker_lots={cur_lots}")
                 return
