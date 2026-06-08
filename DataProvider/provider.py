@@ -200,7 +200,8 @@ class FinamProvider:
             if resp:
                 for pos in resp.positions:
                     sym = pos.symbol.split('@')[0] if '@' in pos.symbol else pos.symbol
-                    if sym == ticker or pos.symbol == ticker:
+                    ticker_base = ticker.split('@')[0] if '@' in ticker else ticker
+                    if sym == ticker_base or pos.symbol == ticker:
                         qty_raw = pos.quantity
                         qty = 0
                         try:
