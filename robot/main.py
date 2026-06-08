@@ -897,13 +897,21 @@ class Robot:
         if not self._paper and self.orders:
             # Cancel all orders first
             self._cancel_all_orders()
-            # Wait for cancels to settle, then re-fetch broker lots
-            # (TP might have filled during cancel race)
-            import time; time.sleep(0.5)
+            # Wait for cancels to settle AND for any pending fills to reflect
+            # Poll until active orders = 0 (max 3s)
+            for _ in range(6):
+                time.sleep(0.5)
+                try:
+                    active = self.orders.get_active_orders()
+                    if not active or len(active) == 0:
+                        break
+                except:
+                    pass
+            # Re-fetch broker lots after all orders settled
             pos2 = self._get_broker_position()
             actual_lots = pos2[1] if pos2 and pos2[1] > 0 else broker_lots
             actual_dir = pos2[0] if pos2 and pos2[1] > 0 else broker_dir
-            log.info(f"CLOSE: broker_lots_after_cancel={actual_lots} (was {broker_lots})")
+            log.info(f"CLOSE: broker_lots_after_cancel={actual_lots} dir={actual_dir} (was {broker_lots})")
             if actual_lots > 0:
                 close_side = SELL if actual_dir == 1 else BUY
                 self.orders.place_market(close_side, actual_lots, f"CLOSE-{reason}")
