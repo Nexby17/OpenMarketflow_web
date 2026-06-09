@@ -3755,16 +3755,16 @@ function pythonRobotEditPanel() {
     const existing = el('robotEditPanel');
     if (existing) { existing.remove(); return; }
 
-    // Read current values from pythonRobot or strategy tab config
+    // Read params from robot API (/status has current params), fallback to strategy.json
     const s = pythonRobot || {};
-    const cfgML = el('cfgVpMaxLevels')?.value || '100';
-    const cfgStep = el('cfgVpStepBase')?.value || '31';
-    const cfgSpread = el('cfgVpSpreadBase')?.value || '31';
-    const cfgHold = el('cfgVpMaxHold')?.value || '99999999999999';
-    const cfgLB = el('cfgVpLookback')?.value || '33';
-    const cfgBin = el('cfgVpBinSize')?.value || '50';
-    const cfgVA = el('cfgVpVaPercent')?.value || '0.70';
-    const cfgMinP = el('cfgVpMinProfit')?.value || '35';
+    const cfgML = s.max_levels || el('cfgVpMaxLevels')?.value || '100';
+    const cfgStep = s.step_base || el('cfgVpStepBase')?.value || '31';
+    const cfgSpread = s.spread_base || el('cfgVpSpreadBase')?.value || '31';
+    const cfgHold = s.max_hold_minutes || el('cfgVpMaxHold')?.value || '99999999999999';
+    const cfgLB = s.vp_lookback || el('cfgVpLookback')?.value || '33';
+    const cfgBin = s.vp_bin_size || el('cfgVpBinSize')?.value || '50';
+    const cfgVA = s.vp_va_percent || el('cfgVpVaPercent')?.value || '0.70';
+    const cfgMinP = s.min_profit_per_lot || el('cfgVpMinProfit')?.value || '35';
 
     // Store port for main robot
     window._editRobotPort = 5070;
