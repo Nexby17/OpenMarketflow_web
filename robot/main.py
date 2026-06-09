@@ -1,7 +1,9 @@
 """Main robot — broker-position polling at 300ms, broker = source of truth."""
+import sys, os
+# Ensure cwd is first in import path (for instance config.py to take priority)
+sys.path.insert(0, os.getcwd())
 import json
 import logging
-import os
 import signal
 import sys
 import time
