@@ -2131,7 +2131,7 @@ async function renderRobots() {
 
     // Poll instance statuses in background via C# proxy
     robots.forEach((r, idx) => {
-        if ((r.isInstance || r.port) && r.port) {
+        if ((r.isInstance || r.port || (r.ticker && r.ticker !== 'SiM6')) && r.port) {
             fetch('/api/instance/status', {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
@@ -2322,7 +2322,7 @@ async function startLocalStorageRobot(idx) {
     if (!r) return;
 
     // Instance robot — start via launcher
-    if (r.isInstance || r.port) {
+    if (r.isInstance || r.port || (r.ticker && r.ticker !== 'SiM6')) {
         try {
             const resp = await fetch('/api/instance/start', {
                 method: 'POST',
@@ -2454,7 +2454,7 @@ async function stopLocalStorageRobot(idx) {
     const r = robots[idx];
     if (!r) return;
     // Instance robot — stop via instance API
-    if (r.isInstance || r.port) {
+    if (r.isInstance || r.port || (r.ticker && r.ticker !== 'SiM6')) {
         try {
             await fetch('/api/instance/stop', {
                 method: 'POST',
@@ -2634,7 +2634,7 @@ async function saveRobotFromPanel(idx) {
         minProfit: el('editPyMinProfit')?.value,
         rvAdapt: el('editPyRvAdapt')?.checked || false
     };
-    if (r.isInstance || r.port) {
+    if (r.isInstance || r.port || (r.ticker && r.ticker !== 'SiM6')) {
         r.max_levels = parseInt(vals.maxLevels) || r.max_levels;
         r.step_base = parseInt(vals.stepBase) || r.step_base;
         r.spread_base = parseInt(vals.spreadBase) || r.spread_base;
@@ -2722,7 +2722,7 @@ async function saveRobotFromPanel(idx) {
 function deleteRobot(idx) {
     if (idx >= 0 && idx < robots.length) {
         const r = robots[idx];
-        if (r.isInstance || r.port) {
+        if (r.isInstance || r.port || (r.ticker && r.ticker !== 'SiM6')) {
             // Stop + delete instance on server
             fetch('/api/instance/stop', {
                 method: 'POST',
