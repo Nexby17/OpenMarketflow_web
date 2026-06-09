@@ -3688,6 +3688,10 @@ async function pythonRobotLoadConfig() {
 }
 
 async function pythonRobotSaveConfig() {
+    // Only save to SiM6 (port 5070) when SiM6 is selected
+    const ticker = el('cfgVpTicker')?.value || 'SiM6';
+    if (ticker !== 'SiM6') return; // Don't overwrite SiM6 config with other ticker params
+
     const body = {
         max_levels: parseInt(el('cfgVpMaxLevels')?.value),
         step_base: parseInt(el('cfgVpStepBase')?.value),
