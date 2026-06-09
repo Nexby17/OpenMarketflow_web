@@ -2419,51 +2419,37 @@ async function pollInstanceStatus(idx) {
 async function stopLocalStorageRobot(idx) {
     const r = robots[idx];
     if (!r) return;
-    // Instance robot — stop via instance API
-    if (r.isInstance || r.port) {
-        try {
-            await fetch('/api/instance/stop', {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({ id: r.id })
-            });
-            r.status = 'stopped';
-            saveRobots();
-            renderRobots();
-            addLog(nowTime(), 'INFO', '⏹ ' + r.ticker + ' остановлен');
-        } catch(e) {
-            addLog(nowTime(), 'ERROR', '❌ Ошибка остановки: ' + e.message);
-        }
-        return;
+    const port = r.port || 5071;
+    const id = r.id || (r.ticker + '_' + port);
+    try {
+        await fetch('/api/instance/stop', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ id: id, port: port })
+        });
+        r.status = 'stopped';
+        saveRobots();
+        renderRobots();
+        addLog(nowTime(), 'INFO', '⏹ ' + (r.ticker || '?') + ' остановлен');
+    } catch(e) {
+        addLog(nowTime(), 'ERROR', '❌ Ошибка остановки: ' + e.message);
     }
-    // Legacy SiM6 — stop via robotApi (calls Python /stop then systemctl)
-    await robotApi('stop');
-    r.status = 'stopped';
-    saveRobots();
-    renderRobots();
 }
 
 async function pauseLocalStorageRobot(idx) {
     const r = robots[idx];
     if (!r) return;
-    // Legacy SiM6 — pause via robotApi
-    if (!r.isInstance && !r.port) {
-        await robotApi('pause');
-        r.status = 'paused';
-        saveRobots();
-        renderRobots();
-        return;
-    }
+    const port = r.port || 5071;
     try {
         await fetch('/api/instance/status', {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({ port: r.port, action: 'pause' })
+            body: JSON.stringify({ port: port, action: 'pause' })
         });
         r.status = 'paused';
         saveRobots();
         renderRobots();
-        addLog(nowTime(), 'INFO', '⏸ ' + r.ticker + ' на паузе');
+        addLog(nowTime(), 'INFO', '⏸ ' + (r.ticker || '?') + ' на паузе');
     } catch(e) {
         addLog(nowTime(), 'ERROR', '❌ Ошибка паузы: ' + e.message);
     }
