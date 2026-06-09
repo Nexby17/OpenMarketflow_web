@@ -2345,10 +2345,13 @@ app.MapPost("/api/instance/create", async (HttpRequest req) => {
         var port = json.RootElement.TryGetProperty("port", out var p) ? p.GetInt32() : 5071;
         var id = $"{ticker}_{port}";
         var dir = Path.Combine(instancesBase, id);
-        // Call launcher create — handles dir, config.py, symlinks, strategy.json
+        Directory.CreateDirectory(dir);
+        // Write params to file (avoids command-line JSON quoting issues)
+        File.WriteAllText(Path.Combine(dir, "instance_params.json"), body);
+        // Call launcher create — reads params from instance_params.json
         var psi = new System.Diagnostics.ProcessStartInfo {
             FileName = "python3",
-            Arguments = $"\"{launcherPath}\" create \"{dir}\" {port} {ticker} '{body}'",
+            Arguments = $"\"{launcherPath}\" create \"{dir}\" {port} {ticker}",
             RedirectStandardOutput = true,
             RedirectStandardError = true,
             UseShellExecute = false
