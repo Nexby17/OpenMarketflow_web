@@ -2321,8 +2321,10 @@ async function startLocalStorageRobot(idx) {
     const r = robots[idx];
     if (!r) return;
 
-    // Instance robot — start via launcher
-    if (r.isInstance || r.port) {
+    const ticker = r.ticker || 'SiM6';
+
+    // Already an instance with port — start via launcher
+    if ((r.isInstance || r.port) && r.port) {
         try {
             const resp = await fetch('/api/instance/start', {
                 method: 'POST',
@@ -2336,8 +2338,7 @@ async function startLocalStorageRobot(idx) {
                 r.status = 'starting';
                 saveRobots();
                 renderRobots();
-                addLog(nowTime(), 'INFO', '▶ ' + r.ticker + ' запускается (port=' + r.port + ')');
-                // Poll for status
+                addLog(nowTime(), 'INFO', '▶ ' + ticker + ' запускается (port=' + r.port + ')');
                 setTimeout(() => pollInstanceStatus(idx), 3000);
             }
         } catch(e) {
@@ -2346,83 +2347,48 @@ async function startLocalStorageRobot(idx) {
         return;
     }
 
-    // Legacy robot without instance — auto-create instance if needed
-    const ticker = r.ticker || 'SiM6';
+    // No instance yet — auto-create (always, for any ticker including SiM6)
+    const usedPorts = robots.map(rb => rb.port || 0).filter(p => p > 0);
+    let port = 5071;
+    while (usedPorts.includes(port)) port++;
+    const id = ticker + '_' + port;
 
-    // For non-SiM6 robots, auto-create instance
-    if (ticker !== 'SiM6') {
-        const usedPorts = robots.map(rb => rb.port || 0).filter(p => p > 0);
-        let port = 5071;
-        while (usedPorts.includes(port)) port++;
-        const id = ticker + '_' + port;
-
-        // Create instance on server
-        const params = {
-            ticker: ticker,
-            port: port,
-            max_levels: parseInt(r.maxGrid) || 100,
-            step_base: parseInt(r.gridStep) || 31,
-            spread_base: parseInt(r.gridSpread) || 31,
-            min_profit_per_lot: parseInt(r.minProfit) || 35,
-            vp_lookback: parseInt(r.vpLookback) || 33,
-            vp_bin_size: parseInt(r.vpBinSize) || 50,
-            vp_va_percent: parseFloat(r.vpVaPercent) || 0.70,
-            max_hold_minutes: parseInt(r.holdMinutes) || 99999999999999,
-            id: id
-        };
-        try {
-            await fetch('/api/instance/create', {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify(params)
-            });
-        } catch(e) {}
-
-        // Upgrade robot to instance
-        r.isInstance = true;
-        r.port = port;
-        r.id = id;
-        r.max_levels = params.max_levels;
-        r.step_base = params.step_base;
-        r.spread_base = params.spread_base;
-        r.vp_lookback = params.vp_lookback;
-        r.vp_bin_size = params.vp_bin_size;
-        r.vp_va_percent = params.vp_va_percent;
-        r.min_profit = params.min_profit_per_lot;
-        saveRobots();
-
-        // Now start via instance API
-        return startLocalStorageRobot(idx);
-    }
-
-    // SiM6 legacy — use main robot
-    try {
-        await fetch('/api/robot/ticker', {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({ ticker: 'SiM6' })
-        });
-    } catch(e) {}
-    const body = {
-        max_levels: parseInt(r.maxGrid) || 100,
-        step_base: parseInt(r.gridStep) || 31,
-        spread_base: parseInt(r.gridSpread) || 31,
-        min_profit_per_lot: parseInt(r.minProfit) || 35,
-        vp_lookback: parseInt(r.vpLookback) || 33,
-        vp_bin_size: parseInt(r.vpBinSize) || 50,
-        vp_va_percent: parseFloat(r.vpVaPercent) || 0.70,
-        rv_adaptation: r.rvAdaptation || false,
-        max_hold_minutes: parseInt(r.holdMinutes) || 99999999999999
+    const params = {
+        ticker: ticker,
+        port: port,
+        max_levels: parseInt(r.maxGrid || r.max_levels) || 100,
+        step_base: parseInt(r.gridStep || r.step_base) || 31,
+        spread_base: parseInt(r.gridSpread || r.spread_base) || 31,
+        min_profit_per_lot: parseInt(r.minProfit || r.min_profit) || 35,
+        vp_lookback: parseInt(r.vpLookback || r.vp_lookback) || 33,
+        vp_bin_size: parseInt(r.vpBinSize || r.vp_bin_size) || 50,
+        vp_va_percent: parseFloat(r.vpVaPercent || r.vp_va_percent) || 0.70,
+        max_hold_minutes: parseInt(r.holdMinutes || r.hold_minutes) || 99999999999999,
+        id: id
     };
     try {
-        await fetch('/api/robot/config', {
+        await fetch('/api/instance/create', {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify(body)
+            body: JSON.stringify(params)
         });
     } catch(e) {}
-    addLog(nowTime(), 'INFO', '▶ Запуск ' + ticker + ' step=' + body.step_base + ' spread=' + body.spread_base);
-    robotApi('start');
+
+    // Upgrade robot to instance
+    r.isInstance = true;
+    r.port = port;
+    r.id = id;
+    r.max_levels = params.max_levels;
+    r.step_base = params.step_base;
+    r.spread_base = params.spread_base;
+    r.vp_lookback = params.vp_lookback;
+    r.vp_bin_size = params.vp_bin_size;
+    r.vp_va_percent = params.vp_va_percent;
+    r.min_profit = params.min_profit_per_lot;
+    saveRobots();
+
+    // Now start via instance API
+    return startLocalStorageRobot(idx);
 }
 
 async function pollInstanceStatus(idx) {
