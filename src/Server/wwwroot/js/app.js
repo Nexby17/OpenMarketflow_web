@@ -2159,8 +2159,8 @@ async function renderRobots() {
         robots.forEach((r, idx) => {
             const ticker = r.ticker || 'SiM6';
             const strat = r.strategy || 'VP Scalp Grid';
-            const step = r.gridStep || '?';
-            const spread = r.gridSpread || '?';
+            const step = r.isInstance ? (r.step_base || '?') : (r.gridStep || '?');
+            const spread = r.isInstance ? (r.spread_base || '?') : (r.gridSpread || '?');
             const statusCls = r.status === 'running' ? 'green' : 'red';
             const statusText = r.status === 'running' ? '🟢 Работает' : '🔴 Остановлен';
             localRows.push(`<tr ondblclick="openRobotEditPanel(${idx})" style="cursor:pointer" title="Двойной клик — настройки робота">
@@ -4448,34 +4448,84 @@ function drawVpCandles(candles, markers) {
 function fmtN(v) { return Math.round(v).toLocaleString('ru-RU'); }
 
 function pythonRobotCreate() {
+    const ticker = el('cfgVpTicker')?.value || 'SiM6';
     const params = {
         max_levels: parseInt(el('cfgVpMaxLevels')?.value) || 100,
         step_base: parseInt(el('cfgVpStepBase')?.value) || 31,
         spread_base: parseInt(el('cfgVpSpreadBase')?.value) || 31,
-        min_profit: parseInt(el('cfgVpMinProfit')?.value) || 29,
+        min_profit_per_lot: parseInt(el('cfgVpMinProfit')?.value) || 29,
         vp_lookback: parseInt(el('cfgVpLookback')?.value) || 33,
         vp_bin_size: parseInt(el('cfgVpBinSize')?.value) || 50,
         vp_va_percent: parseFloat(el('cfgVpVaPercent')?.value) || 0.70,
     };
-    // Save config to robot (creates persistent config file)
-    fetch(ROBOT_API + '/api/robot/config', {
+
+    if (ticker === 'SiM6') {
+        // SiM6 — save to main robot config (port 5070)
+        fetch(ROBOT_API + '/api/robot/config', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+                max_levels: params.max_levels,
+                step_base: params.step_base,
+                spread_base: params.spread_base,
+                min_profit_per_lot: params.min_profit_per_lot,
+                vp_lookback: params.vp_lookback,
+                vp_bin_size: params.vp_bin_size,
+                vp_va_percent: params.vp_va_percent,
+            })
+        }).then(r => r.json()).then(data => {
+            addLog(nowTime(), 'INFO', '🤖 SiM6 конфиг сохранён');
+        }).catch(e => {
+            localStorage.setItem('vp_robot_params', JSON.stringify(params));
+            addLog(nowTime(), 'INFO', '🤖 SiM6 конфиг сохранён локально');
+        });
+        return;
+    }
+
+    // Non-SiM6 — create instance
+    const usedPorts = robots.map(r => r.port || 0).filter(p => p > 0);
+    let port = 5071;
+    while (usedPorts.includes(port)) port++;
+    const id = ticker + '_' + port;
+    params.ticker = ticker;
+    params.port = port;
+    params.id = id;
+
+    fetch('/api/instance/create', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({
-            max_levels: params.max_levels,
-            step_base: params.step_base,
-            spread_base: params.spread_base,
-            min_profit_per_lot: params.min_profit,
-            vp_lookback: params.vp_lookback,
-            vp_bin_size: params.vp_bin_size,
-            vp_va_percent: params.vp_va_percent,
-        })
+        body: JSON.stringify(params)
     }).then(r => r.json()).then(data => {
-        addLog(nowTime(), 'INFO', '🤖 Робот создан: ' + JSON.stringify(params));
-        addLog(nowTime(), 'INFO', '✅ Config сохранён. Нажмите ▶ на вкладке Роботы для запуска');
+        addLog(nowTime(), 'INFO', '🤖 Инстанс создан: ' + ticker + ' port=' + port);
     }).catch(e => {
-        // Robot offline — save locally
-        localStorage.setItem('vp_robot_params', JSON.stringify(params));
-        addLog(nowTime(), 'INFO', '🤖 Робот создан (offline, сохранено локально)');
+        addLog(nowTime(), 'WARN', 'Instance create: ' + e.message);
     });
+
+    const robot = {
+        id: id,
+        ticker: ticker,
+        strategy: 'VP Scalp Grid',
+        port: port,
+        step_base: params.step_base,
+        spread_base: params.spread_base,
+        max_levels: params.max_levels,
+        vp_lookback: params.vp_lookback,
+        vp_bin_size: params.vp_bin_size,
+        vp_va_percent: params.vp_va_percent,
+        min_profit: params.min_profit_per_lot,
+        hold_minutes: 99999999999999,
+        status: 'stopped',
+        position: '—',
+        pnlToday: 0, pnlTotal: 0,
+        lotsOpen: 0, go: 0,
+        isInstance: true
+    };
+    robots.push(robot);
+    saveRobots();
+    renderRobots();
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+    document.querySelector('[data-tab="monitoring"]').classList.add('active');
+    el('monitoring')?.classList.add('active');
+    addLog(nowTime(), 'INFO', '🤖 Робот создан: ' + ticker + ' step=' + params.step_base + ' spread=' + params.spread_base + ' port=' + port);
 }

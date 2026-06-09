@@ -37,7 +37,7 @@ public class GridMmRegimeStrategy : IStrategy
         public double GridSpread { get; set; } = 130.0;
         public int MaxGridLevels { get; set; } = 70;
         public double MinProfitPerLot { get; set; } = 35.0;
-        public double ClosePct { get; set; } = 0.50;
+        public double ClosePct { get; set; } = 0.60;
         
         // Commission
         public double Commission { get; set; } = 0.90;
