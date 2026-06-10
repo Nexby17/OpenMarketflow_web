@@ -887,8 +887,8 @@ class Robot:
             pnl_per_lot = (avg - price) - per_lot_commission
         pnl = pnl_per_lot * total_lots
 
-        # Trade PnL = realized + unrealized for this trade
-        trade_pnl = self.state.state.realized_pnl + pnl
+        # Trade PnL: in Mode A, profit is already embedded in shifted avg → use unrealized only
+        trade_pnl = pnl
 
         ok, msg = self.risk.check_pnl(pnl)
         if not ok:
@@ -1314,7 +1314,7 @@ class Robot:
             commission = total_lots * self.strategy.params.commission
             pnl = (price - avg_entry) * total_lots * d - commission
             pnl_per_lot = (price - avg_entry) * d - self.strategy.params.commission
-            trade_pnl = self.state.state.realized_pnl + pnl
+            trade_pnl = pnl  # Mode A: unrealized only (profit embedded in avg)
         else:
             avg_entry = 0
             pnl = 0
