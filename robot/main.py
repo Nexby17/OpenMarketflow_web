@@ -712,7 +712,7 @@ class Robot:
 
             # QScalp Режим А: изъять результат из средней → сдвиг безубытка
             if self._position_lots > 0:
-                self._position_cost -= tp_profit_pts * d  # subtract profit from cost
+                self._position_cost -= tp_profit_pts  # subtract profit from cost
                 new_avg = self._position_cost / self._position_lots
                 log.info(f"Avg price: {new_avg:.0f} (was {current_avg:.0f}, TP profit: {tp_profit_pts:.0f}pts)")
             else:
