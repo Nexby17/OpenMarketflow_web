@@ -132,7 +132,10 @@ class Robot:
                     pass
             self._last_entry_price = s.last_entry_price
             self._last_direction = s.last_direction
-            log.info(f"State restored: dir={s.direction} entry={s.entry_price:.0f} fills={self._filled_prices}")
+            # Restore _position_cost from saved entry + filled prices
+            self._position_cost = s.entry_price + sum(self._filled_prices)
+            self._position_lots = 1 + len(self._filled_prices)
+            log.info(f"State restored: dir={s.direction} entry={s.entry_price:.0f} fills={self._filled_prices} pos_cost={self._position_cost:.0f} pos_lots={self._position_lots}")
         elif s.direction != 0 and s.entry_price <= 0:
             log.warning("Corrupt state — resetting")
             self.state.clear()
