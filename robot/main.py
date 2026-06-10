@@ -710,10 +710,10 @@ class Robot:
             tp_profit_pts = (tp_price - current_avg) * d  # profit in points
             self._position_lots -= 1  # one lot closed
 
-            # QScalp Режим А: изъять результат из средней → сдвиг безубытка
+            # QScalp Режим А: new_avg = old_avg - profit / remaining_lots
             if self._position_lots > 0:
-                self._position_cost -= tp_profit_pts  # subtract profit from cost
-                new_avg = self._position_cost / self._position_lots
+                new_avg = current_avg - tp_profit_pts / self._position_lots
+                self._position_cost = new_avg * self._position_lots
                 log.info(f"Avg price: {new_avg:.0f} (was {current_avg:.0f}, TP profit: {tp_profit_pts:.0f}pts)")
             else:
                 self._position_cost = 0
