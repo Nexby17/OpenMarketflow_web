@@ -46,6 +46,10 @@ public class GridMmRegimeStrategy : IStrategy
         public double LotStepProfit { get; set; } = 9999999.0;
         public int MaxLots { get; set; } = 1;
         
+        // Средняя цена: изымать результат частичного закрытия (QScalp Режим А)
+        // true = сдвиг безубытка при TP, false = классическая VWAP
+        public bool DeductPartialClose { get; set; } = true;
+        
         // Force entry on start (don't wait for signal)
         public bool ForceEntryOnStart { get; set; } = false;
     }
@@ -62,7 +66,11 @@ public class GridMmRegimeStrategy : IStrategy
     
     // Позиция
     private int _posDir;              // 0=flat, 1=long, -1=short
-    private double _entryPrice;
+    private double _entryPrice;       // цена начального входа
+    
+    // QScalp-style средняя цена позиции
+    private double _positionCost;     // Σ(price × lots) — суммарная стоимость позиции
+    private int _positionLots;        // текущее кол-во открытых лотов
     
     // Grid state — заполняется Launcher-ом через обратные вызовы
     private struct GridLevel
@@ -95,6 +103,18 @@ public class GridMmRegimeStrategy : IStrategy
     public int PositionDirection => _posDir;
     public int CurrentLotLevel => _currentLotLevel;
     public double EntryPrice => _entryPrice;
+    
+    /// <summary>
+    /// Средняя цена позиции (QScalp-style).
+    /// 
+    /// Режим А (DeductPartialClose=true): при частичном закрытии (TP) прибыль/убыток
+    /// изымается из средней → сдвигает безубыток оставшихся контрактов.
+    /// Формула: new_avg = old_avg − (PnL_закрытия / remaining_lots)
+    /// 
+    /// Режим Б (DeductPartialClose=false): классическая VWAP по сделкам входа.
+    /// Частичные закрытия не меняют среднюю.
+    /// </summary>
+    public double AveragePrice => _positionLots > 0 ? _positionCost / _positionLots : 0;
     
     /// <summary>Количество открытых лотов (entry + grid fills)</summary>
     public int OpenLots
@@ -178,6 +198,8 @@ public class GridMmRegimeStrategy : IStrategy
         _ema = new EMA(Params.EmaPeriod);
         _grid = new GridLevel[Params.MaxGridLevels];
         _currentLotLevel = 1;
+        _positionCost = 0;
+        _positionLots = 0;
     }
 
     public void ResizeGrid()
@@ -344,6 +366,10 @@ public class GridMmRegimeStrategy : IStrategy
         _sessionRealized = 0;
         _peakLots = _currentLotLevel;
         
+        // QScalp: средняя цена — начало позиции
+        _positionCost = price * _currentLotLevel;
+        _positionLots = _currentLotLevel;
+        
         _trades.Add(new TradeRecord { Time = DateTime.UtcNow, Ticker = "SI", Direction = dir, Price = price, Lots = _currentLotLevel, Comment = "Entry" });
         
         // Считаем grid уровни
@@ -399,7 +425,7 @@ public class GridMmRegimeStrategy : IStrategy
 
     private void EmitCloseAll(string reason)
     {
-        _trades.Add(new TradeRecord { Time = DateTime.UtcNow, Ticker = "SI", Direction = -_posDir, Price = _entryPrice, Lots = OpenLots, Comment = reason });
+        _trades.Add(new TradeRecord { Time = DateTime.UtcNow, Ticker = "SI", Direction = -_posDir, Price = AveragePrice, Lots = OpenLots, Comment = reason });
         _pendingEvents.Add(new StrategyEvent
         {
             Type = StrategyEvent.EventType.CloseAllMarket,
@@ -424,6 +450,8 @@ public class GridMmRegimeStrategy : IStrategy
         _sessionRt = 0;
         _sessionRealized = 0;
         _peakLots = 0;
+        _positionCost = 0;
+        _positionLots = 0;
         
         // Очищаем grid
         for (int j = 0; j < Math.Min(Params.MaxGridLevels, _grid.Length); j++)
@@ -434,50 +462,127 @@ public class GridMmRegimeStrategy : IStrategy
 
     /// <summary>
     /// Вызывается Launcher-ом когда grid лимитка заполнилась.
+    /// Добавляет лоты в позицию → пересчитывает среднюю.
     /// </summary>
     public void OnGridFill(int levelIndex)
     {
         if (levelIndex < 0 || levelIndex >= Params.MaxGridLevels) return;
         _grid[levelIndex].Filled = true;
         
+        // QScalp: добавляем к позиции (докупка)
+        double fillPrice = _grid[levelIndex].Price;
+        _positionCost += fillPrice * _currentLotLevel;
+        _positionLots += _currentLotLevel;
+        
         int ol = OpenLots;
         if (ol > _peakLots) _peakLots = ol;
         
-        LogMsg($"Grid[{levelIndex}] filled @ {_grid[levelIndex].Price:F0}, open={ol} lots");
+        LogMsg($"Grid[{levelIndex}] filled @ {fillPrice:F0}, avg={AveragePrice:F0}, open={ol} lots");
     }
 
     /// <summary>
     /// Вызывается Launcher-ом когда TP лимитка заполнилась (round trip).
+    /// Частичное закрытие позиции.
     /// </summary>
     public void OnGridTp(int levelIndex)
     {
         if (levelIndex < 0 || levelIndex >= Params.MaxGridLevels) return;
         
-        double profit = Params.GridSpread - 2 * Params.Commission;
-        _sessionRealized += profit * _currentLotLevel;
+        double fillPrice = _grid[levelIndex].Price;
+        double tpPrice = _grid[levelIndex].TpPrice;
+        int closedLots = _currentLotLevel;
+        
+        // PnL закрытой части
+        double pnlPerLot = _posDir == 1 ? (tpPrice - fillPrice) : (fillPrice - tpPrice);
+        double closePnl = pnlPerLot * closedLots;
+        _sessionRealized += closePnl - 2 * Params.Commission * closedLots;
         _sessionRt++;
+        
+        // QScalp: пересчитываем среднюю цену
+        if (Params.DeductPartialClose)
+        {
+            // Режим А: изымаем результат из средней → сдвиг безубытка
+            // Новая ср. цена = Старая ср. цена − PnL_закрытия / remaining_lots
+            int remainingLots = _positionLots - closedLots;
+            if (remainingLots > 0)
+            {
+                double oldAvg = AveragePrice;
+                _positionCost -= closePnl;  // вычитаем прибыль из стоимости
+                _positionLots = remainingLots;
+                // Защита от инверсии (если PnL > стоимости оставшихся)
+                double newAvg = AveragePrice;
+                LogMsg($"Grid[{levelIndex}] TP +{closePnl:F0}пт, avg {oldAvg:F0}→{newAvg:F0} (deduct), lots {remainingLots} (RT #{_sessionRt})");
+            }
+            else
+            {
+                _positionCost = 0;
+                _positionLots = 0;
+                LogMsg($"Grid[{levelIndex}] TP +{closePnl:F0}пт, position closed (RT #{_sessionRt})");
+            }
+        }
+        else
+        {
+            // Режим Б: классический — средняя не меняется, просто уменьшаем lots
+            _positionLots -= closedLots;
+            if (_positionLots <= 0)
+            {
+                _positionCost = 0;
+                _positionLots = 0;
+            }
+            LogMsg($"Grid[{levelIndex}] TP +{closePnl:F0}пт, avg={AveragePrice:F0} (classic), lots {_positionLots} (RT #{_sessionRt})");
+        }
         
         // Уровень свободен — можно переиспользовать
         _grid[levelIndex].Filled = false;
         _grid[levelIndex].BuyOrderId = null;
         _grid[levelIndex].TpOrderId = null;
-        
-        LogMsg($"Grid[{levelIndex}] TP +{profit * _currentLotLevel:F0} руб (RT #{_sessionRt})");
     }
 
     /// <summary>
     /// Вызывается Launcher-ом когда entry TP заполнился.
+    /// Частичное закрытие позиции (entry лот).
     /// </summary>
     public void OnEntryTp()
     {
         if (!_entryOpen) return;
         _entryOpen = false;
         
-        double profit = Params.GridSpread - 2 * Params.Commission;
-        _sessionRealized += profit * _currentLotLevel;
+        int closedLots = _currentLotLevel;
+        double tpPrice = _posDir == 1 ? _entryPrice + Params.GridSpread : _entryPrice - Params.GridSpread;
+        double pnlPerLot = _posDir == 1 ? (tpPrice - _entryPrice) : (_entryPrice - tpPrice);
+        double closePnl = pnlPerLot * closedLots;
+        _sessionRealized += closePnl - 2 * Params.Commission * closedLots;
         _sessionRt++;
         
-        LogMsg($"Entry TP +{profit * _currentLotLevel:F0} руб (RT #{_sessionRt})");
+        // QScalp: пересчитываем среднюю цену (аналогично OnGridTp)
+        if (Params.DeductPartialClose)
+        {
+            int remainingLots = _positionLots - closedLots;
+            if (remainingLots > 0)
+            {
+                double oldAvg = AveragePrice;
+                _positionCost -= closePnl;
+                _positionLots = remainingLots;
+                double newAvg = AveragePrice;
+                LogMsg($"Entry TP +{closePnl:F0}пт, avg {oldAvg:F0}→{newAvg:F0} (deduct), lots {remainingLots} (RT #{_sessionRt})");
+            }
+            else
+            {
+                _positionCost = 0;
+                _positionLots = 0;
+                LogMsg($"Entry TP +{closePnl:F0}пт, position closed (RT #{_sessionRt})");
+            }
+        }
+        else
+        {
+            _positionLots -= closedLots;
+            if (_positionLots <= 0)
+            {
+                _positionCost = 0;
+                _positionLots = 0;
+            }
+            LogMsg($"Entry TP +{closePnl:F0}пт, avg={AveragePrice:F0} (classic), lots {_positionLots} (RT #{_sessionRt})");
+        }
     }
 
     /// <summary>
@@ -555,6 +660,7 @@ public class GridMmRegimeStrategy : IStrategy
         _posDir = 0; _entryPrice = 0; _entryOpen = false;
         _prevValid = false;
         _currentLotLevel = 1; _cumProfit = 0;
+        _positionCost = 0; _positionLots = 0;
         TotalTrades = 0; TotalPnL = 0;
         _sessionRt = 0; _sessionRealized = 0; _peakLots = 0;
         _pendingEvents.Clear();
@@ -570,9 +676,14 @@ public class GridMmRegimeStrategy : IStrategy
         _posDir = direction;
         _entryPrice = entryPrice;
         _entryOpen = true;
-        _currentLotLevel = lots;
+        _currentLotLevel = lots > 0 ? 1 : lots; // для restore — 1 лот на уровень
         _peakLots = Math.Max(_peakLots, lots);
-        _log.AddLast($"[RESTORE] Position restored: {direction} {lots}x @ {entryPrice:F0}");
+        
+        // QScalp: восстанавливаем среднюю цену из брокера
+        _positionCost = entryPrice * lots;
+        _positionLots = lots;
+        
+        _log.AddLast($"[RESTORE] Position restored: {direction} {lots}x @ {entryPrice:F0}, avg={AveragePrice:F0}");
     }
     
     /// <summary>
@@ -583,6 +694,8 @@ public class GridMmRegimeStrategy : IStrategy
         _posDir = 0;
         _entryPrice = 0;
         _entryOpen = false;
+        _positionCost = 0;
+        _positionLots = 0;
         _grid = new GridLevel[Params.MaxGridLevels];
         _log.AddLast("[CLEAR] Position cleared");
     }
@@ -592,7 +705,8 @@ public class GridMmRegimeStrategy : IStrategy
     public string GetStatus()
     {
         string dir = _posDir switch { 1 => "LONG", -1 => "SHORT", _ => "FLAT" };
-        return $"{Name} [{Mode}] {dir} entry={_entryPrice:F0} " +
+        string mode = Params.DeductPartialClose ? "QScalp-A" : "Classic";
+        return $"{Name} [{Mode}] {dir} entry={_entryPrice:F0} avg={AveragePrice:F0}({mode}) " +
                $"open={OpenLots} lots | RT={_sessionRt} " +
                $"| trades={TotalTrades} totalPnL={TotalPnL:F0}";
     }

@@ -85,6 +85,11 @@ class Robot:
         self._current_grid_price: float = 0  # pending grid price
         self._current_tp_price: float = 0  # active TP price
 
+        # Average price (QScalp-style)
+        self._position_cost: float = 0.0  # Σ(price × lots) for open position
+        self._position_lots: int = 0      # total lots with position
+        self._deduct_partial_close: bool = True  # True = Режим А (сдвиг безубытка), False = Режим Б (классика)
+
         # Current price (from quotes)
         self._current_price: float = 0.0
 
@@ -551,6 +556,8 @@ class Robot:
         self._last_entry_price = price
         self._last_direction = direction
         self._filled_prices = []
+        self._position_cost = price * 1  # entry: 1 lot
+        self._position_lots = 1
         self._broker_pnl_at_entry = self._get_broker_daily_pnl()  # save broker PnL at entry
         # Reset realized PnL for new trade
         self.state.state.realized_pnl = 0
@@ -601,6 +608,8 @@ class Robot:
                 break
             self._filled_prices.append(fp)
             self._filled_prices.sort()
+            self._position_cost += fp * 1  # grid fill: add 1 lot
+            self._position_lots += 1
             log.info(f"Grid filled @ {fp:.0f} (filled_prices: {self._filled_prices})")
 
             # Update _current_grid_price for next fill in batch
@@ -687,10 +696,29 @@ class Robot:
                 removed = self._filled_prices.pop()  # remove highest
 
             log.info(f"TP filled @ {tp_price:.0f}, removed grid @ {removed:.0f} (remaining: {len(self._filled_prices)})")
-            # Accumulate realized PnL from this TP fill (round trip)
-            tp_profit = (tp_price - removed) * d - self.strategy.params.commission
-            self.state.state.realized_pnl += tp_profit
-            log.info(f"TP profit: {tp_profit:.1f}₽ (realized total: {self.state.state.realized_pnl:.1f}₽)")
+
+            # Update average price (QScalp-style)
+            current_avg = self._position_cost / self._position_lots if self._position_lots > 0 else entry
+            tp_profit_pts = (tp_price - current_avg) * d  # profit per lot in points
+            self._position_lots -= 1  # one lot closed
+
+            if self._deduct_partial_close and self._position_lots > 0:
+                # Режим А: изъять результат из средней → сдвиг безубытка
+                self._position_cost -= tp_profit_pts * d  # subtract profit from cost
+                # Clamp: cost should reflect remaining lots at minimum
+                # new_avg = cost / lots, should be realistic
+                new_avg = self._position_cost / self._position_lots
+                log.info(f"Avg price (Mode A): {new_avg:.0f} (was {current_avg:.0f}, TP profit: {tp_profit_pts:.0f}pts)")
+            else:
+                # Режим Б: классический — avg не меняется, profit уходит в realized
+                self._position_cost -= current_avg  # remove 1 lot at old avg
+                new_avg = self._position_cost / self._position_lots if self._position_lots > 0 else 0
+                log.info(f"Avg price (Mode B): {new_avg:.0f} (unchanged from {current_avg:.0f})")
+
+            # Accumulate realized PnL from this TP fill
+            tp_profit_rub = (tp_price - current_avg) * d - self.strategy.params.commission
+            self.state.state.realized_pnl += tp_profit_rub
+            log.info(f"TP profit: {tp_profit_rub:.1f}₽ (realized total: {self.state.state.realized_pnl:.1f}₽)")
 
         # Cancel old grid + TP
         self._cancel_grid()
@@ -777,6 +805,8 @@ class Robot:
         self._cancel_all_orders()
         self._reset_tracked()
         self._filled_prices = []
+        self._position_cost = 0
+        self._position_lots = 0
         self._current_grid_price = 0
         self._current_tp_price = 0
         self._last_close_time = datetime.now(MSK)
@@ -839,12 +869,12 @@ class Robot:
         if self._max_lots == 0:
             self._max_lots = total_lots
 
-        # Average price: always calc from entry + remaining grid fills
-        # (broker_avg doesn't update after TP fills)
-        total_price = self.strategy.entry_price
-        for fp in self._filled_prices:
-            total_price += fp
-        avg = total_price / total_lots if total_lots > 0 else self.strategy.entry_price
+        # QScalp-style average price
+        avg = self._position_cost / self._position_lots if self._position_cost > 0 and self._position_lots > 0 else self.strategy.entry_price
+        # Fallback for restored state (no _position_cost yet)
+        if self._position_cost <= 0 and total_lots > 0:
+            total_price = self.strategy.entry_price + sum(self._filled_prices)
+            avg = total_price / total_lots
 
         # PnL per lot (for display)
         per_lot_commission = self.strategy.params.commission  # RT commission per lot
@@ -888,13 +918,12 @@ class Robot:
 
         pnl = 0
         if self.strategy.has_position and self.strategy.entry_price > 0:
-            # Calculate unrealized PnL the same way as get_status (avg entry)
-            total_lots = 1 + len(self._filled_prices)
-            total_cost = self.strategy.entry_price + sum(self._filled_prices)
-            avg_entry = total_cost / total_lots if total_lots > 0 else self.strategy.entry_price
+            # Use QScalp-style average price
+            total_lots = self._position_lots if self._position_lots > 0 else (1 + len(self._filled_prices))
+            avg_entry = self._position_cost / total_lots if total_lots > 0 and self._position_cost > 0 else self.strategy.entry_price
             commission = total_lots * self.strategy.params.commission
             pnl = (self._current_price - avg_entry) * total_lots * self.strategy.direction - commission
-            log.info(f"CLOSE ALL: {reason} | PnL={pnl:.0f} | broker_lots={broker_lots}")
+            log.info(f"CLOSE ALL: {reason} | PnL={pnl:.0f} avg={avg_entry:.0f} | broker_lots={broker_lots}")
 
         if not self._paper and self.orders:
             # Step 1: Cancel all active orders
@@ -947,6 +976,8 @@ class Robot:
         self.strategy.on_close_all()
         self._reset_tracked()
         self._filled_prices = []
+        self._position_cost = 0
+        self._position_lots = 0
         self._current_grid_price = 0
         self._current_tp_price = 0
         self._last_close_time = datetime.now(MSK)
@@ -1268,19 +1299,19 @@ class Robot:
 
     def get_status(self) -> dict:
         d = self.strategy.direction
-        total_lots = (1 + len(self._filled_prices)) if d != 0 else 0
+        total_lots = self._position_lots if self._position_lots > 0 else ((1 + len(self._filled_prices)) if d != 0 else 0)
         entry = self.strategy.entry_price
         price = self.strategy.current_price
         # Unrealized PnL: (current_price - avg_entry) × lots × direction - commission
         if d != 0 and price > 0 and entry > 0 and total_lots > 0:
-            # Avg entry = (entry + sum(grid fills)) / total_lots
-            total_cost = entry + sum(self._filled_prices)
-            avg_entry = total_cost / total_lots
+            # QScalp-style average price
+            avg_entry = self._position_cost / self._position_lots if self._position_cost > 0 and self._position_lots > 0 else (entry + sum(self._filled_prices)) / total_lots
             commission = total_lots * self.strategy.params.commission
             pnl = (price - avg_entry) * total_lots * d - commission
             pnl_per_lot = (price - avg_entry) * d - self.strategy.params.commission
             trade_pnl = self.state.state.realized_pnl + pnl
         else:
+            avg_entry = 0
             pnl = 0
             pnl_per_lot = 0
             trade_pnl = 0
