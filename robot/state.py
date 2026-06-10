@@ -42,6 +42,10 @@ class RobotState:
     round_trips: int = 0
     realized_pnl: float = 0.0
 
+    # QScalp average price
+    position_cost: float = 0.0  # Σ(price × lots)
+    position_lots: int = 0      # total lots
+
     # Meta
     ts: str = ""
     mode: str = "stopped"        # running, paused, stopped

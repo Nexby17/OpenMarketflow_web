@@ -88,7 +88,7 @@ class Robot:
         # Average price (QScalp-style)
         self._position_cost: float = 0.0  # Σ(price × lots) for open position
         self._position_lots: int = 0      # total lots with position
-        self._deduct_partial_close: bool = True  # True = Режим А (сдвиг безубытка), False = Режим Б (классика)
+
 
         # Current price (from quotes)
         self._current_price: float = 0.0
@@ -132,9 +132,14 @@ class Robot:
                     pass
             self._last_entry_price = s.last_entry_price
             self._last_direction = s.last_direction
-            # Restore _position_cost from saved entry + filled prices
-            self._position_cost = s.entry_price + sum(self._filled_prices)
-            self._position_lots = 1 + len(self._filled_prices)
+            # Restore QScalp position cost
+            if s.position_cost > 0 and s.position_lots > 0:
+                self._position_cost = s.position_cost
+                self._position_lots = s.position_lots
+            else:
+                # Fallback: recalculate from entry + filled prices
+                self._position_cost = s.entry_price + sum(self._filled_prices)
+                self._position_lots = 1 + len(self._filled_prices)
             log.info(f"State restored: dir={s.direction} entry={s.entry_price:.0f} fills={self._filled_prices} pos_cost={self._position_cost:.0f} pos_lots={self._position_lots}")
         elif s.direction != 0 and s.entry_price <= 0:
             log.warning("Corrupt state — resetting")
@@ -702,21 +707,16 @@ class Robot:
 
             # Update average price (QScalp-style)
             current_avg = self._position_cost / self._position_lots if self._position_lots > 0 else entry
-            tp_profit_pts = (tp_price - current_avg) * d  # profit per lot in points
+            tp_profit_pts = (tp_price - current_avg) * d  # profit in points
             self._position_lots -= 1  # one lot closed
 
-            if self._deduct_partial_close and self._position_lots > 0:
-                # Режим А: изъять результат из средней → сдвиг безубытка
+            # QScalp Режим А: изъять результат из средней → сдвиг безубытка
+            if self._position_lots > 0:
                 self._position_cost -= tp_profit_pts * d  # subtract profit from cost
-                # Clamp: cost should reflect remaining lots at minimum
-                # new_avg = cost / lots, should be realistic
                 new_avg = self._position_cost / self._position_lots
-                log.info(f"Avg price (Mode A): {new_avg:.0f} (was {current_avg:.0f}, TP profit: {tp_profit_pts:.0f}pts)")
+                log.info(f"Avg price: {new_avg:.0f} (was {current_avg:.0f}, TP profit: {tp_profit_pts:.0f}pts)")
             else:
-                # Режим Б: классический — avg не меняется, profit уходит в realized
-                self._position_cost -= current_avg  # remove 1 lot at old avg
-                new_avg = self._position_cost / self._position_lots if self._position_lots > 0 else 0
-                log.info(f"Avg price (Mode B): {new_avg:.0f} (unchanged from {current_avg:.0f})")
+                self._position_cost = 0
 
             # Accumulate realized PnL from this TP fill
             tp_profit_rub = (tp_price - current_avg) * d - self.strategy.params.commission
@@ -1268,6 +1268,8 @@ class Robot:
         s.grid_levels = self._filled_prices  # save fill prices for recovery
         s.last_entry_price = self._last_entry_price
         s.last_direction = self._last_direction
+        s.position_cost = self._position_cost
+        s.position_lots = self._position_lots
         self.state.save()
 
     def _save_trade(self, entry_time: str, exit_time: str, direction: int, dir_str: str,
