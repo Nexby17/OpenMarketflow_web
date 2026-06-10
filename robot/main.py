@@ -897,19 +897,21 @@ class Robot:
             log.info(f"CLOSE ALL: {reason} | PnL={pnl:.0f} | broker_lots={broker_lots}")
 
         if not self._paper and self.orders:
-            # Cancel all orders first
+            # Step 1: Cancel all active orders
             self._cancel_all_orders()
-            # Wait for cancels to settle AND for any pending fills to reflect
-            # Poll until active orders = 0 (max 3s)
-            for _ in range(6):
+            # Step 2: Confirm all orders cancelled by broker (poll until active=0)
+            for attempt in range(20):  # max 10s
                 time.sleep(0.5)
                 try:
                     active = self.orders.get_active_orders()
                     if not active or len(active) == 0:
+                        log.info(f"CLOSE: all orders confirmed cancelled (attempt {attempt+1})")
                         break
-                except:
-                    pass
-            # Re-fetch broker lots after all orders settled
+                    log.info(f"CLOSE: waiting for cancel confirm, {len(active)} active orders remain")
+                except Exception as e:
+                    log.warning(f"CLOSE: active orders check failed: {e}")
+                    break
+            # Step 3: Re-fetch broker lots (TP fills may have changed position)
             pos2 = self._get_broker_position()
             actual_lots = pos2[1] if pos2 and pos2[1] > 0 else broker_lots
             actual_dir = pos2[0] if pos2 and pos2[1] > 0 else broker_dir
