@@ -951,6 +951,15 @@ class Robot:
             if actual_lots > 0:
                 close_side = SELL if actual_dir == 1 else BUY
                 self.orders.place_market(close_side, actual_lots, f"CLOSE-{reason}")
+                # Verify: re-fetch broker lots after close to catch residual from TP fills
+                time.sleep(0.5)
+                pos3 = self._get_broker_position()
+                residual_lots = pos3[1] if pos3 and pos3[1] > 0 else 0
+                residual_dir = pos3[0] if pos3 and pos3[1] > 0 else 0
+                if residual_lots > 0:
+                    log.warning(f"CLOSE: residual {residual_lots} lots after close — closing again")
+                    close_side2 = SELL if residual_dir == 1 else BUY
+                    self.orders.place_market(close_side2, residual_lots, f"CLOSE-RESIDUAL")
 
         # Stats
         if self.strategy.has_position and self.strategy.entry_price > 0:
