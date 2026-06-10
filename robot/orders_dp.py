@@ -100,14 +100,18 @@ class OrderManager:
         for o in orders:
             self.cancel(o.order_id if hasattr(o, 'order_id') else str(o))
 
-    def get_active_orders(self) -> list:
+    def get_active_orders(self, symbol: str = None) -> list:
         try:
             r = requests.get(
                 f"{self._dp_url}/active-orders",
                 params={"account": self._account},
                 timeout=self._timeout,
             )
-            return r.json()
+            orders = r.json()
+            # Filter by symbol if specified
+            if symbol and orders:
+                orders = [o for o in orders if getattr(o, 'symbol', None) == symbol or (isinstance(o, dict) and o.get('symbol') == symbol)]
+            return orders
         except Exception as e:
             log.error(f"Get orders error: {e}")
             return []

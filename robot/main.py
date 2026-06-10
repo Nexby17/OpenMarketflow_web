@@ -903,7 +903,7 @@ class Robot:
             for attempt in range(20):  # max 10s
                 time.sleep(0.5)
                 try:
-                    active = self.orders.get_active_orders()
+                    active = self.orders.get_active_orders(symbol=config.SYMBOL)
                     if not active or len(active) == 0:
                         log.info(f"CLOSE: all orders confirmed cancelled (attempt {attempt+1})")
                         break
@@ -1072,17 +1072,19 @@ class Robot:
     # === HELPERS ===
 
     def _cancel_all_orders(self):
-        """Cancel all tracked orders + fallback broker cancel."""
+        """Cancel all tracked orders + fallback broker cancel for this robot's symbol only."""
         if not self.orders:
             return
         for oid in [self._grid_order_id, self._tp_order_id, self._poc_tp_order_id]:
             if oid:
                 self.orders.cancel(oid)
         try:
-            active = self.orders.get_active_orders()
+            active = self.orders.get_active_orders(symbol=config.SYMBOL)
             for o in active:
-                if o.status == "ACTIVE":
-                    self.orders.cancel(o.order_id)
+                oid = o.order_id if hasattr(o, 'order_id') else o.get('order_id')
+                status = o.status if hasattr(o, 'status') else o.get('status')
+                if status == "ACTIVE" and oid:
+                    self.orders.cancel(oid)
         except:
             pass
 
