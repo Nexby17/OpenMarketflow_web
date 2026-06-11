@@ -16,7 +16,7 @@ namespace HedgeFund.Core.Strategies;
 /// Launcher ставит реальные лимитки и отслеживает их заполнение.
 /// 
 /// Параметры v6 (оптимизация 11.05.2026, 30 дней):
-/// SAR(0.05/0.02/0.2), EMA=10, TF=5мин
+/// SAR(0.03/0.01/0.2), EMA=11, TF=5мин
 /// Grid: step=1, spread=70, max_levels=70
 /// Close: RT>=45% + min_profit=35 пт/лот
 /// </summary>
@@ -30,7 +30,7 @@ public class GridMmRegimeStrategy : IStrategy
         public double SarMax { get; set; } = 0.2;
         
         // EMA
-        public int EmaPeriod { get; set; } = 10;
+        public int EmaPeriod { get; set; } = 11;
         
         // Grid
         public double GridStep { get; set; } = 1.0;

@@ -929,7 +929,7 @@ class Robot:
             log.info(f"CLOSE ALL: {reason} | PnL={pnl:.0f} avg={avg_entry:.0f} | broker_lots={broker_lots}")
 
         if not self._paper and self.orders:
-            # Step 1: Cancel all active orders
+            # Step 1: Cancel all active orders for this symbol
             self._cancel_all_orders()
             # Step 2: Confirm all orders cancelled by broker (poll until active=0)
             for attempt in range(20):  # max 10s
@@ -943,11 +943,26 @@ class Robot:
                 except Exception as e:
                     log.warning(f"CLOSE: active orders check failed: {e}")
                     break
-            # Step 3: Re-fetch broker lots (TP fills may have changed position)
-            pos2 = self._get_broker_position()
-            actual_lots = pos2[1] if pos2 and pos2[1] > 0 else broker_lots
-            actual_dir = pos2[0] if pos2 and pos2[1] > 0 else broker_dir
-            log.info(f"CLOSE: broker_lots_after_cancel={actual_lots} dir={actual_dir} (was {broker_lots})")
+            # Step 3: Wait for broker_lots to stabilize (2 identical readings)
+            # This ensures any TP fill that raced with cancel is reflected
+            prev_lots = -1
+            stable_count = 0
+            for attempt in range(10):  # max 5s
+                time.sleep(0.5)
+                pos_s = self._get_broker_position()
+                cur_lots = pos_s[1] if pos_s and pos_s[1] > 0 else 0
+                cur_dir = pos_s[0] if pos_s and pos_s[1] > 0 else 0
+                if cur_lots == prev_lots:
+                    stable_count += 1
+                else:
+                    stable_count = 0
+                prev_lots = cur_lots
+                log.info(f"CLOSE: stability check {attempt+1}: broker_lots={cur_lots} dir={cur_dir} stable={stable_count}")
+                if stable_count >= 1:  # 2 identical readings = stable
+                    break
+            actual_lots = cur_lots
+            actual_dir = cur_dir
+            log.info(f"CLOSE: final broker_lots={actual_lots} dir={actual_dir} (was {broker_lots})")
             if actual_lots > 0:
                 close_side = SELL if actual_dir == 1 else BUY
                 self.orders.place_market(close_side, actual_lots, f"CLOSE-{reason}")
