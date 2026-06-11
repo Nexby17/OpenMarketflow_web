@@ -58,24 +58,32 @@ class OrderManager:
 
     def place_limit(self, side: int, quantity: int, price: float, tag: str = "") -> Optional[PlacedOrder]:
         side_str = "buy" if side == BUY else "sell"
-        try:
-            r = requests.post(
-                f"{self._dp_url}/order/place",
-                params={"account": self._account, "symbol": self._symbol,
-                        "side": side_str, "quantity": quantity, "price": int(price),
-                        "order_type": "limit", "tag": tag},
-                timeout=self._timeout,
-            )
-            data = r.json()
-            if "error" in data:
-                log.error(f"Limit order error: {data['error']}")
+        for attempt in range(3):
+            try:
+                r = requests.post(
+                    f"{self._dp_url}/order/place",
+                    params={"account": self._account, "symbol": self._symbol,
+                            "side": side_str, "quantity": quantity, "price": int(price),
+                            "order_type": "limit", "tag": tag},
+                    timeout=self._timeout,
+                )
+                data = r.json()
+                if "error" in data:
+                    log.error(f"Limit order error (attempt {attempt+1}): {data['error']}")
+                    if attempt < 2:
+                        import time; time.sleep(1)
+                        continue
+                    return None
+                po = PlacedOrder(order_id=data.get("order_id", ""), client_order_id=data.get("client_order_id", ""))
+                log.info(f"Limit order placed: {tag} side={side_str} qty={quantity} @ {price:.0f} id={po.order_id}")
+                return po
+            except Exception as e:
+                log.error(f"Limit order exception (attempt {attempt+1}): {e}")
+                if attempt < 2:
+                    import time; time.sleep(1)
+                    continue
                 return None
-            po = PlacedOrder(order_id=data.get("order_id", ""), client_order_id=data.get("client_order_id", ""))
-            log.info(f"Limit order placed: {tag} side={side_str} qty={quantity} @ {price:.0f} id={po.order_id}")
-            return po
-        except Exception as e:
-            log.error(f"Limit order exception: {e}")
-            return None
+        return None
 
     def cancel(self, order_id: str) -> bool:
         if not order_id:
