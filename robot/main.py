@@ -932,7 +932,7 @@ class Robot:
             # Step 1: Cancel all active orders for this symbol
             self._cancel_all_orders()
             # Step 2: Confirm all orders cancelled by broker (poll until active=0)
-            for attempt in range(20):  # max 10s
+            for attempt in range(6):  # max 3s
                 time.sleep(0.5)
                 try:
                     active = self.orders.get_active_orders(symbol=config.SYMBOL)
@@ -948,7 +948,7 @@ class Robot:
             prev_lots = -1
             stable_count = 0
             for attempt in range(10):  # max 5s
-                time.sleep(0.5)
+                time.sleep(0.3)
                 pos_s = self._get_broker_position()
                 cur_lots = pos_s[1] if pos_s and pos_s[1] > 0 else 0
                 cur_dir = pos_s[0] if pos_s and pos_s[1] > 0 else 0
