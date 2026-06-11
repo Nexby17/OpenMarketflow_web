@@ -872,19 +872,23 @@ class Robot:
         if self._max_lots == 0:
             self._max_lots = total_lots
 
-        # Classic avg for close decisions (real PnL)
-        classic_avg = (self.strategy.entry_price + sum(self._filled_prices)) / total_lots if total_lots > 0 else self.strategy.entry_price
+        # QScalp-style average price
+        avg = self._position_cost / self._position_lots if self._position_cost > 0 and self._position_lots > 0 else self.strategy.entry_price
+        # Fallback for restored state (no _position_cost yet)
+        if self._position_cost <= 0 and total_lots > 0:
+            total_price = self.strategy.entry_price + sum(self._filled_prices)
+            avg = total_price / total_lots
 
-        # PnL per lot (real, classic)
-        per_lot_commission = self.strategy.params.commission
+        # PnL per lot (for display)
+        per_lot_commission = self.strategy.params.commission  # RT commission per lot
         if d == 1:
-            pnl_per_lot = (price - classic_avg) - per_lot_commission
+            pnl_per_lot = (price - avg) - per_lot_commission
         else:
-            pnl_per_lot = (classic_avg - price) - per_lot_commission
+            pnl_per_lot = (avg - price) - per_lot_commission
         pnl = pnl_per_lot * total_lots
 
-        # Trade PnL = realized + unrealized (classic, real PnL)
-        trade_pnl = self.state.state.realized_pnl + pnl
+        # Trade PnL: in Mode A, profit is already embedded in shifted avg → use unrealized only
+        trade_pnl = pnl
 
         ok, msg = self.risk.check_pnl(pnl)
         if not ok:
@@ -1305,17 +1309,12 @@ class Robot:
         price = self.strategy.current_price
         # Unrealized PnL: (current_price - avg_entry) × lots × direction - commission
         if d != 0 and price > 0 and entry > 0 and total_lots > 0:
-            # Display avg: QScalp Mode A (shifted breakeven)
-            display_avg = self._position_cost / self._position_lots if self._position_cost > 0 and self._position_lots > 0 else (entry + sum(self._filled_prices)) / total_lots
-            # Classic avg for real PnL
-            classic_avg = (entry + sum(self._filled_prices)) / total_lots
+            # QScalp-style average price
+            avg_entry = self._position_cost / self._position_lots if self._position_cost > 0 and self._position_lots > 0 else (entry + sum(self._filled_prices)) / total_lots
             commission = total_lots * self.strategy.params.commission
-            # Real PnL = realized + unrealized (classic)
-            unrealized = (price - classic_avg) * total_lots * d - commission
-            pnl_per_lot = (price - classic_avg) * d - self.strategy.params.commission
-            trade_pnl = self.state.state.realized_pnl + unrealized
-            pnl = unrealized
-            avg_entry = display_avg  # for display
+            pnl = (price - avg_entry) * total_lots * d - commission
+            pnl_per_lot = (price - avg_entry) * d - self.strategy.params.commission
+            trade_pnl = pnl  # Mode A: unrealized only (profit embedded in avg)
         else:
             avg_entry = 0
             pnl = 0
