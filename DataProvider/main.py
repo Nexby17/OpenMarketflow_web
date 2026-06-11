@@ -192,6 +192,7 @@ def place_order(account: str, symbol: str, side: str, quantity: int, price: floa
         resp = the_provider.fp.call_function(
             the_provider.fp.orders_stub.PlaceOrder, req
         )
+        logger.info(f"PlaceOrder response: {resp}")
         if resp and resp.order_id:
             return {"order_id": resp.order_id, "client_order_id": client_order_id, "status": "placed"}
         return {"error": "no response", "client_order_id": client_order_id}
