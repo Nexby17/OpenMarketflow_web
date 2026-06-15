@@ -2196,7 +2196,7 @@ async function renderRobots() {
         const totalPnl = (s.realized_pnl || 0) + (s.pnl || 0);
         const paper = s.paper ? ' <span class="badge" style="background:#ff9800">PAPER</span>' : '';
         pythonRobotRow = `<tr ondblclick="pythonRobotEditPanel()" style="cursor:pointer" title="Двойной клик — настройки робота">
-            <td><strong>SiM6</strong></td>
+            <td><strong>${s.instrument || 'SiU6'}</strong></td>
             <td><strong>VP Scalp Grid</strong> <span class="badge" style="background:#2196F3">PYTHON</span>${paper}</td>
             <td>Финам</td>
             <td class="${dirCls}">${dirText}${s.entry_price > 0 ? ' @ ' + s.entry_price.toFixed(0) : ''}</td>
@@ -2214,7 +2214,7 @@ async function renderRobots() {
         </tr>`;
     } else {
         pythonRobotRow = `<tr ondblclick="pythonRobotEditPanel()" style="cursor:pointer" title="Двойной клик — настройки робота">
-            <td><strong>SiM6</strong></td>
+            <td><strong>SiU6</strong></td>
             <td><strong>VP Scalp Grid</strong> <span class="badge" style="background:#2196F3">PYTHON</span></td>
             <td>Финам</td>
             <td>—</td>
@@ -2567,7 +2567,7 @@ function openRobotEditPanel(idx) {
     if (window._pyVpTimer) clearInterval(window._pyVpTimer);
     window._pyVpTimer = setInterval(() => pythonRobotUpdateVp(), 2000);
     // Load trade journal filtered by robot ticker
-    _pyJournalTicker = r.ticker || 'SiM6';
+    _pyJournalTicker = r.ticker || 'SiU6';
     setTimeout(() => pyLoadJournal(), 300);
 }
 
@@ -3813,8 +3813,8 @@ function pythonRobotEditPanel() {
     if (window._pyVpTimer) clearInterval(window._pyVpTimer);
     window._pyVpTimer = setInterval(() => pythonRobotUpdateVp(), 2000);
 
-    // Load trade journal for main robot (SiM6)
-    _pyJournalTicker = 'SiM6';
+    // Load trade journal for main robot (SiU6)
+    _pyJournalTicker = 'SiU6';
     setTimeout(() => pyLoadJournal(), 300);
 }
 
@@ -3876,7 +3876,7 @@ function pythonRobotUpdateVp() {
 let _pyJournalTrades = [];
 let _pyJournalPositions = [];
 
-let _pyJournalTicker = 'SiM6';
+let _pyJournalTicker = 'SiU6';
 
 async function pyLoadJournal() {
     const info = el('pyJournalInfo');

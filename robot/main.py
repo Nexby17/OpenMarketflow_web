@@ -718,8 +718,8 @@ class Robot:
             else:
                 self._position_cost = 0
 
-            # Accumulate realized PnL from this TP fill
-            tp_profit_rub = (tp_price - current_avg) * d - self.strategy.params.commission
+            # Accumulate realized PnL from this TP fill (use actual fill price vs lot cost)
+            tp_profit_rub = (tp_price - removed) * d - self.strategy.params.commission
             self.state.state.realized_pnl += tp_profit_rub
             log.info(f"TP profit: {tp_profit_rub:.1f}₽ (realized total: {self.state.state.realized_pnl:.1f}₽)")
 
@@ -873,11 +873,9 @@ class Robot:
             self._max_lots = total_lots
 
         # QScalp-style average price
-        avg = self._position_cost / self._position_lots if self._position_cost > 0 and self._position_lots > 0 else self.strategy.entry_price
-        # Fallback for restored state (no _position_cost yet)
-        if self._position_cost <= 0 and total_lots > 0:
-            total_price = self.strategy.entry_price + sum(self._filled_prices)
-            avg = total_price / total_lots
+        # Classic avg for close decisions (NOT Mode A)
+        total_price = self.strategy.entry_price + sum(self._filled_prices)
+        avg = total_price / total_lots if total_lots > 0 else self.strategy.entry_price
 
         # PnL per lot (for display)
         per_lot_commission = self.strategy.params.commission  # RT commission per lot
@@ -923,7 +921,9 @@ class Robot:
         if self.strategy.has_position and self.strategy.entry_price > 0:
             # Use QScalp-style average price
             total_lots = self._position_lots if self._position_lots > 0 else (1 + len(self._filled_prices))
-            avg_entry = self._position_cost / total_lots if total_lots > 0 and self._position_cost > 0 else self.strategy.entry_price
+            # Classic avg for PnL calculation (consistent with _check_exits)
+            total_price = self.strategy.entry_price + sum(self._filled_prices)
+            avg_entry = total_price / total_lots if total_lots > 0 else self.strategy.entry_price
             commission = total_lots * self.strategy.params.commission
             pnl = (self._current_price - avg_entry) * total_lots * self.strategy.direction - commission
             log.info(f"CLOSE ALL: {reason} | PnL={pnl:.0f} avg={avg_entry:.0f} | broker_lots={broker_lots}")
@@ -969,7 +969,9 @@ class Robot:
 
         # Stats
         if self.strategy.has_position and self.strategy.entry_price > 0:
-            # Use broker PnL difference for accurate round trip PnL
+            # Use broker PnL difference for accurate round trip PnL (entire trade, including TP fills)
+            # Reset realized_pnl first to avoid double-counting TP profits already accumulated
+            self.state.state.realized_pnl = 0
             broker_pnl_now = self._get_broker_daily_pnl()
             if broker_pnl_now != 0 and self._broker_pnl_at_entry != 0:
                 pnl = broker_pnl_now - self._broker_pnl_at_entry
@@ -1356,6 +1358,7 @@ class Robot:
             "current_price": price,
             "hold_minutes": self.strategy.hold_minutes,
             "connected": self.feed.connected,
+            "ticker": config.TICKER,
         }
 
 

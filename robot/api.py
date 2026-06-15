@@ -70,7 +70,7 @@ def active_strategies():
         "strategies": [{
             "id": "python-vp-scalp-grid",
             "name": "VP Scalp Grid (Python)",
-            "instrument": "SiM6",
+            "instrument": config.TICKER,
             "mode": mode_text,
             "connected": st.get("connected", False),
             "posDir": pos_dir,
