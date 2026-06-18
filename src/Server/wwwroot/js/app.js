@@ -2124,6 +2124,50 @@ function confirmCreateRobot() {
 
 function saveRobots() { localStorage.setItem('hf_robots', JSON.stringify(robots)); }
 
+// Cached Finam accounts for dropdowns
+let _finamAccounts = null;
+async function loadFinamAccounts() {
+    if (_finamAccounts) return _finamAccounts;
+    try {
+        const resp = await fetch('/api/accounts');
+        const data = await resp.json();
+        _finamAccounts = data.accounts || [];
+    } catch (e) { _finamAccounts = []; }
+    return _finamAccounts;
+}
+function accountDropdownHtml(currentVal, onChangeStr) {
+    const accs = _finamAccounts || [];
+    const opts = accs.map(a => `<option value="${a.id}" ${a.id===(currentVal||'')?'selected':''}>${a.id} — ${a.name}</option>`).join('');
+    return `<select class="input" style="width:140px;font-size:11px" onchange="${onChangeStr}">${opts}</select>`;
+}
+function onLocalStorageRobotAccountChange(idx, val) {
+    if (robots[idx]) {
+        robots[idx].account = val;
+        robots[idx].accountName = val;
+        saveRobots();
+        renderRobots();
+    }
+}
+let _mainRobotAccount = '';
+function onMainRobotAccountChange(val) {
+    _mainRobotAccount = val;
+}
+let _mainRobotInstrument = localStorage.getItem('mainRobotInstrument') || 'SiU6';
+function onMainRobotInstrumentChange(val) {
+    _mainRobotInstrument = val;
+    localStorage.setItem('mainRobotInstrument', val);
+    // Update .env via C# proxy
+    fetch('/api/robot/update-instrument', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({instrument: val})
+    }).then(r => r.json()).then(d => {
+        addLog(nowTime(), 'INFO', `📋 Контракт изменён на ${val} (применится при следующем старте)`);
+    }).catch(e => {
+        addLog(nowTime(), 'ERROR', `Не удалось сменить контракт: ${e.message}`);
+    });
+}
+
 async function renderRobots() {
     const tbody = el('robotsTable');
     const noMsg = el('noRobots');
@@ -2166,7 +2210,7 @@ async function renderRobots() {
             localRows.push(`<tr ondblclick="openRobotEditPanel(${idx})" style="cursor:pointer" title="Двойной клик — настройки робота">
                 <td><strong>${ticker}</strong></td>
                 <td><strong>${strat}</strong> <span class="badge" style="background:#2196F3">PYTHON</span></td>
-                <td>Финам</td>
+                <td>${accountDropdownHtml(r.account, 'onLocalStorageRobotAccountChange(' + idx + ', this.value)')}</td>
                 <td>${r.position || '—'}</td>
                 <td>—</td>
                 <td>${r.pnlTotal >= 0 ? '+' : ''}${(r.pnlTotal||0).toFixed(0)} ₽</td>
@@ -2196,9 +2240,14 @@ async function renderRobots() {
         const totalPnl = (s.realized_pnl || 0) + (s.pnl || 0);
         const paper = s.paper ? ' <span class="badge" style="background:#ff9800">PAPER</span>' : '';
         pythonRobotRow = `<tr ondblclick="pythonRobotEditPanel()" style="cursor:pointer" title="Двойной клик — настройки робота">
-            <td><strong>${s.instrument || 'SiU6'}</strong></td>
+            <td><select class="input" style="width:80px;font-size:11px" onchange="onMainRobotInstrumentChange(this.value)">
+              <option value="SiU6" ${(_mainRobotInstrument||'SiU6')==='SiU6'?'selected':''}>SiU6</option>
+              <option value="SiZ6" ${_mainRobotInstrument==='SiZ6'?'selected':''}>SiZ6</option>
+              <option value="SiH7" ${_mainRobotInstrument==='SiH7'?'selected':''}>SiH7</option>
+              <option value="SiM7" ${_mainRobotInstrument==='SiM7'?'selected':''}>SiM7</option>
+            </select></td>
             <td><strong>VP Scalp Grid</strong> <span class="badge" style="background:#2196F3">PYTHON</span>${paper}</td>
-            <td>Финам</td>
+            <td>${accountDropdownHtml(_mainRobotAccount, 'onMainRobotAccountChange(this.value)')}</td>
             <td class="${dirCls}">${dirText}${s.entry_price > 0 ? ' @ ' + s.entry_price.toFixed(0) : ''}</td>
             <td>—</td>
             <td class="${pnlCls(totalPnl)}">${totalPnl >= 0 ? '+' : ''}${totalPnl.toFixed(0)} ₽</td>
@@ -2214,9 +2263,14 @@ async function renderRobots() {
         </tr>`;
     } else {
         pythonRobotRow = `<tr ondblclick="pythonRobotEditPanel()" style="cursor:pointer" title="Двойной клик — настройки робота">
-            <td><strong>SiU6</strong></td>
+            <td><select class="input" style="width:80px;font-size:11px" onchange="onMainRobotInstrumentChange(this.value)">
+              <option value="SiU6" ${(_mainRobotInstrument||'SiU6')==='SiU6'?'selected':''}>SiU6</option>
+              <option value="SiZ6" ${_mainRobotInstrument==='SiZ6'?'selected':''}>SiZ6</option>
+              <option value="SiH7" ${_mainRobotInstrument==='SiH7'?'selected':''}>SiH7</option>
+              <option value="SiM7" ${_mainRobotInstrument==='SiM7'?'selected':''}>SiM7</option>
+            </select></td>
             <td><strong>VP Scalp Grid</strong> <span class="badge" style="background:#2196F3">PYTHON</span></td>
-            <td>Финам</td>
+            <td>${accountDropdownHtml(_mainRobotAccount, 'onMainRobotAccountChange(this.value)')}</td>
             <td>—</td>
             <td>—</td>
             <td>—</td>
@@ -2777,7 +2831,7 @@ async function updateRobotData() {
 }
 
 // Начальный рендер
-renderRobots();
+loadFinamAccounts().then(() => renderRobots());
 loadAccounts();
 // Автообновление активных стратегий каждые 5 сек
 setInterval(renderRobots, 30000);

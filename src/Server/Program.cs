@@ -133,6 +133,7 @@ app.Use(async (HttpContext ctx, Func<Task> next) =>
         path.StartsWith("/api/robot/service") ||
         path.StartsWith("/api/robot/status") ||
         path.StartsWith("/api/robot/config") ||
+        path.StartsWith("/api/robot/update-instrument") ||
         path.StartsWith("/api/vp-backtest") ||
         path.StartsWith("/api/robot/ticker") ||
         path.StartsWith("/api/trades") ||
@@ -2496,6 +2497,34 @@ app.MapPost("/api/instance/delete", (HttpRequest req) => {
         if (Directory.Exists(dir)) Directory.Delete(dir, true);
         return Results.Json(new { id, deleted = true });
     } catch (Exception ex) { return Results.Json(new { error = ex.Message }); }
+}).AllowAnonymous();
+
+// Update robot instrument (SI contract) in .env
+app.MapPost("/api/robot/update-instrument", async (HttpRequest req) =>
+{
+    try
+    {
+        using var reader = new StreamReader(req.Body);
+        var body = await reader.ReadToEndAsync();
+        var json = System.Text.Json.JsonDocument.Parse(body);
+        var instrument = json.RootElement.GetProperty("instrument").GetString() ?? "SiU6";
+        var symbol = $"{instrument}@RTSX";
+        var envPath = "/root/.openclaw/workspace/HedgeFund/robot/.env";
+        var lines = System.IO.File.ReadAllLines(envPath);
+        var newLines = new List<string>();
+        bool foundTicker = false, foundSymbol = false;
+        foreach (var line in lines)
+        {
+            if (line.StartsWith("ROBOT_TICKER=")) { newLines.Add($"ROBOT_TICKER={instrument}"); foundTicker = true; }
+            else if (line.StartsWith("ROBOT_SYMBOL=")) { newLines.Add($"ROBOT_SYMBOL={symbol}"); foundSymbol = true; }
+            else newLines.Add(line);
+        }
+        if (!foundTicker) newLines.Add($"ROBOT_TICKER={instrument}");
+        if (!foundSymbol) newLines.Add($"ROBOT_SYMBOL={symbol}");
+        System.IO.File.WriteAllLines(envPath, newLines);
+        return Results.Json(new { ok = true, instrument, symbol });
+    }
+    catch (Exception ex) { return Results.Json(new { error = ex.Message }); }
 }).AllowAnonymous();
 
 app.Run();

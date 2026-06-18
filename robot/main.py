@@ -676,12 +676,12 @@ class Robot:
     def _cancel_grid(self):
         if self._grid_order_id and self.orders:
             self.orders.cancel(self._grid_order_id)
-            self._grid_order_id = None
+            # Don't reset ID yet — confirm cancelled in _reestablish_orders
 
     def _cancel_tp(self):
         if self._tp_order_id and self.orders:
             self.orders.cancel(self._tp_order_id)
-            self._tp_order_id = None
+            # Don't reset ID yet — confirm cancelled in _reestablish_orders
 
     def _handle_tp_fill(self, count: int):
         """TP fills detected. Remove from filled_prices, place grid back + new TP (zigzag)."""
@@ -818,42 +818,6 @@ class Robot:
 
     # === EXITS ===
 
-    def _reestablish_orders(self):
-        """Re-establish grid + TP orders after clearing wiped them."""
-        d = self.strategy.direction
-        entry = self.strategy.entry_price
-        step = self.strategy.params.step_base
-        spread = self.strategy.params.spread_base
-        total_lots = 1 + len(self._filled_prices)
-
-        if total_lots <= 1:
-            # 1 lot — no grid, place POC-TP only
-            if self.strategy.poc > 0:
-                log.info(f"Re-establishing: 1 lot, waiting for POC/exit")
-            return
-
-        # Place TP + grid from filled_prices
-        if d == 1:
-            tp_price = self._filled_prices[0] + spread
-            grid_price = self._filled_prices[0] - step
-        else:
-            tp_price = self._filled_prices[-1] - spread
-            grid_price = self._filled_prices[-1] + step
-
-        tp_side = SELL if d == 1 else BUY
-        po = self.orders.place_limit(tp_side, 1, tp_price, "TP")
-        if po:
-            self._tp_order_id = po.order_id
-            self._current_tp_price = tp_price
-            log.info(f"TP re-established @ {tp_price:.0f}")
-
-        grid_side = BUY if d == 1 else SELL
-        po = self.orders.place_limit(grid_side, 1, grid_price, "GRID")
-        if po:
-            self._grid_order_id = po.order_id
-            self._current_grid_price = grid_price
-            log.info(f"GRID re-established @ {grid_price:.0f}")
-
     def _check_exits(self):
         """Check exit conditions based on current state."""
         price = self._current_price
@@ -943,26 +907,16 @@ class Robot:
                 except Exception as e:
                     log.warning(f"CLOSE: active orders check failed: {e}")
                     break
-            # Step 3: Wait for broker_lots to stabilize (2 identical readings)
-            # This ensures any TP fill that raced with cancel is reflected
-            prev_lots = -1
-            stable_count = 0
-            for attempt in range(10):  # max 5s
-                time.sleep(0.3)
+            # Step 3: Wait for market close order to fill (broker_lots → 0)
+            for attempt in range(15):  # max 7.5s
+                time.sleep(0.5)
                 pos_s = self._get_broker_position()
                 cur_lots = pos_s[1] if pos_s and pos_s[1] > 0 else 0
-                cur_dir = pos_s[0] if pos_s and pos_s[1] > 0 else 0
-                if cur_lots == prev_lots:
-                    stable_count += 1
-                else:
-                    stable_count = 0
-                prev_lots = cur_lots
-                log.info(f"CLOSE: stability check {attempt+1}: broker_lots={cur_lots} dir={cur_dir} stable={stable_count}")
-                if stable_count >= 1:  # 2 identical readings = stable
+                if cur_lots == 0:
                     break
-            actual_lots = cur_lots
-            actual_dir = cur_dir
-            log.info(f"CLOSE: final broker_lots={actual_lots} dir={actual_dir} (was {broker_lots})")
+                log.info(f"CLOSE: waiting for market fill, broker_lots={cur_lots}")
+            actual_lots = cur_lots if 'cur_lots' in locals() else broker_lots
+            actual_dir = cur_dir if 'cur_dir' in locals() else self.strategy.direction
             if actual_lots > 0:
                 close_side = SELL if actual_dir == 1 else BUY
                 self.orders.place_market(close_side, actual_lots, f"CLOSE-{reason}")
@@ -1326,12 +1280,12 @@ class Robot:
         price = self.strategy.current_price
         # Unrealized PnL: (current_price - avg_entry) × lots × direction - commission
         if d != 0 and price > 0 and entry > 0 and total_lots > 0:
-            # QScalp-style average price
-            avg_entry = self._position_cost / self._position_lots if self._position_cost > 0 and self._position_lots > 0 else (entry + sum(self._filled_prices)) / total_lots
+            # Classic average price (NOT Mode A)
+            avg_entry = (entry + sum(self._filled_prices)) / total_lots if d != 0 else 0
             commission = total_lots * self.strategy.params.commission
             pnl = (price - avg_entry) * total_lots * d - commission
             pnl_per_lot = (price - avg_entry) * d - self.strategy.params.commission
-            trade_pnl = pnl  # Mode A: unrealized only (profit embedded in avg)
+            trade_pnl = pnl  # Classic: unrealized only (realized is separate)
         else:
             avg_entry = 0
             pnl = 0
