@@ -1,34 +1,19 @@
 {
-  "dir": 1,
-  "entryPrice": 74942.5,
-  "avgPrice": 74889.66666666667,
-  "totalLots": 3,
-  "averageLevels": 2,
+  "dir": 0,
+  "entryPrice": 0.0,
+  "avgPrice": 0.0,
+  "totalLots": 0,
+  "averageLevels": 0,
   "pyramidLevels": 0,
-  "lastAveragePrice": 74836.0,
-  "lastPyramidPrice": 74942.5,
-  "lotQueue": [
-    {
-      "price": 74942.5,
-      "side": 1,
-      "lots": 1
-    },
-    {
-      "price": 74890.5,
-      "side": 1,
-      "lots": 1
-    },
-    {
-      "price": 74836.0,
-      "side": 1,
-      "lots": 1
-    }
-  ],
-  "roundTrips": 1,
-  "realizedPnL": 32.2,
-  "dailyPnL": 32.2,
+  "lastAveragePrice": 0.0,
+  "lastPyramidPrice": 0.0,
+  "lotQueue": [],
+  "roundTrips": 2,
+  "realizedPnL": 187.8,
+  "dailyPnL": 187.8,
   "dailyPnLDate": "2026-06-19",
-  "entryTime": "2026-06-19T12:00:04.703569+00:00",
-  "signalType": "ob_imbalance",
+  "entryTime": "",
+  "signalType": "",
+  "tradeHistory": [],
   "mode": "running"
 }

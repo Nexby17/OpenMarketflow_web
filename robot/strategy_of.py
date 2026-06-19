@@ -97,6 +97,10 @@ class OrderFlowStrategy:
         self._entry_time: Optional[datetime] = None
         self._signal_type: str = ""
 
+        # Trade history for journal
+        self._trade_history: list[dict] = []
+        self._position_entry_price: float = 0.0  # For tracking close_all entry
+
         # Daily PnL tracking
         self._daily_pnl: float = 0.0
         self._daily_pnl_date: Optional[str] = None
@@ -526,6 +530,18 @@ class OrderFlowStrategy:
         side = "sell" if self._dir == LONG else "buy"
         qty = self._total_lots
 
+        # Record in trade history
+        self._trade_history.append({
+            'entryPrice': self._avg_price,
+            'exitPrice': price,
+            'direction': 'LONG' if self._dir == LONG else 'SHORT',
+            'lots': qty,
+            'pnl': realized,
+            'entryTime': self._entry_time.isoformat() if self._entry_time else None,
+            'exitTime': datetime.now().isoformat(),
+            'reason': reason,
+        })
+
         log.info(f"CLOSE_ALL {side} {qty} @ {price:.0f} | reason={reason} | gross={gross_pnl:.0f}₽ comm={commission:.0f}₽ net={realized:.0f}₽ | daily={self._daily_pnl:.0f}₽")
 
         self._reset_position()
@@ -584,6 +600,7 @@ class OrderFlowStrategy:
             "dailyPnLDate": self._daily_pnl_date,
             "entryTime": self._entry_time.isoformat() if self._entry_time else "",
             "signalType": self._signal_type,
+            "tradeHistory": self._trade_history[-200:],  # Last 200 trades
         }
 
     def load_state(self, state: dict):
@@ -603,6 +620,7 @@ class OrderFlowStrategy:
         et = state.get("entryTime", "")
         self._entry_time = datetime.fromisoformat(et) if et else None
         self._signal_type = state.get("signalType", "")
+        self._trade_history = state.get("tradeHistory", [])
 
         # Restore lot queue from state (exact)
         lot_q = state.get("lotQueue", [])
@@ -643,6 +661,7 @@ class OrderFlowStrategy:
             "dailyPnL": self._daily_pnl,
             "entryTime": self._entry_time.isoformat() if self._entry_time else "",
             "signalType": self._signal_type,
+            "tradeHistory": self._trade_history[-200:],
             "cvd": self.trades.cvd,
             "barsReady": self.signals.bars_ready,
             "entryLocked": self._is_entry_locked(),

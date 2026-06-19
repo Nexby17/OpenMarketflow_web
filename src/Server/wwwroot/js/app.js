@@ -2295,7 +2295,7 @@ async function renderRobots() {
         const pnlCls = v => v >= 0 ? 'green' : 'red';
         const pnl = s.realizedPnL || 0;
         const paper = s.paper ? ' <span class="badge" style="background:#ff9800">PAPER</span>' : '';
-        ofRobotRow = `<tr style="cursor:pointer">
+        ofRobotRow = `<tr ondblclick="ofRobotEditPanel()" style="cursor:pointer" title="Двойной клик — настройки робота">
             <td>SiU6</td>
             <td><strong>Order Flow</strong> <span class="badge" style="background:#9C27B0">PYTHON</span>${paper}</td>
             <td>1225953</td>
@@ -2312,7 +2312,7 @@ async function renderRobots() {
             <td class="${modeCls}">${modeText}</td>
         </tr>`;
     } else {
-        ofRobotRow = `<tr style="cursor:pointer">
+        ofRobotRow = `<tr ondblclick="ofRobotEditPanel()" style="cursor:pointer" title="Двойной клик — настройки робота">
             <td>SiU6</td>
             <td><strong>Order Flow</strong> <span class="badge" style="background:#9C27B0">PYTHON</span></td>
             <td>1225953</td>
@@ -4689,3 +4689,286 @@ function ofRobotCreate() {
     ofRobotLoadConfig();
     setInterval(ofRobotPoll, 2000);
 })();
+
+// === ORDER FLOW EDIT PANEL ===
+function ofRobotEditPanel() {
+    const existing = el('ofRobotEditPanel');
+    if (existing) { existing.remove(); return; }
+
+    const s = ofRobot || {};
+    const p = s.params || {};
+
+    const div = document.createElement('div');
+    div.id = 'ofRobotEditPanel';
+    div.className = 'card';
+    div.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);z-index:1000;width:900px;max-height:90vh;overflow-y:auto;box-shadow:0 8px 32px rgba(0,0,0,.5)';
+    div.innerHTML = `
+        <div class="card-header row gap-8">
+            📊 SiU6 Order Flow (PYTHON)
+            <button class="btn btn-primary btn-sm" onclick="ofRobotSaveFromPanel()">💾 Сохранить</button>
+            <button class="btn btn-secondary btn-sm" onclick="if(window._ofVpTimer){clearInterval(window._ofVpTimer);window._ofVpTimer=null;}el('ofRobotEditPanel')?.remove()">✕</button>
+        </div>
+        <div style="padding:12px">
+            <!-- OF индикаторы -->
+            <div class="metrics-row" style="flex-wrap:wrap;margin-bottom:12px">
+                <div class="metric-card" style="background:#1a2332;border:1px solid #9C27B0"><div class="metric-label" style="color:#CE93D8">CVD</div><div id="ofCvd" style="font-size:18px;font-weight:bold;color:#CE93D8">—</div></div>
+                <div class="metric-card" style="background:#1a2332;border:1px solid #9C27B0"><div class="metric-label" style="color:#FF7043">Delta</div><div id="ofDelta" style="font-size:18px;font-weight:bold;color:#FF7043">—</div></div>
+                <div class="metric-card" style="background:#1a2332;border:1px solid #9C27B0"><div class="metric-label" style="color:#42A5F5">OB Imbalance</div><div id="ofImb" style="font-size:18px;font-weight:bold;color:#42A5F5">—</div></div>
+                <div class="metric-card"><div class="metric-label">Цена</div><div id="ofPrice" style="font-size:18px;font-weight:bold">—</div></div>
+                <div class="metric-card"><div class="metric-label">Позиция</div><div id="ofDir" style="font-size:18px;font-weight:bold">—</div></div>
+                <div class="metric-card"><div class="metric-label">Лоты</div><div id="ofLots" style="font-size:18px;font-weight:bold">0</div></div>
+                <div class="metric-card"><div class="metric-label">Ср. цена</div><div id="ofAvgPrice" style="font-size:18px;font-weight:bold">—</div></div>
+                <div class="metric-card"><div class="metric-label">PnL/лот</div><div id="ofPnlPerLot" style="font-size:18px;font-weight:bold">—</div></div>
+                <div class="metric-card"><div class="metric-label">PnL нереал.</div><div id="ofPnlUnreal" style="font-size:18px;font-weight:bold">—</div></div>
+                <div class="metric-card"><div class="metric-label">Realized</div><div id="ofRealized" style="font-size:18px;font-weight:bold">0₽</div></div>
+                <div class="metric-card"><div class="metric-label">Сигнал</div><div id="ofSignal" style="font-size:16px;font-weight:bold">—</div></div>
+                <div class="metric-card"><div class="metric-label">Hold</div><div id="ofHold" style="font-size:18px;font-weight:bold">0 мин</div></div>
+                <div class="metric-card"><div class="metric-label">Avg Levels</div><div id="ofAvgLvl" style="font-size:18px;font-weight:bold">0</div></div>
+                <div class="metric-card"><div class="metric-label">Pyr Levels</div><div id="ofPyrLvl" style="font-size:18px;font-weight:bold">0</div></div>
+                <div class="metric-card"><div class="metric-label">RT</div><div id="ofRt" style="font-size:18px;font-weight:bold">0</div></div>
+            </div>
+            <hr style="border-color:#2D2D44;margin:12px 0">
+            <!-- Параметры -->
+            <div class="metrics-row" style="flex-wrap:wrap;margin-bottom:16px">
+                <div class="metric-card"><div class="metric-label">Lots</div><input id="editOfLots" class="input" type="number" value="${p.lots||1}" style="width:60px"></div>
+                <div class="metric-card"><div class="metric-label">Max Pyramid</div><input id="editOfMaxPyr" class="input" type="number" value="${p.max_pyramid_levels||5}" style="width:60px"></div>
+                <div class="metric-card"><div class="metric-label">Max Average</div><input id="editOfMaxAvg" class="input" type="number" value="${p.max_average_levels||100}" style="width:60px"></div>
+                <div class="metric-card"><div class="metric-label">Step Avg (пт)</div><input id="editOfStepAvg" class="input" type="number" value="${p.step_average||50}" style="width:70px"></div>
+                <div class="metric-card"><div class="metric-label">Step Pyr (пт)</div><input id="editOfStepPyr" class="input" type="number" value="${p.step_pyramid||35}" style="width:70px"></div>
+                <div class="metric-card"><div class="metric-label">Spread (пт)</div><input id="editOfSpread" class="input" type="number" value="${p.spread||50}" style="width:60px"></div>
+                <div class="metric-card"><div class="metric-label">SL Mode</div><select id="editOfSlMode" class="input" style="width:70px"><option value="rub" ${(p.stop_loss_mode||'rub')==='rub'?'selected':''}>₽</option><option value="pct" ${p.stop_loss_mode==='pct'?'selected':''}>%</option><option value="pts" ${p.stop_loss_mode==='pts'?'selected':''}>пт</option></select></div>
+                <div class="metric-card"><div class="metric-label">SL Value</div><input id="editOfSlValue" class="input" type="number" value="${p.stop_loss_value||7000}" style="width:80px"></div>
+                <div class="metric-card"><div class="metric-label">Min Profit/Lot</div><input id="editOfMinProfit" class="input" type="number" value="${p.min_profit_per_lot||30}" style="width:60px"></div>
+                <div class="metric-card"><div class="metric-label">Max Hold (мин)</div><input id="editOfMaxHold" class="input" type="number" value="${p.max_hold_minutes||999}" style="width:80px"></div>
+                <div class="metric-card"><div class="metric-label">Absorption</div><input id="editOfAbsThr" class="input" type="number" step="0.01" value="${p.absorption_threshold||0.35}" style="width:70px"></div>
+                <div class="metric-card"><div class="metric-label">CVD Lookback</div><input id="editOfCvdLb" class="input" type="number" value="${p.cvd_lookback||10}" style="width:60px"></div>
+                <div class="metric-card"><div class="metric-label">OB Imbalance</div><input id="editOfObImb" class="input" type="number" step="0.01" value="${p.ob_imbalance_threshold||0.50}" style="width:60px"></div>
+                <div class="metric-card"><div class="metric-label">Confirm Count</div><input id="editOfConfirm" class="input" type="number" min="1" max="3" value="${p.signal_confirm_count||1}" style="width:50px"></div>
+                <div class="metric-card"><div class="metric-label">Timeframe</div><select id="editOfTf" class="input" style="width:70px"><option value="M1" ${p.timeframe==='M1'?'selected':''}>1 мин</option><option value="M5" ${(p.timeframe||'M5')==='M5'?'selected':''}>5 мин</option><option value="M15" ${p.timeframe==='M15'?'selected':''}>15 мин</option><option value="M30" ${p.timeframe==='M30'?'selected':''}>30 мин</option><option value="H1" ${p.timeframe==='H1'?'selected':''}>1 час</option></select></div>
+            </div>
+            <hr style="border-color:#2D2D44;margin:12px 0">
+            <!-- Торговый журнал -->
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+                <strong>📋 Торговый журнал</strong>
+            </div>
+            <div id="ofJournalSummary" class="metrics-row" style="flex-wrap:wrap;margin-bottom:12px"></div>
+            <div style="display:flex;gap:8px;margin-bottom:12px;align-items:center">
+                <select id="ofJournalFilter" class="input" style="width:120px" onchange="ofRenderJournal()">
+                    <option value="all">Все позиции</option>
+                    <option value="LONG">Лонги</option>
+                    <option value="SHORT">Шорты</option>
+                    <option value="win">Прибыльные</option>
+                    <option value="loss">Убыточные</option>
+                </select>
+                <span style="color:#9CA3AF;font-size:13px">с</span>
+                <input id="ofJournalDateFrom" class="input" type="date" style="width:130px">
+                <span style="color:#9CA3AF;font-size:13px">по</span>
+                <input id="ofJournalDateTo" class="input" type="date" style="width:130px">
+                <button class="btn btn-secondary btn-sm" onclick="ofLoadJournal()">🔄</button>
+            </div>
+            <div style="max-height:350px;overflow-y:auto;border:1px solid var(--border-color);border-radius:8px">
+                <table style="width:100%;border-collapse:collapse;font-size:13px">
+                    <thead style="position:sticky;top:0;z-index:1">
+                        <tr style="background:var(--card);border-bottom:2px solid var(--accent)">
+                            <th style="padding:8px;text-align:left">📅 Дата</th>
+                            <th style="padding:8px;text-align:left">⏰ Вход</th>
+                            <th style="padding:8px;text-align:left">⏰ Выход</th>
+                            <th style="padding:8px;text-align:center">↔️</th>
+                            <th style="padding:8px;text-align:right">💰 Вход</th>
+                            <th style="padding:8px;text-align:right">💰 Выход</th>
+                            <th style="padding:8px;text-align:right">Лоты</th>
+                            <th style="padding:8px;text-align:right">PnL</th>
+                            <th style="padding:8px;text-align:right">Кумул.</th>
+                        </tr>
+                    </thead>
+                    <tbody id="ofJournalBody" style="background:var(--bg)"><tr><td colspan="9" style="text-align:center;padding:24px;color:#9CA3AF">Нет данных</td></tr></tbody>
+                </table>
+            </div>
+            <div id="ofJournalInfo" style="font-size:12px;color:#9CA3AF;margin-top:8px"></div>
+        </div>
+    `;
+    document.body.appendChild(div);
+
+    // Start live updates
+    ofUpdatePanel();
+    if (window._ofVpTimer) clearInterval(window._ofVpTimer);
+    window._ofVpTimer = setInterval(() => ofUpdatePanel(), 2000);
+
+    // Load journal
+    setTimeout(() => ofLoadJournal(), 300);
+}
+
+function ofUpdatePanel() {
+    if (!el('ofCvd')) return;
+    const s = ofRobot;
+    if (!s) return;
+
+    if (el('ofCvd')) el('ofCvd').textContent = s.cvd ? s.cvd.toFixed(0) : '—';
+    if (el('ofDelta')) el('ofDelta').textContent = s.lastDelta !== undefined ? s.lastDelta.toFixed(0) : '—';
+    if (el('ofImb')) el('ofImb').textContent = s.obImbalance !== undefined ? (s.obImbalance * 100).toFixed(0) + '%' : '—';
+    if (el('ofPrice')) el('ofPrice').textContent = s.currentPrice > 0 ? s.currentPrice.toFixed(0) : '—';
+
+    const dirText = s.direction === 'LONG' ? 'Лонг' : s.direction === 'SHORT' ? 'Шорт' : 'Флэт';
+    const dirCls = s.direction === 'LONG' ? 'var(--green)' : s.direction === 'SHORT' ? 'var(--red)' : '';
+    if (el('ofDir')) { el('ofDir').textContent = dirText; el('ofDir').style.color = dirCls; }
+
+    if (el('ofLots')) el('ofLots').textContent = s.totalLots || 0;
+    if (el('ofAvgPrice')) el('ofAvgPrice').textContent = s.avgPrice > 0 ? s.avgPrice.toFixed(0) : '—';
+
+    if (el('ofPnlPerLot')) {
+        const perLot = s.currentPrice > 0 && s.avgPrice > 0 && s.totalLots > 0
+            ? ((s.currentPrice - s.avgPrice) * (s.direction === 'LONG' ? 1 : -1))
+            : 0;
+        el('ofPnlPerLot').textContent = s.totalLots > 0 ? perLot.toFixed(0) + '₽' : '—';
+        el('ofPnlPerLot').style.color = perLot >= 0 ? 'var(--green)' : 'var(--red)';
+    }
+
+    if (el('ofPnlUnreal')) {
+        const unreal = s.unrealizedPnL || 0;
+        el('ofPnlUnreal').textContent = unreal.toFixed(0) + '₽';
+        el('ofPnlUnreal').style.color = unreal >= 0 ? 'var(--green)' : 'var(--red)';
+    }
+
+    if (el('ofRealized')) {
+        const real = s.realizedPnL || 0;
+        el('ofRealized').textContent = real.toFixed(0) + '₽';
+        el('ofRealized').style.color = real >= 0 ? 'var(--green)' : 'var(--red)';
+    }
+
+    if (el('ofSignal')) {
+        el('ofSignal').textContent = s.signalType || '—';
+        el('ofSignal').style.color = s.signalType ? '#CE93D8' : '';
+    }
+
+    if (el('ofHold')) el('ofHold').textContent = (s.holdMinutes || 0) + ' мин';
+    if (el('ofAvgLvl')) el('ofAvgLvl').textContent = s.averageLevels || 0;
+    if (el('ofPyrLvl')) el('ofPyrLvl').textContent = s.pyramidLevels || 0;
+    if (el('ofRt')) el('ofRt').textContent = s.roundTrips || 0;
+}
+
+async function ofRobotSaveFromPanel() {
+    const body = {
+        lots: parseInt(el('editOfLots')?.value) || 1,
+        max_pyramid_levels: parseInt(el('editOfMaxPyr')?.value) || 5,
+        max_average_levels: parseInt(el('editOfMaxAvg')?.value) || 100,
+        step_average: parseInt(el('editOfStepAvg')?.value) || 50,
+        step_pyramid: parseInt(el('editOfStepPyr')?.value) || 35,
+        spread: parseInt(el('editOfSpread')?.value) || 50,
+        stop_loss_mode: el('editOfSlMode')?.value || 'rub',
+        stop_loss_value: parseFloat(el('editOfSlValue')?.value) || 7000,
+        min_profit_per_lot: parseInt(el('editOfMinProfit')?.value) || 30,
+        max_hold_minutes: parseInt(el('editOfMaxHold')?.value) || 999,
+        absorption_threshold: parseFloat(el('editOfAbsThr')?.value) || 0.35,
+        cvd_lookback: parseInt(el('editOfCvdLb')?.value) || 10,
+        ob_imbalance_threshold: parseFloat(el('editOfObImb')?.value) || 0.50,
+        signal_confirm_count: parseInt(el('editOfConfirm')?.value) || 1,
+        timeframe: el('editOfTf')?.value || 'M5',
+    };
+    try {
+        const resp = await fetch(OF_ROBOT_API + '/params', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(body)
+        });
+        const data = await resp.json();
+        addLog(nowTime(), 'INFO', '💾 OF конфиг сохранён из панели');
+    } catch(e) {
+        addLog(nowTime(), 'WARN', 'OF save failed: ' + e.message);
+    }
+}
+
+// === Order Flow Trade Journal ===
+let _ofJournalTrades = [];
+
+async function ofLoadJournal() {
+    const info = el('ofJournalInfo');
+    const body = el('ofJournalBody');
+    if (!body) return;
+
+    // Load trades from robot state file via API
+    try {
+        const resp = await fetch(OF_ROBOT_API + '/status', {signal: AbortSignal.timeout(2000)});
+        const data = await resp.json();
+        // Extract trade history from state
+        _ofJournalTrades = data.tradeHistory || data.trades || [];
+        if (!_ofJournalTrades.length) {
+            body.innerHTML = '<tr><td colspan="9" style="text-align:center;padding:24px;color:#9CA3AF">Нет закрытых сделок</td></tr>';
+            if (info) info.textContent = 'Нет данных';
+            ofRenderJournalSummary(0, 0, 0, 0);
+            return;
+        }
+        ofRenderJournal();
+    } catch(e) {
+        body.innerHTML = '<tr><td colspan="9" style="text-align:center;padding:24px;color:#9CA3AF">Робот недоступен</td></tr>';
+        if (info) info.textContent = 'Ошибка загрузки: ' + e.message;
+    }
+}
+
+function ofRenderJournal() {
+    const body = el('ofJournalBody');
+    if (!body) return;
+    const filter = el('ofJournalFilter')?.value || 'all';
+
+    let trades = [..._ofJournalTrades];
+
+    // Apply filter
+    if (filter === 'LONG') trades = trades.filter(t => t.direction === 'LONG' || t.direction > 0);
+    else if (filter === 'SHORT') trades = trades.filter(t => t.direction === 'SHORT' || t.direction < 0);
+    else if (filter === 'win') trades = trades.filter(t => t.pnl > 0);
+    else if (filter === 'loss') trades = trades.filter(t => t.pnl < 0);
+
+    if (!trades.length) {
+        body.innerHTML = '<tr><td colspan="9" style="text-align:center;padding:16px;color:#9CA3AF">Нет сделок по фильтру</td></tr>';
+        return;
+    }
+
+    let cumulative = 0;
+    const rows = trades.map(t => {
+        cumulative += (t.pnl || 0);
+        const dt = t.entryTime ? new Date(t.entryTime) : null;
+        const dateStr = dt ? dt.toLocaleDateString('ru-RU') : '—';
+        const timeIn = dt ? dt.toLocaleTimeString('ru-RU', {hour:'2-digit',minute:'2-digit'}) : '—';
+        const dtOut = t.exitTime ? new Date(t.exitTime) : null;
+        const timeOut = dtOut ? dtOut.toLocaleTimeString('ru-RU', {hour:'2-digit',minute:'2-digit'}) : '—';
+        const dir = t.direction === 'LONG' || t.direction > 0 ? '🟢 L' : '🔴 S';
+        const pnlCls = (t.pnl || 0) >= 0 ? 'green' : 'red';
+        const cumCls = cumulative >= 0 ? 'green' : 'red';
+        return `<tr style="border-bottom:1px solid var(--border-color)">
+            <td style="padding:6px">${dateStr}</td>
+            <td style="padding:6px">${timeIn}</td>
+            <td style="padding:6px">${timeOut}</td>
+            <td style="padding:6px;text-align:center">${dir}</td>
+            <td style="padding:6px;text-align:right">${(t.entryPrice||0).toFixed(0)}</td>
+            <td style="padding:6px;text-align:right">${(t.exitPrice||0).toFixed(0)}</td>
+            <td style="padding:6px;text-align:right">${t.lots||1}</td>
+            <td style="padding:6px;text-align:right" class="${pnlCls}">${(t.pnl||0) >= 0 ? '+' : ''}${(t.pnl||0).toFixed(0)}₽</td>
+            <td style="padding:6px;text-align:right" class="${cumCls}">${cumulative >= 0 ? '+' : ''}${cumulative.toFixed(0)}₽</td>
+        </tr>`;
+    });
+    body.innerHTML = rows.join('');
+
+    // Summary
+    const totalPnl = trades.reduce((s, t) => s + (t.pnl || 0), 0);
+    const wins = trades.filter(t => (t.pnl || 0) > 0).length;
+    const losses = trades.filter(t => (t.pnl || 0) < 0).length;
+    ofRenderJournalSummary(trades.length, wins, losses, totalPnl);
+}
+
+function ofRenderJournalSummary(total, wins, losses, totalPnl) {
+    const el2 = el('ofJournalSummary');
+    if (!el2) return;
+    const wr = total > 0 ? ((wins / total) * 100).toFixed(0) + '%' : '—';
+    const winPnl = _ofJournalTrades.filter(t => (t.pnl||0) > 0).reduce((s,t) => s+(t.pnl||0), 0);
+    const lossPnl = _ofJournalTrades.filter(t => (t.pnl||0) < 0).reduce((s,t) => s+(t.pnl||0), 0);
+    const avgWin = wins > 0 ? (winPnl / wins).toFixed(0) : '—';
+    const avgLoss = losses > 0 ? (lossPnl / losses).toFixed(0) : '—';
+    const cls = totalPnl >= 0 ? 'green' : 'red';
+    el2.innerHTML = `
+        <div class="metric-card"><div class="metric-label">Всего сделок</div><div style="font-size:16px;font-weight:bold">${total}</div></div>
+        <div class="metric-card"><div class="metric-label">Win Rate</div><div style="font-size:16px;font-weight:bold">${wr}</div></div>
+        <div class="metric-card"><div class="metric-label">Wins / Loss</div><div style="font-size:16px;font-weight:bold"><span class="green">${wins}</span> / <span class="red">${losses}</span></div></div>
+        <div class="metric-card"><div class="metric-label">Avg Win</div><div style="font-size:16px;font-weight:bold" class="green">${avgWin !== '—' ? '+' + avgWin + '₽' : '—'}</div></div>
+        <div class="metric-card"><div class="metric-label">Avg Loss</div><div style="font-size:16px;font-weight:bold" class="red">${avgLoss !== '—' ? avgLoss + '₽' : '—'}</div></div>
+        <div class="metric-card"><div class="metric-label">Итог PnL</div><div style="font-size:16px;font-weight:bold" class="${cls}">${totalPnl >= 0 ? '+' : ''}${totalPnl.toFixed(0)}₽</div></div>
+    `;
+}
