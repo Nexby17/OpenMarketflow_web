@@ -101,6 +101,10 @@ class OrderFlowStrategy:
         self._trade_history: list[dict] = []
         self._position_entry_price: float = 0.0  # For tracking close_all entry
 
+        # Last bar metrics for UI
+        self._last_delta: float = 0.0
+        self._last_ob_imbalance: float = 0.0
+
         # Daily PnL tracking
         self._daily_pnl: float = 0.0
         self._daily_pnl_date: Optional[str] = None
@@ -252,6 +256,7 @@ class OrderFlowStrategy:
 
     def on_bar_close(self, metrics: BarMetrics, bar_high: float, bar_low: float, bar_close: float):
         """Called when a bar closes. Feed metrics into signal engine."""
+        self._last_delta = metrics.delta
         self.signals.add_bar(metrics, bar_high, bar_low, bar_close)
 
     def process_tick(self, current_price: float, now: datetime) -> list[dict]:
@@ -328,6 +333,7 @@ class OrderFlowStrategy:
 
         # Get OB metrics
         ob = self.ob_tracker.get_metrics(price)
+        self._last_ob_imbalance = ob.imbalance
 
         # OB filter
         if not self._ob_filter_passes(ob):
@@ -496,6 +502,18 @@ class OrderFlowStrategy:
         self._total_lots -= last.lots
         self._lot_queue.pop()  # LIFO — remove from end
 
+        # Record partial TP in trade history
+        self._trade_history.append({
+            'entryPrice': last.price,
+            'exitPrice': price,
+            'direction': 'LONG' if last.side == LONG else 'SHORT',
+            'lots': last.lots,
+            'pnl': realized,
+            'entryTime': self._entry_time.isoformat() if self._entry_time else None,
+            'exitTime': datetime.now().isoformat(),
+            'reason': 'partial_tp',
+        })
+
         # Update avg from remaining queue
         if self._lot_queue:
             total_cost = sum(e.price * e.lots for e in self._lot_queue)
@@ -662,6 +680,8 @@ class OrderFlowStrategy:
             "entryTime": self._entry_time.isoformat() if self._entry_time else "",
             "signalType": self._signal_type,
             "tradeHistory": self._trade_history[-200:],
+            "lastDelta": self._last_delta,
+            "obImbalance": self._last_ob_imbalance,
             "cvd": self.trades.cvd,
             "barsReady": self.signals.bars_ready,
             "entryLocked": self._is_entry_locked(),
