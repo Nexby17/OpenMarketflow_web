@@ -16,6 +16,10 @@ from orderflow_engine import (
     OFSignal, OBMetrics, BarMetrics,
 )
 
+from datetime import datetime, timezone, timedelta
+
+MSK = timezone(timedelta(hours=3))
+
 log = logging.getLogger("strategy_of")
 
 MSK = timezone(timedelta(hours=3))
@@ -510,7 +514,7 @@ class OrderFlowStrategy:
             'lots': last.lots,
             'pnl': realized,
             'entryTime': self._entry_time.isoformat() if self._entry_time else None,
-            'exitTime': datetime.now().isoformat(),
+            'exitTime': datetime.now(MSK).isoformat(),
             'reason': 'partial_tp',
         })
 
@@ -556,7 +560,7 @@ class OrderFlowStrategy:
             'lots': qty,
             'pnl': realized,
             'entryTime': self._entry_time.isoformat() if self._entry_time else None,
-            'exitTime': datetime.now().isoformat(),
+            'exitTime': datetime.now(MSK).isoformat(),
             'reason': reason,
         })
 

@@ -11,7 +11,7 @@
   "max_average_levels": 100,
   "max_hold_minutes": 1001,
   "max_pyramid_levels": 5,
-  "min_profit_per_lot": 30,
+  "min_profit_per_lot": 35,
   "ob_imbalance_threshold": 0.5,
   "ob_min_lots": 20,
   "ob_scan_radius": 50,

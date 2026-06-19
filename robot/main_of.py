@@ -340,7 +340,7 @@ def main_loop():
                 time.sleep(0.5)
                 continue
 
-            now = datetime.now(timezone.utc)
+            now = datetime.now(MSK)
 
             # Process tick
             actions = strategy.process_tick(price, now)
