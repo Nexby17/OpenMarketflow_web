@@ -27,6 +27,16 @@ from FinamPy import FinamPy
 
 log = logging.getLogger("collector")
 
+
+def _to_float(val) -> float:
+    """Safely convert Decimal/string/None to float."""
+    if val is None or val == "":
+        return 0.0
+    if hasattr(val, "value"):
+        s = val.value
+        return float(s) if s else 0.0
+    return float(val)
+
 MSK = timezone(timedelta(hours=3))
 
 # --- Args ---
@@ -132,8 +142,8 @@ def _on_latest_trades(event):
         writer = _get_trade_writer(day)
         with _lock:
             for trade in event.trades:
-                price = float(trade.price.value) if hasattr(trade.price, "value") else float(trade.price)
-                size = int(float(trade.size.value)) if hasattr(trade.size, "value") else int(float(trade.size))
+                price = _to_float(trade.price)
+                size = int(_to_float(trade.size))
                 side = int(trade.side)  # 1=BUY, 2=SELL
 
                 ts = time.time()
@@ -156,9 +166,9 @@ def _on_order_book(event):
         with _lock:
             for ob in event.order_book:
                 for r in ob.rows:
-                    price = float(r.price.value) if hasattr(r.price, "value") else float(r.price)
-                    buy = float(r.buy_size.value) if hasattr(r.buy_size, "value") else (float(r.buy_size) if r.buy_size else 0)
-                    sell = float(r.sell_size.value) if hasattr(r.sell_size, "value") else (float(r.sell_size) if r.sell_size else 0)
+                    price = _to_float(r.price)
+                    buy = _to_float(r.buy_size)
+                    sell = _to_float(r.sell_size)
                     action = int(r.action)
 
                     # Write bid rows and ask rows

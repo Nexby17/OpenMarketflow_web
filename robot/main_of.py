@@ -44,7 +44,7 @@ logging.basicConfig(
 )
 
 # --- Config ---
-SYMBOL = getattr(config, "SYMBOL", "SiU6")
+SYMBOL = getattr(config, "SYMBOL", "SiU6@RTSX")
 TICKER = getattr(config, "TICKER", "SiU6")
 ACCOUNT = getattr(config, "ACCOUNT_ID", os.environ.get("FINAM_ACCOUNT", "1225953"))
 DP_URL = getattr(config, "DP_URL", "http://localhost:5060")
@@ -228,9 +228,9 @@ def _on_order_book(event):
         rows = []
         for ob in event.order_book:
             for r in ob.rows:
-                price = float(r.price.value) if hasattr(r.price, "value") else float(r.price)
-                buy = float(r.buy_size.value) if hasattr(r.buy_size, "value") else (float(r.buy_size) if r.buy_size else 0)
-                sell = float(r.sell_size.value) if hasattr(r.sell_size, "value") else (float(r.sell_size) if r.sell_size else 0)
+                price = _to_float(r.price)
+                buy = _to_float(r.buy_size)
+                sell = _to_float(r.sell_size)
                 action = int(r.action)
                 rows.append((price, int(buy), int(sell), action))
 
@@ -240,20 +240,20 @@ def _on_order_book(event):
         log.error(f"OB callback error: {e}")
 
 
-def _on_new_bar(event):
+def _on_new_bar(event, finam_timeframe=None):
     """Callback from SubscribeBars — bar closed.
-    Note: single argument (event) — FinamPy passes only event to the callback.
+    Note: FinamPy passes (event, finam_timeframe) — accept both.
     """
     try:
         # Calculate bar duration from timeframe
         bar_secs = TF_SECONDS.get(params.timeframe, 300)
 
         for bar in event.bars:
-            o = float(bar.open.value) if hasattr(bar.open, "value") else float(bar.open)
-            h = float(bar.high.value) if hasattr(bar.high, "value") else float(bar.high)
-            l = float(bar.low.value) if hasattr(bar.low, "value") else float(bar.low)
-            c = float(bar.close.value) if hasattr(bar.close, "value") else float(bar.close)
-            v = float(bar.volume.value) if hasattr(bar.volume, "value") else float(bar.volume)
+            o = _to_float(bar.open)
+            h = _to_float(bar.high)
+            l = _to_float(bar.low)
+            c = _to_float(bar.close)
+            v = _to_float(bar.volume)
 
             ts = time.time()
             if hasattr(bar.timestamp, "seconds"):
@@ -276,8 +276,8 @@ def _on_quote(event):
     """Callback from SubscribeQuote — update current price."""
     try:
         for q in event.quote:
-            bid = float(q.bid) if q.bid else 0
-            ask = float(q.ask) if q.ask else 0
+            bid = _to_float(q.bid)
+            ask = _to_float(q.ask)
             last = (bid + ask) / 2 if bid > 0 and ask > 0 else (bid or ask)
 
             if last > 0:
@@ -288,6 +288,16 @@ def _on_quote(event):
 
 
 # ========== Main loop ==========
+
+def _to_float(val) -> float:
+    """Safely convert Decimal/string/None to float."""
+    if val is None or val == "":
+        return 0.0
+    if hasattr(val, "value"):
+        s = val.value
+        return float(s) if s else 0.0
+    return float(val)
+
 
 def _set_current_price(price: float):
     """Thread-safe price update."""

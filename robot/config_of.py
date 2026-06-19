@@ -2,7 +2,7 @@
 import os
 
 # === Broker ===
-SYMBOL = os.environ.get("ROBOT_SYMBOL", "SiU6")
+SYMBOL = os.environ.get("ROBOT_SYMBOL", "SiU6@RTSX")
 TICKER = os.environ.get("ROBOT_TICKER", "SiU6")
 ACCOUNT_ID = os.environ.get("FINAM_ACCOUNT", "1225953")
 DP_URL = os.environ.get("DP_URL", "http://localhost:5060")
