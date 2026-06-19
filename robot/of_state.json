@@ -1,19 +1,30 @@
 {
-  "dir": 0,
-  "entryPrice": 0.0,
-  "avgPrice": 0.0,
-  "totalLots": 0,
-  "averageLevels": 0,
+  "dir": -1,
+  "entryPrice": 75051.0,
+  "avgPrice": 75079.25,
+  "totalLots": 2,
+  "averageLevels": 3,
   "pyramidLevels": 0,
-  "lastAveragePrice": 0.0,
-  "lastPyramidPrice": 0.0,
-  "lotQueue": [],
-  "roundTrips": 4,
-  "realizedPnL": 154.80000000000004,
-  "dailyPnL": 154.80000000000004,
+  "lastAveragePrice": 75190.5,
+  "lastPyramidPrice": 75051.0,
+  "lotQueue": [
+    {
+      "price": 75051.0,
+      "side": -1,
+      "lots": 1
+    },
+    {
+      "price": 75107.5,
+      "side": -1,
+      "lots": 1
+    }
+  ],
+  "roundTrips": 6,
+  "realizedPnL": 234.10000000000002,
+  "dailyPnL": 234.10000000000002,
   "dailyPnLDate": "2026-06-19",
-  "entryTime": "",
-  "signalType": "",
+  "entryTime": "2026-06-19T16:17:36.187562+03:00",
+  "signalType": "ob_imbalance",
   "tradeHistory": [
     {
       "entryPrice": 74986.75,
@@ -44,6 +55,46 @@
       "entryTime": "2026-06-19T12:53:01.498330+00:00",
       "exitTime": "2026-06-19T13:02:00.441050",
       "reason": "reverse_signal"
+    },
+    {
+      "entryPrice": 74999.5,
+      "exitPrice": 74964.0,
+      "direction": "SHORT",
+      "lots": 1,
+      "pnl": 33.7,
+      "entryTime": "2026-06-19T16:06:00.469243+03:00",
+      "exitTime": "2026-06-19T16:09:03.184174+03:00",
+      "reason": "tp_full"
+    },
+    {
+      "entryPrice": 74959.0,
+      "exitPrice": 74986.5,
+      "direction": "SHORT",
+      "lots": 1,
+      "pnl": -29.3,
+      "entryTime": "2026-06-19T16:11:41.320899+03:00",
+      "exitTime": "2026-06-19T16:16:03.121076+03:00",
+      "reason": "reverse_signal"
+    },
+    {
+      "entryPrice": 75190.5,
+      "exitPrice": 75152.5,
+      "direction": "SHORT",
+      "lots": 1,
+      "pnl": 36.2,
+      "entryTime": "2026-06-19T16:17:36.187562+03:00",
+      "exitTime": "2026-06-19T16:20:41.407176+03:00",
+      "reason": "partial_tp"
+    },
+    {
+      "entryPrice": 75148.5,
+      "exitPrice": 75108.0,
+      "direction": "SHORT",
+      "lots": 1,
+      "pnl": 38.7,
+      "entryTime": "2026-06-19T16:17:36.187562+03:00",
+      "exitTime": "2026-06-19T16:21:28.460362+03:00",
+      "reason": "partial_tp"
     }
   ],
   "mode": "running"

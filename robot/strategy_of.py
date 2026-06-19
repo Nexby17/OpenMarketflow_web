@@ -506,6 +506,12 @@ class OrderFlowStrategy:
         self._total_lots -= last.lots
         self._lot_queue.pop()  # LIFO — remove from end
 
+        # Reset _last_average_price to the new last lot (or avg) so averaging continues correctly
+        if self._lot_queue:
+            self._last_average_price = self._lot_queue[-1].price
+        else:
+            self._last_average_price = self._avg_price
+
         # Record partial TP in trade history
         self._trade_history.append({
             'entryPrice': last.price,
