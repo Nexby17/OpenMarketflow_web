@@ -274,7 +274,8 @@
             <div class="metric-card" style="min-width:100px"><div class="metric-label">Absorption</div><input id="cfgOfAbsThr" class="input" type="number" step="0.01" value="0.35" style="width:60px"></div>
             <div class="metric-card" style="min-width:80px"><div class="metric-label">CVD Lookback</div><input id="cfgOfCvdLb" class="input" type="number" step="1" value="10" style="width:50px"></div>
             <div class="metric-card" style="min-width:100px"><div class="metric-label">OB Imbalance</div><input id="cfgOfObImb" class="input" type="number" step="0.01" value="0.50" style="width:60px"></div>
-            <div class="metric-card" style="min-width:80px"><div class="metric-label">Confirm</div><input id="cfgOfConfirm" class="input" type="number" step="1" value="1" min="1" max="3" style="width:50px"></div>
+            <div class="metric-card" style="min-width:80px"><div class="metric-label">Confirm In</div><input id="cfgOfConfirm" class="input" type="number" step="1" value="1" min="1" max="3" style="width:50px"></div>
+            <div class="metric-card" style="min-width:80px"><div class="metric-label">Confirm Out</div><input id="cfgOfConfirmOut" class="input" type="number" step="1" value="1" min="1" max="3" style="width:50px"></div>
             <div class="metric-card" style="min-width:90px"><div class="metric-label">Timeframe</div><select id="cfgOfTf" class="input" style="width:70px"><option value="M1">1 мин</option><option value="M5" selected>5 мин</option><option value="M15">15 мин</option><option value="M30">30 мин</option><option value="H1">1 час</option><option value="H4">4 часа</option><option value="D">День</option></select></div>
             <button class="btn btn-success btn-sm" onclick="ofRobotSaveConfig()">💾 Сохранить</button>
             <button class="btn btn-primary btn-sm" onclick="ofRobotCreate()">🤖 Создать робота</button>
@@ -413,6 +414,6 @@
         </div>
     </div>
 
-    <script src="/js/app.js?v=66"></script>
+    <script src="/js/app.js?v=67"></script>
 </body>
 </html>

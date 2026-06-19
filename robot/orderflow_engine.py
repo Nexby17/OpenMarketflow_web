@@ -380,22 +380,24 @@ class SignalEngine:
 
         return None
 
-    def check_reverse_signal(self, ob: OBMetrics, position_dir: int, current_price: float) -> bool:
-        """Check if a signal fired in the OPPOSITE direction of our position."""
+    def check_reverse_signal(self, ob: OBMetrics, position_dir: int, current_price: float, confirm_count: int = 1) -> bool:
+        """Check if enough signals fired in the OPPOSITE direction of our position."""
+        reverse_count = 0
+
         # Check absorption (uses last bar)
         sig_a = self.check_absorption(current_price)
         if sig_a and sig_a.direction != position_dir:
-            return True
+            reverse_count += 1
 
         sig_b = self.check_cvd_divergence(current_price)
         if sig_b and sig_b.direction != position_dir:
-            return True
+            reverse_count += 1
 
         sig_c = self.check_ob_imbalance(ob, current_price)
         if sig_c and sig_c.direction != position_dir:
-            return True
+            reverse_count += 1
 
-        return False
+        return reverse_count >= confirm_count
 
     def generate_signals(self, ob: OBMetrics, current_price: float) -> list[OFSignal]:
         """Generate all matching signals at current moment."""

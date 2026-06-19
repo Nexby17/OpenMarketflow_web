@@ -47,7 +47,8 @@ class OFParams:
     absorption_threshold: float = 0.35
     cvd_lookback: int = 10
     ob_imbalance_threshold: float = 0.50
-    signal_confirm_count: int = 1
+    signal_confirm_count: int = 1     # signals needed for ENTRY (1-3)
+    signal_confirm_exit: int = 1      # signals needed for EXIT (1-3)
     vp_filter: bool = False       # Volume Profile filter (off by default)
     atr_period: int = 14
     timeframe: str = "M5"
@@ -392,7 +393,7 @@ class OrderFlowStrategy:
 
         # b) Reverse signal
         ob = self.ob_tracker.get_metrics(price)
-        if self.signals.check_reverse_signal(ob, self._dir, price):
+        if self.signals.check_reverse_signal(ob, self._dir, price, self.p.signal_confirm_exit):
             return self._close_all(price, "reverse_signal")
 
         # c) Full TP

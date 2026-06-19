@@ -3,7 +3,7 @@
   "entryPrice": 75051.0,
   "avgPrice": 75132.75,
   "totalLots": 6,
-  "averageLevels": 10,
+  "averageLevels": 12,
   "pyramidLevels": 0,
   "lastAveragePrice": 75215.0,
   "lastPyramidPrice": 75051.0,
@@ -40,8 +40,8 @@
     }
   ],
   "roundTrips": 6,
-  "realizedPnL": 337.7,
-  "dailyPnL": 337.7,
+  "realizedPnL": 407.59999999999997,
+  "dailyPnL": 407.59999999999997,
   "dailyPnLDate": "2026-06-19",
   "entryTime": "2026-06-19T16:17:36.187562+03:00",
   "signalType": "ob_imbalance",
@@ -144,6 +144,26 @@
       "pnl": 35.7,
       "entryTime": "2026-06-19T16:17:36.187562+03:00",
       "exitTime": "2026-06-19T16:42:23.087360+03:00",
+      "reason": "partial_tp"
+    },
+    {
+      "entryPrice": 75275.5,
+      "exitPrice": 75239.5,
+      "direction": "SHORT",
+      "lots": 1,
+      "pnl": 34.2,
+      "entryTime": "2026-06-19T16:17:36.187562+03:00",
+      "exitTime": "2026-06-19T17:01:37.783492+03:00",
+      "reason": "partial_tp"
+    },
+    {
+      "entryPrice": 75245.5,
+      "exitPrice": 75208.0,
+      "direction": "SHORT",
+      "lots": 1,
+      "pnl": 35.7,
+      "entryTime": "2026-06-19T16:17:36.187562+03:00",
+      "exitTime": "2026-06-19T17:01:55.305415+03:00",
       "reason": "partial_tp"
     }
   ],

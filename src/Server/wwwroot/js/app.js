@@ -4629,6 +4629,7 @@ async function ofRobotLoadConfig() {
     if (el('cfgOfCvdLb')) el('cfgOfCvdLb').value = cfg.cvd_lookback;
     if (el('cfgOfObImb')) el('cfgOfObImb').value = cfg.ob_imbalance_threshold;
     if (el('cfgOfConfirm')) el('cfgOfConfirm').value = cfg.signal_confirm_count;
+    if (el('cfgOfConfirmOut')) el('cfgOfConfirmOut').value = cfg.signal_confirm_exit || 1;
     if (el('cfgOfTf')) el('cfgOfTf').value = cfg.timeframe;
 }
 
@@ -4648,6 +4649,7 @@ async function ofRobotSaveConfig() {
         cvd_lookback: parseInt(el('cfgOfCvdLb')?.value) || 10,
         ob_imbalance_threshold: parseFloat(el('cfgOfObImb')?.value) || 0.50,
         signal_confirm_count: parseInt(el('cfgOfConfirm')?.value) || 1,
+        signal_confirm_exit: parseInt(el('cfgOfConfirmOut')?.value) || 1,
         timeframe: el('cfgOfTf')?.value || 'M5',
     };
     try {
@@ -4743,7 +4745,8 @@ function ofRobotEditPanel() {
                 <div class="metric-card"><div class="metric-label">Absorption</div><input id="editOfAbsThr" class="input" type="number" step="0.01" value="${p.absorption_threshold||0.35}" style="width:70px"></div>
                 <div class="metric-card"><div class="metric-label">CVD Lookback</div><input id="editOfCvdLb" class="input" type="number" value="${p.cvd_lookback||10}" style="width:60px"></div>
                 <div class="metric-card"><div class="metric-label">OB Imbalance</div><input id="editOfObImb" class="input" type="number" step="0.01" value="${p.ob_imbalance_threshold||0.50}" style="width:60px"></div>
-                <div class="metric-card"><div class="metric-label">Confirm Count</div><input id="editOfConfirm" class="input" type="number" min="1" max="3" value="${p.signal_confirm_count||1}" style="width:50px"></div>
+                <div class="metric-card"><div class="metric-label">Confirm In</div><input id="editOfConfirm" class="input" type="number" min="1" max="3" value="${p.signal_confirm_count||1}" style="width:50px"></div>
+                <div class="metric-card"><div class="metric-label">Confirm Out</div><input id="editOfConfirmOut" class="input" type="number" min="1" max="3" value="${p.signal_confirm_exit||1}" style="width:50px"></div>
                 <div class="metric-card"><div class="metric-label">Timeframe</div><select id="editOfTf" class="input" style="width:70px"><option value="M1" ${p.timeframe==='M1'?'selected':''}>1 мин</option><option value="M5" ${(p.timeframe||'M5')==='M5'?'selected':''}>5 мин</option><option value="M15" ${p.timeframe==='M15'?'selected':''}>15 мин</option><option value="M30" ${p.timeframe==='M30'?'selected':''}>30 мин</option><option value="H1" ${p.timeframe==='H1'?'selected':''}>1 час</option></select></div>
             </div>
             <hr style="border-color:#2D2D44;margin:12px 0">
@@ -4862,6 +4865,7 @@ async function ofRobotSaveFromPanel() {
         cvd_lookback: parseInt(el('editOfCvdLb')?.value) || 10,
         ob_imbalance_threshold: parseFloat(el('editOfObImb')?.value) || 0.50,
         signal_confirm_count: parseInt(el('editOfConfirm')?.value) || 1,
+        signal_confirm_exit: parseInt(el('editOfConfirmOut')?.value) || 1,
         timeframe: el('editOfTf')?.value || 'M5',
     };
     try {
