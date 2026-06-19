@@ -49,6 +49,7 @@ TICKER = getattr(config, "TICKER", "SiU6")
 ACCOUNT = getattr(config, "ACCOUNT_ID", os.environ.get("FINAM_ACCOUNT", "1225953"))
 DP_URL = getattr(config, "DP_URL", "http://localhost:5060")
 PORT = args.port
+PAPER_MODE = args.paper
 
 # --- Timeframe → seconds mapping for bar_start_ts ---
 TF_SECONDS = {
@@ -354,11 +355,20 @@ def main_loop():
 
 
 def _execute_action(action: dict):
-    """Execute a strategy action via OrderManager."""
+    """Execute a strategy action via OrderManager (or log only in paper mode)."""
     act = action.get("action")
     side_str = action.get("side", "buy")
     qty = action.get("qty", 1)
     tag = f"of_{act}"
+
+    if PAPER_MODE:
+        if act == "partial_tp":
+            log.info(f"📄 PAPER {act}: {side_str} {qty} realized={action.get('realized', 0):.0f}₽")
+        elif act == "close_all":
+            log.info(f"📄 PAPER {act}: {side_str} {qty} reason={action.get('reason')} realized={action.get('realized', 0):.0f}₽")
+        else:
+            log.info(f"📄 PAPER {act}: {side_str} {qty} @ {action.get('price', 0):.0f}")
+        return
 
     if act == "close_all":
         # First cancel all orders
@@ -417,6 +427,7 @@ class APIHandler(BaseHTTPRequestHandler):
             status["symbol"] = SYMBOL
             status["currentPrice"] = price
             status["params"] = {k: getattr(params, k) for k in dir(params) if not k.startswith("_") and not callable(getattr(params, k))}
+            status["paper"] = PAPER_MODE
             self._json(200, status)
 
         elif path == "/health":
@@ -438,33 +449,36 @@ class APIHandler(BaseHTTPRequestHandler):
         elif path == "/stop":
             # Stop = cancel orders + close position
             _mode = "stopped"
-            active = orders.get_active_orders(symbol=SYMBOL)
-            if active:
-                for o in active:
-                    oid = o.get("order_id", "") if isinstance(o, dict) else str(o)
-                    orders.cancel(oid)
+            if not PAPER_MODE:
+                active = orders.get_active_orders(symbol=SYMBOL)
+                if active:
+                    for o in active:
+                        oid = o.get("order_id", "") if isinstance(o, dict) else str(o)
+                        orders.cancel(oid)
             # Close position if any
             if strategy.in_position:
                 with _price_lock:
                     price = _current_price
                 if price > 0:
-                    side = SELL if strategy.direction == LONG else BUY
-                    orders.place_market(side, strategy.total_lots, tag="of_stop")
+                    if not PAPER_MODE:
+                        side = SELL if strategy.direction == LONG else BUY
+                        orders.place_market(side, strategy.total_lots, tag="of_stop")
                     strategy._close_all(price, "manual_stop")
             strategy._force_unlock()  # Reset entry lock after manual stop
             save_state()
-            self._json(200, {"ok": True, "mode": _mode})
+            self._json(200, {"ok": True, "mode": _mode, "paper": PAPER_MODE})
 
         elif path == "/pause":
             # Pause = cancel orders, keep position
             _mode = "paused"
-            active = orders.get_active_orders(symbol=SYMBOL)
-            if active:
-                for o in active:
-                    oid = o.get("order_id", "") if isinstance(o, dict) else str(o)
-                    orders.cancel(oid)
+            if not PAPER_MODE:
+                active = orders.get_active_orders(symbol=SYMBOL)
+                if active:
+                    for o in active:
+                        oid = o.get("order_id", "") if isinstance(o, dict) else str(o)
+                        orders.cancel(oid)
             save_state()
-            self._json(200, {"ok": True, "mode": _mode})
+            self._json(200, {"ok": True, "mode": _mode, "paper": PAPER_MODE})
 
         elif path == "/params":
             # Update parameters
