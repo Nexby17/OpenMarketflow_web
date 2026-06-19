@@ -258,6 +258,28 @@
             <button class="btn btn-primary btn-sm" onclick="pythonRobotCreate()">🤖 Создать робота</button>
         </div>
 
+        <!-- Order Flow — Python Robot -->
+        <div class="strategy-item" style="padding:16px; gap:12px; align-items:center; flex-wrap:wrap; margin-top:12px; border-top:1px solid var(--border-color)">
+            <strong style="min-width:100px">📊 Order Flow</strong> <span class="badge" style="background:#9C27B0">PYTHON</span>
+            <div class="metric-card" style="min-width:100px"><div class="metric-label">Lots</div><input id="cfgOfLots" class="input" type="number" step="1" value="1" style="width:60px"></div>
+            <div class="metric-card" style="min-width:100px"><div class="metric-label">Max Pyramid</div><input id="cfgOfMaxPyr" class="input" type="number" step="1" value="5" style="width:60px"></div>
+            <div class="metric-card" style="min-width:100px"><div class="metric-label">Max Average</div><input id="cfgOfMaxAvg" class="input" type="number" step="1" value="100" style="width:60px"></div>
+            <div class="metric-card" style="min-width:100px"><div class="metric-label">Step Avg (пт)</div><input id="cfgOfStepAvg" class="input" type="number" step="1" value="50" style="width:60px"></div>
+            <div class="metric-card" style="min-width:100px"><div class="metric-label">Step Pyr (пт)</div><input id="cfgOfStepPyr" class="input" type="number" step="1" value="35" style="width:60px"></div>
+            <div class="metric-card" style="min-width:100px"><div class="metric-label">Spread (пт)</div><input id="cfgOfSpread" class="input" type="number" step="1" value="50" style="width:60px"></div>
+            <div class="metric-card" style="min-width:100px"><div class="metric-label">SL Mode</div><select id="cfgOfSlMode" class="input" style="width:70px"><option value="rub">₽</option><option value="pct">%</option><option value="pts">пт</option></select></div>
+            <div class="metric-card" style="min-width:100px"><div class="metric-label">SL Value</div><input id="cfgOfSlValue" class="input" type="number" step="1" value="7000" style="width:70px"></div>
+            <div class="metric-card" style="min-width:100px"><div class="metric-label">Min Profit/Lot</div><input id="cfgOfMinProfit" class="input" type="number" step="1" value="30" style="width:60px"></div>
+            <div class="metric-card" style="min-width:100px"><div class="metric-label">Max Hold (мин)</div><input id="cfgOfMaxHold" class="input" type="number" step="1" value="999" style="width:70px"></div>
+            <div class="metric-card" style="min-width:100px"><div class="metric-label">Absorption</div><input id="cfgOfAbsThr" class="input" type="number" step="0.01" value="0.35" style="width:60px"></div>
+            <div class="metric-card" style="min-width:80px"><div class="metric-label">CVD Lookback</div><input id="cfgOfCvdLb" class="input" type="number" step="1" value="10" style="width:50px"></div>
+            <div class="metric-card" style="min-width:100px"><div class="metric-label">OB Imbalance</div><input id="cfgOfObImb" class="input" type="number" step="0.01" value="0.50" style="width:60px"></div>
+            <div class="metric-card" style="min-width:80px"><div class="metric-label">Confirm</div><input id="cfgOfConfirm" class="input" type="number" step="1" value="1" min="1" max="3" style="width:50px"></div>
+            <div class="metric-card" style="min-width:90px"><div class="metric-label">Timeframe</div><select id="cfgOfTf" class="input" style="width:70px"><option value="M1">1 мин</option><option value="M5" selected>5 мин</option><option value="M15">15 мин</option><option value="M30">30 мин</option><option value="H1">1 час</option><option value="H4">4 часа</option><option value="D">День</option></select></div>
+            <button class="btn btn-success btn-sm" onclick="ofRobotSaveConfig()">💾 Сохранить</button>
+            <button class="btn btn-primary btn-sm" onclick="ofRobotCreate()">🤖 Создать робота</button>
+        </div>
+
     </div>
 
     <!-- ==================== АРБИТРАЖ ==================== -->
@@ -391,6 +413,6 @@
         </div>
     </div>
 
-    <script src="/js/app.js?v=64"></script>
+    <script src="/js/app.js?v=65"></script>
 </body>
 </html>

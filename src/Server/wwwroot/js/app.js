@@ -2283,7 +2283,52 @@ async function renderRobots() {
         </tr>`;
     }
 
-    const allRows = [...serverStrategies, ...localRows, pythonRobotRow];
+    // Order Flow Robot row
+    let ofRobotRow = '';
+    if (ofRobot) {
+        const s = ofRobot;
+        const mode = s.mode || 'stopped';
+        const modeText = mode === 'running' ? '🟢 Работает' : mode === 'paused' ? '🟡 Пауза' : '🔴 Остановлен';
+        const modeCls = mode === 'running' ? 'green' : mode === 'paused' ? 'yellow' : 'red';
+        const dirText = s.direction === 'LONG' ? 'Лонг' : s.direction === 'SHORT' ? 'Шорт' : 'Флэт';
+        const dirCls = s.direction === 'LONG' ? 'green' : s.direction === 'SHORT' ? 'red' : '';
+        const pnlCls = v => v >= 0 ? 'green' : 'red';
+        const pnl = s.realizedPnL || 0;
+        const paper = s.paper ? ' <span class="badge" style="background:#ff9800">PAPER</span>' : '';
+        ofRobotRow = `<tr style="cursor:pointer">
+            <td>SiU6</td>
+            <td><strong>Order Flow</strong> <span class="badge" style="background:#9C27B0">PYTHON</span>${paper}</td>
+            <td>1225953</td>
+            <td class="${dirCls}">${dirText}${s.avgPrice > 0 ? ' @ ' + s.avgPrice.toFixed(0) : ''}</td>
+            <td>—</td>
+            <td class="${pnlCls(pnl)}">${pnl >= 0 ? '+' : ''}${pnl.toFixed(0)} ₽</td>
+            <td>${s.totalLots || 0}</td>
+            <td>—</td>
+            <td>
+                <button class="btn btn-success btn-sm" onclick="ofRobotApi('start')" ${mode==='running'?'disabled':''}>▶</button>
+                <button class="btn btn-warning btn-sm" onclick="ofRobotApi('pause')" ${mode!=='running'?'disabled':''}>⏸</button>
+                <button class="btn btn-danger btn-sm" onclick="ofRobotApi('stop')" ${mode==='stopped'?'disabled':''}>⏹</button>
+            </td>
+            <td class="${modeCls}">${modeText}</td>
+        </tr>`;
+    } else {
+        ofRobotRow = `<tr style="cursor:pointer">
+            <td>SiU6</td>
+            <td><strong>Order Flow</strong> <span class="badge" style="background:#9C27B0">PYTHON</span></td>
+            <td>1225953</td>
+            <td>—</td>
+            <td>—</td>
+            <td>—</td>
+            <td>0</td>
+            <td>—</td>
+            <td>
+                <button class="btn btn-success btn-sm" onclick="ofRobotApi('start')">▶</button>
+            </td>
+            <td class="red">🔴 Не запущен</td>
+        </tr>`;
+    }
+
+    const allRows = [...serverStrategies, ...localRows, pythonRobotRow, ofRobotRow];
     if (!allRows.filter(r=>r).length) { tbody.innerHTML = ''; if (noMsg) noMsg.style.display = 'block'; return; }
     if (noMsg) noMsg.style.display = 'none';
     tbody.innerHTML = allRows.join('');
@@ -4539,3 +4584,108 @@ function pythonRobotCreate() {
     el('monitoring')?.classList.add('active');
     addLog(nowTime(), 'INFO', '🤖 Робот создан: ' + ticker + ' step=' + params.step_base + ' spread=' + params.spread_base + ' port=' + port);
 }
+
+// === ORDER FLOW ROBOT (порт 5080) ===
+const OF_ROBOT_API = 'http://' + window.location.hostname + ':5080';
+let ofRobot = null;
+
+async function ofRobotPoll() {
+    try {
+        const resp = await fetch(OF_ROBOT_API + '/status', {signal: AbortSignal.timeout(2000)});
+        ofRobot = await resp.json();
+    } catch(e) {
+        ofRobot = null;
+    }
+}
+
+async function ofRobotLoadConfig() {
+    const defaults = {
+        lots: 1, max_pyramid_levels: 5, max_average_levels: 100,
+        step_average: 50, step_pyramid: 35, spread: 50,
+        stop_loss_mode: 'rub', stop_loss_value: 7000,
+        min_profit_per_lot: 30, max_hold_minutes: 999,
+        absorption_threshold: 0.35, cvd_lookback: 10,
+        ob_imbalance_threshold: 0.50, signal_confirm_count: 1,
+        timeframe: 'M5'
+    };
+    let cfg = defaults;
+    try {
+        const resp = await fetch(OF_ROBOT_API + '/status', {signal: AbortSignal.timeout(2000)});
+        const data = await resp.json();
+        if (data && data.params) cfg = {...defaults, ...data.params};
+    } catch(e) { /* use defaults */ }
+
+    if (el('cfgOfLots')) el('cfgOfLots').value = cfg.lots;
+    if (el('cfgOfMaxPyr')) el('cfgOfMaxPyr').value = cfg.max_pyramid_levels;
+    if (el('cfgOfMaxAvg')) el('cfgOfMaxAvg').value = cfg.max_average_levels;
+    if (el('cfgOfStepAvg')) el('cfgOfStepAvg').value = cfg.step_average;
+    if (el('cfgOfStepPyr')) el('cfgOfStepPyr').value = cfg.step_pyramid;
+    if (el('cfgOfSpread')) el('cfgOfSpread').value = cfg.spread;
+    if (el('cfgOfSlMode')) el('cfgOfSlMode').value = cfg.stop_loss_mode;
+    if (el('cfgOfSlValue')) el('cfgOfSlValue').value = cfg.stop_loss_value;
+    if (el('cfgOfMinProfit')) el('cfgOfMinProfit').value = cfg.min_profit_per_lot;
+    if (el('cfgOfMaxHold')) el('cfgOfMaxHold').value = cfg.max_hold_minutes;
+    if (el('cfgOfAbsThr')) el('cfgOfAbsThr').value = cfg.absorption_threshold;
+    if (el('cfgOfCvdLb')) el('cfgOfCvdLb').value = cfg.cvd_lookback;
+    if (el('cfgOfObImb')) el('cfgOfObImb').value = cfg.ob_imbalance_threshold;
+    if (el('cfgOfConfirm')) el('cfgOfConfirm').value = cfg.signal_confirm_count;
+    if (el('cfgOfTf')) el('cfgOfTf').value = cfg.timeframe;
+}
+
+async function ofRobotSaveConfig() {
+    const body = {
+        lots: parseInt(el('cfgOfLots')?.value) || 1,
+        max_pyramid_levels: parseInt(el('cfgOfMaxPyr')?.value) || 5,
+        max_average_levels: parseInt(el('cfgOfMaxAvg')?.value) || 100,
+        step_average: parseInt(el('cfgOfStepAvg')?.value) || 50,
+        step_pyramid: parseInt(el('cfgOfStepPyr')?.value) || 35,
+        spread: parseInt(el('cfgOfSpread')?.value) || 50,
+        stop_loss_mode: el('cfgOfSlMode')?.value || 'rub',
+        stop_loss_value: parseFloat(el('cfgOfSlValue')?.value) || 7000,
+        min_profit_per_lot: parseInt(el('cfgOfMinProfit')?.value) || 30,
+        max_hold_minutes: parseInt(el('cfgOfMaxHold')?.value) || 999,
+        absorption_threshold: parseFloat(el('cfgOfAbsThr')?.value) || 0.35,
+        cvd_lookback: parseInt(el('cfgOfCvdLb')?.value) || 10,
+        ob_imbalance_threshold: parseFloat(el('cfgOfObImb')?.value) || 0.50,
+        signal_confirm_count: parseInt(el('cfgOfConfirm')?.value) || 1,
+        timeframe: el('cfgOfTf')?.value || 'M5',
+    };
+    try {
+        const resp = await fetch(OF_ROBOT_API + '/params', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(body)
+        });
+        const data = await resp.json();
+        addLog(nowTime(), 'INFO', '💾 OF конфиг сохранён: ' + JSON.stringify(body));
+    } catch(e) {
+        addLog(nowTime(), 'WARN', 'OF save failed (offline?): ' + e.message);
+    }
+}
+
+async function ofRobotApi(action) {
+    try {
+        const resp = await fetch(OF_ROBOT_API + '/' + action, {method: 'POST'});
+        const data = await resp.json();
+        addLog(nowTime(), 'INFO', 'OF ' + action + ': ' + JSON.stringify(data));
+        setTimeout(async () => { await ofRobotPoll(); renderRobots(); }, 500);
+    } catch(e) {
+        addLog(nowTime(), 'ERROR', 'OF ' + action + ' failed: ' + e.message);
+    }
+}
+
+function ofRobotCreate() {
+    ofRobotSaveConfig();
+    addLog(nowTime(), 'INFO', '📊 Order Flow робот: параметры применены к порту 5080');
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+    document.querySelector('[data-tab="monitoring"]').classList.add('active');
+    el('monitoring')?.classList.add('active');
+}
+
+// Auto-load config on page load
+(function() {
+    const origInit = window.onload;
+    ofRobotLoadConfig();
+    setInterval(ofRobotPoll, 2000);
+})();
