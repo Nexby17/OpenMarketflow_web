@@ -676,6 +676,7 @@ class OrderFlowStrategy:
             "lotQueueSize": len(self._lot_queue),
             "roundTrips": self._round_trips,
             "realizedPnL": self._realized_pnl,
+            "unrealizedPnL": self.unrealized_pnl(self._current_price) if self._dir != FLAT and self._current_price > 0 else 0.0,
             "dailyPnL": self._daily_pnl,
             "entryTime": self._entry_time.isoformat() if self._entry_time else "",
             "signalType": self._signal_type,

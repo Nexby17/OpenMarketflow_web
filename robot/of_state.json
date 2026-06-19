@@ -1,19 +1,51 @@
 {
-  "dir": 0,
-  "entryPrice": 0.0,
-  "avgPrice": 0.0,
-  "totalLots": 0,
-  "averageLevels": 0,
+  "dir": -1,
+  "entryPrice": 74934.5,
+  "avgPrice": 74959.5,
+  "totalLots": 2,
+  "averageLevels": 2,
   "pyramidLevels": 0,
-  "lastAveragePrice": 0.0,
-  "lastPyramidPrice": 0.0,
-  "lotQueue": [],
-  "roundTrips": 2,
-  "realizedPnL": 187.8,
-  "dailyPnL": 187.8,
+  "lastAveragePrice": 75034.5,
+  "lastPyramidPrice": 74934.5,
+  "lotQueue": [
+    {
+      "price": 74934.5,
+      "side": -1,
+      "lots": 1
+    },
+    {
+      "price": 74984.5,
+      "side": -1,
+      "lots": 1
+    }
+  ],
+  "roundTrips": 3,
+  "realizedPnL": 215.40000000000003,
+  "dailyPnL": 215.40000000000003,
   "dailyPnLDate": "2026-06-19",
-  "entryTime": "",
-  "signalType": "",
-  "tradeHistory": [],
+  "entryTime": "2026-06-19T12:53:01.498330+00:00",
+  "signalType": "absorption",
+  "tradeHistory": [
+    {
+      "entryPrice": 74986.75,
+      "exitPrice": 74991.5,
+      "direction": "SHORT",
+      "lots": 2,
+      "pnl": -13.1,
+      "entryTime": "2026-06-19T12:33:00.657606+00:00",
+      "exitTime": "2026-06-19T12:39:03.571003",
+      "reason": "reverse_signal"
+    },
+    {
+      "entryPrice": 75034.5,
+      "exitPrice": 74992.0,
+      "direction": "SHORT",
+      "lots": 1,
+      "pnl": 40.7,
+      "entryTime": "2026-06-19T12:53:01.498330+00:00",
+      "exitTime": "2026-06-19T12:57:55.848130",
+      "reason": "partial_tp"
+    }
+  ],
   "mode": "running"
 }
