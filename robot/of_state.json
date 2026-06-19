@@ -1,11 +1,11 @@
 {
   "dir": -1,
   "entryPrice": 75051.0,
-  "avgPrice": 75079.25,
-  "totalLots": 2,
-  "averageLevels": 3,
+  "avgPrice": 75132.75,
+  "totalLots": 6,
+  "averageLevels": 10,
   "pyramidLevels": 0,
-  "lastAveragePrice": 75190.5,
+  "lastAveragePrice": 75215.0,
   "lastPyramidPrice": 75051.0,
   "lotQueue": [
     {
@@ -14,14 +14,34 @@
       "lots": 1
     },
     {
-      "price": 75107.5,
+      "price": 75084.0,
+      "side": -1,
+      "lots": 1
+    },
+    {
+      "price": 75115.5,
+      "side": -1,
+      "lots": 1
+    },
+    {
+      "price": 75149.5,
+      "side": -1,
+      "lots": 1
+    },
+    {
+      "price": 75181.5,
+      "side": -1,
+      "lots": 1
+    },
+    {
+      "price": 75215.0,
       "side": -1,
       "lots": 1
     }
   ],
   "roundTrips": 6,
-  "realizedPnL": 234.10000000000002,
-  "dailyPnL": 234.10000000000002,
+  "realizedPnL": 337.7,
+  "dailyPnL": 337.7,
   "dailyPnLDate": "2026-06-19",
   "entryTime": "2026-06-19T16:17:36.187562+03:00",
   "signalType": "ob_imbalance",
@@ -94,6 +114,36 @@
       "pnl": 38.7,
       "entryTime": "2026-06-19T16:17:36.187562+03:00",
       "exitTime": "2026-06-19T16:21:28.460362+03:00",
+      "reason": "partial_tp"
+    },
+    {
+      "entryPrice": 75107.5,
+      "exitPrice": 75072.0,
+      "direction": "SHORT",
+      "lots": 1,
+      "pnl": 33.7,
+      "entryTime": "2026-06-19T16:17:36.187562+03:00",
+      "exitTime": "2026-06-19T16:32:03.857360+03:00",
+      "reason": "partial_tp"
+    },
+    {
+      "entryPrice": 75230.0,
+      "exitPrice": 75194.0,
+      "direction": "SHORT",
+      "lots": 1,
+      "pnl": 34.2,
+      "entryTime": "2026-06-19T16:17:36.187562+03:00",
+      "exitTime": "2026-06-19T16:39:30.893228+03:00",
+      "reason": "partial_tp"
+    },
+    {
+      "entryPrice": 75214.5,
+      "exitPrice": 75177.0,
+      "direction": "SHORT",
+      "lots": 1,
+      "pnl": 35.7,
+      "entryTime": "2026-06-19T16:17:36.187562+03:00",
+      "exitTime": "2026-06-19T16:42:23.087360+03:00",
       "reason": "partial_tp"
     }
   ],
