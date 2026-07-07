@@ -9,14 +9,13 @@ v2 — fixed: bar callback signature, dynamic bar_start_ts, stale price check,
       entry lock reset on manual stop, config consolidation.
 """
 import sys, os
-sys.path.insert(0, os.getcwd())
-
 import argparse
 import json
 import logging
 import signal as sig_module
 import threading
 import time
+from pathlib import Path
 from datetime import datetime, timezone, timedelta
 from http.server import HTTPServer, BaseHTTPRequestHandler
 
@@ -37,10 +36,18 @@ parser.add_argument("--port", type=int, default=5080)
 args, _ = parser.parse_known_args()
 
 # --- Logging ---
+LOG_DIR = Path(__file__).parent / "logs"
+LOG_DIR.mkdir(exist_ok=True)
+_log_file = LOG_DIR / f"of_{datetime.now().strftime('%Y%m%d')}.log"
+
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s %(name)s %(levelname)s %(message)s",
     datefmt="%H:%M:%S",
+    handlers=[
+        logging.StreamHandler(sys.stdout),
+        logging.FileHandler(_log_file, mode='a', encoding='utf-8'),
+    ],
 )
 
 # --- Config ---
@@ -84,6 +91,7 @@ orders = OrderManager(dp_url=DP_URL, account=ACCOUNT, symbol=SYMBOL)
 fp: FinamPy | None = None
 _running = True
 _mode = "stopped"  # stopped, running, paused
+_last_fp_reconnect: float = 0.0  # guard against reconnect loop
 
 # --- Current price (thread-safe via lock) ---
 _price_lock = threading.Lock()
@@ -126,6 +134,11 @@ def connect_finam():
 
     fp = FinamPy(token)
     log.info(f"FinamPy connected. Accounts: {fp.account_ids}")
+
+    # Aggression tracking (ticks at improving prices)
+    _agg_buy_vol = 0
+    _agg_sell_vol = 0
+    _last_tick_price = 0.0
 
     # Subscribe to latest trades (обезличенные сделки)
     try:
@@ -218,6 +231,14 @@ def _on_latest_trades(event):
                 side=mapped_side,
                 timestamp=ts,
             ))
+
+            # Track aggression (ticks at improving prices)
+            if _last_tick_price > 0 and price != _last_tick_price:
+                if price > _last_tick_price:
+                    _agg_buy_vol += size
+                elif price < _last_tick_price:
+                    _agg_sell_vol += size
+            _last_tick_price = price
     except Exception as e:
         log.error(f"Trades callback error: {e}")
 
@@ -266,6 +287,12 @@ def _on_new_bar(event, finam_timeframe=None):
                 bar_start_ts=ts - bar_secs,
                 bar_end_ts=ts,
             )
+
+            # Feed aggression data to signal engine
+            strategy.signals.add_bar_aggression(_agg_buy_vol, _agg_sell_vol)
+            _agg_buy_vol = 0
+            _agg_sell_vol = 0
+
             strategy.on_bar_close(metrics, h, l, c)
             log.debug(f"Bar close: O={o:.0f} H={h:.0f} L={l:.0f} C={c:.0f} V={v:.0f} delta={metrics.delta} cvd={metrics.cvd:.0f}")
     except Exception as e:
@@ -297,6 +324,31 @@ def _to_float(val) -> float:
         s = val.value
         return float(s) if s else 0.0
     return float(val)
+
+
+def _reconnect_finampy():
+    """Shutdown old FinamPy and reconnect all subscriptions."""
+    global fp, _last_fp_reconnect
+    now = time.time()
+    if now - _last_fp_reconnect < 30:
+        return  # don't reconnect more than once per 30s
+    _last_fp_reconnect = now
+    log.warning("[WATCHDOG] Price stale — reconnecting FinamPy...")
+    try:
+        if fp is not None:
+            try:
+                fp.close()
+            except Exception:
+                pass
+        time.sleep(1)
+        fp = None
+        ok = connect_finam()
+        if ok:
+            log.info("[WATCHDOG] FinamPy reconnected OK")
+        else:
+            log.error("[WATCHDOG] FinamPy reconnect failed")
+    except Exception as e:
+        log.error(f"[WATCHDOG] Reconnect error: {e}")
 
 
 def _set_current_price(price: float):
@@ -353,6 +405,10 @@ def main_loop():
             if time.time() - last_save > 30:
                 save_state()
                 last_save = time.time()
+
+            # === WATCHDOG: reconnect FinamPy if price stale > 60s ===
+            if strategy._is_price_stale(max_age_sec=60):
+                _reconnect_finampy()
 
             # Tick rate: 500ms (2x per second)
             time.sleep(0.5)
@@ -427,9 +483,14 @@ class APIHandler(BaseHTTPRequestHandler):
         self._json(200, {"ok": True})
 
     def do_GET(self):
+        global _mode
         with _price_lock:
             price = _current_price
-        path = self.path.split("?")[0]
+        # Parse full path with query params
+        from urllib.parse import urlparse, parse_qs
+        parsed = urlparse(self.path)
+        path = parsed.path  # Extract path without query params
+        params_url = parse_qs(parsed.query)
 
         if path == "/status":
             status = strategy.get_status()
@@ -438,10 +499,55 @@ class APIHandler(BaseHTTPRequestHandler):
             status["currentPrice"] = price
             status["params"] = {k: getattr(params, k) for k in dir(params) if not k.startswith("_") and not callable(getattr(params, k))}
             status["paper"] = PAPER_MODE
+            
+            # Filter tradeHistory by date period
+            start_date = params_url.get('startDate', [None])[0]
+            end_date = params_url.get('endDate', [None])[0]
+            all_trades = params_url.get('all', ['false'])[0].lower() == 'true'
+            
+            # Log the request
+            log.info(f"API GET /status with query: {parsed.query} | filters: startDate={start_date}, endDate={end_date}, all={all_trades}")
+            
+            original_trades = status.get("tradeHistory", [])
+            
+            if all_trades:
+                # Return all trades without filtering
+                status["tradeHistory"] = original_trades
+                status["tradesFiltered"] = False
+                status["filters"] = {}
+                log.info(f"Returning all {len(original_trades)} trades (all=true)")
+            elif start_date or end_date:
+                # Filter by date
+                filtered_trades = []
+                for trade in original_trades:
+                    trade_date = trade["entryTime"][:10]  # Extract YYYY-MM-DD
+                    if start_date and trade_date < start_date:
+                        continue
+                    if end_date and trade_date > end_date:
+                        continue
+                    filtered_trades.append(trade)
+                
+                status["tradeHistory"] = filtered_trades
+                status["tradesFiltered"] = True
+                status["filters"] = {"startDate": start_date, "endDate": end_date}
+                log.info(f"Filtered trades: {len(filtered_trades)} from {len(original_trades)} (startDate={start_date}, endDate={end_date})")
+            else:
+                # No filters - return all trades
+                status["tradeHistory"] = original_trades
+                status["tradesFiltered"] = False
+                status["filters"] = {}
+                log.info(f"No filters applied, returning all {len(original_trades)} trades")
+            
             self._json(200, status)
 
         elif path == "/health":
             self._json(200, {"ok": True, "symbol": SYMBOL, "mode": _mode})
+
+        elif path == "/start":
+            _mode = "running"
+            strategy._force_unlock()  # Reset entry lock on manual start
+            save_state()
+            self._json(200, {"ok": True, "mode": _mode})
 
         else:
             self._json(404, {"error": "not found"})
@@ -490,6 +596,50 @@ class APIHandler(BaseHTTPRequestHandler):
             save_state()
             self._json(200, {"ok": True, "mode": _mode, "paper": PAPER_MODE})
 
+        elif path == "/trades":
+            # Filter tradeHistory by date period (POST with JSON body)
+            length = int(self.headers.get("Content-Length", 0))
+            if length > 0:
+                try:
+                    body = self.rfile.read(length)
+                    data = json.loads(body)
+                    start_date = data.get('startDate')
+                    end_date = data.get('endDate')
+                    
+                    status = strategy.get_status()
+                    original_trades = status.get("tradeHistory", [])
+                    
+                    if start_date or end_date:
+                        filtered_trades = []
+                        for trade in original_trades:
+                            # Filter by exitTime (when trade was actually closed)
+                            exit_date = trade.get("exitTime", "")[:10]
+                            entry_date = trade["entryTime"][:10]
+                            # Include trade if either entry or exit falls within range
+                            if start_date and exit_date < start_date and entry_date < start_date:
+                                continue
+                            if end_date and exit_date > end_date and entry_date > end_date:
+                                continue
+                            filtered_trades.append(trade)
+                        
+                        self._json(200, {
+                            "trades": filtered_trades,
+                            "count": len(filtered_trades),
+                            "totalCount": len(original_trades),
+                            "filtered": True,
+                            "filters": {"startDate": start_date, "endDate": end_date}
+                        })
+                    else:
+                        self._json(200, {
+                            "trades": original_trades,
+                            "count": len(original_trades),
+                            "filtered": False
+                        })
+                except Exception as e:
+                    self._json(400, {"error": str(e)})
+            else:
+                self._json(400, {"error": "Missing request body"})
+
         elif path == "/params":
             # Update parameters
             length = int(self.headers.get("Content-Length", 0))
@@ -500,6 +650,9 @@ class APIHandler(BaseHTTPRequestHandler):
                     if hasattr(params, k):
                         setattr(params, k, v)
                         log.info(f"Param updated: {k} = {v}")
+                # Reconstruct VWEMA if toggle changed
+                if "use_vwema" in data or any(k.startswith("vwema_") for k in data):
+                    strategy._init_vwema()
                 # Save to config
                 cfg_path = os.path.join(os.getcwd(), "of_config.json")
                 with open(cfg_path, "w") as f:
@@ -508,6 +661,65 @@ class APIHandler(BaseHTTPRequestHandler):
 
         else:
             self._json(404, {"error": "not found"})
+
+
+# ========== VWEMA Warmup ==========
+
+def _warmup_vwema():
+    """Fetch historical bars and warm up VWEMA filter before live trading."""
+    if not strategy.vwema:
+        return
+
+    try:
+        from google.protobuf.timestamp_pb2 import Timestamp
+        from google.type.interval_pb2 import Interval
+        import FinamPy.grpc.marketdata_service_pb2 as md_pb2
+
+        tf_map = {
+            "M1": md_pb2.TimeFrame.TIME_FRAME_M1,
+            "M5": md_pb2.TimeFrame.TIME_FRAME_M5,
+            "M15": md_pb2.TimeFrame.TIME_FRAME_M15,
+            "M30": md_pb2.TimeFrame.TIME_FRAME_M30,
+        }
+        finam_tf = tf_map.get(params.timeframe, md_pb2.TimeFrame.TIME_FRAME_M1)
+
+        # Need enough bars for slow period (default 40) + buffer
+        bar_seconds = TF_SECONDS.get(params.timeframe, 60)
+        bars_needed = params.vwema_slow + 20
+        lookback_seconds = bars_needed * bar_seconds
+
+        now = datetime.now(timezone.utc)
+        start = now - timedelta(seconds=lookback_seconds)
+
+        resp = fp.call_function(
+            fp.marketdata_stub.Bars,
+            md_pb2.BarsRequest(
+                symbol=SYMBOL,
+                timeframe=finam_tf,
+                interval=Interval(
+                    start_time=Timestamp(seconds=int(start.timestamp())),
+                    end_time=Timestamp(seconds=int(now.timestamp())),
+                ),
+            ),
+        )
+
+        if resp and resp.bars:
+            bars = list(resp.bars)
+            fed = 0
+            for bar in bars:
+                h = _to_float(bar.high)
+                l = _to_float(bar.low)
+                c = _to_float(bar.close)
+                v = _to_float(bar.volume)
+                if c > 0:
+                    strategy.vwema.update(c, h, l, volume=v)
+                    fed += 1
+            state = strategy.vwema.state
+            log.info(f"VWEMA warmup: {fed} bars fed | ready={strategy.vwema.ready} | dir={state['direction']} | ema_f={state['ema_f']} ema_s={state['ema_s']} atr={state['atr']}")
+        else:
+            log.warning("VWEMA warmup: no historical bars received")
+    except Exception as e:
+        log.error(f"VWEMA warmup error: {e}", exc_info=True)
 
 
 # ========== Shutdown ==========
@@ -549,6 +761,9 @@ if __name__ == "__main__":
         log.error("Failed to connect FinamPy — exiting")
         sys.exit(1)
 
+    # VWEMA warmup: load historical bars so filter is ready immediately
+    _warmup_vwema()
+
     # Warmup period (let subscriptions accumulate data)
     log.info("Warmup: waiting 10 sec for data streams...")
     time.sleep(10)
@@ -558,8 +773,13 @@ if __name__ == "__main__":
     t_main = threading.Thread(target=main_loop, daemon=True, name="main-loop")
     t_main.start()
 
-    # Start HTTP server
-    server = HTTPServer(("0.0.0.0", PORT), APIHandler)
+    # Start HTTP server with SO_REUSEADDR to prevent "Address already in use" on restart
+    import socket
+    HTTPServer.address_family = socket.AF_INET
+    HTTPServer.socket_type = socket.SOCK_STREAM
+    class ReusableHTTPServer(HTTPServer):
+        allow_reuse_address = True
+    server = ReusableHTTPServer(("0.0.0.0", PORT), APIHandler)
     log.info(f"API listening on :{PORT}")
     log.info(f"Endpoints: GET /status | GET /health | POST /start /stop /pause /params")
 

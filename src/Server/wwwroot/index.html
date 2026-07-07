@@ -261,6 +261,8 @@
         <!-- Order Flow — Python Robot -->
         <div class="strategy-item" style="padding:16px; gap:12px; align-items:center; flex-wrap:wrap; margin-top:12px; border-top:1px solid var(--border-color)">
             <strong style="min-width:100px">📊 Order Flow</strong> <span class="badge" style="background:#9C27B0">PYTHON</span>
+            <div class="metric-card" style="min-width:140px"><div class="metric-label">Инструмент</div><select id="cfgOfTicker" class="input" style="width:120px"><option value="SiM6">SiM6 (Si)</option><option value="SiU6" selected>SiU6 (Si)</option><option value="MXM6">MXM6 (MOEX)</option><option value="MXU6">MXU6 (MOEX)</option><option value="GDM6">GDM6 (Золото)</option><option value="BRK6">BRK6 (Нефть)</option><option value="RIM6">RIM6 (RTS)</option><option value="RIU6">RIU6 (RTS)</option></select></div>
+            <div class="metric-card" style="min-width:120px"><div class="metric-label">Счёт</div><select id="cfgOfAccount" class="input" style="width:100px"><option value="1225950">1225950</option><option value="1225951">1225951</option><option value="1225952">1225952</option><option value="1225953" selected>1225953</option></select></div>
             <div class="metric-card" style="min-width:100px"><div class="metric-label">Lots</div><input id="cfgOfLots" class="input" type="number" step="1" value="1" style="width:60px"></div>
             <div class="metric-card" style="min-width:100px"><div class="metric-label">Max Pyramid</div><input id="cfgOfMaxPyr" class="input" type="number" step="1" value="5" style="width:60px"></div>
             <div class="metric-card" style="min-width:100px"><div class="metric-label">Max Average</div><input id="cfgOfMaxAvg" class="input" type="number" step="1" value="100" style="width:60px"></div>
@@ -273,7 +275,7 @@
             <div class="metric-card" style="min-width:100px"><div class="metric-label">Max Hold (мин)</div><input id="cfgOfMaxHold" class="input" type="number" step="1" value="999" style="width:70px"></div>
             <div class="metric-card" style="min-width:100px"><div class="metric-label">Absorption</div><input id="cfgOfAbsThr" class="input" type="number" step="0.01" value="0.35" style="width:60px"></div>
             <div class="metric-card" style="min-width:80px"><div class="metric-label">CVD Lookback</div><input id="cfgOfCvdLb" class="input" type="number" step="1" value="10" style="width:50px"></div>
-            <div class="metric-card" style="min-width:100px"><div class="metric-label">OB Imbalance</div><input id="cfgOfObImb" class="input" type="number" step="0.01" value="0.50" style="width:60px"></div>
+            <div class="metric-card" style="min-width:100px"><div class="metric-label">CVD Accel Thresh</div><input id="cfgOfCvdAccelThresh" class="input" type="number" step="100" value="1000" style="width:60px"></div>
             <div class="metric-card" style="min-width:80px"><div class="metric-label">Confirm In</div><input id="cfgOfConfirm" class="input" type="number" step="1" value="1" min="1" max="3" style="width:50px"></div>
             <div class="metric-card" style="min-width:80px"><div class="metric-label">Confirm Out</div><input id="cfgOfConfirmOut" class="input" type="number" step="1" value="1" min="1" max="3" style="width:50px"></div>
             <div class="metric-card" style="min-width:90px"><div class="metric-label">Timeframe</div><select id="cfgOfTf" class="input" style="width:70px"><option value="M1">1 мин</option><option value="M5" selected>5 мин</option><option value="M15">15 мин</option><option value="M30">30 мин</option><option value="H1">1 час</option><option value="H4">4 часа</option><option value="D">День</option></select></div>
@@ -285,66 +287,122 @@
 
     <!-- ==================== АРБИТРАЖ ==================== -->
     <div id="arbitrage" class="tab-content">
-        <div class="panel-row">
-            <div class="card flex-1">
-                <div class="card-header">Арбитраж акция/фьючерс — Портфель</div>
-                <div class="card-body row gap-8">
-                    <button class="btn btn-primary" onclick="arbInit()" id="arbInitBtn">🔄 Инициализировать</button>
-                    <button class="btn btn-primary" onclick="arbStart()" id="arbStartBtn" disabled>▶️ Старт</button>
-                    <button class="btn btn-secondary" onclick="arbPause()" id="arbPauseBtn" disabled>⏸ Пауза</button>
-                    <button class="btn btn-danger" onclick="arbStop()" id="arbStopBtn" disabled>⏹ Стоп</button>
-                    <span id="arbStatusText" class="status-text">Не инициализирован</span>
-                </div>
+        <!-- Управление -->
+        <div class="card" style="margin-bottom:16px">
+            <div class="card-header row gap-8">
+                🔄 Арбитражный робот (PYTHON)
+                <span style="flex:1"></span>
+                <button class="btn btn-success btn-sm" onclick="arbPyStart()" id="arbPyStartBtn">▶️ Старт</button>
+                <button class="btn btn-secondary btn-sm" onclick="arbPyPause()" id="arbPyPauseBtn">⏸ Пауза</button>
+                <button class="btn btn-danger btn-sm" onclick="arbPyStop()" id="arbPyStopBtn">⏹ Стоп</button>
+                <span id="arbPyStatus" class="status-text">Не подключён</span>
+            </div>
+            <!-- Метрики -->
+            <div class="metrics-row" style="flex-wrap:wrap">
+                <div class="metric-card"><div class="metric-label">Пара</div><div id="arbPyPair" class="metric-value">—</div></div>
+                <div class="metric-card"><div class="metric-label">Basis</div><div id="arbPyBasis" class="metric-value">—</div></div>
+                <div class="metric-card"><div class="metric-label">Z-score</div><div id="arbPyZ" class="metric-value accent">—</div></div>
+                <div class="metric-card"><div class="metric-label">Позиция</div><div id="arbPyPos" class="metric-value">—</div></div>
+                <div class="metric-card"><div class="metric-label">Unrealized PnL</div><div id="arbPyUnreal" class="metric-value">—</div></div>
+                <div class="metric-card"><div class="metric-label">Realized PnL</div><div id="arbPyRealized" class="metric-value">0 ₽</div></div>
+                <div class="metric-card"><div class="metric-label">Сделок</div><div id="arbPyTrades" class="metric-value">0</div></div>
+                <div class="metric-card"><div class="metric-label">Paper</div><div id="arbPyPaper" class="metric-value">—</div></div>
             </div>
         </div>
 
-        <!-- Метрики портфеля -->
-        <div class="metrics-row">
-            <div class="metric-card"><div class="metric-label">Общий PnL</div><div id="arbTotalPnl" class="metric-value">0 ₽</div></div>
-            <div class="metric-card"><div class="metric-label">Сделок</div><div id="arbTotalTrades" class="metric-value">0</div></div>
-            <div class="metric-card"><div class="metric-label">Подключён</div><div id="arbConnected" class="metric-value red">❌</div></div>
-            <div class="metric-card"><div class="metric-label">DTE</div><div id="arbDTE" class="metric-value">—</div></div>
+        <!-- ====== SBER/SRU6 робот ====== -->
+        <div class="card" style="margin-bottom:16px;margin-top:8px">
+            <div class="card-header row gap-8">
+                🔄 Арбитражный робот (PYTHON) — SBER/SRU6
+                <span style="flex:1"></span>
+                <button class="btn btn-success btn-sm" onclick="sberStart()" id="sberStartBtn">▶️ Старт</button>
+                <button class="btn btn-secondary btn-sm" onclick="sberPause()" id="sberPauseBtn">⏸ Пауза</button>
+                <button class="btn btn-danger btn-sm" onclick="sberStop()" id="sberStopBtn">⏹ Стоп</button>
+                <span id="sberStatus" class="status-text">Не подключён</span>
+            </div>
+            <div class="metrics-row" style="flex-wrap:wrap">
+                <div class="metric-card"><div class="metric-label">Пара</div><div id="sberPair" class="metric-value">—</div></div>
+                <div class="metric-card"><div class="metric-label">Basis</div><div id="sberBasis" class="metric-value">—</div></div>
+                <div class="metric-card"><div class="metric-label">Z-score</div><div id="sberZ" class="metric-value accent">—</div></div>
+                <div class="metric-card"><div class="metric-label">Позиция</div><div id="sberPos" class="metric-value">—</div></div>
+                <div class="metric-card"><div class="metric-label">Unrealized PnL</div><div id="sberUnreal" class="metric-value">—</div></div>
+                <div class="metric-card"><div class="metric-label">Realized PnL</div><div id="sberRealized" class="metric-value">0 ₽</div></div>
+                <div class="metric-card"><div class="metric-label">Сделок</div><div id="sberTrades" class="metric-value">0</div></div>
+                <div class="metric-card"><div class="metric-label">Paper</div><div id="sberPaper" class="metric-value">—</div></div>
+            </div>
         </div>
 
-        <!-- Пары -->
+        <!-- ====== BR Calendar робот ====== -->
+        <div class="card" style="margin-bottom:16px;margin-top:8px">
+            <div class="card-header row gap-8">
+                🔄 Арбитражный робот (PYTHON) — BR Calendar
+                <span style="flex:1"></span>
+                <button class="btn btn-success btn-sm" onclick="brCalStart()" id="brCalStartBtn">▶️ Старт</button>
+                <button class="btn btn-secondary btn-sm" onclick="brCalPause()" id="brCalPauseBtn">⏸ Пауза</button>
+                <button class="btn btn-danger btn-sm" onclick="brCalStop()" id="brCalStopBtn">⏹ Стоп</button>
+                <span id="brCalStatus" class="status-text">Не подключён</span>
+            </div>
+            <div class="metrics-row" style="flex-wrap:wrap">
+                <div class="metric-card"><div class="metric-label">Пара</div><div id="brCalPair" class="metric-value">—</div></div>
+                <div class="metric-card"><div class="metric-label">Basis</div><div id="brCalBasis" class="metric-value">—</div></div>
+                <div class="metric-card"><div class="metric-label">Z-score</div><div id="brCalZ" class="metric-value accent">—</div></div>
+                <div class="metric-card"><div class="metric-label">Позиция</div><div id="brCalPos" class="metric-value">—</div></div>
+                <div class="metric-card"><div class="metric-label">Unrealized PnL</div><div id="brCalUnreal" class="metric-value">—</div></div>
+                <div class="metric-card"><div class="metric-label">Realized PnL</div><div id="brCalRealized" class="metric-value">0 ₽</div></div>
+                <div class="metric-card"><div class="metric-label">Сделок</div><div id="brCalTrades" class="metric-value">0</div></div>
+                <div class="metric-card"><div class="metric-label">Paper</div><div id="brCalPaper" class="metric-value">—</div></div>
+            </div>
+        </div>
+
+        <!-- Список роботов (двойной клик = параметры) -->
         <div class="card">
-            <div class="card-header">Арбитражные пары</div>
-            <table class="data-table" style="font-size:13px">
+            <div class="card-header">Активные роботы</div>
+            <table class="data-table">
                 <thead><tr>
                     <th>Пара</th>
-                    <th>Акции (лоты)</th>
-                    <th>Фьючерс (контр.)</th>
-                    <th>Объём акций ₽</th>
-                    <th>ГО фьючерс ₽</th>
-                    <th>Итого ₽</th>
-                    <th>Z</th>
-                    <th>Базис</th>
+                    <th>Режим</th>
                     <th>Позиция</th>
                     <th>PnL</th>
-                    <th>Режим</th>
-                    <th></th>
+                    <th>Z</th>
+                    <th>Basis</th>
+                    <th>Статус</th>
                 </tr></thead>
-                <tbody id="arbPairsTable">
-                    <!-- Заполняется динамически через JS -->
+                <tbody id="arbPyRobotsTable">
+                    <tr ondblclick="arbPyEditPanel()" style="cursor:pointer" title="Двойной клик — настройки робота">
+                        <td id="arbPyRbPair">GAZP / GZM6</td>
+                        <td id="arbPyRbMode">stopped</td>
+                        <td id="arbPyRbPos">—</td>
+                        <td id="arbPyRbPnl">0 ₽</td>
+                        <td id="arbPyRbZ">—</td>
+                        <td id="arbPyRbBasis">—</td>
+                        <td id="arbPyRbStatus">⚪</td>
+                    </tr>
+                    <tr ondblclick="sberEditPanel()" style="cursor:pointer" title="Двойной клик — настройки робота">
+                        <td id="sberRbPair">SBER / SRU6</td>
+                        <td id="sberRbMode">—</td>
+                        <td id="sberRbPos">—</td>
+                        <td id="sberRbPnl">0 ₽</td>
+                        <td id="sberRbZ">—</td>
+                        <td id="sberRbBasis">—</td>
+                        <td id="sberRbStatus">⚪</td>
+                    </tr>
+                    <tr ondblclick="brCalEditPanel()" style="cursor:pointer" title="Двойной клик — настройки робота">
+                        <td id="brCalRbPair">BRQ6 / BRU6</td>
+                        <td id="brCalRbMode">—</td>
+                        <td id="brCalRbPos">—</td>
+                        <td id="brCalRbPnl">0 ₽</td>
+                        <td id="brCalRbZ">—</td>
+                        <td id="brCalRbBasis">—</td>
+                        <td id="brCalRbStatus">⚪</td>
+                    </tr>
                 </tbody>
             </table>
         </div>
 
-        <!-- Лог арбитража -->
-        <div class="card">
-            <div class="card-header">Лог арбитража</div>
-            <div id="arbLogContainer" class="log-container"></div>
-        </div>
-
-        <!-- Инфо -->
-        <div class="card">
-            <div class="card-header">ℹ️ О стратегии</div>
-            <div class="card-body">
-                <p><b>Арбитраж акция/фьючерс</b> — торгуем расширения базиса между спотом и фьючерсом.</p>
-                <p><b>Результат бэктеста (2 года):</b> +22% net/year, Walk-forward 20/20, Monte Carlo 100% profit</p>
-                <p><b>Пары:</b> ROSN (+27%), TATN (+26%), GAZP (+23%), SBER (+18%), ALRS (+11%)</p>
-                <p><b>Логика:</b> Z-score базиса > порога → лонг спред. Z-score вернулся → выход.</p>
-            </div>
+        <!-- Лог -->
+        <div class="card" style="margin-top:16px">
+            <div class="card-header">Лог событий</div>
+            <div id="arbPyLogContainer" class="log-container"></div>
         </div>
     </div>
 
@@ -414,6 +472,6 @@
         </div>
     </div>
 
-    <script src="/js/app.js?v=67"></script>
+    <script src="/js/app.js?v=74"></script>
 </body>
 </html>

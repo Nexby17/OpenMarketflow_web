@@ -399,34 +399,47 @@ async function loadAccounts() {
     try {
         const resp = await fetch('/api/accounts');
         const data = await resp.json();
-        // Таблица счетов
-        const tbody = el('accountsTable');
-        if (tbody && data?.accounts) {
-            tbody.innerHTML = data.accounts.map(a => {
-                const balance = a.balance || 0;
-                const free = a.free || 0;
-                const margin = a.margin || (balance - free);
-                const go = a.go || margin;
-                const pnlToday = a.pnlToday || 0;
-                const pnlTotal = a.pnlTotal || 0;
-                const fmt2 = v => v.toLocaleString('ru-RU',{maximumFractionDigits:2});
-                return `<tr>
-                    <td><b>${a.id}</b> ${a.name || ''}</td>
-                    <td class="accent">${fmt2(balance)} ₽</td>
-                    <td>${fmt2(free)} ₽</td>
-                    <td>${fmt2(margin)} ₽</td>
-                    <td>${fmt2(go)} ₽</td>
-                    <td class="${pnlToday >= 0 ? 'green' : 'red'}">${pnlToday >= 0 ? '+' : ''}${fmt2(pnlToday)} ₽</td>
-                    <td class="${pnlTotal >= 0 ? 'green' : 'red'}">${pnlTotal >= 0 ? '+' : ''}${fmt2(pnlTotal)} ₽</td>
-                </tr>`;
-            }).join('');
+        const csharpOk = data?.accounts?.length > 0 && data.accounts[0].balance != null;
+        if (csharpOk) {
+            _renderAccountsTable(data.accounts);
+        } else {
+            // Fallback: get accounts with real balances from arb robot (via FinamPy gRPC)
+            try {
+                const arbResp = await arbPy.fetch('/accounts');
+                if (arbResp?.accounts?.length) {
+                    _renderAccountsTable(arbResp.accounts);
+                }
+            } catch(e) {}
         }
-        // Select в панели робота
         const sel = el('robotAccount');
         if (sel) {
-            sel.innerHTML = (data?.accounts || []).map(a => `<option value="${a.id}">${a.id} — ${a.name} (${(a.balance||0).toLocaleString('ru-RU')}₽)</option>`).join('');
+            const src = csharpOk ? data : await (async()=>{try{return await arbPy.fetch('/accounts')}catch(e){return {accounts:[]}}})();
+            sel.innerHTML = (src.accounts || []).map(a => `<option value="${a.id}">${a.id} — ${a.name}</option>`).join('');
         }
     } catch (e) {}
+}
+
+function _renderAccountsTable(accounts) {
+    const tbody = el('accountsTable');
+    if (!tbody) return;
+    const fmt2 = v => v != null ? v.toLocaleString('ru-RU',{maximumFractionDigits:2}) : '—';
+    tbody.innerHTML = accounts.map(a => {
+        const balance = a.balance || 0;
+        const free = a.free || 0;
+        const margin = a.margin || (balance && free ? balance - free : 0);
+        const go = a.go || margin;
+        const pnlToday = a.pnlToday || 0;
+        const pnlTotal = a.pnlTotal || 0;
+        return `<tr>
+            <td><b>${a.id}</b> ${a.name || ''}</td>
+            <td class="accent">${fmt2(balance)} ₽</td>
+            <td>${fmt2(free)} ₽</td>
+            <td>${fmt2(margin)} ₽</td>
+            <td>${fmt2(go)} ₽</td>
+            <td class="${pnlToday >= 0 ? 'green' : 'red'}">${pnlToday >= 0 ? '+' : ''}${fmt2(pnlToday)} ₽</td>
+            <td class="${pnlTotal >= 0 ? 'green' : 'red'}">${pnlTotal >= 0 ? '+' : ''}${fmt2(pnlTotal)} ₽</td>
+        </tr>`;
+    }).join('');
 }
 
 function updateStatus(s) {
@@ -2153,6 +2166,16 @@ function onMainRobotAccountChange(val) {
     _mainRobotAccount = val;
 }
 let _mainRobotInstrument = localStorage.getItem('mainRobotInstrument') || 'SiU6';
+
+// === Order Flow robot instrument/account ===
+function onOfRobotInstrumentChange(val) {
+    localStorage.setItem('ofRobotInstrument', val);
+    addLog(nowTime(), 'INFO', `📊 OF контракта изменена на ${val} (применится при следующем старте)`);
+}
+function onOfRobotAccountChange(val) {
+    localStorage.setItem('ofRobotAccount', val);
+    addLog(nowTime(), 'INFO', `📊 OF счёт изменён на ${val}`);
+}
 function onMainRobotInstrumentChange(val) {
     _mainRobotInstrument = val;
     localStorage.setItem('mainRobotInstrument', val);
@@ -2285,6 +2308,8 @@ async function renderRobots() {
 
     // Order Flow Robot row
     let ofRobotRow = '';
+    let _ofInstrument = localStorage.getItem('ofRobotInstrument') || 'SiU6';
+    let _ofAccount = localStorage.getItem('ofRobotAccount') || '1225953';
     if (ofRobot) {
         const s = ofRobot;
         const mode = s.mode || 'stopped';
@@ -2296,9 +2321,14 @@ async function renderRobots() {
         const pnl = s.realizedPnL || 0;
         const paper = s.paper ? ' <span class="badge" style="background:#ff9800">PAPER</span>' : '';
         ofRobotRow = `<tr ondblclick="ofRobotEditPanel()" style="cursor:pointer" title="Двойной клик — настройки робота">
-            <td>SiU6</td>
+            <td><select class="input" style="width:80px;font-size:11px" onchange="onOfRobotInstrumentChange(this.value)">
+              <option value="SiU6" ${_ofInstrument==='SiU6'?'selected':''}>SiU6</option>
+              <option value="SiZ6" ${_ofInstrument==='SiZ6'?'selected':''}>SiZ6</option>
+              <option value="SiH7" ${_ofInstrument==='SiH7'?'selected':''}>SiH7</option>
+              <option value="SiM7" ${_ofInstrument==='SiM7'?'selected':''}>SiM7</option>
+            </select></td>
             <td><strong>Order Flow</strong> <span class="badge" style="background:#9C27B0">PYTHON</span>${paper}</td>
-            <td>1225953</td>
+            <td>${accountDropdownHtml(_ofAccount, 'onOfRobotAccountChange(this.value)')}</td>
             <td class="${dirCls}">${dirText}${s.avgPrice > 0 ? ' @ ' + s.avgPrice.toFixed(0) : ''}</td>
             <td>—</td>
             <td class="${pnlCls(pnl)}">${pnl >= 0 ? '+' : ''}${pnl.toFixed(0)} ₽</td>
@@ -2313,9 +2343,14 @@ async function renderRobots() {
         </tr>`;
     } else {
         ofRobotRow = `<tr ondblclick="ofRobotEditPanel()" style="cursor:pointer" title="Двойной клик — настройки робота">
-            <td>SiU6</td>
+            <td><select class="input" style="width:80px;font-size:11px" onchange="onOfRobotInstrumentChange(this.value)">
+              <option value="SiU6" ${_ofInstrument==='SiU6'?'selected':''}>SiU6</option>
+              <option value="SiZ6" ${_ofInstrument==='SiZ6'?'selected':''}>SiZ6</option>
+              <option value="SiH7" ${_ofInstrument==='SiH7'?'selected':''}>SiH7</option>
+              <option value="SiM7" ${_ofInstrument==='SiM7'?'selected':''}>SiM7</option>
+            </select></td>
             <td><strong>Order Flow</strong> <span class="badge" style="background:#9C27B0">PYTHON</span></td>
-            <td>1225953</td>
+            <td>${accountDropdownHtml(_ofAccount, 'onOfRobotAccountChange(this.value)')}</td>
             <td>—</td>
             <td>—</td>
             <td>—</td>
@@ -3461,208 +3496,868 @@ function fmtPnl(n) {
     return s + Math.round(n).toLocaleString('ru-RU');
 }
 
-// === Arbitrage ===
-async function arbInit() {
-    try {
-        const token = localStorage.getItem('finamToken') || '';
-        if (!token) {
-            arbLog('ERROR', 'Токен не задан. Сначала укажите токен во вкладке Настройки');
+// === Arbitrage Python Robot — factory ===
+function createArbInstance(prefix, port) {
+    const baseUrl = 'http://' + (window.location.hostname || 'localhost') + ':' + port;
+    let data = null;
+
+    async function fetch2(path, method='GET', body=null) {
+        const opts = {method, headers:{'Content-Type':'application/json'}};
+        if (body) opts.body = JSON.stringify(body);
+        try {
+            const r = await fetch(`${baseUrl}${path}`, opts);
+            return r.ok ? await r.json() : null;
+        } catch { return null; }
+    }
+
+    async function refresh() {
+        const d = await fetch2('/status');
+        if (!d) {
+            const s = el(prefix+'Status');
+            if (s) { s.textContent = '❌ Не подключён'; s.style.color = 'var(--red)'; }
             return;
         }
-        el('arbStatusText').textContent = '⏳ Инициализация...';
-        arbLog('INFO', '🔄 Инициализация арбитража...');
-        
-        const resp = await fetch('/arb/init', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ token })
-        });
-        
-        const text = await resp.text();
-        arbLog('INFO', `Ответ сервера: ${resp.status} ${text.substring(0, 200)}`);
-        
-        let data;
-        try { data = JSON.parse(text); } catch { data = { error: text || 'Пустой ответ от сервера' }; }
-        
-        if (resp.ok && !data.error) {
-            el('arbStatusText').textContent = '✅ Инициализирован';
-            el('arbStartBtn').disabled = false;
-            el('arbPauseBtn').disabled = false;
-            el('arbStopBtn').disabled = false;
-            arbLog('INFO', `✅ Арбитраж инициализирован. Капитал: ${(data.capital||0).toLocaleString('ru-RU')} ₽`);
-            arbRefreshStatus();
-        } else {
-            el('arbStatusText').textContent = '❌ Ошибка';
-            arbLog('ERROR', data.error || `Ошибка инициализации (${resp.status})`);
+        data = d;
+        const p = d.params || {};
+        const pos = d.position;
+        const basis = d.basis || {};
+
+        // Header status
+        const s = el(prefix+'Status');
+        if (s) {
+            const modeMap = {running:'▶️ Торгует', paused:'⏸ Пауза', stopped:'⏹ Остановлен'};
+            s.textContent = modeMap[d.mode] || d.mode;
+            s.style.color = d.mode==='running' ? 'var(--green)' : d.mode==='paused' ? 'var(--yellow)' : 'var(--red)';
         }
-    } catch (e) {
-        el('arbStatusText').textContent = '❌ Ошибка';
-        arbLog('ERROR', `Исключение: ${e.message}`);
+        if (el(prefix+'Paper')) el(prefix+'Paper').textContent = d.paper ? '📝 Да' : '💰 Реал';
+
+        // Metrics
+        const pair = `${d.tickerA||p.ticker_a||'—'} / ${d.tickerB||p.ticker_b||'—'}`;
+        if (el(prefix+'Pair')) el(prefix+'Pair').textContent = pair;
+        if (el(prefix+'Basis')) el(prefix+'Basis').textContent = basis.spread_rub != null ? `${basis.spread_rub>=0?'+':''}${basis.spread_rub.toFixed(2)} ₽` : '—';
+        if (el(prefix+'Z')) {
+            const z = basis.zscore || 0;
+            el(prefix+'Z').textContent = z.toFixed(3);
+            el(prefix+'Z').style.color = Math.abs(z) >= (p.entry_z||1.5) ? 'var(--accent)' : z > 0 ? 'var(--green)' : 'var(--red)';
+        }
+        if (el(prefix+'Pos')) {
+            if (pos) {
+                const dir = pos.side === 1 ? 'LONG' : 'SHORT';
+                el(prefix+'Pos').textContent = `${dir} ${pos.lotsA}×${pos.lotsB}`;
+                el(prefix+'Pos').style.color = pos.side===1 ? 'var(--green)' : 'var(--red)';
+            } else { el(prefix+'Pos').textContent = 'Флэт'; el(prefix+'Pos').style.color = ''; }
+        }
+        if (el(prefix+'Unreal')) {
+            const u = d.unrealizedPnl || 0;
+            el(prefix+'Unreal').textContent = (u>=0?'+':'') + u.toFixed(1) + ' ₽';
+            el(prefix+'Unreal').style.color = u > 0 ? 'var(--green)' : u < 0 ? 'var(--red)' : '';
+        }
+        if (el(prefix+'Realized')) {
+            const r = d.realizedPnl || 0;
+            el(prefix+'Realized').textContent = (r>=0?'+':'') + r.toLocaleString('ru-RU') + ' ₽';
+            el(prefix+'Realized').style.color = r > 0 ? 'var(--green)' : r < 0 ? 'var(--red)' : '';
+        }
+        if (el(prefix+'Trades')) el(prefix+'Trades').textContent = d.trades || 0;
+
+        // Table row
+        if (el(prefix+'RbPair')) el(prefix+'RbPair').textContent = pair;
+        if (el(prefix+'RbMode')) el(prefix+'RbMode').textContent = d.mode || '—';
+        if (el(prefix+'RbPos')) el(prefix+'RbPos').textContent = pos ? `${pos.side===1?'LONG':'SHORT'} ${pos.lotsA}×${pos.lotsB}` : '—';
+        if (el(prefix+'RbPnl')) el(prefix+'RbPnl').textContent = (d.totalPnl||0).toFixed(0) + ' ₽';
+        if (el(prefix+'RbZ')) el(prefix+'RbZ').textContent = (basis.zscore||0).toFixed(2);
+        if (el(prefix+'RbBasis')) el(prefix+'RbBasis').textContent = (basis.basis||0).toFixed(2);
+        if (el(prefix+'RbStatus')) el(prefix+'RbStatus').textContent = d.mode==='running' ? '🟢' : d.mode==='paused' ? '🟡' : '⚪';
+    }
+
+    async function start() { await fetch2('/start','POST'); refresh(); }
+    async function pause() { await fetch2('/pause','POST'); refresh(); }
+    async function stop()  { await fetch2('/stop','POST'); refresh(); }
+
+    return { refresh, start, pause, stop, fetch: fetch2, getData: () => data };
+}
+
+// === Create arb robot instances ===
+const arbPy = createArbInstance('arbPy', 5090);
+const sber = createArbInstance('sber', 5091);
+const brCal = createArbInstance('brCal', 5092);
+
+// Expose as global functions for onclick handlers
+async function arbPyStart() { arbPy.start(); arbPyLog('▶️ Запуск GAZP/GZU6...'); }
+async function arbPyPause() { arbPy.pause(); arbPyLog('⏸ Пауза GAZP/GZU6...'); }
+async function arbPyStop()  { arbPy.stop();  arbPyLog('⏹ Стоп GAZP/GZU6...'); }
+async function sberStart()  { sber.start(); arbPyLog('▶️ Запуск SBER/SRU6...'); }
+async function sberPause()  { sber.pause(); arbPyLog('⏸ Пауза SBER/SRU6...'); }
+async function sberStop()   { if (!confirm('Остановить SBER/SRU6?')) return; sber.stop(); arbPyLog('⏹ Стоп SBER/SRU6...'); }
+async function brCalStart() { brCal.start(); arbPyLog('▶️ Запуск BR Calendar...'); }
+async function brCalPause() { brCal.pause(); arbPyLog('⏸ Пауза BR Calendar...'); }
+async function brCalStop()  { if (!confirm('Остановить BR Calendar?')) return; brCal.stop(); arbPyLog('⏹ Стоп BR Calendar...'); }
+
+// Back-compat: arbPyRefresh now calls both
+async function arbPyRefresh() {
+    await arbPy.refresh();
+    await sber.refresh();
+    await brCal.refresh();
+    arbPyData = arbPy.getData();
+}
+
+// Back-compat: arbPyFetch delegates to GAZP instance
+async function arbPyFetch(path, method='GET', body=null) {
+    return arbPy.fetch(path, method, body);
+}
+
+function arbPyLog(msg, level='INFO') {
+    const c = el('arbPyLogContainer');
+    if (!c) return;
+    const t = new Date().toLocaleTimeString('ru-RU');
+    const color = level === 'ERROR' ? '#F44336' : level === 'WARN' ? '#FF9800' : '#4CAF50';
+    c.innerHTML = `<div style="padding:2px 0;color:${color}">[${t}] ${level}: ${msg}</div>` + c.innerHTML;
+    while (c.children.length > 50) c.removeChild(c.lastChild);
+}
+function arbPyEditPanel() {
+    const existing = el('arbPyEditPanel');
+    if (existing) { existing.remove(); _arbJournalInstance = null; return; }
+    // Note: _arbJournalInstance may already be set by sberEditPanel — don't reset it here
+
+    const p = (arbPyData && arbPyData.params) || {};
+    const div = document.createElement('div');
+    div.id = 'arbPyEditPanel';
+    div.className = 'card';
+    div.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);z-index:1000;width:750px;max-height:90vh;overflow-y:auto;box-shadow:0 8px 32px rgba(0,0,0,.5)';
+    div.innerHTML = `
+        <div class="card-header row gap-8">
+            🔄 Арбитражный робот (PYTHON)
+            <span style="flex:1"></span>
+            <button class="btn btn-primary btn-sm" onclick="arbPyShowCopyDialog()">📋 Копировать</button>
+            <button class="btn btn-primary btn-sm" onclick="arbPySaveFromPanel()">💾 Сохранить</button>
+            <button class="btn btn-secondary btn-sm" onclick="el('arbPyEditPanel')?.remove()">✕</button>
+        </div>
+        <div style="padding:16px;display:flex;flex-direction:column;gap:16px">
+            <!-- Счёт + Капитал -->
+            <div class="metrics-row" style="flex-wrap:wrap">
+                <div class="metric-card" style="min-width:180px"><div class="metric-label">📋 Счёт</div>
+                    <select id="arbAccount" class="input" style="width:160px">
+                        <option value="${(arbPyData&&arbPyData.account)||'1225953'}" selected>${(arbPyData&&arbPyData.account)||'1225953'}</option>
+                    </select>
+                    <input type="hidden" id="arbAccountSaved" value="${(arbPyData&&arbPyData.account)||'1225953'}">
+                </div>
+                <div class="metric-card" style="min-width:140px"><div class="metric-label">Капитал (₽)</div><input id="arbCapital" class="input" type="number" value="${p.capital||1000000}" style="width:120px"></div>
+            </div>
+
+            <hr style="border-color:var(--border-color)">
+
+            <!-- Инструменты -->
+            <div class="metrics-row" style="flex-wrap:wrap">
+                <div class="metric-card" style="min-width:160px"><div class="metric-label">📈 Инструмент A</div>
+                    <select id="arbSymA" class="input" style="width:140px" onchange="arbUpdateCommissionLabels()">
+                        <option value="GAZP" ${(p.ticker_a||'GAZP')==='GAZP'?'selected':''}>GAZP (Газпром)</option>
+                        <option value="SBER" ${p.ticker_a==='SBER'?'selected':''}>SBER (Сбербанк)</option>
+                        <option value="LKOH" ${p.ticker_a==='LKOH'?'selected':''}>LKOH (Лукойл)</option>
+                        <option value="ROSN" ${p.ticker_a==='ROSN'?'selected':''}>ROSN (Роснефть)</option>
+                        <option value="TATN" ${p.ticker_a==='TATN'?'selected':''}>TATN (Татнефть)</option>
+                        <option value="GMKN" ${p.ticker_a==='GMKN'?'selected':''}>GMKN (Норникель)</option>
+                        <option value="ALRS" ${p.ticker_a==='ALRS'?'selected':''}>ALRS (Алроса)</option>
+                        <option value="VTBR" ${p.ticker_a==='VTBR'?'selected':''}>VTBR (ВТБ)</option>
+                        <option value="MTSS" ${p.ticker_a==='MTSS'?'selected':''}>MTSS (МТС)</option>
+                        <option value="NVTK" ${p.ticker_a==='NVTK'?'selected':''}>NVTK (Новатэк)</option>
+                        <option value="BRQ6" ${p.ticker_a==='BRQ6'?'selected':''}>BRQ6 (Brent Aug)</option>
+                        <option value="BRU6" ${p.ticker_a==='BRU6'?'selected':''}>BRU6 (Brent Sep)</option>
+                        <option value="BRZ6" ${p.ticker_a==='BRZ6'?'selected':''}>BRZ6 (Brent Dec)</option>
+                        <option value="BRK6" ${p.ticker_a==='BRK6'?'selected':''}>BRK6 (Brent Jun)</option>
+                    </select>
+                </div>
+                <div class="metric-card" style="min-width:160px"><div class="metric-label">📉 Инструмент B</div>
+                    <select id="arbSymB" class="input" style="width:140px">
+                        <option value="GZM6" ${(p.ticker_b||'GZM6')==='GZM6'?'selected':''}>GZM6 (Газпром фьюч)</option>
+                        <option value="GZU6" ${p.ticker_b==='GZU6'?'selected':''}>GZU6 (Газпром фьюч)</option>
+                        <option value="SRM6" ${p.ticker_b==='SRM6'?'selected':''}>SRM6 (Сбер фьюч)</option>
+                        <option value="SRU6" ${p.ticker_b==='SRU6'?'selected':''}>SRU6 (Сбер фьюч)</option>
+                        <option value="LKM6" ${p.ticker_b==='LKM6'?'selected':''}>LKM6 (Лукойл фьюч)</option>
+                        <option value="RNM6" ${p.ticker_b==='RNM6'?'selected':''}>RNM6 (Роснефть фьюч)</option>
+                        <option value="TTM6" ${p.ticker_b==='TTM6'?'selected':''}>TTM6 (Татнефть фьюч)</option>
+                        <option value="MXM6" ${p.ticker_b==='MXM6'?'selected':''}>MXM6 (Мосбиржа фьюч)</option>
+                        <option value="SiM6" ${p.ticker_b==='SiM6'?'selected':''}>SiM6 (Доллар/руб)</option>
+                        <option value="SiU6" ${p.ticker_b==='SiU6'?'selected':''}>SiU6 (Доллар/руб)</option>
+                        <option value="RIM6" ${p.ticker_b==='RIM6'?'selected':''}>RIM6 (RTS фьюч)</option>
+                        <option value="RIU6" ${p.ticker_b==='RIU6'?'selected':''}>RIU6 (RTS фьюч)</option>
+                        <option value="GDM6" ${p.ticker_b==='GDM6'?'selected':''}>GDM6 (Золото фьюч)</option>
+                        <option value="BRQ6" ${p.ticker_b==='BRQ6'?'selected':''}>BRQ6 (Brent Aug фьюч)</option>
+                        <option value="BRU6" ${p.ticker_b==='BRU6'?'selected':''}>BRU6 (Brent Sep фьюч)</option>
+                        <option value="BRZ6" ${p.ticker_b==='BRZ6'?'selected':''}>BRZ6 (Brent Dec фьюч)</option>
+                        <option value="BRK6" ${p.ticker_b==='BRK6'?'selected':''}>BRK6 (Brent Jun фьюч)</option>
+                    </select>
+                </div>
+                <div class="metric-card"><div class="metric-label">Лоты A</div><input id="arbLotsA" class="input" type="number" value="${p.lots_a||10}" style="width:70px"></div>
+                <div class="metric-card"><div class="metric-label">Лоты B</div><input id="arbLotsB" class="input" type="number" value="${p.lots_b||1}" style="width:70px"></div>
+                <div class="metric-card"><div class="metric-label">Hedge Ratio</div><input id="arbHedgeRatio" class="input" type="number" step="0.1" value="${p.hedge_ratio||10}" style="width:70px"></div>
+            </div>
+
+            <!-- Комиссия -->
+            <div class="metrics-row" style="flex-wrap:wrap">
+                <div class="metric-card" style="min-width:280px;border:1px solid var(--border-color)">
+                    <div class="metric-label">💰 Комиссия</div>
+                    <label style="display:flex;align-items:center;gap:8px;cursor:pointer;padding:4px 0">
+                        <input type="checkbox" id="arbUseCommission" ${p.use_commission!==false?'checked':''} style="width:18px;height:18px;cursor:pointer">
+                        <span style="font-size:13px">Включить комиссию в расчёт PnL</span>
+                    </label>
+                </div>
+                <div class="metric-card"><div class="metric-label" id="arbCommALabel">${/\d/.test(p.ticker_a||'') ? 'Фьючерс A (₽ за контракт RT)' : 'Акция A (% за сторону)'}</div><input id="arbCommStock" class="input" type="number" step="0.01" value="${/\d/.test(p.ticker_a||'') ? (p.commission_futures_rt||15) : (p.commission_stock_pct||0.04)}" style="width:80px"></div>
+                <div class="metric-card"><div class="metric-label">Фьючерс B (₽ за контракт RT)</div><input id="arbCommFut" class="input" type="number" step="0.1" value="${p.commission_futures_rt||0.9}" style="width:80px"></div>
+            </div>
+            <div id="arbCommBothFut" style="font-size:12px;color:var(--yellow);padding:4px 0;display:${/\d/.test(p.ticker_a||'')?'block':'none'}">⚠️ Обе ноги — фьючерсы. Комиссия B (₽ RT) применяется к обеим ногам.</div>
+            </div>
+
+            <hr style="border-color:var(--border-color)">
+
+            <!-- Вход -->
+            <div class="metrics-row" style="flex-wrap:wrap">
+                <div class="metric-card"><div class="metric-label">Entry Z (SHORT)</div><input id="arbEntryZ" class="input" type="number" step="0.1" value="${p.entry_z||1.5}" style="width:70px"></div>
+                <div class="metric-card"><div class="metric-label">Entry Z (LONG)</div><input id="arbEntryZLong" class="input" type="number" step="0.1" value="${p.entry_z_long||1.5}" style="width:70px"></div>
+                <div class="metric-card"><div class="metric-label">Lookback</div><input id="arbLookback" class="input" type="number" value="${p.lookback||50}" style="width:70px"></div>
+                <div class="metric-card"><div class="metric-label">Leg A Timeout (сек)</div><input id="arbLegTimeout" class="input" type="number" value="${p.leg_a_timeout||5}" style="width:70px"></div>
+                <div class="metric-card"><div class="metric-label">Min Fill Ratio</div><input id="arbMinFill" class="input" type="number" step="0.05" value="${p.min_fill_ratio||0.5}" style="width:70px"></div>
+            </div>
+
+            <!-- Fair value -->
+            <div class="metrics-row" style="flex-wrap:wrap">
+                <div class="metric-card"><div class="metric-label">Ставка (годовые %)</div><input id="arbRate" class="input" type="number" step="0.1" value="${(p.risk_free_rate||0.16)*100}" style="width:70px"></div>
+                <div class="metric-card"><div class="metric-label">Экспирация</div><input id="arbExpiration" class="input" type="date" value="${p.expiration_date||'2026-09-18'}" style="width:130px"></div>
+                <div class="metric-card"><div class="metric-label">Размер контракта</div><input id="arbContractSize" class="input" type="number" value="${p.contract_size||100}" style="width:70px"></div>
+            </div>
+
+            <hr style="border-color:var(--border-color)">
+
+            <!-- Мин. профит (dropdown + значение) -->
+            <div class="metrics-row" style="flex-wrap:wrap;align-items:flex-end">
+                <div class="metric-card"><div class="metric-label">Мин. профит — тип</div>
+                    <select id="arbMinProfitType" class="input" style="width:110px">
+                        <option value="rub" ${(p.min_profit_type||'rub')==='rub'?'selected':''}>Рубли (₽)</option>
+                        <option value="pts" ${p.min_profit_type==='pts'?'selected':''}>Пункты</option>
+                        <option value="pct" ${p.min_profit_type==='pct'?'selected':''}>Проценты (%)</option>
+                    </select>
+                </div>
+                <div class="metric-card"><div class="metric-label">Значение</div><input id="arbMinProfitVal" class="input" type="number" step="0.1" value="${p.min_profit_value||20}" style="width:90px"></div>
+            </div>
+
+            <hr style="border-color:var(--border-color)">
+
+            <!-- Риск (dropdown + значение) -->
+            <div class="metrics-row" style="flex-wrap:wrap;align-items:flex-end">
+                <div class="metric-card"><div class="metric-label">Риск — тип</div>
+                    <select id="arbRiskType" class="input" style="width:150px">
+                        <option value="stop_loss_rub" ${(p.risk_type||'stop_loss_rub')==='stop_loss_rub'?'selected':''}>Стоп-лосс (₽)</option>
+                        <option value="time_stop_min" ${p.risk_type==='time_stop_min'?'selected':''}>Тайм-стоп (мин)</option>
+                        <option value="max_dd_pct" ${p.risk_type==='max_dd_pct'?'selected':''}>Max DD (%)</option>
+                        <option value="kill_switch" ${p.risk_type==='kill_switch'?'selected':''}>Kill Switch</option>
+                    </select>
+                </div>
+                <div class="metric-card"><div class="metric-label">Значение</div><input id="arbRiskVal" class="input" type="number" value="${p.risk_value||5000}" style="width:90px"></div>
+            </div>
+
+            <!-- Направление -->
+            <div class="metrics-row" style="flex-wrap:wrap">
+                <div class="metric-card" style="min-width:300px">
+                    <div class="metric-label">Направление</div>
+                    <label style="display:flex;align-items:center;gap:8px;cursor:pointer;padding:4px 0">
+                        <input type="checkbox" id="arbAllowLong" ${p.allow_long_basis?'checked':''} style="width:18px;height:18px;cursor:pointer">
+                        <span>Разрешить лонг (шорт акции + лонг фьючерса)</span>
+                    </label>
+                </div>
+            </div>
+
+            <hr style="border-color:var(--border-color)">
+
+            <!-- Раздвижка -->
+            <hr style="border-color:var(--border-color);margin:12px 0">
+            <div class="metrics-row" style="flex-wrap:wrap">
+                <div class="metric-card" style="background:#1a2332;border:1px solid var(--accent)"><div class="metric-label" style="color:var(--accent)">Раздвижка (₽)</div><div id="arbSpreadRub" style="font-size:22px;font-weight:bold;color:var(--accent)">—</div></div>
+                <div class="metric-card"><div class="metric-label">Fair Spread (₽)</div><div id="arbFairSpread" style="font-size:18px;font-weight:bold">—</div></div>
+                <div class="metric-card"><div class="metric-label">Deviation (₽)</div><div id="arbDeviation" style="font-size:18px;font-weight:bold">—</div></div>
+                <div class="metric-card"><div class="metric-label">Раздвижка (%)</div><div id="arbSpreadPct" style="font-size:18px;font-weight:bold">—</div></div>
+                <div class="metric-card"><div class="metric-label">GAZP × 100</div><div id="arbSpotValue" style="font-size:18px;font-weight:bold">—</div></div>
+                <div class="metric-card"><div class="metric-label" id="arbFutLabel">GZM6 (фьюч)</div><div id="arbFutValue" style="font-size:18px;font-weight:bold">—</div></div>
+                <div class="metric-card"><div class="metric-label">Basis (Z-score base)</div><div id="arbBasisVal" style="font-size:18px;font-weight:bold">—</div></div>
+                <div class="metric-card"><div class="metric-label">Z-score</div><div id="arbZVal" style="font-size:18px;font-weight:bold">—</div></div>
+                <div class="metric-card"><div class="metric-label">Basis Mean</div><div id="arbMeanVal" style="font-size:14px">—</div></div>
+                <div class="metric-card"><div class="metric-label">Basis Std</div><div id="arbStdVal" style="font-size:14px">—</div></div>
+                <div class="metric-card"><div class="metric-label">Days to Exp</div><div id="arbDaysExp" style="font-size:18px;font-weight:bold">—</div></div>
+                <!-- Variant 1: absolute thresholds toggle + inputs + reference -->
+                <div class="metric-card" style="min-width:320px;border:1px solid #e90"><div class="metric-label" style="color:#e90">📊 Калькулятор спреда</div>
+                    <label style="display:flex;align-items:center;gap:8px;cursor:pointer;padding:4px 0">
+                        <input type="checkbox" id="arbEntryModeRub" ${p.entry_mode==='spread_rub'?'checked':''} style="width:18px;height:18px;cursor:pointer" onchange="arbEntryModeToggle()">
+                        <span style="font-size:13px">Торговать по абсолютным порогам (₽)</span>
+                    </label>
+                    <div id="arbRubInputs" style="display:none;margin-top:6px">
+                        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+                            <div style="flex:1;min-width:100px"><label style="font-size:11px;color:#9CA3AF">Short (₽ &gt;)</label><input id="arbSpreadRubHigh" class="input" type="number" step="1" style="width:80px;font-size:14px;padding:4px" value="${p.spread_rub_high||400}"></div>
+                            <div style="flex:1;min-width:100px"><label style="font-size:11px;color:#9CA3AF">Long (₽ &lt;)</label><input id="arbSpreadRubLow" class="input" type="number" step="1" style="width:80px;font-size:14px;padding:4px" value="${p.spread_rub_low||200}"></div>
+                        </div>
+                    </div>
+                    <div style="margin-top:8px;padding-top:8px;border-top:1px solid #333">
+                        <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px 12px;font-size:12px">
+                            <div style="color:#9CA3AF">Текущий спред:</div><div id="arbCalcSpread" style="font-weight:bold;text-align:right">—</div>
+                            <div style="color:#9CA3AF">Fair value (cost of carry):</div><div id="arbCalcFair" style="font-weight:bold;text-align:right">—</div>
+                            <div style="color:#9CA3AF">Deviation:</div><div id="arbCalcDev" style="font-weight:bold;text-align:right">—</div>
+                            <div style="color:#9CA3AF">Z-score:</div><div id="arbCalcZ" style="font-weight:bold;text-align:right">—</div>
+                        </div>
+                        <div style="margin-top:8px;padding-top:6px;border-top:1px dashed #444">
+                            <div style="font-size:11px;color:#9CA3AF;margin-bottom:4px">Исторический диапазон (lookback):</div>
+                            <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:4px 12px;font-size:12px">
+                                <div style="color:#9CA3AF">Max:</div><div id="arbCalcMax" style="font-weight:bold;text-align:center;color:var(--green)">—</div>
+                                <div style="color:#9CA3AF">Min:</div><div id="arbCalcMin" style="font-weight:bold;text-align:center;color:var(--red)">—</div>
+                                <div style="color:#9CA3AF">Mean:</div><div id="arbCalcMean" style="font-weight:bold;text-align:center">—</div>
+                            </div>
+                            <div style="margin-top:4px;font-size:11px;color:#9CA3AF">Suggested: High <span id="arbCalcSH" style="color:var(--green);font-weight:bold">—</span> | Low <span id="arbCalcSL" style="color:var(--red);font-weight:bold">—</span></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <hr style="border-color:var(--border-color);margin:12px 0">
+
+            <!-- Стакан L2 инфо -->
+            <div class="metrics-row" style="flex-wrap:wrap">
+                <div class="metric-card"><div class="metric-label">L2 A: Bid/Ask</div><div id="arbL2A" style="font-size:14px">—</div></div>
+                <div class="metric-card"><div class="metric-label">L2 B: Bid/Ask</div><div id="arbL2B" style="font-size:14px">—</div></div>
+                <div class="metric-card"><div class="metric-label">Data Points</div><div id="arbDataPts" style="font-size:14px">—</div></div>
+            </div>
+
+            <hr style="border-color:var(--border-color);margin:12px 0">
+
+            <!-- Торговый журнал -->
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+                <strong>📋 Торговый журнал</strong>
+            </div>
+            <div id="arbJournalSummary" class="metrics-row" style="flex-wrap:wrap;margin-bottom:12px"></div>
+            <div style="display:flex;gap:8px;margin-bottom:12px;align-items:center">
+                <select id="arbJournalFilter" class="input" style="width:120px" onchange="arbRenderJournal()">
+                    <option value="all">Все позиции</option>
+                    <option value="LONG">Лонги</option>
+                    <option value="SHORT">Шорты</option>
+                    <option value="win">Прибыльные</option>
+                    <option value="loss">Убыточные</option>
+                </select>
+                <span style="color:#9CA3AF;font-size:13px">с</span>
+                <input id="arbJournalDateFrom" class="input" type="date" style="width:130px" onchange="arbRenderJournal()">
+                <span style="color:#9CA3AF;font-size:13px">по</span>
+                <input id="arbJournalDateTo" class="input" type="date" style="width:130px" onchange="arbRenderJournal()">
+                <button class="btn btn-secondary btn-sm" onclick="arbLoadJournal()">🔄</button>
+            </div>
+            <div style="max-height:350px;overflow-y:auto;border:1px solid var(--border-color);border-radius:8px">
+                <table style="width:100%;border-collapse:collapse;font-size:13px">
+                    <thead style="position:sticky;top:0;z-index:1">
+                        <tr style="background:var(--card);border-bottom:2px solid var(--accent)">
+                            <th style="padding:8px;text-align:left">📅 Дата</th>
+                            <th style="padding:8px;text-align:left">⏰ Вход</th>
+                            <th style="padding:8px;text-align:left">⏰ Выход</th>
+                            <th style="padding:8px;text-align:center">↔️</th>
+                            <th style="padding:8px;text-align:right">Basis вх.</th>
+                            <th style="padding:8px;text-align:right">Basis вых.</th>
+                            <th style="padding:8px;text-align:right">Z</th>
+                            <th style="padding:8px;text-align:right">Лоты A/B</th>
+                            <th style="padding:8px;text-align:right">PnL</th>
+                            <th style="padding:8px;text-align:right">Кумул.</th>
+                        </tr>
+                    </thead>
+                    <tbody id="arbJournalBody" style="background:var(--bg)"><tr><td colspan="10" style="text-align:center;padding:24px;color:#9CA3AF">Нет данных</td></tr></tbody>
+                </table>
+            </div>
+            <div id="arbJournalInfo" style="font-size:12px;color:#9CA3AF;margin-top:8px"></div>
+        </div>
+    `;
+    document.body.appendChild(div);
+    arbPyUpdateL2();
+    arbPyLoadAccounts();
+    // Init Variant 1 toggle state
+    arbEntryModeToggle();
+    setTimeout(() => arbLoadJournal(), 300);
+}
+
+function sberEditPanel() {
+    const existing = el('sberEditPanel');
+    if (existing) { existing.remove(); _arbJournalInstance = null; return; }
+    _arbJournalInstance = 'sber';
+    // Temporarily swap arbPyData so arbPyEditPanel renders with SBER params
+    const savedArbPyData = arbPyData;
+    arbPyData = sber.getData();
+    // Save current instance before calling arbPyEditPanel (which would reset it)
+    const savedInstance = _arbJournalInstance;
+    // Call the same render logic
+    arbPyEditPanel();
+    // Restore journal instance (arbPyEditPanel may have reset it)
+    _arbJournalInstance = savedInstance;
+    // Rename the panel
+    const panel = el('arbPyEditPanel');
+    if (panel) {
+        panel.id = 'sberEditPanel';
+        // Update header to show SBER
+        const header = panel.querySelector('.card-header');
+        if (header) header.innerHTML = header.innerHTML.replace('Арбитражный робот (PYTHON)', 'Арбитражный робот — SBER/SRU6');
+        // Override save button to save to SBER
+        const saveBtn = panel.querySelector('button[onclick*="arbPySaveFromPanel"]');
+        if (saveBtn) saveBtn.setAttribute('onclick', 'sberSaveFromPanel()');
+        // Override copy button
+        const copyBtn = panel.querySelector('button[onclick*="arbPyShowCopyDialog"]');
+        if (copyBtn) copyBtn.remove();
+        // Override close button
+        const closeBtn = panel.querySelector('button[onclick*="arbPyEditPanel"]');
+        if (closeBtn) closeBtn.setAttribute('onclick', 'el(\'sberEditPanel\')?.remove(); _arbJournalInstance=null;');
     }
 }
 
-async function arbStart() {
-    try {
-        const resp = await fetch('/arb/start', { method: 'POST' });
-        const data = await resp.json();
-        el('arbStatusText').textContent = '▶️ Торгует';
-        el('arbStatusText').style.color = 'var(--green)';
-        arbLog('INFO', '▶️ Арбитраж запущен');
-        arbRefreshStatus();
-    } catch (e) { arbLog('ERROR', e.message); }
+async function sberSaveFromPanel() {
+    const body = {
+        ticker_a: el('arbSymA').value,
+        symbol_a: el('arbSymA').value + '@RTSX',
+        ticker_b: el('arbSymB').value,
+        symbol_b: el('arbSymB').value + '@RTSX',
+        lots_a: parseInt(el('arbLotsA').value),
+        lots_b: parseInt(el('arbLotsB').value),
+        hedge_ratio: parseFloat(el('arbHedgeRatio').value),
+        capital: parseFloat(el('arbCapital')?.value || 100000),
+        entry_z: parseFloat(el('arbEntryZ').value),
+        entry_z_long: parseFloat(el('arbEntryZLong').value),
+        entry_mode: el('arbEntryModeRub')?.checked ? 'spread_rub' : 'zscore',
+        spread_rub_high: parseFloat(el('arbSpreadRubHigh')?.value || 400),
+        spread_rub_low: parseFloat(el('arbSpreadRubLow')?.value || 200),
+        risk_free_rate: parseFloat(el('arbRate')?.value || 16) / 100,
+        expiration_date: el('arbExpiration')?.value || '2026-09-18',
+        contract_size: parseInt(el('arbContractSize')?.value || 100),
+        lookback: parseInt(el('arbLookback').value),
+        leg_a_timeout: parseInt(el('arbLegTimeout').value),
+        min_fill_ratio: parseFloat(el('arbMinFill').value),
+        min_profit_type: el('arbMinProfitType').value,
+        min_profit_value: parseFloat(el('arbMinProfitVal').value),
+        risk_type: el('arbRiskType').value,
+        risk_value: parseFloat(el('arbRiskVal').value),
+        allow_long_basis: el('arbAllowLong')?.checked || false,
+        use_commission: el('arbUseCommission')?.checked ?? true,
+        commission_stock_pct: parseFloat(el('arbCommStock')?.value || 0.035),
+        commission_futures_rt: parseFloat(el('arbCommFut')?.value || 0.9),
+        slippage_bps: parseFloat(el('arbSlippage')?.value || 5),
+    };
+    // If leg A is futures, use its commission value too
+    const symA = el('arbSymA')?.value || '';
+    if (/\d/.test(symA)) {
+        body.commission_futures_rt = parseFloat(el('arbCommStock')?.value || body.commission_futures_rt);
+    }
+    const r = await sber.fetch('/params', 'POST', body);
+    if (r && r.ok) {
+        arbPyLog('✅ SBER/SRU6 параметры сохранены');
+        sber.refresh();
+        el('sberEditPanel')?.remove();
+    } else {
+        arbPyLog('Ошибка сохранения SBER/SRU6', 'ERROR');
+    }
 }
 
-async function arbPause() {
-    try {
-        await fetch('/arb/pause', { method: 'POST' });
-        el('arbStatusText').textContent = '⏸ Пауза';
-        el('arbStatusText').style.color = 'var(--yellow)';
-        arbLog('INFO', '⏸ Арбитраж на паузе');
-    } catch (e) { arbLog('ERROR', e.message); }
+function brCalEditPanel() {
+    const existing = el('brCalEditPanel');
+    if (existing) { existing.remove(); _arbJournalInstance = null; return; }
+    _arbJournalInstance = 'brCal';
+    const savedArbPyData = arbPyData;
+    arbPyData = brCal.getData();
+    const savedInstance = _arbJournalInstance;
+    arbPyEditPanel();
+    setTimeout(arbUpdateCommissionLabels, 50);
+    _arbJournalInstance = savedInstance;
+    const panel = el('arbPyEditPanel');
+    if (panel) {
+        panel.id = 'brCalEditPanel';
+        const header = panel.querySelector('.card-header');
+        if (header) header.innerHTML = header.innerHTML.replace('Арбитражный робот (PYTHON)', 'Арбитражный робот — BR Calendar');
+        const saveBtn = panel.querySelector('button[onclick*="arbPySaveFromPanel"]');
+        if (saveBtn) saveBtn.setAttribute('onclick', 'brCalSaveFromPanel()');
+        const copyBtn = panel.querySelector('button[onclick*="arbPyShowCopyDialog"]');
+        if (copyBtn) copyBtn.remove();
+        const closeBtn = panel.querySelector('button[onclick*="arbPyEditPanel"]');
+        if (closeBtn) closeBtn.setAttribute('onclick', 'el(\'brCalEditPanel\')?.remove(); _arbJournalInstance=null;');
+    }
 }
 
-async function arbStop() {
-    try {
-        await fetch('/arb/stop', { method: 'POST' });
-        el('arbStatusText').textContent = '⏹ Остановлен';
-        el('arbStatusText').style.color = 'var(--red)';
-        arbLog('INFO', '⏹ Арбитраж остановлен, позиции закрыты');
-        arbRefreshStatus();
-    } catch (e) { arbLog('ERROR', e.message); }
+async function brCalSaveFromPanel() {
+    const body = {
+        ticker_a: el('arbSymA').value,
+        symbol_a: el('arbSymA').value + '@RTSX',
+        ticker_b: el('arbSymB').value,
+        symbol_b: el('arbSymB').value + '@RTSX',
+        lots_a: parseInt(el('arbLotsA').value),
+        lots_b: parseInt(el('arbLotsB').value),
+        hedge_ratio: parseFloat(el('arbHedgeRatio').value),
+        capital: parseFloat(el('arbCapital')?.value || 100000),
+        entry_z: parseFloat(el('arbEntryZ').value),
+        entry_z_long: parseFloat(el('arbEntryZLong').value),
+        entry_mode: el('arbEntryModeRub')?.checked ? 'spread_rub' : 'zscore',
+        spread_rub_high: parseFloat(el('arbSpreadRubHigh')?.value || 5),
+        spread_rub_low: parseFloat(el('arbSpreadRubLow')?.value || -5),
+        risk_free_rate: parseFloat(el('arbRate')?.value || 14.25) / 100,
+        expiration_date: el('arbExpiration')?.value || '2026-09-18',
+        contract_size: parseInt(el('arbContractSize')?.value || 1),
+        lookback: parseInt(el('arbLookback').value),
+        leg_a_timeout: parseInt(el('arbLegTimeout').value),
+        min_fill_ratio: parseFloat(el('arbMinFill').value),
+        min_profit_type: el('arbMinProfitType').value,
+        min_profit_value: parseFloat(el('arbMinProfitVal').value),
+        risk_type: el('arbRiskType').value,
+        risk_value: parseFloat(el('arbRiskVal').value),
+        allow_long_basis: el('arbAllowLong')?.checked || false,
+        use_commission: el('arbUseCommission')?.checked ?? true,
+        commission_stock_pct: parseFloat(el('arbCommStock')?.value || 0.035),
+        commission_futures_rt: parseFloat(el('arbCommFut')?.value || 7.5),
+        slippage_bps: parseFloat(el('arbSlippage')?.value || 10),
+    };
+    // If leg A is futures, use its value as commission_futures_rt too (both legs same fee)
+    const symA = el('arbSymA')?.value || '';
+    if (/\d/.test(symA)) {
+        body.commission_futures_rt = parseFloat(el('arbCommStock')?.value || 15);
+    }
+    const r = await brCal.fetch('/params', 'POST', body);
+    if (r && r.ok) {
+        arbPyLog('✅ BR Calendar параметры сохранены');
+        brCal.refresh();
+        el('brCalEditPanel')?.remove();
+    } else {
+        arbPyLog('Ошибка сохранения BR Calendar', 'ERROR');
+    }
 }
 
-async function arbPairStart(spot) {
-    try {
-        await fetch(`/arb/pair/${spot}/start`, { method: 'POST' });
-        arbLog('INFO', `▶ ${spot} запущена`);
-    } catch (e) { arbLog('ERROR', e.message); }
+function arbEntryModeToggle() {
+    const checked = el('arbEntryModeRub')?.checked;
+    const inputs = el('arbRubInputs');
+    if (inputs) inputs.style.display = checked ? 'block' : 'none';
+    // Grey out Z-score inputs when Variant 1 active
+    const zShort = el('arbEntryZ');
+    const zLong = el('arbEntryZLong');
+    if (zShort) { zShort.disabled = checked; zShort.style.opacity = checked ? 0.4 : 1; }
+    if (zLong) { zLong.disabled = checked; zLong.style.opacity = checked ? 0.4 : 1; }
 }
 
-async function arbPairStop(spot) {
-    try {
-        await fetch(`/arb/pair/${spot}/stop`, { method: 'POST' });
-        arbLog('INFO', `⏹ ${spot} остановлена`);
-    } catch (e) { arbLog('ERROR', e.message); }
+function arbUpdateCommissionLabels() {
+    // Update commission labels based on selected instruments
+    const symA = el('arbSymA')?.value || '';
+    const isFutA = /\d/.test(symA);
+    const labelA = el('arbCommALabel');
+    const warnBoth = el('arbCommBothFut');
+    if (labelA) {
+        labelA.textContent = isFutA ? 'Фьючерс A (₽ за контракт RT)' : 'Акция A (% за сторону)';
+    }
+    if (warnBoth) {
+        warnBoth.style.display = isFutA ? 'block' : 'none';
+    }
 }
 
-async function arbRefreshStatus() {
-    try {
-        const resp = await fetch('/arb/status');
-        const data = await resp.json();
-        if (data.status === 'not_initialized') return;
-        
-        el('arbConnected').textContent = data.connected ? '✅' : '❌';
-        el('arbConnected').className = 'metric-value ' + (data.connected ? 'green' : 'red');
-        
-        // Parse detail string for metrics
-        const detail = data.detail || '';
-        const pnlMatch = detail.match(/PnL: ([+-]?[\d,]+)/);
-        const tradesMatch = detail.match(/Сделок: (\d+)/);
-        if (pnlMatch) {
-            const pnl = parseInt(pnlMatch[1].replace(/,/g, ''));
-            el('arbTotalPnl').textContent = pnl.toLocaleString('ru-RU') + ' ₽';
-            el('arbTotalPnl').className = 'metric-value ' + (pnl > 0 ? 'green' : pnl < 0 ? 'red' : '');
-        }
-        if (tradesMatch) {
-            el('arbTotalTrades').textContent = tradesMatch[1];
-        }
-        
-        const dteMatch = detail.match(/DaysToExpiry: (\d+)/);
-        if (dteMatch) el('arbDTE').textContent = dteMatch[1] + ' дн';
-        
-        // Enable buttons
-        el('arbStartBtn').disabled = false;
-        el('arbPauseBtn').disabled = false;
-        el('arbStopBtn').disabled = false;
-        
-        // Refresh pairs table
-        arbRefreshPairs();
-    } catch (e) { /* silent */ }
+function arbPyUpdateL2() {
+    if (!el('arbL2A')) return;
+    if (!arbPyData) return;
+    const obA = arbPyData.obA || {};
+    const obB = arbPyData.obB || {};
+    const basis = arbPyData.basis || {};
+    if (el('arbL2A')) el('arbL2A').textContent = `${obA.bestBid||'—'} / ${obA.bestAsk||'—'} (${obA.totalVol||0})`;
+    if (el('arbL2B')) el('arbL2B').textContent = `${obB.bestBid||'—'} / ${obB.bestAsk||'—'} (${obB.totalVol||0})`;
+    if (el('arbDataPts')) el('arbDataPts').textContent = basis.data_points || 0;
+    // Spread metrics
+    const pa = basis.price_a || 0;
+    const pb = basis.price_b || 0;
+    const spread = basis.spread_rub || 0;
+    const spreadPct = basis.spread_pct || 0;
+    if (el('arbSpreadRub')) {
+        el('arbSpreadRub').textContent = (spread >= 0 ? '+' : '') + spread.toFixed(2) + ' ₽';
+        el('arbSpreadRub').style.color = spread > 0 ? 'var(--green)' : spread < 0 ? 'var(--red)' : 'var(--accent)';
+    }
+    if (el('arbSpreadPct')) el('arbSpreadPct').textContent = (spreadPct >= 0 ? '+' : '') + spreadPct.toFixed(3) + '%';
+    if (el('arbFairSpread')) el('arbFairSpread').textContent = basis.fair_spread != null ? basis.fair_spread.toFixed(1) + ' ₽' : '—';
+    if (el('arbDeviation')) {
+        const dev = basis.deviation || 0;
+        el('arbDeviation').textContent = (dev >= 0 ? '+' : '') + dev.toFixed(1) + ' ₽';
+        el('arbDeviation').style.color = dev > 0 ? 'var(--green)' : dev < 0 ? 'var(--red)' : '';
+    }
+    if (el('arbSpotValue')) {
+        el('arbSpotValue').textContent = pa > 0 ? (pa * 100).toFixed(0) + ' ₽' : '—';
+        const spotLabel = el('arbSpotValue').parentElement.querySelector('.metric-label');
+        if (spotLabel) spotLabel.textContent = (arbPyData?.tickerA || 'Spot') + (parseInt(arbPyData?.params?.contract_size)>1 ? ' × ' + arbPyData?.params?.contract_size : '');
+    }
+    if (el('arbFutValue')) el('arbFutValue').textContent = pb > 0 ? pb.toFixed(0) + ' ₽' : '—';
+    const futLabel = el('arbFutLabel');
+    if (futLabel) futLabel.textContent = (arbPyData?.tickerB || 'Фьюч') + ' (фьюч)';
+    if (el('arbBasisVal')) el('arbBasisVal').textContent = basis.basis != null ? basis.basis.toFixed(1) : '—';
+    if (el('arbZVal')) {
+        const z = basis.zscore || 0;
+        el('arbZVal').textContent = z.toFixed(3);
+        el('arbZVal').style.color = Math.abs(z) >= 1.5 ? 'var(--accent)' : '';
+    }
+    if (el('arbMeanVal')) el('arbMeanVal').textContent = (basis.basis_mean || 0).toFixed(0);
+    if (el('arbStdVal')) el('arbStdVal').textContent = (basis.basis_std || 0).toFixed(0);
+    if (el('arbDaysExp')) el('arbDaysExp').textContent = basis.days_to_exp || '—';
+    // Spread calculator (always visible)
+    if (el('arbCalcSpread')) {
+        el('arbCalcSpread').textContent = (spread >= 0 ? '+' : '') + spread.toFixed(2) + ' ₽';
+        el('arbCalcSpread').style.color = spread > 0 ? 'var(--green)' : spread < 0 ? 'var(--red)' : '';
+    }
+    if (el('arbCalcFair')) el('arbCalcFair').textContent = (basis.fair_spread != null ? basis.fair_spread.toFixed(1) + ' ₽' : '—');
+    if (el('arbCalcDev')) {
+        const dev = basis.deviation || 0;
+        el('arbCalcDev').textContent = (dev >= 0 ? '+' : '') + dev.toFixed(1) + ' ₽';
+        el('arbCalcDev').style.color = dev > 0 ? 'var(--green)' : dev < 0 ? 'var(--red)' : '';
+    }
+    if (el('arbCalcZ')) {
+        const z = basis.zscore || 0;
+        el('arbCalcZ').textContent = z.toFixed(3);
+        el('arbCalcZ').style.color = Math.abs(z) >= 1.5 ? 'var(--accent)' : '';
+    }
+    const ext = basis.dev_extremes || {};
+    if (el('arbCalcMax')) el('arbCalcMax').textContent = '+' + (ext.dev_max || 0).toFixed(1) + '₽';
+    if (el('arbCalcMin')) el('arbCalcMin').textContent = (ext.dev_min || 0).toFixed(1) + '₽';
+    if (el('arbCalcMean')) el('arbCalcMean').textContent = (((ext.avg_max || 0) + (ext.avg_min || 0)) / 2).toFixed(1) + '₽';
+    if (el('arbCalcSH')) el('arbCalcSH').textContent = (basis.suggested_high || 0).toFixed(0) + '₽';
+    if (el('arbCalcSL')) el('arbCalcSL').textContent = (basis.suggested_low || 0).toFixed(0) + '₽';
 }
 
-async function arbRefreshPairs() {
-    try {
-        const resp = await fetch('/arb/pairs');
-        const data = await resp.json();
-        if (!data.pairs || data.pairs.length === 0) return;
-        
-        const tbody = el('arbPairsTable');
-        const fmtRub = n => n ? Math.round(n).toLocaleString('ru-RU') : '0';
-        
-        const rows = data.pairs.map(p => {
-            const pnlCls = p.pnl > 0 ? 'pnl-positive' : p.pnl < 0 ? 'pnl-negative' : '';
-            const posText = p.isOpen 
-                ? `акц:${p.posSpotLots} фью:${p.posFutLots}`
-                : '—';
-            const modeDot = p.mode === 'Running' ? '🟢' : p.mode === 'Paused' ? '🟡' : '🔴';
-            const zCls = Math.abs(p.zScore) > 1.0 ? 'accent' : '';
-            
-            return `<tr>
-                <td><b>${p.spot}</b><br><small>${p.futures}</small></td>
-                <td>
-                    <input type="number" class="input" style="width:65px;padding:2px 4px;text-align:center" 
-                           value="${p.spotLots}" min="1" max="10000" id="sl_${p.spot}"
-                           onchange="arbSetLots('${p.spot}')" 
-                           title="Лоты акций (1 лот=${p.sharesPerSpotLot} шт)">
-                </td>
-                <td>
-                    <input type="number" class="input" style="width:55px;padding:2px 4px;text-align:center" 
-                           value="${p.futLots}" min="1" max="1000" id="fl_${p.spot}"
-                           onchange="arbSetLots('${p.spot}')" 
-                           title="Контракты фьючерса (ГО=${fmtRub(p.futuresGO)})">
-                </td>
-                <td style="text-align:right">${fmtRub(p.spotValueRub)}</td>
-                <td style="text-align:right">${fmtRub(p.futGORub)}</td>
-                <td style="text-align:right"><b>${fmtRub(p.totalValueRub)}</b></td>
-                <td class="${zCls}">${p.zScore.toFixed(2)}</td>
-                <td>${p.basisAnnual.toFixed(1)}%</td>
-                <td>${posText}</td>
-                <td class="${pnlCls}">${fmtRub(p.pnl)}</td>
-                <td>${modeDot}</td>
-                <td>
-                    <button class="btn btn-primary btn-sm" onclick="arbPairStart('${p.spot}')">▶</button>
-                    <button class="btn btn-danger btn-sm" onclick="arbPairStop('${p.spot}')">⏹</button>
-                </td>
-            </tr>`;
-        }).join('');
-        
-        tbody.innerHTML = rows;
-    } catch (e) { /* silent */ }
+async function arbPySaveFromPanel() {
+    const chosenAccount = el('arbAccount')?.value;
+    const body = {
+        ticker_a: el('arbSymA').value,
+        symbol_a: el('arbSymA').value + '@RTSX',
+        ticker_b: el('arbSymB').value,
+        symbol_b: el('arbSymB').value + '@RTSX',
+        lots_a: parseInt(el('arbLotsA').value),
+        lots_b: parseInt(el('arbLotsB').value),
+        hedge_ratio: parseFloat(el('arbHedgeRatio').value),
+        capital: parseFloat(el('arbCapital').value),
+        entry_z: parseFloat(el('arbEntryZ').value),
+        entry_z_long: parseFloat(el('arbEntryZLong').value),
+        entry_mode: el('arbEntryModeRub')?.checked ? 'spread_rub' : 'zscore',
+        spread_rub_high: parseFloat(el('arbSpreadRubHigh')?.value || 400),
+        spread_rub_low: parseFloat(el('arbSpreadRubLow')?.value || 200),
+        risk_free_rate: parseFloat(el('arbRate').value) / 100,
+        expiration_date: el('arbExpiration').value,
+        contract_size: parseInt(el('arbContractSize').value),
+        lookback: parseInt(el('arbLookback').value),
+        leg_a_timeout: parseInt(el('arbLegTimeout').value),
+        min_fill_ratio: parseFloat(el('arbMinFill').value),
+        min_profit_type: el('arbMinProfitType').value,
+        min_profit_value: parseFloat(el('arbMinProfitVal').value),
+        risk_type: el('arbRiskType').value,
+        risk_value: parseFloat(el('arbRiskVal').value),
+        allow_long_basis: el('arbAllowLong')?.checked || false,
+        use_commission: el('arbUseCommission')?.checked ?? true,
+        commission_stock_pct: parseFloat(el('arbCommStock')?.value || 0.04),
+        commission_futures_rt: parseFloat(el('arbCommFut')?.value || 0.9),
+    };
+    // If leg A is futures, use its commission value too
+    const symA = el('arbSymA')?.value || '';
+    if (/\d/.test(symA)) {
+        body.commission_futures_rt = parseFloat(el('arbCommStock')?.value || body.commission_futures_rt);
+    }
+    // Save account to server and refresh data
+    if (chosenAccount) {
+        await arbPyFetch('/account', 'POST', {account: chosenAccount});
+        if (arbPyData) arbPyData.account = chosenAccount;
+    }
+    const r = await arbPyFetch('/params', 'POST', body);
+    if (r && r.ok) {
+        arbPyLog('✅ Параметры сохранены');
+        arbPyRefresh();
+    } else {
+        arbPyLog('Ошибка сохранения параметров', 'ERROR');
+    }
 }
 
-async function arbSetLots(spot) {
-    const spotLots = parseInt(el(`sl_${spot}`)?.value) || 0;
-    const futLots = parseInt(el(`fl_${spot}`)?.value) || 1;
-    if (futLots < 1) { arbLog('ERROR', 'Минимум 1 контракт'); return; }
-    try {
-        const resp = await fetch(`/arb/pair/${spot}/lots`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ spotLots, futLots })
-        });
-        const data = await resp.json();
-        if (resp.ok) {
-            arbLog('INFO', `✅ ${spot}: акции=${data.spotLots} лот, фьючерс=${data.futLots} контр.`);
-        } else {
-            arbLog('ERROR', data.error || 'Ошибка установки лотов');
-        }
-    } catch (e) { arbLog('ERROR', e.message); }
-}
+function arbPyShowCopyDialog() {
+    const existing = el('arbCopyDialog');
+    if (existing) { existing.remove(); return; }
 
-function arbLog(level, msg) {
-    const container = el('arbLogContainer');
-    if (!container) return;
-    const time = new Date().toLocaleTimeString();
-    const cls = level === 'ERROR' ? 'log-error' : level === 'TRADE' ? 'log-trade' : 'log-info';
+    const p = (arbPyData && arbPyData.params) || {};
     const div = document.createElement('div');
-    div.className = 'log-entry';
-    div.innerHTML = `<span class="log-time">[${time}]</span> <span class="${cls}">${msg}</span>`;
-    container.appendChild(div);
-    while (container.children.length > MAX_LOG) container.removeChild(container.firstChild);
-    container.scrollTop = container.scrollHeight;
-    // Also to main log
-    addLog(time, level, `[ARB] ${msg}`);
+    div.id = 'arbCopyDialog';
+    div.className = 'card';
+    div.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);z-index:1100;width:450px;box-shadow:0 8px 32px rgba(0,0,0,.6)';
+    div.innerHTML = `
+        <div class="card-header row gap-8">
+            📋 Копировать робота
+            <span style="flex:1"></span>
+            <button class="btn btn-secondary btn-sm" onclick="el('arbCopyDialog')?.remove()">✕</button>
+        </div>
+        <div style="padding:16px;display:flex;flex-direction:column;gap:12px">
+            <p style="color:#9CA3AF;font-size:13px">Создаст копию робота с новыми инструментами. Конфиг сохранится в отдельную папку.</p>
+            <div class="metric-card"><div class="metric-label">Новый инструмент A (спот)</div>
+                <select id="copySymA" class="input" style="width:180px">
+                    <option value="GAZP">GAZP (Газпром)</option>
+                    <option value="SBER">SBER (Сбербанк)</option>
+                    <option value="LKOH">LKOH (Лукойл)</option>
+                    <option value="ROSN">ROSN (Роснефть)</option>
+                    <option value="TATN">TATN (Татнефть)</option>
+                    <option value="GMKN">GMKN (Норникель)</option>
+                    <option value="ALRS">ALRS (Алроса)</option>
+                    <option value="VTBR">VTBR (ВТБ)</option>
+                    <option value="MTSS">MTSS (МТС)</option>
+                    <option value="NVTK">NVTK (Новатэк)</option>
+                </select>
+            </div>
+            <div class="metric-card"><div class="metric-label">Новый инструмент B (фьючерс)</div>
+                <select id="copySymB" class="input" style="width:180px">
+                    <option value="GZM6">GZM6</option>
+                    <option value="GZU6">GZU6</option>
+                    <option value="SRM6">SRM6</option>
+                    <option value="SRU6">SRU6</option>
+                    <option value="LKM6">LKM6</option>
+                    <option value="RNM6">RNM6</option>
+                    <option value="TTM6">TTM6</option>
+                    <option value="MXM6">MXM6</option>
+                    <option value="SiM6">SiM6</option>
+                    <option value="SiU6">SiU6</option>
+                    <option value="RIM6">RIM6</option>
+                    <option value="GDM6">GDM6</option>
+                    <option value="BRK6">BRK6</option>
+                </select>
+            </div>
+            <button class="btn btn-primary" onclick="arbPyExecuteCopy()">📋 Создать копию</button>
+            <div id="copyResult" style="font-size:13px;color:#9CA3AF"></div>
+        </div>
+    `;
+    document.body.appendChild(div);
 }
+
+async function arbPyExecuteCopy() {
+    const tickerA = el('copySymA').value;
+    const tickerB = el('copySymB').value;
+    const r = el('copyResult');
+    r.textContent = '⏳ Копирование...';
+    const resp = await arbPyFetch('/copy', 'POST', {ticker_a: tickerA, ticker_b: tickerB});
+    if (resp && resp.ok) {
+        r.innerHTML = `✅ Создан: <b>${resp.dir}</b><br>Папка: <code>${resp.path}</code><br>Для запуска: <code>cd ${resp.path} && python3 main_arb.py --port 5091</code>`;
+        arbPyLog(`📋 Робот скопирован: ${tickerA}/${tickerB} → ${resp.dir}`);
+    } else {
+        r.textContent = '❌ Ошибка копирования';
+        arbPyLog('Ошибка копирования робота', 'ERROR');
+    }
+}
+
+async function arbPyLoadAccounts() {
+    const data = await arbPyFetch('/accounts');
+    if (data && data.accounts && el('arbAccount')) {
+        const sel = el('arbAccount');
+        const savedId = el('arbAccountSaved')?.value || (arbPyData && arbPyData.account) || data.active;
+        sel.innerHTML = '';
+        data.accounts.forEach(a => {
+            const id = typeof a === 'string' ? a : a.id;
+            const name = typeof a === 'object' ? a.name : a;
+            sel.innerHTML += `<option value="${id}" ${id === savedId ? 'selected' : ''}>${name}</option>`;
+        });
+    }
+}
+
+// === Arb Trade Journal ===
+let _arbJournal = [];
+let _arbJournalInstance = null; // null/'arbPy' = GAZP, 'sber' = SBER, 'brCal' = BR Calendar
+
+// Parse entryTime/exitTime: supports both "2026-07-05 10:20:13" and "2026-07-05T10:20:13.542367+03:00"
+function _arbParseTime(s) {
+    if (!s) return {date: '', time: ''};
+    if (s.includes('T')) {
+        const m = s.match(/^(\d{4}-\d{2}-\d{2})T(\d{2}:\d{2}:\d{2})/);
+        return m ? {date: m[1], time: m[2]} : {date: s.slice(0,10), time: ''};
+    }
+    const parts = s.split(' ');
+    return {date: parts[0] || '', time: parts[1] || ''};
+}
+function _arbDate(s) { return _arbParseTime(s).date; }
+
+async function arbLoadJournal() {
+    const inst = _arbJournalInstance === 'sber' ? sber : _arbJournalInstance === 'brCal' ? brCal : arbPy;
+    const data = await inst.fetch('/status');
+    if (!data) { _arbJournal = []; arbRenderJournal(); return; }
+    _arbJournal = data.tradeHistory || [];
+    arbRenderJournal();
+}
+
+function arbRenderJournal() {
+    const tbody = el('arbJournalBody');
+    if (!tbody) return;
+    const filter = el('arbJournalFilter')?.value || 'all';
+    const dFrom = el('arbJournalDateFrom')?.value;
+    const dTo = el('arbJournalDateTo')?.value;
+
+    let trades = [..._arbJournal];
+    // Filter
+    if (filter === 'LONG') trades = trades.filter(t => t.side === 'LONG');
+    else if (filter === 'SHORT') trades = trades.filter(t => t.side === 'SHORT');
+    else if (filter === 'win') trades = trades.filter(t => t.pnl > 0);
+    else if (filter === 'loss') trades = trades.filter(t => t.pnl <= 0);
+    if (dFrom) trades = trades.filter(t => {
+        const d1 = _arbDate(t.entryTime), d2 = _arbDate(t.exitTime);
+        return d1 >= dFrom || d2 >= dFrom;
+    });
+    if (dTo) trades = trades.filter(t => {
+        const d1 = _arbDate(t.entryTime), d2 = _arbDate(t.exitTime);
+        return d1 <= dTo || d2 <= dTo;
+    });
+
+    // Reverse (newest first)
+    trades.reverse();
+
+    // Summary
+    const totalPnl = trades.reduce((s,t) => s + (t.pnl||0), 0);
+    const wins = trades.filter(t => t.pnl > 0);
+    const losses = trades.filter(t => t.pnl <= 0);
+    const winSum = wins.reduce((s,t) => s + t.pnl, 0);
+    const lossSum = Math.abs(losses.reduce((s,t) => s + t.pnl, 0));
+    const pf = lossSum > 0 ? (winSum / lossSum) : 0;
+    const wr = trades.length > 0 ? (wins.length / trades.length * 100) : 0;
+    const avgWin = wins.length > 0 ? winSum / wins.length : 0;
+    const avgLoss = losses.length > 0 ? lossSum / losses.length : 0;
+
+    const summaryEl = el('arbJournalSummary');
+    if (summaryEl) {
+        summaryEl.innerHTML = trades.length > 0 ? `
+            <div class="metric-card"><div class="metric-label">Всего сделок</div><div style="font-size:18px;font-weight:bold">${trades.length}</div></div>
+            <div class="metric-card"><div class="metric-label">Win Rate</div><div style="font-size:18px;font-weight:bold;color:${wr>=50?'var(--green)':'var(--red)'}">${wr.toFixed(1)}%</div></div>
+            <div class="metric-card"><div class="metric-label">Profit Factor</div><div style="font-size:18px;font-weight:bold">${pf.toFixed(2)}</div></div>
+            <div class="metric-card"><div class="metric-label">Avg Win</div><div style="font-size:18px;font-weight:bold;color:var(--green)">+${avgWin.toFixed(0)}₽</div></div>
+            <div class="metric-card"><div class="metric-label">Avg Loss</div><div style="font-size:18px;font-weight:bold;color:var(--red)">−${avgLoss.toFixed(0)}₽</div></div>
+            <div class="metric-card"><div class="metric-label">Итого PnL</div><div style="font-size:18px;font-weight:bold;color:${totalPnl>=0?'var(--green)':'var(--red)'}">${totalPnl>=0?'+':''}${totalPnl.toFixed(0)}₽</div></div>
+        ` : '';
+    }
+
+    // Table
+    if (trades.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="10" style="text-align:center;padding:24px;color:#9CA3AF">Нет данных</td></tr>';
+        if (el('arbJournalInfo')) el('arbJournalInfo').textContent = '';
+        return;
+    }
+
+    let cumul = 0;
+    tbody.innerHTML = trades.map(t => {
+        cumul += (t.pnl || 0);
+        const entryDate = _arbParseTime(t.entryTime).date;
+        const entryTime = _arbParseTime(t.entryTime).time;
+        const exitDate = _arbParseTime(t.exitTime).date;
+        const exitTime = _arbParseTime(t.exitTime).time;
+        // Show entry date if different from exit date (overnight)
+        const displayDate = entryDate === exitDate ? exitDate : (entryDate + ' → ' + exitDate);
+        const sideIcon = t.side === 'LONG' ? '🟢' : '🔴';
+        const pnlCls = t.pnl > 0 ? 'color:var(--green)' : t.pnl < 0 ? 'color:var(--red)' : '';
+        const cumulCls = cumul >= 0 ? 'color:var(--green)' : 'color:var(--red)';
+        return `<tr style="border-bottom:1px solid var(--border-color)">
+            <td style="padding:6px 8px">${displayDate}</td>
+            <td style="padding:6px 8px">${entryTime}</td>
+            <td style="padding:6px 8px">${exitTime}</td>
+            <td style="padding:6px 8px;text-align:center">${sideIcon}</td>
+            <td style="padding:6px 8px;text-align:right">${(t.entryBasis||0).toFixed(1)}</td>
+            <td style="padding:6px 8px;text-align:right">${(t.exitBasis||0).toFixed(1)}</td>
+            <td style="padding:6px 8px;text-align:right">${(t.entryZ||0).toFixed(2)}</td>
+            <td style="padding:6px 8px;text-align:right">${t.lotsA||0}/${t.lotsB||0}</td>
+            <td style="padding:6px 8px;text-align:right;${pnlCls}">${t.pnl>=0?'+':''}${(t.pnl||0).toFixed(1)}</td>
+            <td style="padding:6px 8px;text-align:right;${cumulCls}">${cumul>=0?'+':''}${cumul.toFixed(1)}</td>
+        </tr>`;
+    }).join('');
+
+    if (el('arbJournalInfo')) {
+        el('arbJournalInfo').textContent = `Показано ${trades.length} из ${_arbJournal.length} сделок`;
+    }
+}
+
+// Init arb polling
+setInterval(() => { if (el('arbPyStatus')) arbPyRefresh(); }, 3000);
+setTimeout(() => { if (el('arbPyStatus')) arbPyRefresh(); }, 2000);
 
 // === Init ===
 document.addEventListener('DOMContentLoaded', () => {
@@ -3677,7 +4372,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Auto-refresh status
     setInterval(fetchStatus, 30000);
-    setInterval(arbRefreshStatus, 30000);
 
     // Автоподключение брокера если есть токен
     const savedToken = localStorage.getItem('finamToken');
@@ -4605,7 +5299,7 @@ async function ofRobotLoadConfig() {
         stop_loss_mode: 'rub', stop_loss_value: 7000,
         min_profit_per_lot: 30, max_hold_minutes: 999,
         absorption_threshold: 0.35, cvd_lookback: 10,
-        ob_imbalance_threshold: 0.50, signal_confirm_count: 1,
+        cvd_accel_threshold: 1000, signal_confirm_count: 1,
         timeframe: 'M5'
     };
     let cfg = defaults;
@@ -4627,10 +5321,15 @@ async function ofRobotLoadConfig() {
     if (el('cfgOfMaxHold')) el('cfgOfMaxHold').value = cfg.max_hold_minutes;
     if (el('cfgOfAbsThr')) el('cfgOfAbsThr').value = cfg.absorption_threshold;
     if (el('cfgOfCvdLb')) el('cfgOfCvdLb').value = cfg.cvd_lookback;
-    if (el('cfgOfObImb')) el('cfgOfObImb').value = cfg.ob_imbalance_threshold;
+    if (el('cfgOfCvdEmaF')) el('cfgOfCvdEmaF').value = cfg.cvd_ema_fast || 5;
+    if (el('cfgOfCvdEmaS')) el('cfgOfCvdEmaS').value = cfg.cvd_ema_slow || 15;
+    if (el('cfgOfCvdAccelThresh')) el('cfgOfCvdAccelThresh').value = cfg.cvd_accel_threshold || 1000;
     if (el('cfgOfConfirm')) el('cfgOfConfirm').value = cfg.signal_confirm_count;
     if (el('cfgOfConfirmOut')) el('cfgOfConfirmOut').value = cfg.signal_confirm_exit || 1;
     if (el('cfgOfTf')) el('cfgOfTf').value = cfg.timeframe;
+    // Set ticker/account from config if available
+    if (el('cfgOfTicker') && cfg.ticker) el('cfgOfTicker').value = cfg.ticker;
+    if (el('cfgOfAccount') && cfg.account) el('cfgOfAccount').value = cfg.account;
 }
 
 async function ofRobotSaveConfig() {
@@ -4647,10 +5346,14 @@ async function ofRobotSaveConfig() {
         max_hold_minutes: parseInt(el('cfgOfMaxHold')?.value) || 999,
         absorption_threshold: parseFloat(el('cfgOfAbsThr')?.value) || 0.35,
         cvd_lookback: parseInt(el('cfgOfCvdLb')?.value) || 10,
-        ob_imbalance_threshold: parseFloat(el('cfgOfObImb')?.value) || 0.50,
+        cvd_ema_fast: parseInt(el('cfgOfCvdEmaF')?.value) || 5,
+        cvd_ema_slow: parseInt(el('cfgOfCvdEmaS')?.value) || 15,
+        cvd_accel_threshold: parseFloat(el('cfgOfCvdAccelThresh')?.value) || 1000,
         signal_confirm_count: parseInt(el('cfgOfConfirm')?.value) || 1,
         signal_confirm_exit: parseInt(el('cfgOfConfirmOut')?.value) || 1,
         timeframe: el('cfgOfTf')?.value || 'M5',
+        ticker: el('cfgOfTicker')?.value || 'SiU6',
+        account: el('cfgOfAccount')?.value || '1225953',
     };
     try {
         const resp = await fetch(OF_ROBOT_API + '/params', {
@@ -4673,6 +5376,20 @@ async function ofRobotApi(action) {
         setTimeout(async () => { await ofRobotPoll(); renderRobots(); }, 500);
     } catch(e) {
         addLog(nowTime(), 'ERROR', 'OF ' + action + ' failed: ' + e.message);
+    }
+}
+
+async function toggleOfSignal(param, value) {
+    try {
+        const resp = await fetch(OF_ROBOT_API + '/params', {
+            method: 'POST',
+            headers: {'Content-Type':'application/json'},
+            body: JSON.stringify({[param]: value})
+        });
+        const data = await resp.json();
+        addLog(nowTime(), 'INFO', `OF signal ${param}=${value}`);
+    } catch(e) {
+        addLog(nowTime(), 'ERROR', 'OF toggle failed: ' + e.message);
     }
 }
 
@@ -4713,9 +5430,9 @@ function ofRobotEditPanel() {
         <div style="padding:12px">
             <!-- OF индикаторы -->
             <div class="metrics-row" style="flex-wrap:wrap;margin-bottom:12px">
-                <div class="metric-card" style="background:#1a2332;border:1px solid #9C27B0"><div class="metric-label" style="color:#CE93D8">CVD</div><div id="ofCvd" style="font-size:18px;font-weight:bold;color:#CE93D8">—</div></div>
-                <div class="metric-card" style="background:#1a2332;border:1px solid #9C27B0"><div class="metric-label" style="color:#FF7043">Delta</div><div id="ofDelta" style="font-size:18px;font-weight:bold;color:#FF7043">—</div></div>
-                <div class="metric-card" style="background:#1a2332;border:1px solid #9C27B0"><div class="metric-label" style="color:#42A5F5">OB Imbalance</div><div id="ofImb" style="font-size:18px;font-weight:bold;color:#42A5F5">—</div></div>
+                <div class="metric-card" style="background:#1a2332;border:1px solid #9C27B0;display:flex;flex-direction:column;align-items:center;gap:2px"><div style="display:flex;align-items:center;gap:4px"><input id="toggleCvd" type="checkbox" checked style="width:14px;height:14px;cursor:pointer" onchange="toggleOfSignal('use_cvd', this.checked)"><div class="metric-label" style="color:#CE93D8">CVD Trend</div></div><div id="ofCvd" style="font-size:18px;font-weight:bold;color:#CE93D8">—</div></div>
+                <div class="metric-card" style="background:#1a2332;border:1px solid #9C27B0;display:flex;flex-direction:column;align-items:center;gap:2px"><div style="display:flex;align-items:center;gap:4px"><input id="toggleDmWall" type="checkbox" style="width:14px;height:14px;cursor:pointer" onchange="toggleOfSignal('use_dm_wall', this.checked)"><div class="metric-label" style="color:#FF7043">dm_wall</div></div><div id="ofDelta" style="font-size:18px;font-weight:bold;color:#FF7043">—</div></div>
+                <div class="metric-card" style="background:#1a2332;border:1px solid #9C27B0;display:flex;flex-direction:column;align-items:center;gap:2px"><div style="display:flex;align-items:center;gap:4px"><input id="toggleCvdAccel" type="checkbox" checked style="width:14px;height:14px;cursor:pointer" onchange="toggleOfSignal('use_cvd_accel', this.checked)"><div class="metric-label" style="color:#66BB6A">CVD Accel</div></div><div id="ofCvdAccel" style="font-size:18px;font-weight:bold;color:#66BB6A">—</div></div>
                 <div class="metric-card"><div class="metric-label">Цена</div><div id="ofPrice" style="font-size:18px;font-weight:bold">—</div></div>
                 <div class="metric-card"><div class="metric-label">Позиция</div><div id="ofDir" style="font-size:18px;font-weight:bold">—</div></div>
                 <div class="metric-card"><div class="metric-label">Лоты</div><div id="ofLots" style="font-size:18px;font-weight:bold">0</div></div>
@@ -4742,12 +5459,35 @@ function ofRobotEditPanel() {
                 <div class="metric-card"><div class="metric-label">SL Value</div><input id="editOfSlValue" class="input" type="number" value="${p.stop_loss_value||7000}" style="width:80px"></div>
                 <div class="metric-card"><div class="metric-label">Min Profit/Lot</div><input id="editOfMinProfit" class="input" type="number" value="${p.min_profit_per_lot||30}" style="width:60px"></div>
                 <div class="metric-card"><div class="metric-label">Max Hold (мин)</div><input id="editOfMaxHold" class="input" type="number" value="${p.max_hold_minutes||999}" style="width:80px"></div>
-                <div class="metric-card"><div class="metric-label">Absorption</div><input id="editOfAbsThr" class="input" type="number" step="0.01" value="${p.absorption_threshold||0.35}" style="width:70px"></div>
-                <div class="metric-card"><div class="metric-label">CVD Lookback</div><input id="editOfCvdLb" class="input" type="number" value="${p.cvd_lookback||10}" style="width:60px"></div>
-                <div class="metric-card"><div class="metric-label">OB Imbalance</div><input id="editOfObImb" class="input" type="number" step="0.01" value="${p.ob_imbalance_threshold||0.50}" style="width:60px"></div>
+                <div class="metric-card"><div class="metric-label">CVD EMA Fast</div><input id="editOfCvdEmaF" class="input" type="number" value="${p.cvd_ema_fast||5}" style="width:60px"></div>
+                <div class="metric-card"><div class="metric-label">CVD EMA Slow</div><input id="editOfCvdEmaS" class="input" type="number" value="${p.cvd_ema_slow||15}" style="width:60px"></div>
+                <div class="metric-card"><div class="metric-label">DM Lookback</div><input id="editOfDmLb" class="input" type="number" value="${p.dm_lookback||5}" style="width:60px"></div>
+                <div class="metric-card"><div class="metric-label">Wall Window (с)</div><input id="editOfWallWin" class="input" type="number" value="${p.wall_window||120}" style="width:60px"></div>
+                <div class="metric-card"><div class="metric-label">Wall Mult</div><input id="editOfWallMult" class="input" type="number" step="0.5" value="${p.wall_multiplier||3.0}" style="width:60px"></div>
+                <div class="metric-card"><div class="metric-label">CVD Accel Thresh</div><input id="editOfCvdAccelThresh" class="input" type="number" step="100" value="${p.cvd_accel_threshold||1000}" style="width:80px"></div>
                 <div class="metric-card"><div class="metric-label">Confirm In</div><input id="editOfConfirm" class="input" type="number" min="1" max="3" value="${p.signal_confirm_count||1}" style="width:50px"></div>
                 <div class="metric-card"><div class="metric-label">Confirm Out</div><input id="editOfConfirmOut" class="input" type="number" min="1" max="3" value="${p.signal_confirm_exit||1}" style="width:50px"></div>
                 <div class="metric-card"><div class="metric-label">Timeframe</div><select id="editOfTf" class="input" style="width:70px"><option value="M1" ${p.timeframe==='M1'?'selected':''}>1 мин</option><option value="M5" ${(p.timeframe||'M5')==='M5'?'selected':''}>5 мин</option><option value="M15" ${p.timeframe==='M15'?'selected':''}>15 мин</option><option value="M30" ${p.timeframe==='M30'?'selected':''}>30 мин</option><option value="H1" ${p.timeframe==='H1'?'selected':''}>1 час</option></select></div>
+            </div>
+            <hr style="border-color:#2D2D44;margin:12px 0">
+            <!-- VWEMA Filter -->
+            <div class="metrics-row" style="flex-wrap:wrap;margin-bottom:16px;align-items:center">
+                <div class="metric-card" style="display:flex;align-items:center;gap:8px">
+                    <label style="display:flex;align-items:center;gap:6px;cursor:pointer">
+                        <input id="editOfUseVwema" type="checkbox" ${(p.use_vwema)?'checked':''} style="width:18px;height:18px;cursor:pointer">
+                        <span style="font-weight:bold;color:#FF9800">VWEMA Filter</span>
+                    </label>
+                </div>
+                <div class="metric-card"><div class="metric-label">VWEMA Fast</div><input id="editOfVwemaFast" class="input" type="number" value="${p.vwema_fast||20}" style="width:60px"></div>
+                <div class="metric-card"><div class="metric-label">VWEMA Slow</div><input id="editOfVwemaSlow" class="input" type="number" value="${p.vwema_slow||40}" style="width:60px"></div>
+                <div class="metric-card"><div class="metric-label">Flat Threshold</div><input id="editOfVwemaFlat" class="input" type="number" step="0.1" value="${p.vwema_flat_th||1.0}" style="width:60px"></div>
+                <div class="metric-card" style="display:flex;align-items:center;gap:8px">
+                    <label style="display:flex;align-items:center;gap:6px;cursor:pointer">
+                        <input id="editOfVwemaBlock" type="checkbox" ${(p.vwema_block_counter!==false)?'checked':''} style="width:18px;height:18px;cursor:pointer">
+                        <span style="font-size:13px">Block counter-trend</span>
+                    </label>
+                </div>
+                <div class="metric-card" style="min-width:120px"><div class="metric-label">VWEMA Trend</div><div id="ofVwemaTrend" style="font-size:16px;font-weight:bold;color:#9CA3AF">—</div></div>
             </div>
             <hr style="border-color:#2D2D44;margin:12px 0">
             <!-- Торговый журнал -->
@@ -4764,9 +5504,9 @@ function ofRobotEditPanel() {
                     <option value="loss">Убыточные</option>
                 </select>
                 <span style="color:#9CA3AF;font-size:13px">с</span>
-                <input id="ofJournalDateFrom" class="input" type="date" style="width:130px">
+                <input id="ofJournalDateFrom" class="input" type="date" style="width:130px" onchange="ofRenderJournal()">
                 <span style="color:#9CA3AF;font-size:13px">по</span>
-                <input id="ofJournalDateTo" class="input" type="date" style="width:130px">
+                <input id="ofJournalDateTo" class="input" type="date" style="width:130px" onchange="ofRenderJournal()">
                 <button class="btn btn-secondary btn-sm" onclick="ofLoadJournal()">🔄</button>
             </div>
             <div style="max-height:350px;overflow-y:auto;border:1px solid var(--border-color);border-radius:8px">
@@ -4806,10 +5546,26 @@ function ofUpdatePanel() {
     const s = ofRobot;
     if (!s) return;
 
-    if (el('ofCvd')) el('ofCvd').textContent = s.cvd ? s.cvd.toFixed(0) : '—';
-    if (el('ofDelta')) el('ofDelta').textContent = s.lastDelta !== undefined ? s.lastDelta.toFixed(0) : '—';
-    if (el('ofImb')) el('ofImb').textContent = s.obImbalance !== undefined ? (s.obImbalance * 100).toFixed(0) + '%' : '—';
+    if (el('ofCvd')) {
+        const t = s.cvdTrend;
+        if (t && t.ready) {
+            const dir = t.direction === 1 ? 'LONG' : t.direction === -1 ? 'SHORT' : '—';
+            el('ofCvd').textContent = dir;
+            el('ofCvd').style.color = t.direction === 1 ? 'var(--green)' : t.direction === -1 ? 'var(--red)' : '#CE93D8';
+        } else {
+            el('ofCvd').textContent = '—';
+            el('ofCvd').style.color = '#CE93D8';
+        }
+    }
+    if (el('ofDelta')) el('ofDelta').textContent = s.dmWallAgree || '—';
+    if (el('ofCvdAccel') && s.cvdAccel) el('ofCvdAccel').textContent = s.cvdAccel.value !== null && s.cvdAccel.value !== undefined ? (s.cvdAccel.value > 0 ? '\u25B2' : '\u25BC') + Math.abs(s.cvdAccel.value).toFixed(0) + ' (R:' + s.cvdAccel.aggRatio.toFixed(2) + ')' : '\u2014';
     if (el('ofPrice')) el('ofPrice').textContent = s.currentPrice > 0 ? s.currentPrice.toFixed(0) : '—';
+
+    // Sync signal toggles from params
+    const p = s.params || {};
+    if (el('toggleCvd')) el('toggleCvd').checked = p.use_cvd !== false;
+    if (el('toggleDmWall')) el('toggleDmWall').checked = p.use_dm_wall !== false;
+    if (el('toggleCvdAccel')) el('toggleCvdAccel').checked = p.use_cvd_accel !== false;
 
     const dirText = s.direction === 'LONG' ? 'Лонг' : s.direction === 'SHORT' ? 'Шорт' : 'Флэт';
     const dirCls = s.direction === 'LONG' ? 'var(--green)' : s.direction === 'SHORT' ? 'var(--red)' : '';
@@ -4847,6 +5603,20 @@ function ofUpdatePanel() {
     if (el('ofAvgLvl')) el('ofAvgLvl').textContent = s.averageLevels || 0;
     if (el('ofPyrLvl')) el('ofPyrLvl').textContent = s.pyramidLevels || 0;
     if (el('ofRt')) el('ofRt').textContent = s.roundTrips || 0;
+    // VWEMA state
+    if (el('ofVwemaTrend')) {
+        const vw = s.vwema;
+        if (vw) {
+            const dir = vw.direction;
+            const trendText = dir > 0 ? '▲ UP' : dir < 0 ? '▼ DOWN' : '◆ FLAT';
+            const color = dir > 0 ? '#4CAF50' : dir < 0 ? '#F44336' : '#9CA3AF';
+            el('ofVwemaTrend').textContent = `${trendText} (${vw.spread_atr?.toFixed(1)||'?'})`;
+            el('ofVwemaTrend').style.color = color;
+        } else {
+            el('ofVwemaTrend').textContent = 'OFF';
+            el('ofVwemaTrend').style.color = '#6B7280';
+        }
+    }
 }
 
 async function ofRobotSaveFromPanel() {
@@ -4861,12 +5631,24 @@ async function ofRobotSaveFromPanel() {
         stop_loss_value: parseFloat(el('editOfSlValue')?.value) || 7000,
         min_profit_per_lot: parseInt(el('editOfMinProfit')?.value) || 30,
         max_hold_minutes: parseInt(el('editOfMaxHold')?.value) || 999,
-        absorption_threshold: parseFloat(el('editOfAbsThr')?.value) || 0.35,
         cvd_lookback: parseInt(el('editOfCvdLb')?.value) || 10,
-        ob_imbalance_threshold: parseFloat(el('editOfObImb')?.value) || 0.50,
+        cvd_ema_fast: parseInt(el('editOfCvdEmaF')?.value) || 5,
+        cvd_ema_slow: parseInt(el('editOfCvdEmaS')?.value) || 15,
+        dm_lookback: parseInt(el('editOfDmLb')?.value) || 5,
+        wall_window: parseFloat(el('editOfWallWin')?.value) || 120,
+        wall_multiplier: parseFloat(el('editOfWallMult')?.value) || 3.0,
+        cvd_accel_threshold: parseFloat(el('editOfCvdAccelThresh')?.value) || 1000,
         signal_confirm_count: parseInt(el('editOfConfirm')?.value) || 1,
         signal_confirm_exit: parseInt(el('editOfConfirmOut')?.value) || 1,
         timeframe: el('editOfTf')?.value || 'M5',
+        use_dm_wall: el('toggleDmWall')?.checked !== false,
+        use_cvd: el('toggleCvd')?.checked !== false,
+        use_cvd_accel: el('toggleCvdAccel')?.checked !== false,
+        use_vwema: el('editOfUseVwema')?.checked || false,
+        vwema_fast: parseInt(el('editOfVwemaFast')?.value) || 20,
+        vwema_slow: parseInt(el('editOfVwemaSlow')?.value) || 40,
+        vwema_flat_th: parseFloat(el('editOfVwemaFlat')?.value) || 1.0,
+        vwema_block_counter: el('editOfVwemaBlock')?.checked !== false,
     };
     try {
         const resp = await fetch(OF_ROBOT_API + '/params', {
@@ -4912,8 +5694,25 @@ function ofRenderJournal() {
     const body = el('ofJournalBody');
     if (!body) return;
     const filter = el('ofJournalFilter')?.value || 'all';
+    const dateFrom = el('ofJournalDateFrom')?.value;
+    const dateTo = el('ofJournalDateTo')?.value;
 
     let trades = [..._ofJournalTrades];
+
+    // Apply date filter — check both entryTime and exitTime
+    if (dateFrom || dateTo) {
+        trades = trades.filter(t => {
+            const dtEntry = t.entryTime ? new Date(t.entryTime) : null;
+            const dtExit = t.exitTime ? new Date(t.exitTime) : null;
+            if (!dtEntry && !dtExit) return true;
+            const dEntry = dtEntry ? dtEntry.toISOString().slice(0, 10) : null;
+            const dExit = dtExit ? dtExit.toISOString().slice(0, 10) : null;
+            // Include if either entry or exit falls within range
+            const afterStart = !dateFrom || (dEntry && dEntry >= dateFrom) || (dExit && dExit >= dateFrom);
+            const beforeEnd = !dateTo || (dEntry && dEntry <= dateTo) || (dExit && dExit <= dateTo);
+            return afterStart && beforeEnd;
+        });
+    }
 
     // Apply filter
     if (filter === 'LONG') trades = trades.filter(t => t.direction === 'LONG' || t.direction > 0);
@@ -4929,10 +5728,9 @@ function ofRenderJournal() {
     let cumulative = 0;
     const rows = trades.map(t => {
         cumulative += (t.pnl || 0);
-        const dt = t.entryTime ? new Date(t.entryTime) : null;
-        const dateStr = dt ? dt.toLocaleDateString('ru-RU') : '—';
-        const timeIn = dt ? dt.toLocaleTimeString('ru-RU', {hour:'2-digit',minute:'2-digit'}) : '—';
         const dtOut = t.exitTime ? new Date(t.exitTime) : null;
+        const dateStr = dtOut ? dtOut.toLocaleDateString('ru-RU') : '—';
+        const timeIn = t.entryTime ? new Date(t.entryTime).toLocaleTimeString('ru-RU', {hour:'2-digit',minute:'2-digit'}) : '—';
         const timeOut = dtOut ? dtOut.toLocaleTimeString('ru-RU', {hour:'2-digit',minute:'2-digit'}) : '—';
         const dir = t.direction === 'LONG' || t.direction > 0 ? '🟢 L' : '🔴 S';
         const pnlCls = (t.pnl || 0) >= 0 ? 'green' : 'red';

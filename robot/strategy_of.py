@@ -10,6 +10,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone, timedelta
 from typing import Optional
 from collections import deque
+import math
 
 from orderflow_engine import (
     TradeCollector, OrderBookTracker, SignalEngine,
@@ -44,11 +45,22 @@ class OFParams:
     margin_per_lot: float = 7000  # ГО за 1 лот (для pct режима)
     min_profit_per_lot: int = 30  # pts — для полного TP
     max_hold_minutes: int = 999
-    absorption_threshold: float = 0.35
+    dm_lookback: int = 5          # bars for delta momentum
+    wall_window: float = 120.0   # seconds to look back for wall consumed
+    wall_multiplier: float = 3.0  # wall = N× avg size in OB
+    use_dm_wall: bool = False       # enable dm_wall_agree signal
+    use_cvd: bool = False            # enable cvd_trend signal
+    use_cvd_accel: bool = True      # enable CVD Acceleration + Aggression Ratio (replaces OB Imbalance)
     cvd_lookback: int = 10
-    ob_imbalance_threshold: float = 0.50
-    signal_confirm_count: int = 1     # signals needed for ENTRY (1-3)
-    signal_confirm_exit: int = 1      # signals needed for EXIT (1-3)
+    cvd_ema_fast: int = 5           # CVD Trend EMA fast period
+    cvd_ema_slow: int = 15          # CVD Trend EMA slow period
+    cvd_accel_period: int = 10      # bars for CVD acceleration calc
+    cvd_accel_threshold: float = 1000.0  # min CVD accel delta to signal
+    agg_window: int = 3              # bars for rolling aggression calc
+    agg_ratio_threshold: float = 1.0     # min buy/sell ratio to confirm
+    use_agg_ratio: bool = True      # use aggression ratio as filter
+    signal_confirm_count: int = 1     # signals needed for ENTRY (CVD Trend = 1)
+    signal_confirm_exit: int = 1      # bars reverse for EXIT (CVD Trend reverse)
     vp_filter: bool = False       # Volume Profile filter (off by default)
     atr_period: int = 14
     timeframe: str = "M5"
@@ -60,6 +72,12 @@ class OFParams:
     ob_min_lots: int = 20         # min bid+ask lots near price
     ob_scan_radius: int = 50      # pts radius for OB filter
     commission: float = 0.90      # per side (0.90₽ = one-way)
+    # VWEMA regime filter
+    use_vwema: bool = False       # enable VWEMA trend filter
+    vwema_fast: int = 20          # fast VWEMA period
+    vwema_slow: int = 40          # slow VWEMA period
+    vwema_flat_th: float = 1.0    # flat zone threshold (ATR multiples)
+    vwema_block_counter: bool = True  # block counter-trend entries
 
 
 @dataclass
@@ -70,6 +88,90 @@ class LotEntry:
     lots: int     # how many lots at this price
 
 
+class VWEMARegime:
+    """Volume-Weighted EMA crossover + ATR regime filter.
+
+    Direction = (fast_VWEMA - slow_VWEMA) / ATR.
+    High-volume bars pull the EMA faster (alpha scaled by volume ratio).
+    """
+    def __init__(self, fast=20, slow=40, flat_th=1.0):
+        self.fast_n = fast
+        self.slow_n = slow
+        self.flat_th = flat_th
+        self._ema_f = 0.0
+        self._ema_s = 0.0
+        self._atr = 0.0
+        self._vol_f = 0.0
+        self._vol_s = 0.0
+        self._closes = deque(maxlen=max(slow, 15))
+        self._vols = deque(maxlen=max(slow, 15))
+        self._h_q = deque(maxlen=15)
+        self._l_q = deque(maxlen=15)
+        self._c_q = deque(maxlen=15)
+        self._ready = False
+        self._af = 2.0 / (fast + 1)
+        self._as_ = 2.0 / (slow + 1)
+        self._vf = self._af   # volume EMA alpha (same period)
+        self._vs = self._as_
+
+    def update(self, close: float, high: float, low: float, volume: float = 0.0):
+        self._h_q.append(high)
+        self._l_q.append(low)
+        self._closes.append(close)
+        self._c_q.append(close)
+        self._vols.append(volume)
+
+        if len(self._closes) < self.slow_n:
+            return
+
+        if not self._ready:
+            self._ema_f = sum(list(self._closes)[-self.fast_n:]) / self.fast_n
+            self._ema_s = sum(list(self._closes)[-self.slow_n:]) / self.slow_n
+            self._vol_f = sum(list(self._vols)[-self.fast_n:]) / self.fast_n if len(self._vols) >= self.fast_n else sum(self._vols) / len(self._vols)
+            self._vol_s = sum(list(self._vols)[-self.slow_n:]) / self.slow_n if len(self._vols) >= self.slow_n else sum(self._vols) / len(self._vols)
+            self._ready = True
+        else:
+            # Volume EMAs
+            self._vol_f = self._vf * volume + (1 - self._vf) * self._vol_f
+            self._vol_s = self._vs * volume + (1 - self._vs) * self._vol_s
+
+            # Volume-normalized alpha
+            vf_norm = self._vol_f / self._vol_s if self._vol_s > 0 else 1.0
+            vf_c = min(max(vf_norm, 0.3), 3.0)
+            a_f = min(self._af * vf_c, 0.95)
+            a_s = min(self._as_ * 1.0, 0.95)  # slow EMA — no volume boost
+
+            self._ema_f = a_f * close + (1 - a_f) * self._ema_f
+            self._ema_s = a_s * close + (1 - a_s) * self._ema_s
+
+        # ATR (14-period Wilder)
+        if len(self._h_q) > 1 and len(self._c_q) > 1:
+            tr = max(high - low, abs(high - list(self._c_q)[-2]), abs(low - list(self._c_q)[-2]))
+            self._atr = self._atr * 13 / 14 + tr / 14 if self._atr > 0 else tr
+
+    @property
+    def direction(self) -> int:
+        if not self._ready or self._atr <= 0:
+            return 0
+        s = (self._ema_f - self._ema_s) / self._atr
+        return 0 if abs(s) < self.flat_th else (1 if s > 0 else -1)
+
+    @property
+    def ready(self) -> bool:
+        return self._ready
+
+    @property
+    def state(self) -> dict:
+        return {
+            "direction": self.direction,
+            "ema_f": round(self._ema_f, 1),
+            "ema_s": round(self._ema_s, 1),
+            "atr": round(self._atr, 1),
+            "spread_atr": round((self._ema_f - self._ema_s) / self._atr, 2) if self._atr > 0 else 0,
+            "ready": self._ready,
+        }
+
+
 class OrderFlowStrategy:
     """Main Order Flow strategy — entry, averaging, pyramiding, partial TP, exits."""
 
@@ -77,18 +179,33 @@ class OrderFlowStrategy:
         self.p = params
         self.trades = TradeCollector()
         self.ob_tracker = OrderBookTracker(
-            wall_multiplier=3.0,
+            wall_multiplier=params.wall_multiplier,
             scan_radius=params.ob_scan_radius,
         )
         self.signals = SignalEngine(
-            absorption_threshold=params.absorption_threshold,
             cvd_lookback=params.cvd_lookback,
-            ob_imbalance_threshold=params.ob_imbalance_threshold,
+            ob_imbalance_threshold=0.50,  # legacy, disabled
             atr_period=params.atr_period,
+            dm_lookback=params.dm_lookback,
+            wall_window=params.wall_window,
+            cvd_accel_period=params.cvd_accel_period,
+            cvd_accel_threshold=params.cvd_accel_threshold,
+            agg_window=params.agg_window,
+            agg_ratio_threshold=params.agg_ratio_threshold,
+            use_agg_ratio=params.use_agg_ratio,
         )
+        # Apply CVD Trend EMA periods
+        self.signals._cvd_trend_ema_fast_period = params.cvd_ema_fast
+        self.signals._cvd_trend_ema_slow_period = params.cvd_ema_slow
+        self.signals._cvd_trend_alpha_f = 2.0 / (params.cvd_ema_fast + 1)
+        self.signals._cvd_trend_alpha_s = 2.0 / (params.cvd_ema_slow + 1)
 
         # Position state
         self._dir: int = FLAT
+
+        # VWEMA regime filter
+        self.vwema: Optional[VWEMARegime] = None
+        self._init_vwema()
         self._entry_price: float = 0.0
         self._avg_price: float = 0.0
         self._total_lots: int = 0
@@ -109,6 +226,7 @@ class OrderFlowStrategy:
         # Last bar metrics for UI
         self._last_delta: float = 0.0
         self._last_ob_imbalance: float = 0.0
+        self._last_dm_wall: str = "—"  # dm_wall_agree signal status
 
         # Daily PnL tracking
         self._daily_pnl: float = 0.0
@@ -188,6 +306,18 @@ class OrderFlowStrategy:
             return True
         return (time.time() - self._last_price_update) > max_age_sec
 
+    def _init_vwema(self):
+        """Create or recreate VWEMA filter from current params."""
+        if self.p.use_vwema:
+            self.vwema = VWEMARegime(
+                fast=self.p.vwema_fast,
+                slow=self.p.vwema_slow,
+                flat_th=self.p.vwema_flat_th,
+            )
+            log.info(f"VWEMA filter enabled: fast={self.p.vwema_fast} slow={self.p.vwema_slow} flat_th={self.p.vwema_flat_th}")
+        else:
+            self.vwema = None
+
     def update_price(self, price: float):
         """Update current price and mark freshness."""
         self._current_price = price
@@ -260,9 +390,21 @@ class OrderFlowStrategy:
     # ---------- Main tick processing ----------
 
     def on_bar_close(self, metrics: BarMetrics, bar_high: float, bar_low: float, bar_close: float):
-        """Called when a bar closes. Feed metrics into signal engine."""
+        """Called when a bar closes. Feed metrics into signal engine and VWEMA."""
         self._last_delta = metrics.delta
+        # Check dm_wall_agree for UI
+        sig_dm = self.signals.check_dm_wall_agree(self.ob_tracker, self._current_price)
+        if sig_dm:
+            arrow = "🟢 LONG" if sig_dm.direction == 1 else "🔴 SHORT"
+            self._last_dm_wall = f"{arrow} ({sig_dm.strength:.0%})"
+        else:
+            self._last_dm_wall = "—"
         self.signals.add_bar(metrics, bar_high, bar_low, bar_close)
+        if self.vwema:
+            self.vwema.update(bar_close, bar_high, bar_low, volume=metrics.delta)
+            d = self.vwema.direction
+            if d != 0:
+                log.debug(f"VWEMA trend: {'UP' if d > 0 else 'DOWN'} ({self.vwema.state})")
 
     def process_tick(self, current_price: float, now: datetime) -> list[dict]:
         """Main strategy loop — called on each price update.
@@ -345,7 +487,11 @@ class OrderFlowStrategy:
             return None
 
         # Generate signals
-        sigs = self.signals.generate_signals(ob, price)
+        sigs = self.signals.generate_signals(ob, price, ob_tracker=self.ob_tracker,
+                                              use_dm_wall=self.p.use_dm_wall,
+                                              use_cvd=self.p.use_cvd,
+                                              use_ob_imbalance=False,
+                                              use_cvd_accel=self.p.use_cvd_accel)
 
         if len(sigs) < self.p.signal_confirm_count:
             return None
@@ -356,6 +502,14 @@ class OrderFlowStrategy:
             return None  # Conflicting signals, skip
 
         direction = sigs[0].direction
+
+        # VWEMA regime filter — block counter-trend entries
+        if self.vwema and self.vwema.ready and self.p.vwema_block_counter:
+            td = self.vwema.direction
+            if td != 0 and direction != td:
+                log.info(f"ENTRY BLOCKED by VWEMA: signal={direction} trend={td} | {self.vwema.state}")
+                return None
+
         side = "buy" if direction == LONG else "sell"
         signal_types = ", ".join(s.signal_type for s in sigs)
 
@@ -393,7 +547,18 @@ class OrderFlowStrategy:
 
         # b) Reverse signal
         ob = self.ob_tracker.get_metrics(price)
-        if self.signals.check_reverse_signal(ob, self._dir, price, self.p.signal_confirm_exit):
+        if self.signals.check_reverse_signal(ob, self._dir, price, ob_tracker=self.ob_tracker,
+                                              confirm_count=self.p.signal_confirm_exit,
+                                              use_dm_wall=self.p.use_dm_wall,
+                                              use_cvd=self.p.use_cvd,
+                                              use_ob_imbalance=False,
+                                              use_cvd_accel=self.p.use_cvd_accel):
+            contra = [s.signal_type for s in self.signals.generate_signals(ob, price, ob_tracker=self.ob_tracker,
+                                                                          use_dm_wall=self.p.use_dm_wall,
+                                                                          use_cvd=self.p.use_cvd,
+                                                                          use_ob_imbalance=False,
+                                                                          use_cvd_accel=self.p.use_cvd_accel) if s.direction != self._dir]
+            log.info(f"REVERSE exit signals: {', '.join(contra) or 'unknown'}")
             return self._close_all(price, "reverse_signal")
 
         # c) Full TP
@@ -523,6 +688,7 @@ class OrderFlowStrategy:
             'entryTime': self._entry_time.isoformat() if self._entry_time else None,
             'exitTime': datetime.now(MSK).isoformat(),
             'reason': 'partial_tp',
+            'signal': self._signal_type,
         })
 
         # Update avg from remaining queue
@@ -569,6 +735,7 @@ class OrderFlowStrategy:
             'entryTime': self._entry_time.isoformat() if self._entry_time else None,
             'exitTime': datetime.now(MSK).isoformat(),
             'reason': reason,
+            'signal': self._signal_type,
         })
 
         log.info(f"CLOSE_ALL {side} {qty} @ {price:.0f} | reason={reason} | gross={gross_pnl:.0f}₽ comm={commission:.0f}₽ net={realized:.0f}₽ | daily={self._daily_pnl:.0f}₽")
@@ -694,10 +861,22 @@ class OrderFlowStrategy:
             "signalType": self._signal_type,
             "tradeHistory": self._trade_history[-200:],
             "lastDelta": self._last_delta,
-            "obImbalance": self._last_ob_imbalance,
             "cvd": self.trades.cvd,
+            "cvdTrend": {
+                "direction": self.signals.get_cvd_trend_direction(),
+                "emaFast": round(self.signals._cvd_ema_fast, 0) if self.signals._cvd_trend_ready else None,
+                "emaSlow": round(self.signals._cvd_ema_slow, 0) if self.signals._cvd_trend_ready else None,
+                "ready": self.signals._cvd_trend_ready,
+            },
+            "cvdAccel": {
+                "value": round(self.signals._bar_history[-1].cvd - self.signals._bar_history[-(self.signals._cvd_accel_period + 1)].cvd, 0) if len(self.signals._bar_history) > self.signals._cvd_accel_period else None,
+                "threshold": self.signals._cvd_accel_threshold,
+                "aggRatio": round(self.signals.get_agg_ratio(), 2),
+                "aggThreshold": self.signals._agg_ratio_threshold,
+            },
             "barsReady": self.signals.bars_ready,
             "entryLocked": self._is_entry_locked(),
             "priceStale": self._is_price_stale(),
             "lastPriceUpdate": self._last_price_update,
+            "vwema": self.vwema.state if self.vwema else None,
         }

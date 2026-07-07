@@ -30,6 +30,17 @@ OB_IMBALANCE_THRESHOLD = 0.50
 SIGNAL_CONFIRM_COUNT = 1    # signals for entry (1-3)
 SIGNAL_CONFIRM_EXIT = 1     # signals for exit (1-3)
 
+# CVD Acceleration + Aggression Ratio (replaces OB Imbalance)
+CVD_ACCEL_PERIOD = 10         # bars for CVD acceleration calc (50 min)
+CVD_ACCEL_THRESHOLD = 1000   # min CVD accel delta to signal
+AGG_WINDOW = 3               # bars for rolling aggression calc
+AGG_RATIO_THRESHOLD = 1.0    # min buy/sell ratio to confirm direction
+USE_CVD_ACCEL = True          # enable CVD Acceleration signal
+USE_AGG_RATIO = True         # use aggression ratio as filter
+USE_OB_IMBALANCE = False      # disabled — replaced by CVD Accel
+USE_CVD_TREND = False         # disabled — using CVD Accel instead
+OB_IMBALANCE_THRESHOLD = 0.50 # legacy, kept for engine compat
+
 # Protective filters
 ENABLE_MAX_LEVELS = True
 ENABLE_DAILY_STOP = True
