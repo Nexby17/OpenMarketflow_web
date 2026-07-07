@@ -59,6 +59,10 @@ OUTDIR.mkdir(parents=True, exist_ok=True)
 # --- State ---
 fp: FinamPy | None = None
 _running = True
+_last_trade_ts: float = 0.0
+_last_ob_ts: float = 0.0
+_last_reconnect_ts: float = 0.0
+STALE_LIMIT = 60  # seconds before reconnect
 
 # Per-day file handles
 _trade_files: dict[str, csv.writer] = {}
@@ -136,7 +140,8 @@ def _rotate_day():
 
 def _on_latest_trades(event):
     """Write trades to CSV."""
-    global _trades_count
+    global _trades_count, _last_trade_ts
+    _last_trade_ts = time.time()
     try:
         day = _day_str()
         writer = _get_trade_writer(day)
@@ -158,7 +163,8 @@ def _on_latest_trades(event):
 
 def _on_order_book(event):
     """Write orderbook updates to CSV."""
-    global _ob_count
+    global _ob_count, _last_ob_ts
+    _last_ob_ts = time.time()
     try:
         day = _day_str()
         writer = _get_ob_writer(day)
@@ -184,15 +190,48 @@ def _on_order_book(event):
 
 # ========== Connection ==========
 
+def _reconnect():
+    """Kill stale FinamPy and reconnect. Guard: max once per 60s."""
+    global _last_reconnect_ts, fp
+    now = time.time()
+    if now - _last_reconnect_ts < STALE_LIMIT:
+        return
+    _last_reconnect_ts = now
+    log.warning(f"[WATCHDOG] No data for {STALE_LIMIT}s — reconnecting FinamPy...")
+    try:
+        if fp is not None:
+            try:
+                fp.on_latest_trades.unsubscribe_all()
+                fp.on_order_book.unsubscribe_all()
+            except Exception:
+                pass
+            try:
+                fp.close()
+            except Exception:
+                pass
+        time.sleep(1)
+        fp = None
+        if connect_finam():
+            _last_trade_ts = time.time()
+            _last_ob_ts = time.time()
+            log.info("[WATCHDOG] Reconnected OK")
+        else:
+            log.error("[WATCHDOG] Reconnect failed")
+    except Exception as e:
+        log.error(f"[WATCHDOG] Error: {e}")
+
+
 def connect_finam() -> bool:
     """Connect FinamPy and subscribe to Trades + OrderBook."""
-    global fp
+    global fp, _last_trade_ts, _last_ob_ts
     token = os.environ.get("FINAM_TOKEN")
     if not token:
         log.error("FINAM_TOKEN not set!")
         return False
 
     fp = FinamPy(token)
+    _last_trade_ts = time.time()
+    _last_ob_ts = time.time()
     log.info(f"FinamPy connected. Accounts: {fp.account_ids}")
 
     # Subscribe to trades
@@ -252,9 +291,16 @@ def main_loop():
                     _rotate_day()
                 _last_day = today
 
+            # === WATCHDOG ===
+            trade_gap = now - _last_trade_ts if _last_trade_ts > 0 else 0
+            ob_gap = now - _last_ob_ts if _last_ob_ts > 0 else 0
+            if trade_gap > STALE_LIMIT or ob_gap > STALE_LIMIT:
+                log.warning(f"[WATCHDOG] trade_gap={trade_gap:.0f}s ob_gap={ob_gap:.0f}s")
+                _reconnect()
+
             # Stats every 60 sec
             if int(now) % 60 == 0:
-                log.info(f"Stats: trades={_trades_count} ob_updates={_ob_count}")
+                log.info(f"Stats: trades={_trades_count} ob_updates={_ob_count} trade_gap={trade_gap:.0f}s ob_gap={ob_gap:.0f}s")
 
             time.sleep(1)
 

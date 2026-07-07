@@ -1,0 +1,163 @@
+03:45:35 robot_arb INFO === Arbitrage Robot v1 ===
+03:45:35 robot_arb INFO Pair: SBER / SRU6
+03:45:35 robot_arb INFO Account: 1225953 | Port: 5091 | Paper: True
+03:45:35 robot_arb INFO Params: entry_z=2.7 lookback=200 lots_a=100 lots_b=10 hedge_ratio=10
+03:45:35 robot_arb INFO Min profit: rub=77.77
+03:45:35 robot_arb INFO Risk: stop_loss_rub=500000
+03:45:35 robot_arb INFO State loaded: pnl=200 trades=7 mode=stopped
+03:45:35 robot_arb INFO FinamPy connected. Accounts: ['1225950', '1225951', '1225952', '1225953']
+03:45:35 robot_arb INFO Orders manager linked to FinamPy gRPC
+03:45:35 robot_arb INFO Subscribed OrderBook: SBER@RTSX, SRU6@RTSX
+03:45:35 robot_arb INFO Subscribed Quotes: SBER@RTSX, SRU6@RTSX
+03:45:35 robot_arb INFO Warmup: waiting 10 sec for data streams...
+03:45:45 robot_arb INFO Warmup done. OB_A: False OB_B: False
+03:45:45 robot_arb INFO MOEX ISS poller started (fallback for stock prices)
+03:45:45 robot_arb INFO Main loop started
+03:45:45 robot_arb INFO API listening on :5091
+03:45:45 robot_arb INFO Endpoints: GET /status /health /params | POST /start /stop /pause /params
+03:45:49 robot_arb INFO Mode → RUNNING
+04:10:49 robot_arb INFO Signal 15 — shutting down...
+04:10:50 robot_arb INFO === Arbitrage Robot v1 ===
+04:10:50 robot_arb INFO Pair: SBER / SRU6
+04:10:50 robot_arb INFO Account: 1225953 | Port: 5091 | Paper: True
+04:10:50 robot_arb INFO Params: entry_z=2.7 lookback=200 lots_a=100 lots_b=10 hedge_ratio=10
+04:10:50 robot_arb INFO Min profit: rub=77.77
+04:10:50 robot_arb INFO Risk: stop_loss_rub=500000
+04:10:50 robot_arb INFO State loaded: pnl=200 trades=7 mode=stopped
+04:10:50 robot_arb INFO FinamPy connected. Accounts: ['1225950', '1225951', '1225952', '1225953']
+04:10:50 robot_arb INFO Orders manager linked to FinamPy gRPC
+04:10:50 robot_arb INFO Subscribed OrderBook: SBER@RTSX, SRU6@RTSX
+04:10:50 robot_arb INFO Subscribed Quotes: SBER@RTSX, SRU6@RTSX
+04:10:50 robot_arb INFO Warmup: waiting 10 sec for data streams...
+04:11:00 robot_arb INFO Warmup done. OB_A: False OB_B: False
+04:11:00 robot_arb INFO MOEX ISS poller started (fallback for stock prices)
+04:11:00 robot_arb INFO Main loop started
+04:11:00 robot_arb INFO API listening on :5091
+04:11:00 robot_arb INFO Endpoints: GET /status /health /params | POST /start /stop /pause /params
+04:11:05 robot_arb INFO Mode → RUNNING
+04:15:06 robot_arb INFO EXIT layer #1 reason=profit_target | limit sell 100 @ 299.18 | market buy 10 @ 27396.69
+04:15:06 orders_arb INFO 📄 PAPER ENTRY: sell 100 SBER@RTSX @ 299.18 (LIMIT)
+04:15:06 orders_arb INFO 📄 PAPER ENTRY: buy 10 SRU6@RTSX @ 27396.69 (MARKET)
+04:15:06 strategy_arb INFO LAYER #1 CLOSE SHORT | PnL=+38.01₽ (gross=+256.21₽ comm=218.21₽) | reason=profit_target | hold=481min | layers=0
+04:18:50 robot_arb INFO ⚠️ CHECK_ENTRY returned signal: {'action': 'entry', 'side': 'short_basis', 'z': 2.978466080267734, 'basis': 24395.0, 'price_a': 298.8, 'price_b': 27383.0}
+04:18:50 robot_arb INFO ENTRY SIGNAL short_basis | Z=2.98 basis=24395.00 | A=298.80 B=27383.00 | limit buy 100 @ 298.80 | market sell 10 @ 27369.31
+04:18:50 orders_arb INFO 📄 PAPER ENTRY: buy 100 SBER@RTSX @ 298.80 (LIMIT)
+04:18:50 orders_arb INFO 📄 PAPER ENTRY: sell 10 SRU6@RTSX @ 27369.31 (MARKET)
+04:18:50 strategy_arb INFO LAYER #2 OPEN SHORT | A=298.80 ×100 | B=27369.31 ×10 | basis=24381.31 Z=2.98 | layers=1
+04:18:50 robot_arb INFO LAYER OPEN SHORT_BASIS #2 | A=298.80 ×100 | B=27369.31 ×10 | basis=24395.00 Z=2.98 | layers=1 used_capital=603,800
+06:16:49 robot_arb INFO EXIT layer #2 reason=profit_target | limit sell 100 @ 297.65 | market buy 10 @ 27235.61
+06:16:49 orders_arb INFO 📄 PAPER ENTRY: sell 100 SBER@RTSX @ 297.65 (LIMIT)
+06:16:49 orders_arb INFO 📄 PAPER ENTRY: buy 10 SRU6@RTSX @ 27235.61 (MARKET)
+06:16:49 strategy_arb INFO LAYER #2 CLOSE SHORT | PnL=-30.78₽ (gross=+186.97₽ comm=217.76₽) | reason=profit_target | hold=118min | layers=0
+06:22:41 robot_arb INFO ⚠️ CHECK_ENTRY returned signal: {'action': 'entry', 'side': 'short_basis', 'z': 2.719464491321564, 'basis': 24265.3, 'price_a': 297.27, 'price_b': 27238.0}
+06:22:41 robot_arb INFO ENTRY SIGNAL short_basis | Z=2.72 basis=24265.30 | A=297.27 B=27238.00 | limit buy 100 @ 297.28 | market sell 10 @ 27224.38
+06:22:41 orders_arb INFO 📄 PAPER ENTRY: buy 100 SBER@RTSX @ 297.28 (LIMIT)
+06:22:41 orders_arb INFO 📄 PAPER ENTRY: sell 10 SRU6@RTSX @ 27224.38 (MARKET)
+06:22:41 strategy_arb INFO LAYER #3 OPEN SHORT | A=297.28 ×100 | B=27224.38 ×10 | basis=24251.58 Z=2.72 | layers=1
+06:22:41 robot_arb INFO LAYER OPEN SHORT_BASIS #3 | A=297.28 ×100 | B=27224.38 ×10 | basis=24265.30 Z=2.72 | layers=1 used_capital=602,280
+07:30:59 robot_arb INFO EXIT layer #3 reason=profit_target | limit sell 100 @ 296.94 | market buy 10 @ 27174.58
+07:30:59 orders_arb INFO 📄 PAPER ENTRY: sell 100 SBER@RTSX @ 296.94 (LIMIT)
+07:30:59 orders_arb INFO 📄 PAPER ENTRY: buy 10 SRU6@RTSX @ 27174.58 (MARKET)
+07:30:59 strategy_arb INFO LAYER #3 CLOSE SHORT | PnL=-58.97₽ (gross=+158.01₽ comm=216.98₽) | reason=profit_target | hold=68min | layers=0
+07:31:43 robot_arb INFO Mode → STOPPED
+08:17:37 robot_arb INFO Signal 15 — shutting down...
+13:42:41 robot_arb INFO === Arbitrage Robot v1 ===
+13:42:41 robot_arb INFO Pair: SBER / SRU6
+13:42:41 robot_arb INFO Account: 1225953 | Port: 5091 | Paper: False
+13:42:41 robot_arb INFO Params: entry_z=2.5 lookback=200 lots_a=10 lots_b=1 hedge_ratio=10
+13:42:41 robot_arb INFO Min profit: rub=5
+13:42:41 robot_arb INFO Risk: stop_loss_rub=500000
+13:42:41 robot_arb INFO State loaded: pnl=149 trades=10 mode=stopped
+13:42:41 robot_arb INFO FinamPy connected. Accounts: ['1225950', '1225951', '1225952', '1225953']
+13:42:41 robot_arb INFO Orders manager linked to FinamPy gRPC
+13:42:41 robot_arb INFO Subscribed OrderBook: SBER@RTSX, SRU6@RTSX
+13:42:41 robot_arb INFO Subscribed Quotes: SBER@RTSX, SRU6@RTSX
+13:42:41 robot_arb INFO Warmup: waiting 10 sec for data streams...
+13:42:51 robot_arb INFO Warmup done. OB_A: False OB_B: False
+13:42:51 robot_arb INFO MOEX ISS poller started (fallback for stock prices)
+13:42:51 robot_arb INFO Main loop started
+13:42:51 robot_arb INFO API listening on :5091
+13:42:51 robot_arb INFO Endpoints: GET /status /health /params | POST /start /stop /pause /params
+13:48:39 robot_arb INFO Param updated: allow_long_basis = True (was True)
+13:48:45 robot_arb INFO Param updated: allow_long_basis = True (was True)
+13:51:53 robot_arb INFO === Arbitrage Robot v1 ===
+13:51:53 robot_arb INFO Pair: SBER / SRU6
+13:51:53 robot_arb INFO Account: 1225953 | Port: 5091 | Paper: True
+13:51:53 robot_arb INFO Params: entry_z=2.5 lookback=200 lots_a=10 lots_b=1 hedge_ratio=10
+13:51:53 robot_arb INFO Min profit: rub=5
+13:51:53 robot_arb INFO Risk: stop_loss_rub=500000
+13:51:53 robot_arb INFO State loaded: pnl=149 trades=10 mode=stopped
+13:51:53 robot_arb INFO FinamPy connected. Accounts: ['1225950', '1225951', '1225952', '1225953']
+13:51:53 robot_arb INFO Orders manager linked to FinamPy gRPC
+13:51:53 robot_arb INFO Subscribed OrderBook: SBER@RTSX, SRU6@RTSX
+13:51:53 robot_arb INFO Subscribed Quotes: SBER@RTSX, SRU6@RTSX
+13:51:53 robot_arb INFO Warmup: waiting 10 sec for data streams...
+13:52:03 robot_arb INFO Warmup done. OB_A: False OB_B: False
+13:52:03 robot_arb INFO MOEX ISS poller started (fallback for stock prices)
+13:52:03 robot_arb INFO Main loop started
+13:52:03 robot_arb INFO API listening on :5091
+13:52:03 robot_arb INFO Endpoints: GET /status /health /params | POST /start /stop /pause /params
+14:09:32 robot_arb INFO Param updated: allow_long_basis = True (was True)
+14:09:40 robot_arb INFO Param updated: allow_long_basis = True (was True)
+14:13:58 robot_arb INFO Mode → RUNNING
+14:14:03 robot_arb INFO Param updated: allow_long_basis = True (was True)
+14:14:09 robot_arb INFO Mode → STOPPED
+14:19:20 robot_arb INFO Param updated: allow_long_basis = True (was True)
+14:19:41 robot_arb INFO Param updated: allow_long_basis = True (was True)
+14:36:12 robot_arb INFO Param updated: allow_long_basis = True (was True)
+14:57:10 robot_arb INFO Param updated: ticker_a = SBER (was SBER)
+14:57:10 robot_arb INFO Param updated: symbol_a = SBER@RTSX (was SBER@RTSX)
+14:57:10 robot_arb INFO Param updated: ticker_b = SRU6 (was SRU6)
+14:57:10 robot_arb INFO Param updated: symbol_b = SRU6@RTSX (was SRU6@RTSX)
+14:57:10 robot_arb INFO Param updated: lots_a = 10 (was 10)
+14:57:10 robot_arb INFO Param updated: lots_b = 1 (was 1)
+14:57:10 robot_arb INFO Param updated: hedge_ratio = 10 (was 10)
+14:57:10 robot_arb INFO Param updated: capital = 20000 (was 20000)
+14:57:10 robot_arb INFO Param updated: entry_z = 2.7 (was 2.5)
+14:57:10 robot_arb INFO Param updated: entry_z_long = -7 (was -7)
+14:57:10 robot_arb INFO Param updated: entry_mode = zscore (was zscore)
+14:57:10 robot_arb INFO Param updated: spread_rub_high = 312 (was 312)
+14:57:10 robot_arb INFO Param updated: spread_rub_low = 270 (was 270)
+14:57:10 robot_arb INFO Param updated: risk_free_rate = 0.1425 (was 0.1425)
+14:57:10 robot_arb INFO Param updated: expiration_date = 2026-09-18 (was 2026-09-18)
+14:57:10 robot_arb INFO Param updated: contract_size = 100 (was 100)
+14:57:10 robot_arb INFO Param updated: lookback = 200 (was 200)
+14:57:10 robot_arb INFO Param updated: leg_a_timeout = 5 (was 5)
+14:57:10 robot_arb INFO Param updated: min_fill_ratio = 0.5 (was 0.5)
+14:57:10 robot_arb INFO Param updated: min_profit_type = rub (was rub)
+14:57:10 robot_arb INFO Param updated: min_profit_value = 5 (was 5)
+14:57:10 robot_arb INFO Param updated: risk_type = stop_loss_rub (was stop_loss_rub)
+14:57:10 robot_arb INFO Param updated: risk_value = 500000 (was 500000)
+14:57:10 robot_arb INFO Param updated: allow_long_basis = True (was True)
+14:57:10 robot_arb INFO Param updated: use_commission = True (was True)
+14:57:10 robot_arb INFO Param updated: commission_stock_pct = 0.035 (was 0.035)
+14:57:10 robot_arb INFO Param updated: commission_futures_rt = 0.9 (was 0.9)
+14:57:10 robot_arb INFO Param updated: slippage_bps = 5 (was 5.0)
+14:57:17 robot_arb INFO Param updated: ticker_a = SBER (was SBER)
+14:57:17 robot_arb INFO Param updated: symbol_a = SBER@RTSX (was SBER@RTSX)
+14:57:17 robot_arb INFO Param updated: ticker_b = SRU6 (was SRU6)
+14:57:17 robot_arb INFO Param updated: symbol_b = SRU6@RTSX (was SRU6@RTSX)
+14:57:17 robot_arb INFO Param updated: lots_a = 10 (was 10)
+14:57:17 robot_arb INFO Param updated: lots_b = 1 (was 1)
+14:57:17 robot_arb INFO Param updated: hedge_ratio = 10 (was 10)
+14:57:17 robot_arb INFO Param updated: capital = 20000 (was 20000)
+14:57:17 robot_arb INFO Param updated: entry_z = 2.3 (was 2.7)
+14:57:17 robot_arb INFO Param updated: entry_z_long = -7 (was -7)
+14:57:17 robot_arb INFO Param updated: entry_mode = zscore (was zscore)
+14:57:17 robot_arb INFO Param updated: spread_rub_high = 312 (was 312)
+14:57:17 robot_arb INFO Param updated: spread_rub_low = 270 (was 270)
+14:57:17 robot_arb INFO Param updated: risk_free_rate = 0.1425 (was 0.1425)
+14:57:17 robot_arb INFO Param updated: expiration_date = 2026-09-18 (was 2026-09-18)
+14:57:17 robot_arb INFO Param updated: contract_size = 100 (was 100)
+14:57:17 robot_arb INFO Param updated: lookback = 200 (was 200)
+14:57:17 robot_arb INFO Param updated: leg_a_timeout = 5 (was 5)
+14:57:17 robot_arb INFO Param updated: min_fill_ratio = 0.5 (was 0.5)
+14:57:17 robot_arb INFO Param updated: min_profit_type = rub (was rub)
+14:57:17 robot_arb INFO Param updated: min_profit_value = 5 (was 5)
+14:57:17 robot_arb INFO Param updated: risk_type = stop_loss_rub (was stop_loss_rub)
+14:57:17 robot_arb INFO Param updated: risk_value = 500000 (was 500000)
+14:57:17 robot_arb INFO Param updated: allow_long_basis = True (was True)
+14:57:17 robot_arb INFO Param updated: use_commission = True (was True)
+14:57:17 robot_arb INFO Param updated: commission_stock_pct = 0.035 (was 0.035)
+14:57:17 robot_arb INFO Param updated: commission_futures_rt = 0.9 (was 0.9)
+14:57:17 robot_arb INFO Param updated: slippage_bps = 5 (was 5)

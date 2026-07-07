@@ -3,6 +3,12 @@ import sys, os
 # Ensure cwd is first in import path (for instance config.py to take priority)
 sys.path.insert(0, os.getcwd())
 import json
+
+# sd_notify for systemd watchdog
+try:
+    from systemd.daemon import notify as _sd_notify
+except ImportError:
+    _sd_notify = None
 import logging
 import signal
 import sys
@@ -64,6 +70,7 @@ class Robot:
         # Close cooldown
         self._last_close_time: datetime | None = None
         self._close_pending: bool = False
+        self._close_pending_since: datetime | None = None
 
         # Max lots for threshold calculation
         self._max_lots: int = 0
@@ -352,6 +359,12 @@ class Robot:
                     self._tick()
             except Exception as e:
                 log.error(f"Poll tick error: {e}")
+            # Notify systemd watchdog
+            if _sd_notify:
+                try:
+                    _sd_notify("WATCHDOG=1")
+                except Exception:
+                    pass
             time.sleep(0.5)
 
     def _tick(self):
@@ -461,9 +474,17 @@ class Robot:
                 # Close sent but broker still shows position — wait
                 if cur_lots == 0:
                     self._close_pending = False
+                    self._close_pending_since = None
                     log.info("Close confirmed by broker (lots=0)")
                 else:
-                    log.info(f"Waiting for close confirm: broker_lots={cur_lots}")
+                    # Timeout: if close hasn't confirmed in 15s, force-reset
+                    elapsed = (now - self._close_pending_since).total_seconds() if self._close_pending_since else 999
+                    if elapsed > 15:
+                        log.warning(f"Close confirm timeout ({elapsed:.0f}s) — force-resetting _close_pending")
+                        self._close_pending = False
+                        self._close_pending_since = None
+                    else:
+                        log.info(f"Waiting for close confirm: broker_lots={cur_lots} ({elapsed:.0f}s)")
                 return
             else:
                 # Orphan position — restore
@@ -814,6 +835,7 @@ class Robot:
         self._current_tp_price = 0
         self._last_close_time = datetime.now(MSK)
         self._close_pending = True
+        self._close_pending_since = datetime.now(MSK)
         self._save_state()
 
     # === EXITS ===
@@ -956,6 +978,7 @@ class Robot:
         self._current_tp_price = 0
         self._last_close_time = datetime.now(MSK)
         self._close_pending = True
+        self._close_pending_since = datetime.now(MSK)
         self._save_state()
 
     # === CALLBACKS (price/VP only) ===

@@ -1,0 +1,1539 @@
+13:49:15 robot_arb INFO === Arbitrage Robot v1 ===
+13:49:15 robot_arb INFO Pair: BRQ6 / BRU6
+13:49:15 robot_arb INFO Account: 1225953 | Port: 5092 | Paper: True
+13:49:15 robot_arb INFO Params: entry_z=2.0 lookback=200 lots_a=1 lots_b=1 hedge_ratio=1.0
+13:49:15 robot_arb INFO Min profit: rub=5
+13:49:15 robot_arb INFO Risk: stop_loss_rub=5000
+13:49:16 robot_arb INFO FinamPy connected. Accounts: ['1225950', '1225951', '1225952', '1225953']
+13:49:16 robot_arb INFO Orders manager linked to FinamPy gRPC
+13:49:16 robot_arb INFO Subscribed OrderBook: BRQ6@RTSX, BRU6@RTSX
+13:49:16 robot_arb INFO Subscribed Quotes: BRQ6@RTSX, BRU6@RTSX
+13:49:16 robot_arb INFO Warmup: waiting 10 sec for data streams...
+13:49:26 robot_arb INFO Warmup done. OB_A: False OB_B: False
+13:49:26 robot_arb INFO MOEX ISS poller started (fallback for stock prices)
+13:49:26 robot_arb INFO Main loop started
+13:49:26 robot_arb INFO API listening on :5092
+13:49:26 robot_arb INFO Endpoints: GET /status /health /params | POST /start /stop /pause /params
+14:05:33 robot_arb INFO === Arbitrage Robot v1 ===
+14:05:33 robot_arb INFO Pair: BRQ6 / BRU6
+14:05:33 robot_arb INFO Account: 1225953 | Port: 5092 | Paper: True
+14:05:33 robot_arb INFO Params: entry_z=2.0 lookback=200 lots_a=1 lots_b=1 hedge_ratio=1.0
+14:05:33 robot_arb INFO Min profit: rub=5
+14:05:33 robot_arb INFO Risk: stop_loss_rub=5000
+14:05:34 robot_arb INFO FinamPy connected. Accounts: ['1225950', '1225951', '1225952', '1225953']
+14:05:34 robot_arb INFO Orders manager linked to FinamPy gRPC
+14:05:34 robot_arb INFO Subscribed OrderBook: BRQ6@RTSX, BRU6@RTSX
+14:05:34 robot_arb INFO Subscribed Quotes: BRQ6@RTSX, BRU6@RTSX
+14:05:34 robot_arb INFO Warmup: waiting 10 sec for data streams...
+14:05:44 robot_arb INFO Warmup done. OB_A: False OB_B: False
+14:05:44 robot_arb INFO MOEX ISS poller started (fallback for stock prices)
+14:05:44 robot_arb INFO Main loop started
+14:05:48 robot_arb INFO API listening on :5092
+14:05:48 robot_arb INFO Endpoints: GET /status /health /params | POST /start /stop /pause /params
+14:08:54 robot_arb INFO Param updated: hedge_ratio = 1.0 (was 1.0)
+14:08:54 robot_arb INFO Param updated: mult_a = 780 (was 1.0)
+14:08:54 robot_arb INFO Param updated: mult_b = 780 (was 1.0)
+14:08:54 robot_arb INFO Param updated: lots_a = 1 (was 1)
+14:08:54 robot_arb INFO Param updated: lots_b = 1 (was 1)
+14:08:54 robot_arb INFO Param updated: entry_z = 1.5 (was 2.0)
+14:08:54 robot_arb INFO Param updated: entry_z_long = -1.5 (was -2.0)
+14:08:54 robot_arb INFO Param updated: lookback = 200 (was 200)
+14:08:54 robot_arb INFO Param updated: min_profit_type = rub (was rub)
+14:08:54 robot_arb INFO Param updated: min_profit_value = 100 (was 5)
+14:08:54 robot_arb INFO Param updated: risk_type = stop_loss_rub (was stop_loss_rub)
+14:08:54 robot_arb INFO Param updated: risk_value = 3000 (was 5000)
+14:08:54 robot_arb INFO Param updated: capital = 100000 (was 100000)
+14:08:54 robot_arb INFO Param updated: go_per_contract_b = 13000 (was 5000)
+14:08:54 robot_arb INFO Param updated: commission_futures_rt = 7.5 (was 0.9)
+14:08:54 robot_arb INFO Param updated: contract_size = 1 (was 1)
+14:08:54 robot_arb INFO Param updated: allow_long_basis = True (was True)
+14:08:54 robot_arb INFO Param updated: use_commission = True (was True)
+14:08:54 robot_arb INFO Param updated: slippage_bps = 10 (was 5.0)
+14:09:21 robot_arb INFO Param updated: allow_long_basis = True (was True)
+14:09:25 robot_arb INFO Param updated: allow_long_basis = True (was True)
+14:13:45 robot_arb INFO Param updated: allow_long_basis = True (was True)
+14:15:35 robot_arb INFO Param updated: allow_long_basis = True (was True)
+14:17:31 robot_arb INFO Param updated: ticker_a = BRQ6 (was BRQ6)
+14:17:31 robot_arb INFO Param updated: symbol_a = BRQ6@RTSX (was BRQ6@RTSX)
+14:17:31 robot_arb INFO Param updated: ticker_b = BRU6 (was BRU6)
+14:17:31 robot_arb INFO Param updated: symbol_b = BRU6@RTSX (was BRU6@RTSX)
+14:17:31 robot_arb INFO Param updated: lots_a = 1 (was 1)
+14:17:31 robot_arb INFO Param updated: lots_b = 1 (was 1)
+14:17:31 robot_arb INFO Param updated: hedge_ratio = 1 (was 1.0)
+14:17:31 robot_arb INFO Param updated: capital = 100000 (was 100000)
+14:17:31 robot_arb INFO Param updated: entry_z = 1.9 (was 1.5)
+14:17:31 robot_arb INFO Param updated: entry_z_long = -1.5 (was -1.5)
+14:17:31 robot_arb INFO Param updated: entry_mode = zscore (was zscore)
+14:17:31 robot_arb INFO Param updated: spread_rub_high = 5 (was 5.0)
+14:17:31 robot_arb INFO Param updated: spread_rub_low = -5 (was -5.0)
+14:17:31 robot_arb INFO Param updated: risk_free_rate = 0.1425 (was 0.1425)
+14:17:31 robot_arb INFO Param updated: expiration_date = 2026-09-18 (was 2026-09-18)
+14:17:31 robot_arb INFO Param updated: contract_size = 1 (was 1)
+14:17:31 robot_arb INFO Param updated: lookback = 200 (was 200)
+14:17:31 robot_arb INFO Param updated: leg_a_timeout = 5 (was 5)
+14:17:31 robot_arb INFO Param updated: min_fill_ratio = 0.5 (was 0.5)
+14:17:31 robot_arb INFO Param updated: min_profit_type = rub (was rub)
+14:17:31 robot_arb INFO Param updated: min_profit_value = 100 (was 100)
+14:17:31 robot_arb INFO Param updated: risk_type = stop_loss_rub (was stop_loss_rub)
+14:17:31 robot_arb INFO Param updated: risk_value = 3000 (was 3000)
+14:17:31 robot_arb INFO Param updated: allow_long_basis = True (was True)
+14:17:31 robot_arb INFO Param updated: use_commission = True (was True)
+14:17:31 robot_arb INFO Param updated: commission_stock_pct = 0.035 (was 0.035)
+14:17:31 robot_arb INFO Param updated: commission_futures_rt = 7.5 (was 7.5)
+14:17:31 robot_arb INFO Param updated: slippage_bps = 10 (was 10)
+14:17:42 robot_arb INFO Param updated: ticker_a = BRQ6 (was BRQ6)
+14:17:42 robot_arb INFO Param updated: symbol_a = BRQ6@RTSX (was BRQ6@RTSX)
+14:17:42 robot_arb INFO Param updated: ticker_b = BRU6 (was BRU6)
+14:17:42 robot_arb INFO Param updated: symbol_b = BRU6@RTSX (was BRU6@RTSX)
+14:17:42 robot_arb INFO Param updated: lots_a = 1 (was 1)
+14:17:42 robot_arb INFO Param updated: lots_b = 1 (was 1)
+14:17:42 robot_arb INFO Param updated: hedge_ratio = 1 (was 1)
+14:17:42 robot_arb INFO Param updated: capital = 100000 (was 100000)
+14:17:42 robot_arb INFO Param updated: entry_z = 1.4 (was 1.9)
+14:17:42 robot_arb INFO Param updated: entry_z_long = -1.5 (was -1.5)
+14:17:42 robot_arb INFO Param updated: entry_mode = zscore (was zscore)
+14:17:42 robot_arb INFO Param updated: spread_rub_high = 5 (was 5)
+14:17:42 robot_arb INFO Param updated: spread_rub_low = -5 (was -5)
+14:17:42 robot_arb INFO Param updated: risk_free_rate = 0.1425 (was 0.1425)
+14:17:42 robot_arb INFO Param updated: expiration_date = 2026-09-18 (was 2026-09-18)
+14:17:42 robot_arb INFO Param updated: contract_size = 1 (was 1)
+14:17:42 robot_arb INFO Param updated: lookback = 200 (was 200)
+14:17:42 robot_arb INFO Param updated: leg_a_timeout = 5 (was 5)
+14:17:42 robot_arb INFO Param updated: min_fill_ratio = 0.5 (was 0.5)
+14:17:42 robot_arb INFO Param updated: min_profit_type = rub (was rub)
+14:17:42 robot_arb INFO Param updated: min_profit_value = 100 (was 100)
+14:17:42 robot_arb INFO Param updated: risk_type = stop_loss_rub (was stop_loss_rub)
+14:17:42 robot_arb INFO Param updated: risk_value = 3000 (was 3000)
+14:17:42 robot_arb INFO Param updated: allow_long_basis = True (was True)
+14:17:42 robot_arb INFO Param updated: use_commission = True (was True)
+14:17:42 robot_arb INFO Param updated: commission_stock_pct = 0.035 (was 0.035)
+14:17:42 robot_arb INFO Param updated: commission_futures_rt = 7.5 (was 7.5)
+14:17:42 robot_arb INFO Param updated: slippage_bps = 10 (was 10)
+14:17:59 robot_arb INFO Param updated: ticker_a = BRQ6 (was BRQ6)
+14:17:59 robot_arb INFO Param updated: symbol_a = BRQ6@RTSX (was BRQ6@RTSX)
+14:17:59 robot_arb INFO Param updated: ticker_b = BRU6 (was BRU6)
+14:17:59 robot_arb INFO Param updated: symbol_b = BRU6@RTSX (was BRU6@RTSX)
+14:17:59 robot_arb INFO Param updated: lots_a = 1 (was 1)
+14:17:59 robot_arb INFO Param updated: lots_b = 1 (was 1)
+14:17:59 robot_arb INFO Param updated: hedge_ratio = 1 (was 1)
+14:17:59 robot_arb INFO Param updated: capital = 100000 (was 100000)
+14:17:59 robot_arb INFO Param updated: entry_z = 1.4 (was 1.4)
+14:17:59 robot_arb INFO Param updated: entry_z_long = -1.5 (was -1.5)
+14:17:59 robot_arb INFO Param updated: entry_mode = zscore (was zscore)
+14:17:59 robot_arb INFO Param updated: spread_rub_high = 5 (was 5)
+14:17:59 robot_arb INFO Param updated: spread_rub_low = -5 (was -5)
+14:17:59 robot_arb INFO Param updated: risk_free_rate = 0 (was 0.1425)
+14:17:59 robot_arb INFO Param updated: expiration_date = 2026-09-18 (was 2026-09-18)
+14:17:59 robot_arb INFO Param updated: contract_size = 1 (was 1)
+14:17:59 robot_arb INFO Param updated: lookback = 200 (was 200)
+14:17:59 robot_arb INFO Param updated: leg_a_timeout = 5 (was 5)
+14:17:59 robot_arb INFO Param updated: min_fill_ratio = 0.5 (was 0.5)
+14:17:59 robot_arb INFO Param updated: min_profit_type = rub (was rub)
+14:17:59 robot_arb INFO Param updated: min_profit_value = 100 (was 100)
+14:17:59 robot_arb INFO Param updated: risk_type = stop_loss_rub (was stop_loss_rub)
+14:17:59 robot_arb INFO Param updated: risk_value = 3000 (was 3000)
+14:17:59 robot_arb INFO Param updated: allow_long_basis = True (was True)
+14:17:59 robot_arb INFO Param updated: use_commission = True (was True)
+14:17:59 robot_arb INFO Param updated: commission_stock_pct = 0.035 (was 0.035)
+14:17:59 robot_arb INFO Param updated: commission_futures_rt = 7.5 (was 7.5)
+14:17:59 robot_arb INFO Param updated: slippage_bps = 10 (was 10)
+14:18:05 robot_arb INFO Param updated: ticker_a = BRQ6 (was BRQ6)
+14:18:05 robot_arb INFO Param updated: symbol_a = BRQ6@RTSX (was BRQ6@RTSX)
+14:18:05 robot_arb INFO Param updated: ticker_b = BRU6 (was BRU6)
+14:18:05 robot_arb INFO Param updated: symbol_b = BRU6@RTSX (was BRU6@RTSX)
+14:18:05 robot_arb INFO Param updated: lots_a = 1 (was 1)
+14:18:05 robot_arb INFO Param updated: lots_b = 1 (was 1)
+14:18:05 robot_arb INFO Param updated: hedge_ratio = 1 (was 1)
+14:18:05 robot_arb INFO Param updated: capital = 100000 (was 100000)
+14:18:05 robot_arb INFO Param updated: entry_z = 1.4 (was 1.4)
+14:18:05 robot_arb INFO Param updated: entry_z_long = -1.5 (was -1.5)
+14:18:05 robot_arb INFO Param updated: entry_mode = zscore (was zscore)
+14:18:05 robot_arb INFO Param updated: spread_rub_high = 5 (was 5)
+14:18:05 robot_arb INFO Param updated: spread_rub_low = -5 (was -5)
+14:18:05 robot_arb INFO Param updated: risk_free_rate = 0 (was 0)
+14:18:05 robot_arb INFO Param updated: expiration_date = 2026-09-18 (was 2026-09-18)
+14:18:05 robot_arb INFO Param updated: contract_size = 1 (was 1)
+14:18:05 robot_arb INFO Param updated: lookback = 200 (was 200)
+14:18:05 robot_arb INFO Param updated: leg_a_timeout = 5 (was 5)
+14:18:05 robot_arb INFO Param updated: min_fill_ratio = 0.5 (was 0.5)
+14:18:05 robot_arb INFO Param updated: min_profit_type = rub (was rub)
+14:18:05 robot_arb INFO Param updated: min_profit_value = 100 (was 100)
+14:18:05 robot_arb INFO Param updated: risk_type = stop_loss_rub (was stop_loss_rub)
+14:18:05 robot_arb INFO Param updated: risk_value = 3000 (was 3000)
+14:18:05 robot_arb INFO Param updated: allow_long_basis = True (was True)
+14:18:05 robot_arb INFO Param updated: use_commission = True (was True)
+14:18:05 robot_arb INFO Param updated: commission_stock_pct = 0.035 (was 0.035)
+14:18:05 robot_arb INFO Param updated: commission_futures_rt = 7.5 (was 7.5)
+14:18:05 robot_arb INFO Param updated: slippage_bps = 10 (was 10)
+14:18:22 robot_arb INFO Param updated: ticker_a = BRQ6 (was BRQ6)
+14:18:22 robot_arb INFO Param updated: symbol_a = BRQ6@RTSX (was BRQ6@RTSX)
+14:18:22 robot_arb INFO Param updated: ticker_b = BRU6 (was BRU6)
+14:18:22 robot_arb INFO Param updated: symbol_b = BRU6@RTSX (was BRU6@RTSX)
+14:18:22 robot_arb INFO Param updated: lots_a = 1 (was 1)
+14:18:22 robot_arb INFO Param updated: lots_b = 1 (was 1)
+14:18:22 robot_arb INFO Param updated: hedge_ratio = 1 (was 1)
+14:18:22 robot_arb INFO Param updated: capital = 100000 (was 100000)
+14:18:22 robot_arb INFO Param updated: entry_z = 1.4 (was 1.4)
+14:18:22 robot_arb INFO Param updated: entry_z_long = -1.5 (was -1.5)
+14:18:22 robot_arb INFO Param updated: entry_mode = zscore (was zscore)
+14:18:22 robot_arb INFO Param updated: spread_rub_high = 5 (was 5)
+14:18:22 robot_arb INFO Param updated: spread_rub_low = -5 (was -5)
+14:18:22 robot_arb INFO Param updated: risk_free_rate = 0.1425 (was 0)
+14:18:22 robot_arb INFO Param updated: expiration_date = 2026-09-18 (was 2026-09-18)
+14:18:22 robot_arb INFO Param updated: contract_size = 1 (was 1)
+14:18:22 robot_arb INFO Param updated: lookback = 200 (was 200)
+14:18:22 robot_arb INFO Param updated: leg_a_timeout = 5 (was 5)
+14:18:22 robot_arb INFO Param updated: min_fill_ratio = 0.5 (was 0.5)
+14:18:22 robot_arb INFO Param updated: min_profit_type = rub (was rub)
+14:18:22 robot_arb INFO Param updated: min_profit_value = 100 (was 100)
+14:18:22 robot_arb INFO Param updated: risk_type = stop_loss_rub (was stop_loss_rub)
+14:18:22 robot_arb INFO Param updated: risk_value = 3000 (was 3000)
+14:18:22 robot_arb INFO Param updated: allow_long_basis = True (was True)
+14:18:22 robot_arb INFO Param updated: use_commission = True (was True)
+14:18:22 robot_arb INFO Param updated: commission_stock_pct = 0.035 (was 0.035)
+14:18:22 robot_arb INFO Param updated: commission_futures_rt = 7.5 (was 7.5)
+14:18:22 robot_arb INFO Param updated: slippage_bps = 10 (was 10)
+14:21:54 robot_arb INFO Param updated: commission_futures_rt = 15.0 (was 7.5)
+14:21:54 robot_arb INFO Param updated: commission_stock_pct = 0.035 (was 0.035)
+14:21:59 robot_arb INFO Param updated: ticker_a = BRQ6 (was BRQ6)
+14:21:59 robot_arb INFO Param updated: symbol_a = BRQ6@RTSX (was BRQ6@RTSX)
+14:21:59 robot_arb INFO Param updated: ticker_b = BRU6 (was BRU6)
+14:21:59 robot_arb INFO Param updated: symbol_b = BRU6@RTSX (was BRU6@RTSX)
+14:21:59 robot_arb INFO Param updated: lots_a = 1 (was 1)
+14:21:59 robot_arb INFO Param updated: lots_b = 1 (was 1)
+14:21:59 robot_arb INFO Param updated: hedge_ratio = 1 (was 1)
+14:21:59 robot_arb INFO Param updated: capital = 100000 (was 100000)
+14:21:59 robot_arb INFO Param updated: entry_z = 2 (was 1.4)
+14:21:59 robot_arb INFO Param updated: entry_z_long = -3.5 (was -1.5)
+14:21:59 robot_arb INFO Param updated: entry_mode = zscore (was zscore)
+14:21:59 robot_arb INFO Param updated: spread_rub_high = 5 (was 5)
+14:21:59 robot_arb INFO Param updated: spread_rub_low = -5 (was -5)
+14:21:59 robot_arb INFO Param updated: risk_free_rate = 0.1425 (was 0.1425)
+14:21:59 robot_arb INFO Param updated: expiration_date = 2026-09-18 (was 2026-09-18)
+14:21:59 robot_arb INFO Param updated: contract_size = 1 (was 1)
+14:21:59 robot_arb INFO Param updated: lookback = 200 (was 200)
+14:21:59 robot_arb INFO Param updated: leg_a_timeout = 5 (was 5)
+14:21:59 robot_arb INFO Param updated: min_fill_ratio = 0.5 (was 0.5)
+14:21:59 robot_arb INFO Param updated: min_profit_type = rub (was rub)
+14:21:59 robot_arb INFO Param updated: min_profit_value = 100 (was 100)
+14:21:59 robot_arb INFO Param updated: risk_type = stop_loss_rub (was stop_loss_rub)
+14:21:59 robot_arb INFO Param updated: risk_value = 3000 (was 3000)
+14:21:59 robot_arb INFO Param updated: allow_long_basis = True (was True)
+14:21:59 robot_arb INFO Param updated: use_commission = True (was True)
+14:21:59 robot_arb INFO Param updated: commission_stock_pct = 0.035 (was 0.035)
+14:21:59 robot_arb INFO Param updated: commission_futures_rt = 7.5 (was 15.0)
+14:21:59 robot_arb INFO Param updated: slippage_bps = 10 (was 10)
+14:22:02 robot_arb INFO === Arbitrage Robot v1 ===
+14:22:02 robot_arb INFO Pair: BRQ6 / BRU6
+14:22:02 robot_arb INFO Account: 1225953 | Port: 5092 | Paper: True
+14:22:02 robot_arb INFO Params: entry_z=2 lookback=200 lots_a=1 lots_b=1 hedge_ratio=1
+14:22:02 robot_arb INFO Min profit: rub=100
+14:22:02 robot_arb INFO Risk: stop_loss_rub=3000
+14:22:03 robot_arb INFO FinamPy connected. Accounts: ['1225950', '1225951', '1225952', '1225953']
+14:22:03 robot_arb INFO Orders manager linked to FinamPy gRPC
+14:22:03 robot_arb INFO Subscribed OrderBook: BRQ6@RTSX, BRU6@RTSX
+14:22:03 robot_arb INFO Subscribed Quotes: BRQ6@RTSX, BRU6@RTSX
+14:22:03 robot_arb INFO Warmup: waiting 10 sec for data streams...
+14:22:13 robot_arb INFO Warmup done. OB_A: False OB_B: False
+14:22:13 robot_arb INFO MOEX ISS poller started (fallback for stock prices)
+14:22:13 robot_arb INFO Main loop started
+14:22:14 robot_arb INFO API listening on :5092
+14:22:14 robot_arb INFO Endpoints: GET /status /health /params | POST /start /stop /pause /params
+14:22:25 robot_arb INFO Param updated: ticker_a = BRQ6 (was BRQ6)
+14:22:25 robot_arb INFO Param updated: symbol_a = BRQ6@RTSX (was BRQ6@RTSX)
+14:22:25 robot_arb INFO Param updated: ticker_b = BRU6 (was BRU6)
+14:22:25 robot_arb INFO Param updated: symbol_b = BRU6@RTSX (was BRU6@RTSX)
+14:22:25 robot_arb INFO Param updated: lots_a = 1 (was 1)
+14:22:25 robot_arb INFO Param updated: lots_b = 1 (was 1)
+14:22:25 robot_arb INFO Param updated: hedge_ratio = 1 (was 1)
+14:22:25 robot_arb INFO Param updated: capital = 100000 (was 100000)
+14:22:25 robot_arb INFO Param updated: entry_z = 2 (was 2)
+14:22:25 robot_arb INFO Param updated: entry_z_long = -3.5 (was -3.5)
+14:22:25 robot_arb INFO Param updated: entry_mode = zscore (was zscore)
+14:22:25 robot_arb INFO Param updated: spread_rub_high = 5 (was 5)
+14:22:25 robot_arb INFO Param updated: spread_rub_low = -5 (was -5)
+14:22:25 robot_arb INFO Param updated: risk_free_rate = 0.1425 (was 0.1425)
+14:22:25 robot_arb INFO Param updated: expiration_date = 2026-09-18 (was 2026-09-18)
+14:22:25 robot_arb INFO Param updated: contract_size = 1 (was 1)
+14:22:25 robot_arb INFO Param updated: lookback = 200 (was 200)
+14:22:25 robot_arb INFO Param updated: leg_a_timeout = 5 (was 5)
+14:22:25 robot_arb INFO Param updated: min_fill_ratio = 0.5 (was 0.5)
+14:22:25 robot_arb INFO Param updated: min_profit_type = rub (was rub)
+14:22:25 robot_arb INFO Param updated: min_profit_value = 10 (was 100)
+14:22:25 robot_arb INFO Param updated: risk_type = stop_loss_rub (was stop_loss_rub)
+14:22:25 robot_arb INFO Param updated: risk_value = 3000 (was 3000)
+14:22:25 robot_arb INFO Param updated: allow_long_basis = True (was True)
+14:22:25 robot_arb INFO Param updated: use_commission = True (was True)
+14:22:25 robot_arb INFO Param updated: commission_stock_pct = 0.035 (was 0.035)
+14:22:25 robot_arb INFO Param updated: commission_futures_rt = 7.5 (was 7.5)
+14:22:25 robot_arb INFO Param updated: slippage_bps = 10 (was 10)
+14:22:47 robot_arb INFO === Arbitrage Robot v1 ===
+14:22:47 robot_arb INFO Pair: BRQ6 / BRU6
+14:22:47 robot_arb INFO Account: 1225953 | Port: 5092 | Paper: True
+14:22:47 robot_arb INFO Params: entry_z=2 lookback=200 lots_a=1 lots_b=1 hedge_ratio=1
+14:22:47 robot_arb INFO Min profit: rub=10
+14:22:47 robot_arb INFO Risk: stop_loss_rub=3000
+14:22:47 robot_arb INFO FinamPy connected. Accounts: ['1225950', '1225951', '1225952', '1225953']
+14:22:47 robot_arb INFO Orders manager linked to FinamPy gRPC
+14:22:47 robot_arb INFO Subscribed OrderBook: BRQ6@RTSX, BRU6@RTSX
+14:22:47 robot_arb INFO Subscribed Quotes: BRQ6@RTSX, BRU6@RTSX
+14:22:47 robot_arb INFO Warmup: waiting 10 sec for data streams...
+14:22:57 robot_arb INFO Warmup done. OB_A: False OB_B: False
+14:22:57 robot_arb INFO MOEX ISS poller started (fallback for stock prices)
+14:22:57 robot_arb INFO Main loop started
+14:22:57 robot_arb INFO API listening on :5092
+14:22:57 robot_arb INFO Endpoints: GET /status /health /params | POST /start /stop /pause /params
+14:23:42 robot_arb INFO Param updated: ticker_a = BRQ6 (was BRQ6)
+14:23:42 robot_arb INFO Param updated: symbol_a = BRQ6@RTSX (was BRQ6@RTSX)
+14:23:42 robot_arb INFO Param updated: ticker_b = BRU6 (was BRU6)
+14:23:42 robot_arb INFO Param updated: symbol_b = BRU6@RTSX (was BRU6@RTSX)
+14:23:42 robot_arb INFO Param updated: lots_a = 1 (was 1)
+14:23:42 robot_arb INFO Param updated: lots_b = 1 (was 1)
+14:23:42 robot_arb INFO Param updated: hedge_ratio = 1 (was 1)
+14:23:42 robot_arb INFO Param updated: capital = 100000 (was 100000)
+14:23:42 robot_arb INFO Param updated: entry_z = 2 (was 2)
+14:23:42 robot_arb INFO Param updated: entry_z_long = -3.5 (was -3.5)
+14:23:42 robot_arb INFO Param updated: entry_mode = zscore (was zscore)
+14:23:42 robot_arb INFO Param updated: spread_rub_high = 5 (was 5)
+14:23:42 robot_arb INFO Param updated: spread_rub_low = -5 (was -5)
+14:23:42 robot_arb INFO Param updated: risk_free_rate = 0.1425 (was 0.1425)
+14:23:42 robot_arb INFO Param updated: expiration_date = 2026-09-18 (was 2026-09-18)
+14:23:42 robot_arb INFO Param updated: contract_size = 1 (was 1)
+14:23:42 robot_arb INFO Param updated: lookback = 200 (was 200)
+14:23:42 robot_arb INFO Param updated: leg_a_timeout = 5 (was 5)
+14:23:42 robot_arb INFO Param updated: min_fill_ratio = 0.5 (was 0.5)
+14:23:42 robot_arb INFO Param updated: min_profit_type = rub (was rub)
+14:23:42 robot_arb INFO Param updated: min_profit_value = 10 (was 10)
+14:23:42 robot_arb INFO Param updated: risk_type = stop_loss_rub (was stop_loss_rub)
+14:23:42 robot_arb INFO Param updated: risk_value = 3000 (was 3000)
+14:23:42 robot_arb INFO Param updated: allow_long_basis = True (was True)
+14:23:42 robot_arb INFO Param updated: use_commission = True (was True)
+14:23:42 robot_arb INFO Param updated: commission_stock_pct = 0.035 (was 0.035)
+14:23:42 robot_arb INFO Param updated: commission_futures_rt = 15 (was 15.0)
+14:23:42 robot_arb INFO Param updated: slippage_bps = 10 (was 10)
+14:24:29 robot_arb INFO Param updated: ticker_a = BRQ6 (was BRQ6)
+14:24:29 robot_arb INFO Param updated: symbol_a = BRQ6@RTSX (was BRQ6@RTSX)
+14:24:29 robot_arb INFO Param updated: ticker_b = BRU6 (was BRU6)
+14:24:29 robot_arb INFO Param updated: symbol_b = BRU6@RTSX (was BRU6@RTSX)
+14:24:29 robot_arb INFO Param updated: lots_a = 1 (was 1)
+14:24:29 robot_arb INFO Param updated: lots_b = 1 (was 1)
+14:24:29 robot_arb INFO Param updated: hedge_ratio = 1 (was 1)
+14:24:29 robot_arb INFO Param updated: capital = 100000 (was 100000)
+14:24:29 robot_arb INFO Param updated: entry_z = 2 (was 2)
+14:24:29 robot_arb INFO Param updated: entry_z_long = -3.5 (was -3.5)
+14:24:29 robot_arb INFO Param updated: entry_mode = zscore (was zscore)
+14:24:29 robot_arb INFO Param updated: spread_rub_high = 5 (was 5)
+14:24:29 robot_arb INFO Param updated: spread_rub_low = -5 (was -5)
+14:24:29 robot_arb INFO Param updated: risk_free_rate = 0.1425 (was 0.1425)
+14:24:29 robot_arb INFO Param updated: expiration_date = 2026-09-18 (was 2026-09-18)
+14:24:29 robot_arb INFO Param updated: contract_size = 1 (was 1)
+14:24:29 robot_arb INFO Param updated: lookback = 200 (was 200)
+14:24:29 robot_arb INFO Param updated: leg_a_timeout = 5 (was 5)
+14:24:29 robot_arb INFO Param updated: min_fill_ratio = 0.5 (was 0.5)
+14:24:29 robot_arb INFO Param updated: min_profit_type = rub (was rub)
+14:24:29 robot_arb INFO Param updated: min_profit_value = 10 (was 10)
+14:24:29 robot_arb INFO Param updated: risk_type = stop_loss_rub (was stop_loss_rub)
+14:24:29 robot_arb INFO Param updated: risk_value = 3000 (was 3000)
+14:24:29 robot_arb INFO Param updated: allow_long_basis = True (was True)
+14:24:29 robot_arb INFO Param updated: use_commission = True (was True)
+14:24:29 robot_arb INFO Param updated: commission_stock_pct = 0.035 (was 0.035)
+14:24:29 robot_arb INFO Param updated: commission_futures_rt = 7.5 (was 15)
+14:24:29 robot_arb INFO Param updated: slippage_bps = 10 (was 10)
+14:28:47 robot_arb INFO Param updated: ticker_a = BRQ6 (was BRQ6)
+14:28:47 robot_arb INFO Param updated: symbol_a = BRQ6@RTSX (was BRQ6@RTSX)
+14:28:47 robot_arb INFO Param updated: ticker_b = BRU6 (was BRU6)
+14:28:47 robot_arb INFO Param updated: symbol_b = BRU6@RTSX (was BRU6@RTSX)
+14:28:47 robot_arb INFO Param updated: lots_a = 1 (was 1)
+14:28:47 robot_arb INFO Param updated: lots_b = 1 (was 1)
+14:28:47 robot_arb INFO Param updated: hedge_ratio = 1 (was 1)
+14:28:47 robot_arb INFO Param updated: capital = 100000 (was 100000)
+14:28:47 robot_arb INFO Param updated: entry_z = 2 (was 2)
+14:28:47 robot_arb INFO Param updated: entry_z_long = -3.5 (was -3.5)
+14:28:47 robot_arb INFO Param updated: entry_mode = zscore (was zscore)
+14:28:47 robot_arb INFO Param updated: spread_rub_high = 5 (was 5)
+14:28:47 robot_arb INFO Param updated: spread_rub_low = -5 (was -5)
+14:28:47 robot_arb INFO Param updated: risk_free_rate = 0.1425 (was 0.1425)
+14:28:47 robot_arb INFO Param updated: expiration_date = 2026-09-18 (was 2026-09-18)
+14:28:47 robot_arb INFO Param updated: contract_size = 1 (was 1)
+14:28:47 robot_arb INFO Param updated: lookback = 200 (was 200)
+14:28:47 robot_arb INFO Param updated: leg_a_timeout = 5 (was 5)
+14:28:47 robot_arb INFO Param updated: min_fill_ratio = 0.5 (was 0.5)
+14:28:47 robot_arb INFO Param updated: min_profit_type = rub (was rub)
+14:28:47 robot_arb INFO Param updated: min_profit_value = 10 (was 10)
+14:28:47 robot_arb INFO Param updated: risk_type = stop_loss_rub (was stop_loss_rub)
+14:28:47 robot_arb INFO Param updated: risk_value = 3000 (was 3000)
+14:28:47 robot_arb INFO Param updated: allow_long_basis = True (was True)
+14:28:47 robot_arb INFO Param updated: use_commission = True (was True)
+14:28:47 robot_arb INFO Param updated: commission_stock_pct = 0.035 (was 0.035)
+14:28:47 robot_arb INFO Param updated: commission_futures_rt = 7.5 (was 7.5)
+14:28:47 robot_arb INFO Param updated: slippage_bps = 10 (was 10)
+14:30:29 robot_arb INFO Param updated: ticker_a = BRQ6 (was BRQ6)
+14:30:29 robot_arb INFO Param updated: symbol_a = BRQ6@RTSX (was BRQ6@RTSX)
+14:30:29 robot_arb INFO Param updated: ticker_b = BRU6 (was BRU6)
+14:30:29 robot_arb INFO Param updated: symbol_b = BRU6@RTSX (was BRU6@RTSX)
+14:30:29 robot_arb INFO Param updated: lots_a = 1 (was 1)
+14:30:29 robot_arb INFO Param updated: lots_b = 1 (was 1)
+14:30:29 robot_arb INFO Param updated: hedge_ratio = 1 (was 1)
+14:30:29 robot_arb INFO Param updated: capital = 100000 (was 100000)
+14:30:29 robot_arb INFO Param updated: entry_z = 2 (was 2)
+14:30:29 robot_arb INFO Param updated: entry_z_long = -3.5 (was -3.5)
+14:30:29 robot_arb INFO Param updated: entry_mode = zscore (was zscore)
+14:30:29 robot_arb INFO Param updated: spread_rub_high = 5 (was 5)
+14:30:29 robot_arb INFO Param updated: spread_rub_low = -5 (was -5)
+14:30:29 robot_arb INFO Param updated: risk_free_rate = 0.1425 (was 0.1425)
+14:30:29 robot_arb INFO Param updated: expiration_date = 2026-09-18 (was 2026-09-18)
+14:30:29 robot_arb INFO Param updated: contract_size = 1 (was 1)
+14:30:29 robot_arb INFO Param updated: lookback = 200 (was 200)
+14:30:29 robot_arb INFO Param updated: leg_a_timeout = 5 (was 5)
+14:30:29 robot_arb INFO Param updated: min_fill_ratio = 0.5 (was 0.5)
+14:30:29 robot_arb INFO Param updated: min_profit_type = rub (was rub)
+14:30:29 robot_arb INFO Param updated: min_profit_value = 10 (was 10)
+14:30:29 robot_arb INFO Param updated: risk_type = stop_loss_rub (was stop_loss_rub)
+14:30:29 robot_arb INFO Param updated: risk_value = 3000 (was 3000)
+14:30:29 robot_arb INFO Param updated: allow_long_basis = True (was True)
+14:30:29 robot_arb INFO Param updated: use_commission = True (was True)
+14:30:29 robot_arb INFO Param updated: commission_stock_pct = 7.5 (was 0.035)
+14:30:29 robot_arb INFO Param updated: commission_futures_rt = 7.5 (was 7.5)
+14:30:29 robot_arb INFO Param updated: slippage_bps = 10 (was 10)
+14:30:53 robot_arb INFO Param updated: ticker_a = BRQ6 (was BRQ6)
+14:30:53 robot_arb INFO Param updated: symbol_a = BRQ6@RTSX (was BRQ6@RTSX)
+14:30:53 robot_arb INFO Param updated: ticker_b = BRU6 (was BRU6)
+14:30:53 robot_arb INFO Param updated: symbol_b = BRU6@RTSX (was BRU6@RTSX)
+14:30:53 robot_arb INFO Param updated: lots_a = 1 (was 1)
+14:30:53 robot_arb INFO Param updated: lots_b = 1 (was 1)
+14:30:53 robot_arb INFO Param updated: hedge_ratio = 1 (was 1)
+14:30:53 robot_arb INFO Param updated: capital = 100000 (was 100000)
+14:30:53 robot_arb INFO Param updated: entry_z = 2 (was 2)
+14:30:53 robot_arb INFO Param updated: entry_z_long = -3.5 (was -3.5)
+14:30:53 robot_arb INFO Param updated: entry_mode = zscore (was zscore)
+14:30:53 robot_arb INFO Param updated: spread_rub_high = 5 (was 5)
+14:30:53 robot_arb INFO Param updated: spread_rub_low = -5 (was -5)
+14:30:53 robot_arb INFO Param updated: risk_free_rate = 0.1425 (was 0.1425)
+14:30:53 robot_arb INFO Param updated: expiration_date = 2026-09-18 (was 2026-09-18)
+14:30:53 robot_arb INFO Param updated: contract_size = 1 (was 1)
+14:30:53 robot_arb INFO Param updated: lookback = 200 (was 200)
+14:30:53 robot_arb INFO Param updated: leg_a_timeout = 5 (was 5)
+14:30:53 robot_arb INFO Param updated: min_fill_ratio = 0.5 (was 0.5)
+14:30:53 robot_arb INFO Param updated: min_profit_type = rub (was rub)
+14:30:53 robot_arb INFO Param updated: min_profit_value = 10 (was 10)
+14:30:53 robot_arb INFO Param updated: risk_type = stop_loss_rub (was stop_loss_rub)
+14:30:53 robot_arb INFO Param updated: risk_value = 3000 (was 3000)
+14:30:53 robot_arb INFO Param updated: allow_long_basis = True (was True)
+14:30:53 robot_arb INFO Param updated: use_commission = True (was True)
+14:30:53 robot_arb INFO Param updated: commission_stock_pct = 7.5 (was 7.5)
+14:30:53 robot_arb INFO Param updated: commission_futures_rt = 7.5 (was 7.5)
+14:30:53 robot_arb INFO Param updated: slippage_bps = 10 (was 10)
+14:31:04 robot_arb INFO Mode → RUNNING
+14:31:29 robot_arb INFO Param updated: ticker_a = BRQ6 (was BRQ6)
+14:31:29 robot_arb INFO Param updated: symbol_a = BRQ6@RTSX (was BRQ6@RTSX)
+14:31:29 robot_arb INFO Param updated: ticker_b = BRU6 (was BRU6)
+14:31:29 robot_arb INFO Param updated: symbol_b = BRU6@RTSX (was BRU6@RTSX)
+14:31:29 robot_arb INFO Param updated: lots_a = 1 (was 1)
+14:31:29 robot_arb INFO Param updated: lots_b = 1 (was 1)
+14:31:29 robot_arb INFO Param updated: hedge_ratio = 1 (was 1)
+14:31:29 robot_arb INFO Param updated: capital = 100000 (was 100000)
+14:31:29 robot_arb INFO Param updated: entry_z = 2 (was 2)
+14:31:29 robot_arb INFO Param updated: entry_z_long = -3.5 (was -3.5)
+14:31:29 robot_arb INFO Param updated: entry_mode = zscore (was zscore)
+14:31:29 robot_arb INFO Param updated: spread_rub_high = 5 (was 5)
+14:31:29 robot_arb INFO Param updated: spread_rub_low = -5 (was -5)
+14:31:29 robot_arb INFO Param updated: risk_free_rate = 0.1425 (was 0.1425)
+14:31:29 robot_arb INFO Param updated: expiration_date = 2026-09-18 (was 2026-09-18)
+14:31:29 robot_arb INFO Param updated: contract_size = 1 (was 1)
+14:31:29 robot_arb INFO Param updated: lookback = 200 (was 200)
+14:31:29 robot_arb INFO Param updated: leg_a_timeout = 5 (was 5)
+14:31:29 robot_arb INFO Param updated: min_fill_ratio = 0.5 (was 0.5)
+14:31:29 robot_arb INFO Param updated: min_profit_type = rub (was rub)
+14:31:29 robot_arb INFO Param updated: min_profit_value = 10 (was 10)
+14:31:29 robot_arb INFO Param updated: risk_type = stop_loss_rub (was stop_loss_rub)
+14:31:29 robot_arb INFO Param updated: risk_value = 3000 (was 3000)
+14:31:29 robot_arb INFO Param updated: allow_long_basis = True (was True)
+14:31:29 robot_arb INFO Param updated: use_commission = True (was True)
+14:31:29 robot_arb INFO Param updated: commission_stock_pct = 7.5 (was 7.5)
+14:31:29 robot_arb INFO Param updated: commission_futures_rt = 7.5 (was 7.5)
+14:31:29 robot_arb INFO Param updated: slippage_bps = 10 (was 10)
+14:31:48 robot_arb INFO Param updated: ticker_a = BRQ6 (was BRQ6)
+14:31:48 robot_arb INFO Param updated: symbol_a = BRQ6@RTSX (was BRQ6@RTSX)
+14:31:48 robot_arb INFO Param updated: ticker_b = BRU6 (was BRU6)
+14:31:48 robot_arb INFO Param updated: symbol_b = BRU6@RTSX (was BRU6@RTSX)
+14:31:48 robot_arb INFO Param updated: lots_a = 1 (was 1)
+14:31:48 robot_arb INFO Param updated: lots_b = 1 (was 1)
+14:31:48 robot_arb INFO Param updated: hedge_ratio = 1 (was 1)
+14:31:48 robot_arb INFO Param updated: capital = 100000 (was 100000)
+14:31:48 robot_arb INFO Param updated: entry_z = 2 (was 2)
+14:31:48 robot_arb INFO Param updated: entry_z_long = -3.5 (was -3.5)
+14:31:48 robot_arb INFO Param updated: entry_mode = zscore (was zscore)
+14:31:48 robot_arb INFO Param updated: spread_rub_high = 5 (was 5)
+14:31:48 robot_arb INFO Param updated: spread_rub_low = -5 (was -5)
+14:31:48 robot_arb INFO Param updated: risk_free_rate = 0.1425 (was 0.1425)
+14:31:48 robot_arb INFO Param updated: expiration_date = 2026-09-18 (was 2026-09-18)
+14:31:48 robot_arb INFO Param updated: contract_size = 1 (was 1)
+14:31:48 robot_arb INFO Param updated: lookback = 200 (was 200)
+14:31:48 robot_arb INFO Param updated: leg_a_timeout = 5 (was 5)
+14:31:48 robot_arb INFO Param updated: min_fill_ratio = 0.5 (was 0.5)
+14:31:48 robot_arb INFO Param updated: min_profit_type = rub (was rub)
+14:31:48 robot_arb INFO Param updated: min_profit_value = 10 (was 10)
+14:31:48 robot_arb INFO Param updated: risk_type = stop_loss_rub (was stop_loss_rub)
+14:31:48 robot_arb INFO Param updated: risk_value = 30000 (was 3000)
+14:31:48 robot_arb INFO Param updated: allow_long_basis = True (was True)
+14:31:48 robot_arb INFO Param updated: use_commission = True (was True)
+14:31:48 robot_arb INFO Param updated: commission_stock_pct = 7.5 (was 7.5)
+14:31:48 robot_arb INFO Param updated: commission_futures_rt = 7.5 (was 7.5)
+14:31:48 robot_arb INFO Param updated: slippage_bps = 10 (was 10)
+14:32:46 robot_arb INFO Param updated: ticker_a = BRQ6 (was BRQ6)
+14:32:46 robot_arb INFO Param updated: symbol_a = BRQ6@RTSX (was BRQ6@RTSX)
+14:32:46 robot_arb INFO Param updated: ticker_b = BRU6 (was BRU6)
+14:32:46 robot_arb INFO Param updated: symbol_b = BRU6@RTSX (was BRU6@RTSX)
+14:32:46 robot_arb INFO Param updated: lots_a = 1 (was 1)
+14:32:46 robot_arb INFO Param updated: lots_b = 1 (was 1)
+14:32:46 robot_arb INFO Param updated: hedge_ratio = 1 (was 1)
+14:32:46 robot_arb INFO Param updated: capital = 100000 (was 100000)
+14:32:46 robot_arb INFO Param updated: entry_z = 2 (was 2)
+14:32:46 robot_arb INFO Param updated: entry_z_long = -3.5 (was -3.5)
+14:32:46 robot_arb INFO Param updated: entry_mode = zscore (was zscore)
+14:32:46 robot_arb INFO Param updated: spread_rub_high = 5 (was 5)
+14:32:46 robot_arb INFO Param updated: spread_rub_low = -5 (was -5)
+14:32:46 robot_arb INFO Param updated: risk_free_rate = 0.1425 (was 0.1425)
+14:32:46 robot_arb INFO Param updated: expiration_date = 2026-09-18 (was 2026-09-18)
+14:32:46 robot_arb INFO Param updated: contract_size = 1 (was 1)
+14:32:46 robot_arb INFO Param updated: lookback = 200 (was 200)
+14:32:46 robot_arb INFO Param updated: leg_a_timeout = 5 (was 5)
+14:32:46 robot_arb INFO Param updated: min_fill_ratio = 0.5 (was 0.5)
+14:32:46 robot_arb INFO Param updated: min_profit_type = rub (was rub)
+14:32:46 robot_arb INFO Param updated: min_profit_value = 10 (was 10)
+14:32:46 robot_arb INFO Param updated: risk_type = stop_loss_rub (was stop_loss_rub)
+14:32:46 robot_arb INFO Param updated: risk_value = 30000 (was 30000)
+14:32:46 robot_arb INFO Param updated: allow_long_basis = True (was True)
+14:32:46 robot_arb INFO Param updated: use_commission = True (was True)
+14:32:46 robot_arb INFO Param updated: commission_stock_pct = 7.5 (was 7.5)
+14:32:46 robot_arb INFO Param updated: commission_futures_rt = 7.5 (was 7.5)
+14:32:46 robot_arb INFO Param updated: slippage_bps = 10 (was 10)
+14:33:36 robot_arb INFO Z=1.85 (threshold=2) — no signal (dup_check=False)
+14:34:06 robot_arb INFO Z=1.80 (threshold=2) — no signal (dup_check=False)
+14:34:23 robot_arb INFO Z=1.96 (threshold=2) — no signal (dup_check=False)
+14:34:45 robot_arb INFO ⚠️ CHECK_ENTRY returned signal: {'action': 'entry', 'side': 'short_basis', 'z': 2.3033934721934775, 'basis': 0.10999999999999943, 'price_a': 73.77, 'price_b': 73.88}
+14:34:45 robot_arb WARNING Entry signal but no L2 data for BRQ6@RTSX — skipping
+14:34:48 robot_arb INFO ⚠️ CHECK_ENTRY returned signal: {'action': 'entry', 'side': 'short_basis', 'z': 2.297449502847193, 'basis': 0.10999999999999943, 'price_a': 73.77, 'price_b': 73.88}
+14:34:48 robot_arb WARNING Entry signal but no L2 data for BRQ6@RTSX — skipping
+14:34:57 robot_arb INFO ⚠️ CHECK_ENTRY returned signal: {'action': 'entry', 'side': 'short_basis', 'z': 2.3274252641089053, 'basis': 0.09999999999999432, 'price_a': 73.78, 'price_b': 73.88}
+14:34:57 robot_arb WARNING Entry signal but no L2 data for BRQ6@RTSX — skipping
+14:35:06 robot_arb INFO ⚠️ CHECK_ENTRY returned signal: {'action': 'entry', 'side': 'short_basis', 'z': 2.552300228503516, 'basis': 0.10999999999999943, 'price_a': 73.77, 'price_b': 73.88}
+14:35:06 robot_arb WARNING Entry signal but no L2 data for BRQ6@RTSX — skipping
+14:35:19 robot_arb INFO ⚠️ CHECK_ENTRY returned signal: {'action': 'entry', 'side': 'short_basis', 'z': 2.512195866369006, 'basis': 0.09000000000000341, 'price_a': 73.86, 'price_b': 73.95}
+14:35:19 robot_arb WARNING Entry signal but no L2 data for BRQ6@RTSX — skipping
+14:35:27 robot_arb INFO Param updated: ticker_a = BRQ6 (was BRQ6)
+14:35:27 robot_arb INFO Param updated: symbol_a = BRQ6@RTSX (was BRQ6@RTSX)
+14:35:27 robot_arb INFO Param updated: ticker_b = BRU6 (was BRU6)
+14:35:27 robot_arb INFO Param updated: symbol_b = BRU6@RTSX (was BRU6@RTSX)
+14:35:27 robot_arb INFO Param updated: lots_a = 1 (was 1)
+14:35:27 robot_arb INFO Param updated: lots_b = 1 (was 1)
+14:35:27 robot_arb INFO Param updated: hedge_ratio = 1 (was 1)
+14:35:27 robot_arb INFO Param updated: capital = 100000 (was 100000)
+14:35:27 robot_arb INFO Param updated: entry_z = 2 (was 2)
+14:35:27 robot_arb INFO Param updated: entry_z_long = -3.5 (was -3.5)
+14:35:27 robot_arb INFO Param updated: entry_mode = zscore (was zscore)
+14:35:27 robot_arb INFO Param updated: spread_rub_high = 5 (was 5)
+14:35:27 robot_arb INFO Param updated: spread_rub_low = -5 (was -5)
+14:35:27 robot_arb INFO Param updated: risk_free_rate = 0.1425 (was 0.1425)
+14:35:27 robot_arb INFO Param updated: expiration_date = 2026-09-18 (was 2026-09-18)
+14:35:27 robot_arb INFO Param updated: contract_size = 1 (was 1)
+14:35:27 robot_arb INFO Param updated: lookback = 200 (was 200)
+14:35:27 robot_arb INFO Param updated: leg_a_timeout = 5 (was 5)
+14:35:27 robot_arb INFO Param updated: min_fill_ratio = 0.5 (was 0.5)
+14:35:27 robot_arb INFO Param updated: min_profit_type = rub (was rub)
+14:35:27 robot_arb INFO Param updated: min_profit_value = 10 (was 10)
+14:35:27 robot_arb INFO Param updated: risk_type = stop_loss_rub (was stop_loss_rub)
+14:35:27 robot_arb INFO Param updated: risk_value = 30000 (was 30000)
+14:35:27 robot_arb INFO Param updated: allow_long_basis = True (was True)
+14:35:27 robot_arb INFO Param updated: use_commission = True (was True)
+14:35:27 robot_arb INFO Param updated: commission_stock_pct = 7.5 (was 7.5)
+14:35:27 robot_arb INFO Param updated: commission_futures_rt = 7.5 (was 7.5)
+14:35:27 robot_arb INFO Param updated: slippage_bps = 10 (was 10)
+14:35:29 robot_arb INFO ⚠️ CHECK_ENTRY returned signal: {'action': 'entry', 'side': 'short_basis', 'z': 2.4246800708636855, 'basis': 0.060000000000002274, 'price_a': 73.89, 'price_b': 73.95}
+14:35:29 robot_arb WARNING Entry signal but no L2 data for BRQ6@RTSX — skipping
+14:35:31 robot_arb INFO ⚠️ CHECK_ENTRY returned signal: {'action': 'entry', 'side': 'short_basis', 'z': 2.9685133645884085, 'basis': 0.12000000000000455, 'price_a': 73.88, 'price_b': 74.0}
+14:35:31 robot_arb WARNING Entry signal but no L2 data for BRQ6@RTSX — skipping
+14:35:34 robot_arb INFO ⚠️ CHECK_ENTRY returned signal: {'action': 'entry', 'side': 'short_basis', 'z': 2.9976128882818016, 'basis': 0.12000000000000455, 'price_a': 73.88, 'price_b': 74.0}
+14:35:34 robot_arb WARNING Entry signal but no L2 data for BRQ6@RTSX — skipping
+14:35:44 robot_arb INFO ⚠️ CHECK_ENTRY returned signal: {'action': 'entry', 'side': 'short_basis', 'z': 2.7823232170252634, 'basis': 0.09000000000000341, 'price_a': 73.91, 'price_b': 74.0}
+14:35:44 robot_arb WARNING Entry signal but no L2 data for BRQ6@RTSX — skipping
+14:35:54 robot_arb INFO ⚠️ CHECK_ENTRY returned signal: {'action': 'entry', 'side': 'short_basis', 'z': 3.214216438428365, 'basis': 0.09999999999999432, 'price_a': 73.95, 'price_b': 74.05}
+14:35:54 robot_arb WARNING Entry signal but no L2 data for BRQ6@RTSX — skipping
+14:35:56 robot_arb INFO Z=1.81 (threshold=2) — no signal (dup_check=LOCKED)
+14:36:02 robot_arb INFO ⚠️ CHECK_ENTRY returned signal: {'action': 'entry', 'side': 'short_basis', 'z': 3.298763915033632, 'basis': 0.09999999999999432, 'price_a': 73.95, 'price_b': 74.05}
+14:36:02 robot_arb WARNING Entry signal but no L2 data for BRQ6@RTSX — skipping
+14:36:08 robot_arb INFO Z=1.82 (threshold=2) — no signal (dup_check=False)
+14:36:08 robot_arb INFO Z=1.82 (threshold=2) — no signal (dup_check=False)
+14:36:09 robot_arb INFO Z=1.86 (threshold=2) — no signal (dup_check=False)
+14:36:09 robot_arb INFO Z=1.86 (threshold=2) — no signal (dup_check=False)
+14:36:10 robot_arb INFO Z=1.85 (threshold=2) — no signal (dup_check=False)
+14:36:11 robot_arb INFO ⚠️ CHECK_ENTRY returned signal: {'action': 'entry', 'side': 'short_basis', 'z': 3.1952941318168038, 'basis': 0.09999999999999432, 'price_a': 73.95, 'price_b': 74.05}
+14:36:11 robot_arb WARNING Entry signal but no L2 data for BRQ6@RTSX — skipping
+14:36:13 robot_arb INFO ⚠️ CHECK_ENTRY returned signal: {'action': 'entry', 'side': 'short_basis', 'z': 3.203156900290908, 'basis': 0.09999999999999432, 'price_a': 73.95, 'price_b': 74.05}
+14:36:13 robot_arb WARNING Entry signal but no L2 data for BRQ6@RTSX — skipping
+14:36:14 robot_arb INFO Z=1.94 (threshold=2) — no signal (dup_check=LOCKED)
+14:36:15 robot_arb INFO Z=1.92 (threshold=2) — no signal (dup_check=LOCKED)
+14:36:15 robot_arb INFO Z=1.92 (threshold=2) — no signal (dup_check=False)
+14:36:23 robot_arb INFO ⚠️ CHECK_ENTRY returned signal: {'action': 'entry', 'side': 'short_basis', 'z': 2.9546786920343098, 'basis': 0.09999999999999432, 'price_a': 73.98, 'price_b': 74.08}
+14:36:23 robot_arb WARNING Entry signal but no L2 data for BRQ6@RTSX — skipping
+14:36:33 robot_arb INFO ⚠️ CHECK_ENTRY returned signal: {'action': 'entry', 'side': 'short_basis', 'z': 2.9329490845974178, 'basis': 0.10999999999999943, 'price_a': 73.97, 'price_b': 74.08}
+14:36:33 robot_arb WARNING Entry signal but no L2 data for BRQ6@RTSX — skipping
+14:36:43 robot_arb INFO ⚠️ CHECK_ENTRY returned signal: {'action': 'entry', 'side': 'short_basis', 'z': 2.8550148007947165, 'basis': 0.12999999999999545, 'price_a': 74.0, 'price_b': 74.13}
+14:36:43 robot_arb WARNING Entry signal but no L2 data for BRQ6@RTSX — skipping
+14:36:44 robot_arb INFO Z=2.79 (threshold=2) — no signal (dup_check=LOCKED)
+14:36:44 robot_arb INFO Z=1.96 (threshold=2) — no signal (dup_check=LOCKED)
+14:36:45 robot_arb INFO Z=1.93 (threshold=2) — no signal (dup_check=LOCKED)
+14:36:45 robot_arb INFO Z=1.93 (threshold=2) — no signal (dup_check=False)
+14:36:46 robot_arb INFO Z=1.90 (threshold=2) — no signal (dup_check=False)
+14:36:46 robot_arb INFO Z=1.90 (threshold=2) — no signal (dup_check=False)
+14:36:47 robot_arb INFO Z=1.89 (threshold=2) — no signal (dup_check=False)
+14:36:48 robot_arb INFO Z=1.87 (threshold=2) — no signal (dup_check=False)
+14:36:49 robot_arb INFO ⚠️ CHECK_ENTRY returned signal: {'action': 'entry', 'side': 'short_basis', 'z': 2.007800867167783, 'basis': 0.05500000000000682, 'price_a': 74.07499999999999, 'price_b': 74.13}
+14:36:49 robot_arb WARNING Entry signal but no L2 data for BRQ6@RTSX — skipping
+14:36:49 robot_arb INFO Z=2.01 (threshold=2) — no signal (dup_check=LOCKED)
+14:36:51 robot_arb INFO Z=1.94 (threshold=2) — no signal (dup_check=False)
+14:36:51 robot_arb INFO ⚠️ CHECK_ENTRY returned signal: {'action': 'entry', 'side': 'short_basis', 'z': 2.612865035139891, 'basis': 0.12999999999999545, 'price_a': 74.0, 'price_b': 74.13}
+14:36:51 robot_arb WARNING Entry signal but no L2 data for BRQ6@RTSX — skipping
+14:36:52 robot_arb INFO Z=1.95 (threshold=2) — no signal (dup_check=LOCKED)
+14:36:52 robot_arb INFO Z=1.95 (threshold=2) — no signal (dup_check=LOCKED)
+14:36:53 robot_arb INFO Z=1.92 (threshold=2) — no signal (dup_check=LOCKED)
+14:36:53 robot_arb INFO Z=1.92 (threshold=2) — no signal (dup_check=False)
+14:36:54 robot_arb INFO Z=1.89 (threshold=2) — no signal (dup_check=False)
+14:36:54 robot_arb INFO Z=1.89 (threshold=2) — no signal (dup_check=False)
+14:36:55 robot_arb INFO Z=1.97 (threshold=2) — no signal (dup_check=False)
+14:36:57 robot_arb INFO ⚠️ CHECK_ENTRY returned signal: {'action': 'entry', 'side': 'short_basis', 'z': 2.0148085743359005, 'basis': 0.07499999999998863, 'price_a': 74.055, 'price_b': 74.13}
+14:36:57 robot_arb WARNING Entry signal but no L2 data for BRQ6@RTSX — skipping
+14:36:57 robot_arb INFO Z=1.97 (threshold=2) — no signal (dup_check=LOCKED)
+14:36:58 robot_arb INFO Z=1.94 (threshold=2) — no signal (dup_check=LOCKED)
+14:36:58 robot_arb INFO Param updated: ticker_a = BRQ6 (was BRQ6)
+14:36:58 robot_arb INFO Param updated: symbol_a = BRQ6@RTSX (was BRQ6@RTSX)
+14:36:58 robot_arb INFO Param updated: ticker_b = BRU6 (was BRU6)
+14:36:58 robot_arb INFO Param updated: symbol_b = BRU6@RTSX (was BRU6@RTSX)
+14:36:58 robot_arb INFO Param updated: lots_a = 1 (was 1)
+14:36:58 robot_arb INFO Param updated: lots_b = 1 (was 1)
+14:36:58 robot_arb INFO Param updated: hedge_ratio = 1 (was 1)
+14:36:58 robot_arb INFO Param updated: capital = 100000 (was 100000)
+14:36:58 robot_arb INFO Param updated: entry_z = 2 (was 2)
+14:36:58 robot_arb INFO Param updated: entry_z_long = -3.5 (was -3.5)
+14:36:58 robot_arb INFO Param updated: entry_mode = zscore (was zscore)
+14:36:58 robot_arb INFO Param updated: spread_rub_high = 5 (was 5)
+14:36:58 robot_arb INFO Param updated: spread_rub_low = -5 (was -5)
+14:36:58 robot_arb INFO Param updated: risk_free_rate = 0.1425 (was 0.1425)
+14:36:58 robot_arb INFO Param updated: expiration_date = 2026-09-18 (was 2026-09-18)
+14:36:58 robot_arb INFO Param updated: contract_size = 1 (was 1)
+14:36:58 robot_arb INFO Param updated: lookback = 200 (was 200)
+14:36:58 robot_arb INFO Param updated: leg_a_timeout = 5 (was 5)
+14:36:58 robot_arb INFO Param updated: min_fill_ratio = 0.5 (was 0.5)
+14:36:58 robot_arb INFO Param updated: min_profit_type = rub (was rub)
+14:36:58 robot_arb INFO Param updated: min_profit_value = 10 (was 10)
+14:36:58 robot_arb INFO Param updated: risk_type = stop_loss_rub (was stop_loss_rub)
+14:36:58 robot_arb INFO Param updated: risk_value = 30000 (was 30000)
+14:36:58 robot_arb INFO Param updated: allow_long_basis = True (was True)
+14:36:58 robot_arb INFO Param updated: use_commission = True (was True)
+14:36:58 robot_arb INFO Param updated: commission_stock_pct = 7.5 (was 7.5)
+14:36:58 robot_arb INFO Param updated: commission_futures_rt = 7.5 (was 7.5)
+14:36:58 robot_arb INFO Param updated: slippage_bps = 10 (was 10)
+14:36:59 robot_arb INFO Z=1.92 (threshold=2) — no signal (dup_check=False)
+14:36:59 robot_arb INFO Z=1.88 (threshold=2) — no signal (dup_check=False)
+14:37:00 robot_arb INFO Z=1.87 (threshold=2) — no signal (dup_check=False)
+14:37:01 robot_arb INFO Z=1.84 (threshold=2) — no signal (dup_check=False)
+14:37:01 robot_arb INFO Z=1.84 (threshold=2) — no signal (dup_check=False)
+14:37:02 robot_arb INFO Z=1.82 (threshold=2) — no signal (dup_check=False)
+14:37:39 robot_arb INFO ⚠️ CHECK_ENTRY returned signal: {'action': 'entry', 'side': 'short_basis', 'z': 2.2498070700073973, 'basis': 0.1700000000000017, 'price_a': 74.02, 'price_b': 74.19}
+14:37:39 robot_arb WARNING Entry signal but no L2 data for BRQ6@RTSX — skipping
+14:37:39 robot_arb INFO Z=2.25 (threshold=2) — no signal (dup_check=LOCKED)
+14:39:24 robot_arb INFO Z=1.83 (threshold=2) — no signal (dup_check=False)
+14:40:06 robot_arb INFO Z=1.81 (threshold=2) — no signal (dup_check=False)
+14:41:14 robot_arb INFO Z=1.84 (threshold=2) — no signal (dup_check=False)
+14:41:15 robot_arb INFO Z=1.82 (threshold=2) — no signal (dup_check=False)
+14:41:15 robot_arb INFO Z=1.82 (threshold=2) — no signal (dup_check=False)
+14:41:16 robot_arb INFO Z=1.82 (threshold=2) — no signal (dup_check=False)
+14:41:22 robot_arb INFO Z=1.81 (threshold=2) — no signal (dup_check=False)
+14:41:27 robot_arb INFO Z=1.91 (threshold=2) — no signal (dup_check=False)
+14:41:28 robot_arb INFO Z=1.88 (threshold=2) — no signal (dup_check=False)
+14:41:28 robot_arb INFO Z=1.88 (threshold=2) — no signal (dup_check=False)
+14:41:29 robot_arb INFO Z=1.85 (threshold=2) — no signal (dup_check=False)
+14:41:30 robot_arb INFO Z=1.87 (threshold=2) — no signal (dup_check=False)
+14:41:31 robot_arb INFO Z=1.85 (threshold=2) — no signal (dup_check=False)
+14:41:31 robot_arb INFO Z=1.85 (threshold=2) — no signal (dup_check=False)
+14:44:00 robot_arb INFO Z=1.95 (threshold=2) — no signal (dup_check=False)
+14:44:01 robot_arb INFO Z=1.95 (threshold=2) — no signal (dup_check=False)
+14:44:02 robot_arb INFO ⚠️ CHECK_ENTRY returned signal: {'action': 'entry', 'side': 'short_basis', 'z': 2.093413751609484, 'basis': 0.2849999999999966, 'price_a': 73.805, 'price_b': 74.09}
+14:44:02 robot_arb WARNING Entry signal but no L2 data for BRQ6@RTSX — skipping
+14:44:03 robot_arb INFO Z=2.09 (threshold=2) — no signal (dup_check=LOCKED)
+14:44:03 robot_arb INFO Z=2.06 (threshold=2) — no signal (dup_check=LOCKED)
+14:44:04 robot_arb INFO ⚠️ CHECK_ENTRY returned signal: {'action': 'entry', 'side': 'short_basis', 'z': 2.0604510912902296, 'basis': 0.2849999999999966, 'price_a': 73.805, 'price_b': 74.09}
+14:44:04 robot_arb WARNING Entry signal but no L2 data for BRQ6@RTSX — skipping
+14:44:04 robot_arb INFO Z=2.59 (threshold=2) — no signal (dup_check=LOCKED)
+14:44:05 robot_arb INFO Z=2.59 (threshold=2) — no signal (dup_check=LOCKED)
+14:44:05 robot_arb INFO Z=2.55 (threshold=2) — no signal (dup_check=LOCKED)
+14:44:06 robot_arb INFO ⚠️ CHECK_ENTRY returned signal: {'action': 'entry', 'side': 'short_basis', 'z': 2.2697102843145425, 'basis': 0.3050000000000068, 'price_a': 73.82499999999999, 'price_b': 74.13}
+14:44:06 robot_arb WARNING Entry signal but no L2 data for BRQ6@RTSX — skipping
+14:44:07 robot_arb INFO Z=2.28 (threshold=2) — no signal (dup_check=LOCKED)
+14:44:07 robot_arb INFO Z=2.26 (threshold=2) — no signal (dup_check=LOCKED)
+14:44:08 robot_arb INFO ⚠️ CHECK_ENTRY returned signal: {'action': 'entry', 'side': 'short_basis', 'z': 2.256078174673321, 'basis': 0.3050000000000068, 'price_a': 73.82499999999999, 'price_b': 74.13}
+14:44:08 robot_arb WARNING Entry signal but no L2 data for BRQ6@RTSX — skipping
+14:44:08 robot_arb INFO Z=2.22 (threshold=2) — no signal (dup_check=LOCKED)
+14:44:09 robot_arb INFO Z=2.22 (threshold=2) — no signal (dup_check=LOCKED)
+14:44:09 robot_arb INFO Z=2.18 (threshold=2) — no signal (dup_check=LOCKED)
+14:44:10 robot_arb INFO ⚠️ CHECK_ENTRY returned signal: {'action': 'entry', 'side': 'short_basis', 'z': 2.1774666177707527, 'basis': 0.3050000000000068, 'price_a': 73.82499999999999, 'price_b': 74.13}
+14:44:10 robot_arb WARNING Entry signal but no L2 data for BRQ6@RTSX — skipping
+14:44:11 robot_arb INFO Z=2.20 (threshold=2) — no signal (dup_check=LOCKED)
+14:44:12 robot_arb INFO ⚠️ CHECK_ENTRY returned signal: {'action': 'entry', 'side': 'short_basis', 'z': 2.19474841995649, 'basis': 0.3050000000000068, 'price_a': 73.82499999999999, 'price_b': 74.13}
+14:44:12 robot_arb WARNING Entry signal but no L2 data for BRQ6@RTSX — skipping
+14:44:12 robot_arb INFO Z=2.16 (threshold=2) — no signal (dup_check=LOCKED)
+14:44:13 robot_arb INFO Z=2.16 (threshold=2) — no signal (dup_check=LOCKED)
+14:44:13 robot_arb INFO Z=2.12 (threshold=2) — no signal (dup_check=LOCKED)
+14:44:14 robot_arb INFO ⚠️ CHECK_ENTRY returned signal: {'action': 'entry', 'side': 'short_basis', 'z': 2.1207820159326376, 'basis': 0.3050000000000068, 'price_a': 73.82499999999999, 'price_b': 74.13}
+14:44:14 robot_arb WARNING Entry signal but no L2 data for BRQ6@RTSX — skipping
+14:44:14 robot_arb INFO Z=2.09 (threshold=2) — no signal (dup_check=LOCKED)
+14:44:15 robot_arb INFO Z=2.32 (threshold=2) — no signal (dup_check=LOCKED)
+14:44:16 robot_arb INFO ⚠️ CHECK_ENTRY returned signal: {'action': 'entry', 'side': 'short_basis', 'z': 2.298325705947711, 'basis': 0.32500000000001705, 'price_a': 73.82499999999999, 'price_b': 74.15}
+14:44:16 robot_arb WARNING Entry signal but no L2 data for BRQ6@RTSX — skipping
+14:44:17 robot_arb INFO Z=2.30 (threshold=2) — no signal (dup_check=LOCKED)
+14:44:18 robot_arb INFO Z=2.32 (threshold=2) — no signal (dup_check=LOCKED)
+14:44:18 robot_arb INFO ⚠️ CHECK_ENTRY returned signal: {'action': 'entry', 'side': 'short_basis', 'z': 2.280551029730319, 'basis': 0.32500000000001705, 'price_a': 73.82499999999999, 'price_b': 74.15}
+14:44:18 robot_arb WARNING Entry signal but no L2 data for BRQ6@RTSX — skipping
+14:44:19 robot_arb INFO Z=2.28 (threshold=2) — no signal (dup_check=LOCKED)
+14:44:19 robot_arb INFO Z=2.24 (threshold=2) — no signal (dup_check=LOCKED)
+14:44:20 robot_arb INFO ⚠️ CHECK_ENTRY returned signal: {'action': 'entry', 'side': 'short_basis', 'z': 2.213085580344259, 'basis': 0.32500000000001705, 'price_a': 73.82499999999999, 'price_b': 74.15}
+14:44:20 robot_arb WARNING Entry signal but no L2 data for BRQ6@RTSX — skipping
+14:44:21 robot_arb INFO Z=2.18 (threshold=2) — no signal (dup_check=LOCKED)
+14:44:22 robot_arb INFO Z=2.18 (threshold=2) — no signal (dup_check=LOCKED)
+14:44:22 robot_arb INFO ⚠️ CHECK_ENTRY returned signal: {'action': 'entry', 'side': 'short_basis', 'z': 2.139381634243857, 'basis': 0.32500000000001705, 'price_a': 73.82499999999999, 'price_b': 74.15}
+14:44:22 robot_arb WARNING Entry signal but no L2 data for BRQ6@RTSX — skipping
+14:44:23 robot_arb INFO Z=2.14 (threshold=2) — no signal (dup_check=LOCKED)
+14:44:23 robot_arb INFO Z=2.10 (threshold=2) — no signal (dup_check=LOCKED)
+14:44:24 robot_arb INFO Z=2.10 (threshold=2) — no signal (dup_check=LOCKED)
+14:44:24 robot_arb INFO ⚠️ CHECK_ENTRY returned signal: {'action': 'entry', 'side': 'short_basis', 'z': 2.0716623604296958, 'basis': 0.32500000000001705, 'price_a': 73.82499999999999, 'price_b': 74.15}
+14:44:24 robot_arb WARNING Entry signal but no L2 data for BRQ6@RTSX — skipping
+14:44:25 robot_arb INFO Z=2.07 (threshold=2) — no signal (dup_check=LOCKED)
+14:44:25 robot_arb INFO Z=2.04 (threshold=2) — no signal (dup_check=LOCKED)
+14:44:26 robot_arb INFO Z=2.04 (threshold=2) — no signal (dup_check=LOCKED)
+14:44:26 robot_arb INFO ⚠️ CHECK_ENTRY returned signal: {'action': 'entry', 'side': 'short_basis', 'z': 2.0078314353099245, 'basis': 0.32500000000001705, 'price_a': 73.82499999999999, 'price_b': 74.15}
+14:44:26 robot_arb WARNING Entry signal but no L2 data for BRQ6@RTSX — skipping
+14:44:27 robot_arb INFO Z=2.01 (threshold=2) — no signal (dup_check=LOCKED)
+14:44:27 robot_arb INFO Z=1.98 (threshold=2) — no signal (dup_check=LOCKED)
+14:44:28 robot_arb INFO Z=1.98 (threshold=2) — no signal (dup_check=LOCKED)
+14:44:28 robot_arb INFO Z=1.95 (threshold=2) — no signal (dup_check=False)
+14:44:29 robot_arb INFO Z=1.95 (threshold=2) — no signal (dup_check=False)
+14:44:29 robot_arb INFO Z=1.92 (threshold=2) — no signal (dup_check=False)
+14:44:30 robot_arb INFO Z=1.92 (threshold=2) — no signal (dup_check=False)
+14:44:30 robot_arb INFO Z=1.89 (threshold=2) — no signal (dup_check=False)
+14:44:31 robot_arb INFO Z=1.89 (threshold=2) — no signal (dup_check=False)
+14:44:31 robot_arb INFO ⚠️ CHECK_ENTRY returned signal: {'action': 'entry', 'side': 'short_basis', 'z': 2.446392754920973, 'basis': 0.3749999999999858, 'price_a': 73.83500000000001, 'price_b': 74.21}
+14:44:31 robot_arb WARNING Entry signal but no L2 data for BRQ6@RTSX — skipping
+14:44:32 robot_arb INFO Z=2.45 (threshold=2) — no signal (dup_check=LOCKED)
+14:44:32 robot_arb INFO Z=2.41 (threshold=2) — no signal (dup_check=LOCKED)
+14:44:33 robot_arb INFO Z=2.41 (threshold=2) — no signal (dup_check=LOCKED)
+14:44:33 robot_arb INFO ⚠️ CHECK_ENTRY returned signal: {'action': 'entry', 'side': 'short_basis', 'z': 2.3145006570321476, 'basis': 0.36999999999999034, 'price_a': 73.84, 'price_b': 74.21}
+14:44:33 robot_arb WARNING Entry signal but no L2 data for BRQ6@RTSX — skipping
+14:44:34 robot_arb INFO Z=2.31 (threshold=2) — no signal (dup_check=LOCKED)
+14:44:35 robot_arb INFO Z=2.32 (threshold=2) — no signal (dup_check=LOCKED)
+14:44:35 robot_arb INFO ⚠️ CHECK_ENTRY returned signal: {'action': 'entry', 'side': 'short_basis', 'z': 2.275491874992492, 'basis': 0.36999999999999034, 'price_a': 73.84, 'price_b': 74.21}
+14:44:35 robot_arb WARNING Entry signal but no L2 data for BRQ6@RTSX — skipping
+14:44:36 robot_arb INFO Z=2.28 (threshold=2) — no signal (dup_check=LOCKED)
+14:44:36 robot_arb INFO Z=2.24 (threshold=2) — no signal (dup_check=LOCKED)
+14:44:37 robot_arb INFO Z=2.24 (threshold=2) — no signal (dup_check=LOCKED)
+14:44:37 robot_arb INFO ⚠️ CHECK_ENTRY returned signal: {'action': 'entry', 'side': 'short_basis', 'z': 2.2004709211429043, 'basis': 0.36999999999999034, 'price_a': 73.84, 'price_b': 74.21}
+14:44:37 robot_arb WARNING Entry signal but no L2 data for BRQ6@RTSX — skipping
+14:44:38 robot_arb INFO Z=2.20 (threshold=2) — no signal (dup_check=LOCKED)
+14:44:38 robot_arb INFO Z=2.16 (threshold=2) — no signal (dup_check=LOCKED)
+14:44:40 robot_arb INFO ⚠️ CHECK_ENTRY returned signal: {'action': 'entry', 'side': 'short_basis', 'z': 2.2213802654357755, 'basis': 0.3749999999999858, 'price_a': 73.83500000000001, 'price_b': 74.21}
+14:44:40 robot_arb WARNING Entry signal but no L2 data for BRQ6@RTSX — skipping
+14:44:40 robot_arb INFO Z=2.19 (threshold=2) — no signal (dup_check=LOCKED)
+14:44:41 robot_arb INFO Z=2.19 (threshold=2) — no signal (dup_check=LOCKED)
+14:44:41 robot_arb INFO Z=2.15 (threshold=2) — no signal (dup_check=LOCKED)
+14:44:42 robot_arb INFO ⚠️ CHECK_ENTRY returned signal: {'action': 'entry', 'side': 'short_basis', 'z': 2.0952574603990275, 'basis': 0.36999999999999034, 'price_a': 73.84, 'price_b': 74.21}
+14:44:42 robot_arb WARNING Entry signal but no L2 data for BRQ6@RTSX — skipping
+14:44:42 robot_arb INFO Z=2.06 (threshold=2) — no signal (dup_check=LOCKED)
+14:44:43 robot_arb INFO Z=2.06 (threshold=2) — no signal (dup_check=LOCKED)
+14:44:43 robot_arb INFO Z=2.03 (threshold=2) — no signal (dup_check=LOCKED)
+14:44:44 robot_arb INFO ⚠️ CHECK_ENTRY returned signal: {'action': 'entry', 'side': 'short_basis', 'z': 2.032974593149163, 'basis': 0.36999999999999034, 'price_a': 73.84, 'price_b': 74.21}
+14:44:44 robot_arb WARNING Entry signal but no L2 data for BRQ6@RTSX — skipping
+14:44:44 robot_arb INFO Z=2.00 (threshold=2) — no signal (dup_check=LOCKED)
+14:44:45 robot_arb INFO Z=2.00 (threshold=2) — no signal (dup_check=LOCKED)
+14:44:45 robot_arb INFO Z=1.97 (threshold=2) — no signal (dup_check=LOCKED)
+14:44:46 robot_arb INFO Z=1.97 (threshold=2) — no signal (dup_check=False)
+14:44:46 robot_arb INFO Z=1.95 (threshold=2) — no signal (dup_check=False)
+14:44:47 robot_arb INFO ⚠️ CHECK_ENTRY returned signal: {'action': 'entry', 'side': 'short_basis', 'z': 2.0001848473371937, 'basis': 0.3749999999999858, 'price_a': 73.83500000000001, 'price_b': 74.21}
+14:44:47 robot_arb WARNING Entry signal but no L2 data for BRQ6@RTSX — skipping
+14:44:48 robot_arb INFO Z=1.82 (threshold=2) — no signal (dup_check=LOCKED)
+14:44:49 robot_arb INFO Z=1.82 (threshold=2) — no signal (dup_check=False)
+14:45:30 robot_arb INFO Z=1.82 (threshold=2) — no signal (dup_check=False)
+14:45:30 robot_arb INFO Z=1.81 (threshold=2) — no signal (dup_check=False)
+14:45:32 robot_arb INFO Z=1.82 (threshold=2) — no signal (dup_check=False)
+14:45:33 robot_arb INFO Z=1.82 (threshold=2) — no signal (dup_check=False)
+14:45:52 robot_arb INFO ⚠️ CHECK_ENTRY returned signal: {'action': 'entry', 'side': 'short_basis', 'z': 2.137287587776095, 'basis': 0.48499999999999943, 'price_a': 73.765, 'price_b': 74.25}
+14:45:52 robot_arb WARNING Entry signal but no L2 data for BRQ6@RTSX — skipping
+14:45:53 robot_arb INFO Z=2.14 (threshold=2) — no signal (dup_check=LOCKED)
+14:45:53 robot_arb INFO Z=2.10 (threshold=2) — no signal (dup_check=LOCKED)
+14:45:54 robot_arb INFO Z=2.10 (threshold=2) — no signal (dup_check=LOCKED)
+14:45:54 robot_arb INFO ⚠️ CHECK_ENTRY returned signal: {'action': 'entry', 'side': 'short_basis', 'z': 2.068404091859456, 'basis': 0.48499999999999943, 'price_a': 73.765, 'price_b': 74.25}
+14:45:54 robot_arb WARNING Entry signal but no L2 data for BRQ6@RTSX — skipping
+14:45:55 robot_arb INFO Z=2.07 (threshold=2) — no signal (dup_check=LOCKED)
+14:45:55 robot_arb INFO Z=2.04 (threshold=2) — no signal (dup_check=LOCKED)
+14:45:56 robot_arb INFO Z=2.04 (threshold=2) — no signal (dup_check=LOCKED)
+14:45:56 robot_arb INFO ⚠️ CHECK_ENTRY returned signal: {'action': 'entry', 'side': 'short_basis', 'z': 2.0043356053650547, 'basis': 0.48499999999999943, 'price_a': 73.765, 'price_b': 74.25}
+14:45:56 robot_arb WARNING Entry signal but no L2 data for BRQ6@RTSX — skipping
+14:45:57 robot_arb INFO Z=2.00 (threshold=2) — no signal (dup_check=LOCKED)
+14:45:58 robot_arb INFO Z=1.91 (threshold=2) — no signal (dup_check=LOCKED)
+14:45:58 robot_arb INFO Z=1.88 (threshold=2) — no signal (dup_check=False)
+14:45:59 robot_arb INFO Z=1.88 (threshold=2) — no signal (dup_check=False)
+14:45:59 robot_arb INFO Z=1.86 (threshold=2) — no signal (dup_check=False)
+14:46:00 robot_arb INFO Z=1.86 (threshold=2) — no signal (dup_check=False)
+14:46:01 robot_arb INFO Z=1.86 (threshold=2) — no signal (dup_check=False)
+14:46:01 robot_arb INFO Z=1.84 (threshold=2) — no signal (dup_check=False)
+14:46:02 robot_arb INFO Z=1.84 (threshold=2) — no signal (dup_check=False)
+14:46:04 robot_arb INFO Z=1.83 (threshold=2) — no signal (dup_check=False)
+14:46:04 robot_arb INFO Z=1.80 (threshold=2) — no signal (dup_check=False)
+14:48:49 robot_arb INFO ⚠️ CHECK_ENTRY returned signal: {'action': 'entry', 'side': 'long_basis', 'z': -3.874539708316839, 'basis': 0.09000000000000341, 'price_a': 74.13, 'price_b': 74.22}
+14:48:49 robot_arb WARNING Entry signal but no L2 data for BRQ6@RTSX — skipping
+14:49:00 robot_arb INFO ⚠️ CHECK_ENTRY returned signal: {'action': 'entry', 'side': 'long_basis', 'z': -3.6414326749122425, 'basis': 0.10999999999999943, 'price_a': 74.13, 'price_b': 74.24}
+14:49:00 robot_arb WARNING Entry signal but no L2 data for BRQ6@RTSX — skipping
+14:49:05 robot_arb INFO ⚠️ CHECK_ENTRY returned signal: {'action': 'entry', 'side': 'long_basis', 'z': -3.6180869371351525, 'basis': 0.0899999999999892, 'price_a': 74.15, 'price_b': 74.24}
+14:49:05 robot_arb WARNING Entry signal but no L2 data for BRQ6@RTSX — skipping
+14:56:57 robot_arb INFO Param updated: ticker_a = BRQ6 (was BRQ6)
+14:56:57 robot_arb INFO Param updated: symbol_a = BRQ6@RTSX (was BRQ6@RTSX)
+14:56:57 robot_arb INFO Param updated: ticker_b = BRU6 (was BRU6)
+14:56:57 robot_arb INFO Param updated: symbol_b = BRU6@RTSX (was BRU6@RTSX)
+14:56:57 robot_arb INFO Param updated: lots_a = 1 (was 1)
+14:56:57 robot_arb INFO Param updated: lots_b = 1 (was 1)
+14:56:57 robot_arb INFO Param updated: hedge_ratio = 1 (was 1)
+14:56:57 robot_arb INFO Param updated: capital = 100000 (was 100000)
+14:56:57 robot_arb INFO Param updated: entry_z = 1.7 (was 2)
+14:56:57 robot_arb INFO Param updated: entry_z_long = -3.8 (was -3.5)
+14:56:57 robot_arb INFO Param updated: entry_mode = zscore (was zscore)
+14:56:57 robot_arb INFO Param updated: spread_rub_high = 5 (was 5)
+14:56:57 robot_arb INFO Param updated: spread_rub_low = -5 (was -5)
+14:56:57 robot_arb INFO Param updated: risk_free_rate = 0.1425 (was 0.1425)
+14:56:57 robot_arb INFO Param updated: expiration_date = 2026-09-18 (was 2026-09-18)
+14:56:57 robot_arb INFO Param updated: contract_size = 1 (was 1)
+14:56:57 robot_arb INFO Param updated: lookback = 200 (was 200)
+14:56:57 robot_arb INFO Param updated: leg_a_timeout = 5 (was 5)
+14:56:57 robot_arb INFO Param updated: min_fill_ratio = 0.5 (was 0.5)
+14:56:57 robot_arb INFO Param updated: min_profit_type = rub (was rub)
+14:56:57 robot_arb INFO Param updated: min_profit_value = 10 (was 10)
+14:56:57 robot_arb INFO Param updated: risk_type = stop_loss_rub (was stop_loss_rub)
+14:56:57 robot_arb INFO Param updated: risk_value = 30000 (was 30000)
+14:56:57 robot_arb INFO Param updated: allow_long_basis = True (was True)
+14:56:57 robot_arb INFO Param updated: use_commission = True (was True)
+14:56:57 robot_arb INFO Param updated: commission_stock_pct = 7.5 (was 7.5)
+14:56:57 robot_arb INFO Param updated: commission_futures_rt = 7.5 (was 7.5)
+14:56:57 robot_arb INFO Param updated: slippage_bps = 10 (was 10)
+14:57:44 robot_arb INFO Param updated: ticker_a = BRQ6 (was BRQ6)
+14:57:44 robot_arb INFO Param updated: symbol_a = BRQ6@RTSX (was BRQ6@RTSX)
+14:57:44 robot_arb INFO Param updated: ticker_b = BRU6 (was BRU6)
+14:57:44 robot_arb INFO Param updated: symbol_b = BRU6@RTSX (was BRU6@RTSX)
+14:57:44 robot_arb INFO Param updated: lots_a = 1 (was 1)
+14:57:44 robot_arb INFO Param updated: lots_b = 1 (was 1)
+14:57:44 robot_arb INFO Param updated: hedge_ratio = 1 (was 1)
+14:57:44 robot_arb INFO Param updated: capital = 100000 (was 100000)
+14:57:44 robot_arb INFO Param updated: entry_z = 1.7 (was 1.7)
+14:57:44 robot_arb INFO Param updated: entry_z_long = -3.8 (was -3.8)
+14:57:44 robot_arb INFO Param updated: entry_mode = zscore (was zscore)
+14:57:44 robot_arb INFO Param updated: spread_rub_high = 5 (was 5)
+14:57:44 robot_arb INFO Param updated: spread_rub_low = -5 (was -5)
+14:57:44 robot_arb INFO Param updated: risk_free_rate = 0.1425 (was 0.1425)
+14:57:44 robot_arb INFO Param updated: expiration_date = 2026-09-18 (was 2026-09-18)
+14:57:44 robot_arb INFO Param updated: contract_size = 1 (was 1)
+14:57:44 robot_arb INFO Param updated: lookback = 200 (was 200)
+14:57:44 robot_arb INFO Param updated: leg_a_timeout = 5 (was 5)
+14:57:44 robot_arb INFO Param updated: min_fill_ratio = 0.5 (was 0.5)
+14:57:44 robot_arb INFO Param updated: min_profit_type = rub (was rub)
+14:57:44 robot_arb INFO Param updated: min_profit_value = 10 (was 10)
+14:57:44 robot_arb INFO Param updated: risk_type = stop_loss_rub (was stop_loss_rub)
+14:57:44 robot_arb INFO Param updated: risk_value = 30000 (was 30000)
+14:57:44 robot_arb INFO Param updated: allow_long_basis = True (was True)
+14:57:44 robot_arb INFO Param updated: use_commission = True (was True)
+14:57:44 robot_arb INFO Param updated: commission_stock_pct = 7.5 (was 7.5)
+14:57:44 robot_arb INFO Param updated: commission_futures_rt = 7.5 (was 7.5)
+14:57:44 robot_arb INFO Param updated: slippage_bps = 10 (was 10)
+15:00:39 robot_arb INFO ⚠️ CHECK_ENTRY returned signal: {'action': 'entry', 'side': 'short_basis', 'z': 1.8747886590111795, 'basis': 0.1700000000000017, 'price_a': 73.78, 'price_b': 73.95}
+15:00:39 robot_arb WARNING Entry signal but no L2 data for BRQ6@RTSX — skipping
+15:01:03 robot_arb INFO ⚠️ CHECK_ENTRY returned signal: {'action': 'entry', 'side': 'short_basis', 'z': 1.7842621394427167, 'basis': 0.14000000000000057, 'price_a': 73.76, 'price_b': 73.9}
+15:01:03 robot_arb WARNING Entry signal but no L2 data for BRQ6@RTSX — skipping
+15:01:03 robot_arb INFO Z=1.78 (threshold=1.7) — no signal (dup_check=LOCKED)
+15:01:13 robot_arb INFO ⚠️ CHECK_ENTRY returned signal: {'action': 'entry', 'side': 'short_basis', 'z': 1.868649572113986, 'basis': 0.14000000000000057, 'price_a': 73.76, 'price_b': 73.9}
+15:01:13 robot_arb WARNING Entry signal but no L2 data for BRQ6@RTSX — skipping
+15:01:23 robot_arb INFO ⚠️ CHECK_ENTRY returned signal: {'action': 'entry', 'side': 'short_basis', 'z': 1.7924041191964144, 'basis': 0.12000000000000455, 'price_a': 73.81, 'price_b': 73.93}
+15:01:23 robot_arb WARNING Entry signal but no L2 data for BRQ6@RTSX — skipping
+15:01:53 robot_arb INFO ⚠️ CHECK_ENTRY returned signal: {'action': 'entry', 'side': 'short_basis', 'z': 2.1461071281193655, 'basis': 0.11999999999999034, 'price_a': 73.84, 'price_b': 73.96}
+15:01:53 robot_arb WARNING Entry signal but no L2 data for BRQ6@RTSX — skipping
+15:01:56 robot_arb INFO ⚠️ CHECK_ENTRY returned signal: {'action': 'entry', 'side': 'short_basis', 'z': 2.2889522805323845, 'basis': 0.12999999999999545, 'price_a': 73.83, 'price_b': 73.96}
+15:01:56 robot_arb WARNING Entry signal but no L2 data for BRQ6@RTSX — skipping
+15:01:59 robot_arb INFO ⚠️ CHECK_ENTRY returned signal: {'action': 'entry', 'side': 'short_basis', 'z': 2.312240934417599, 'basis': 0.12999999999999545, 'price_a': 73.83, 'price_b': 73.96}
+15:01:59 robot_arb WARNING Entry signal but no L2 data for BRQ6@RTSX — skipping
+15:02:19 robot_arb INFO ⚠️ CHECK_ENTRY returned signal: {'action': 'entry', 'side': 'short_basis', 'z': 2.6423835945997163, 'basis': 0.14000000000000057, 'price_a': 73.8, 'price_b': 73.94}
+15:02:19 robot_arb WARNING Entry signal but no L2 data for BRQ6@RTSX — skipping
+15:02:22 robot_arb INFO ⚠️ CHECK_ENTRY returned signal: {'action': 'entry', 'side': 'short_basis', 'z': 2.5047720394901134, 'basis': 0.12999999999999545, 'price_a': 73.81, 'price_b': 73.94}
+15:02:22 robot_arb WARNING Entry signal but no L2 data for BRQ6@RTSX — skipping
+15:02:24 robot_arb INFO ⚠️ CHECK_ENTRY returned signal: {'action': 'entry', 'side': 'short_basis', 'z': 2.5974615003045245, 'basis': 0.14000000000000057, 'price_a': 73.81, 'price_b': 73.95}
+15:02:24 robot_arb WARNING Entry signal but no L2 data for BRQ6@RTSX — skipping
+15:02:38 robot_arb INFO ⚠️ CHECK_ENTRY returned signal: {'action': 'entry', 'side': 'short_basis', 'z': 2.651323543211479, 'basis': 0.14000000000000057, 'price_a': 73.78, 'price_b': 73.92}
+15:02:38 robot_arb WARNING Entry signal but no L2 data for BRQ6@RTSX — skipping
+15:02:40 robot_arb INFO ⚠️ CHECK_ENTRY returned signal: {'action': 'entry', 'side': 'short_basis', 'z': 2.6058736641523974, 'basis': 0.14000000000000057, 'price_a': 73.78, 'price_b': 73.92}
+15:02:40 robot_arb WARNING Entry signal but no L2 data for BRQ6@RTSX — skipping
+15:02:48 robot_arb INFO ⚠️ CHECK_ENTRY returned signal: {'action': 'entry', 'side': 'short_basis', 'z': 2.783834035452285, 'basis': 0.15000000000000568, 'price_a': 73.77, 'price_b': 73.92}
+15:02:48 robot_arb WARNING Entry signal but no L2 data for BRQ6@RTSX — skipping
+15:02:50 robot_arb INFO ⚠️ CHECK_ENTRY returned signal: {'action': 'entry', 'side': 'short_basis', 'z': 2.4849377118417024, 'basis': 0.12999999999999545, 'price_a': 73.79, 'price_b': 73.92}
+15:02:50 robot_arb WARNING Entry signal but no L2 data for BRQ6@RTSX — skipping
+15:02:55 robot_arb INFO ⚠️ CHECK_ENTRY returned signal: {'action': 'entry', 'side': 'short_basis', 'z': 2.438014589171685, 'basis': 0.12999999999999545, 'price_a': 73.79, 'price_b': 73.92}
+15:02:55 robot_arb WARNING Entry signal but no L2 data for BRQ6@RTSX — skipping
+15:03:06 robot_arb INFO ⚠️ CHECK_ENTRY returned signal: {'action': 'entry', 'side': 'short_basis', 'z': 2.453704522033728, 'basis': 0.12999999999999545, 'price_a': 73.78, 'price_b': 73.91}
+15:03:06 robot_arb WARNING Entry signal but no L2 data for BRQ6@RTSX — skipping
+15:03:11 robot_arb INFO ⚠️ CHECK_ENTRY returned signal: {'action': 'entry', 'side': 'short_basis', 'z': 2.4844842747997595, 'basis': 0.12999999999999545, 'price_a': 73.78, 'price_b': 73.91}
+15:03:11 robot_arb WARNING Entry signal but no L2 data for BRQ6@RTSX — skipping
+15:03:21 robot_arb INFO ⚠️ CHECK_ENTRY returned signal: {'action': 'entry', 'side': 'short_basis', 'z': 2.2471678184554964, 'basis': 0.11000000000001364, 'price_a': 73.82, 'price_b': 73.93}
+15:03:21 robot_arb WARNING Entry signal but no L2 data for BRQ6@RTSX — skipping
+15:03:22 robot_arb INFO Z=2.25 (threshold=1.7) — no signal (dup_check=LOCKED)
+15:03:24 robot_arb INFO ⚠️ CHECK_ENTRY returned signal: {'action': 'entry', 'side': 'short_basis', 'z': 2.2564705342192437, 'basis': 0.11000000000001364, 'price_a': 73.82, 'price_b': 73.93}
+15:03:24 robot_arb WARNING Entry signal but no L2 data for BRQ6@RTSX — skipping
+15:03:40 robot_arb INFO ⚠️ CHECK_ENTRY returned signal: {'action': 'entry', 'side': 'short_basis', 'z': 2.5083824912590256, 'basis': 0.12999999999999545, 'price_a': 73.81, 'price_b': 73.94}
+15:03:40 robot_arb WARNING Entry signal but no L2 data for BRQ6@RTSX — skipping
+15:03:45 robot_arb INFO ⚠️ CHECK_ENTRY returned signal: {'action': 'entry', 'side': 'short_basis', 'z': 2.4715662562733054, 'basis': 0.12999999999999545, 'price_a': 73.81, 'price_b': 73.94}
+15:03:45 robot_arb WARNING Entry signal but no L2 data for BRQ6@RTSX — skipping
+15:03:46 robot_arb INFO Z=2.47 (threshold=1.7) — no signal (dup_check=LOCKED)
+15:03:51 robot_arb INFO ⚠️ CHECK_ENTRY returned signal: {'action': 'entry', 'side': 'short_basis', 'z': 2.4730233734275138, 'basis': 0.12999999999999545, 'price_a': 73.81, 'price_b': 73.94}
+15:03:51 robot_arb WARNING Entry signal but no L2 data for BRQ6@RTSX — skipping
+15:03:53 robot_arb INFO ⚠️ CHECK_ENTRY returned signal: {'action': 'entry', 'side': 'short_basis', 'z': 2.4243277280812685, 'basis': 0.12999999999999545, 'price_a': 73.81, 'price_b': 73.94}
+15:03:53 robot_arb WARNING Entry signal but no L2 data for BRQ6@RTSX — skipping
+15:04:07 robot_arb INFO ⚠️ CHECK_ENTRY returned signal: {'action': 'entry', 'side': 'short_basis', 'z': 2.7529587454152105, 'basis': 0.14999999999999147, 'price_a': 73.79, 'price_b': 73.94}
+15:04:07 robot_arb WARNING Entry signal but no L2 data for BRQ6@RTSX — skipping
+15:04:18 robot_arb INFO ⚠️ CHECK_ENTRY returned signal: {'action': 'entry', 'side': 'short_basis', 'z': 2.4796981311187145, 'basis': 0.12999999999999545, 'price_a': 73.81, 'price_b': 73.94}
+15:04:18 robot_arb WARNING Entry signal but no L2 data for BRQ6@RTSX — skipping
+15:04:21 robot_arb INFO ⚠️ CHECK_ENTRY returned signal: {'action': 'entry', 'side': 'short_basis', 'z': 2.7242208846662668, 'basis': 0.14999999999999147, 'price_a': 73.79, 'price_b': 73.94}
+15:04:21 robot_arb WARNING Entry signal but no L2 data for BRQ6@RTSX — skipping
+15:04:21 robot_arb INFO Z=2.66 (threshold=1.7) — no signal (dup_check=LOCKED)
+15:04:23 robot_arb INFO ⚠️ CHECK_ENTRY returned signal: {'action': 'entry', 'side': 'short_basis', 'z': 2.6038689330157627, 'basis': 0.14999999999999147, 'price_a': 73.79, 'price_b': 73.94}
+15:04:23 robot_arb WARNING Entry signal but no L2 data for BRQ6@RTSX — skipping
+15:04:24 robot_arb INFO Z=2.60 (threshold=1.7) — no signal (dup_check=LOCKED)
+15:04:26 robot_arb INFO ⚠️ CHECK_ENTRY returned signal: {'action': 'entry', 'side': 'short_basis', 'z': 2.3613194852650756, 'basis': 0.12999999999999545, 'price_a': 73.81, 'price_b': 73.94}
+15:04:26 robot_arb WARNING Entry signal but no L2 data for BRQ6@RTSX — skipping
+15:04:28 robot_arb INFO === Arbitrage Robot v1 ===
+15:04:28 robot_arb INFO Pair: BRQ6 / BRU6
+15:04:28 robot_arb INFO Account: 1225953 | Port: 5092 | Paper: True
+15:04:28 robot_arb INFO Params: entry_z=1.7 lookback=200 lots_a=1 lots_b=1 hedge_ratio=1
+15:04:28 robot_arb INFO Min profit: rub=10
+15:04:28 robot_arb INFO Risk: stop_loss_rub=30000
+15:04:28 robot_arb INFO State loaded: pnl=0 trades=0 mode=running
+15:10:20 robot_arb INFO === Arbitrage Robot v1 ===
+15:10:20 robot_arb INFO Pair: BRQ6 / BRU6
+15:10:20 robot_arb INFO Account: 1225953 | Port: 5092 | Paper: True
+15:10:20 robot_arb INFO Params: entry_z=1.7 lookback=200 lots_a=1 lots_b=1 hedge_ratio=1
+15:10:20 robot_arb INFO Min profit: rub=10
+15:10:20 robot_arb INFO Risk: stop_loss_rub=30000
+15:10:20 robot_arb INFO State loaded: pnl=0 trades=0 mode=running
+15:10:21 robot_arb INFO FinamPy connected. Accounts: ['1225950', '1225951', '1225952', '1225953']
+15:10:21 robot_arb INFO Orders manager linked to FinamPy gRPC
+15:10:21 robot_arb INFO Subscribed OrderBook: BRQ6@RTSX, BRU6@RTSX
+15:10:21 robot_arb INFO Subscribed Quotes: BRQ6@RTSX, BRU6@RTSX
+15:10:21 robot_arb INFO Warmup: waiting 10 sec for data streams...
+15:10:31 robot_arb INFO Warmup done. OB_A: False OB_B: False
+15:10:31 robot_arb INFO MOEX ISS poller started (fallback for stock prices)
+15:10:31 robot_arb INFO Main loop started
+15:10:31 robot_arb INFO API listening on :5092
+15:10:31 robot_arb INFO Endpoints: GET /status /health /params | POST /start /stop /pause /params
+15:10:37 robot_arb INFO Z=2.24 (threshold=1.7) — no signal (dup_check=False)
+15:10:37 robot_arb INFO Z=2.24 (threshold=1.7) — no signal (dup_check=False)
+15:10:38 robot_arb INFO Z=1.58 (threshold=1.7) — no signal (dup_check=False)
+15:10:38 robot_arb INFO Z=1.58 (threshold=1.7) — no signal (dup_check=False)
+15:10:41 robot_arb INFO Z=5.00 (threshold=1.7) — no signal (dup_check=False)
+15:10:42 robot_arb INFO Z=2.64 (threshold=1.7) — no signal (dup_check=False)
+15:10:42 robot_arb INFO Z=2.64 (threshold=1.7) — no signal (dup_check=False)
+15:10:43 robot_arb INFO Z=2.01 (threshold=1.7) — no signal (dup_check=False)
+15:10:43 robot_arb INFO Z=2.01 (threshold=1.7) — no signal (dup_check=False)
+15:10:44 robot_arb INFO Z=1.69 (threshold=1.7) — no signal (dup_check=False)
+15:10:44 robot_arb INFO Z=1.69 (threshold=1.7) — no signal (dup_check=False)
+15:13:07 robot_arb INFO Z=1.72 (threshold=1.7) — no signal (dup_check=False)
+15:13:35 robot_arb INFO Z=1.69 (threshold=1.7) — no signal (dup_check=False)
+15:13:40 robot_arb INFO Z=1.82 (threshold=1.7) — no signal (dup_check=False)
+15:13:42 robot_arb INFO Z=1.80 (threshold=1.7) — no signal (dup_check=False)
+15:14:04 robot_arb INFO ⚠️ CHECK_ENTRY returned signal: {'action': 'entry', 'side': 'short_basis', 'z': 1.829106344530094, 'basis': 0.13000000000000966, 'price_a': 73.99, 'price_b': 74.12}
+15:14:04 robot_arb INFO ENTRY SIGNAL short_basis | Z=1.83 basis=0.13 | A=73.99 B=74.12 | limit buy 1 @ 73.99 | market sell 1 @ 74.05
+15:14:04 orders_arb INFO 📄 PAPER ENTRY: buy 1 BRQ6@RTSX @ 73.99 (LIMIT)
+15:14:04 orders_arb INFO 📄 PAPER ENTRY: sell 1 BRU6@RTSX @ 74.05 (MARKET)
+15:14:04 strategy_arb INFO LAYER #1 OPEN SHORT | A=73.99 ×1 | B=74.05 ×1 | basis=0.06 Z=1.83 | layers=1
+15:14:04 robot_arb INFO LAYER OPEN SHORT_BASIS #1 | A=73.99 ×1 | B=74.05 ×1 | basis=0.13 Z=1.83 | layers=1 used_capital=70,712
+15:14:04 robot_arb INFO EXIT layer #1 reason=profit_target | limit sell 1 @ 74.15 | market buy 1 @ 74.19
+15:14:04 orders_arb INFO 📄 PAPER ENTRY: sell 1 BRQ6@RTSX @ 74.15 (LIMIT)
+15:14:04 orders_arb INFO 📄 PAPER ENTRY: buy 1 BRU6@RTSX @ 74.19 (MARKET)
+15:14:04 strategy_arb INFO LAYER #1 CLOSE SHORT | PnL=-9.73₽ (gross=+5.27₽ comm=15.00₽) | reason=profit_target | hold=0min | layers=0
+15:14:18 robot_arb INFO ⚠️ CHECK_ENTRY returned signal: {'action': 'entry', 'side': 'short_basis', 'z': 1.915521439279895, 'basis': 0.12000000000000455, 'price_a': 73.97, 'price_b': 74.09}
+15:14:18 robot_arb INFO ENTRY SIGNAL short_basis | Z=1.92 basis=0.12 | A=73.97 B=74.09 | limit buy 1 @ 73.97 | market sell 1 @ 74.02
+15:14:18 orders_arb INFO 📄 PAPER ENTRY: buy 1 BRQ6@RTSX @ 73.97 (LIMIT)
+15:14:18 orders_arb INFO 📄 PAPER ENTRY: sell 1 BRU6@RTSX @ 74.02 (MARKET)
+15:14:18 strategy_arb INFO LAYER #2 OPEN SHORT | A=73.97 ×1 | B=74.02 ×1 | basis=0.05 Z=1.92 | layers=1
+15:14:18 robot_arb INFO LAYER OPEN SHORT_BASIS #2 | A=73.97 ×1 | B=74.02 ×1 | basis=0.12 Z=1.92 | layers=1 used_capital=70,697
+15:14:19 robot_arb INFO EXIT layer #2 reason=profit_target | limit sell 1 @ 74.25 | market buy 1 @ 74.16
+15:14:19 orders_arb INFO 📄 PAPER ENTRY: sell 1 BRQ6@RTSX @ 74.25 (LIMIT)
+15:14:19 orders_arb INFO 📄 PAPER ENTRY: buy 1 BRU6@RTSX @ 74.16 (MARKET)
+15:14:19 strategy_arb INFO LAYER #2 CLOSE SHORT | PnL=+83.92₽ (gross=+98.92₽ comm=15.00₽) | reason=profit_target | hold=0min | layers=0
+15:14:21 robot_arb INFO Z=1.66 (threshold=1.7) — no signal (dup_check=False)
+15:14:26 robot_arb INFO Z=1.59 (threshold=1.7) — no signal (dup_check=False)
+15:14:34 robot_arb INFO ⚠️ CHECK_ENTRY returned signal: {'action': 'entry', 'side': 'short_basis', 'z': 1.848115848030335, 'basis': 0.10000000000000853, 'price_a': 73.99, 'price_b': 74.09}
+15:14:34 robot_arb INFO ENTRY SIGNAL short_basis | Z=1.85 basis=0.10 | A=73.99 B=74.09 | limit buy 1 @ 73.99 | market sell 1 @ 74.02
+15:14:34 orders_arb INFO 📄 PAPER ENTRY: buy 1 BRQ6@RTSX @ 73.99 (LIMIT)
+15:14:34 orders_arb INFO 📄 PAPER ENTRY: sell 1 BRU6@RTSX @ 74.02 (MARKET)
+15:14:34 strategy_arb INFO LAYER #3 OPEN SHORT | A=73.99 ×1 | B=74.02 ×1 | basis=0.03 Z=1.85 | layers=1
+15:14:34 robot_arb INFO LAYER OPEN SHORT_BASIS #3 | A=73.99 ×1 | B=74.02 ×1 | basis=0.10 Z=1.85 | layers=1 used_capital=70,712
+15:14:34 robot_arb INFO EXIT layer #3 reason=profit_target | limit sell 1 @ 74.25 | market buy 1 @ 74.16
+15:14:34 orders_arb INFO 📄 PAPER ENTRY: sell 1 BRQ6@RTSX @ 74.25 (LIMIT)
+15:14:34 orders_arb INFO 📄 PAPER ENTRY: buy 1 BRU6@RTSX @ 74.16 (MARKET)
+15:14:34 strategy_arb INFO LAYER #3 CLOSE SHORT | PnL=+72.22₽ (gross=+87.22₽ comm=15.00₽) | reason=profit_target | hold=0min | layers=0
+15:14:36 robot_arb INFO ⚠️ CHECK_ENTRY returned signal: {'action': 'entry', 'side': 'short_basis', 'z': 1.825966955308953, 'basis': 0.10000000000000853, 'price_a': 73.99, 'price_b': 74.09}
+15:14:36 robot_arb INFO ENTRY SIGNAL short_basis | Z=1.83 basis=0.10 | A=73.99 B=74.09 | limit buy 1 @ 73.99 | market sell 1 @ 74.02
+15:14:36 orders_arb INFO 📄 PAPER ENTRY: buy 1 BRQ6@RTSX @ 73.99 (LIMIT)
+15:14:36 orders_arb INFO 📄 PAPER ENTRY: sell 1 BRU6@RTSX @ 74.02 (MARKET)
+15:14:36 strategy_arb INFO LAYER #4 OPEN SHORT | A=73.99 ×1 | B=74.02 ×1 | basis=0.03 Z=1.83 | layers=1
+15:14:36 robot_arb INFO LAYER OPEN SHORT_BASIS #4 | A=73.99 ×1 | B=74.02 ×1 | basis=0.10 Z=1.83 | layers=1 used_capital=70,712
+15:14:37 robot_arb INFO Z=1.83 (threshold=1.7) — no signal (dup_check=LOCKED)
+15:14:37 robot_arb INFO Z=1.83 (threshold=1.7) — no signal (dup_check=LOCKED)
+15:14:38 robot_arb INFO Z=1.83 (threshold=1.7) — no signal (dup_check=LOCKED)
+15:14:38 robot_arb INFO Z=1.83 (threshold=1.7) — no signal (dup_check=False)
+15:14:39 robot_arb INFO EXIT layer #4 reason=profit_target | limit sell 1 @ 74.25 | market buy 1 @ 74.16
+15:14:39 orders_arb INFO 📄 PAPER ENTRY: sell 1 BRQ6@RTSX @ 74.25 (LIMIT)
+15:14:39 orders_arb INFO 📄 PAPER ENTRY: buy 1 BRU6@RTSX @ 74.16 (MARKET)
+15:14:39 strategy_arb INFO LAYER #4 CLOSE SHORT | PnL=+72.22₽ (gross=+87.22₽ comm=15.00₽) | reason=profit_target | hold=0min | layers=0
+15:14:41 robot_arb INFO ⚠️ CHECK_ENTRY returned signal: {'action': 'entry', 'side': 'short_basis', 'z': 1.9561576552235176, 'basis': 0.10999999999999943, 'price_a': 73.98, 'price_b': 74.09}
+15:14:41 robot_arb INFO ENTRY SIGNAL short_basis | Z=1.96 basis=0.11 | A=73.98 B=74.09 | limit buy 1 @ 73.98 | market sell 1 @ 74.02
+15:14:41 orders_arb INFO 📄 PAPER ENTRY: buy 1 BRQ6@RTSX @ 73.98 (LIMIT)
+15:14:41 orders_arb INFO 📄 PAPER ENTRY: sell 1 BRU6@RTSX @ 74.02 (MARKET)
+15:14:41 strategy_arb INFO LAYER #5 OPEN SHORT | A=73.98 ×1 | B=74.02 ×1 | basis=0.04 Z=1.96 | layers=1
+15:14:41 robot_arb INFO LAYER OPEN SHORT_BASIS #5 | A=73.98 ×1 | B=74.02 ×1 | basis=0.11 Z=1.96 | layers=1 used_capital=70,704
+15:14:42 robot_arb INFO EXIT layer #5 reason=profit_target | limit sell 1 @ 74.15 | market buy 1 @ 74.16
+15:14:42 orders_arb INFO 📄 PAPER ENTRY: sell 1 BRQ6@RTSX @ 74.15 (LIMIT)
+15:14:42 orders_arb INFO 📄 PAPER ENTRY: buy 1 BRU6@RTSX @ 74.16 (MARKET)
+15:14:42 strategy_arb INFO LAYER #5 CLOSE SHORT | PnL=+2.02₽ (gross=+17.02₽ comm=15.00₽) | reason=profit_target | hold=0min | layers=0
+15:15:11 robot_arb INFO ⚠️ CHECK_ENTRY returned signal: {'action': 'entry', 'side': 'short_basis', 'z': 1.8126559906914512, 'basis': 0.09000000000000341, 'price_a': 74.09, 'price_b': 74.18}
+15:15:11 robot_arb INFO ENTRY SIGNAL short_basis | Z=1.81 basis=0.09 | A=74.09 B=74.18 | limit buy 1 @ 74.09 | market sell 1 @ 74.11
+15:15:11 orders_arb INFO 📄 PAPER ENTRY: buy 1 BRQ6@RTSX @ 74.09 (LIMIT)
+15:15:11 orders_arb INFO 📄 PAPER ENTRY: sell 1 BRU6@RTSX @ 74.11 (MARKET)
+15:15:11 strategy_arb INFO LAYER #6 OPEN SHORT | A=74.09 ×1 | B=74.11 ×1 | basis=0.02 Z=1.81 | layers=1
+15:15:11 robot_arb INFO LAYER OPEN SHORT_BASIS #6 | A=74.09 ×1 | B=74.11 ×1 | basis=0.09 Z=1.81 | layers=1 used_capital=70,790
+15:15:11 robot_arb INFO EXIT layer #6 reason=profit_target | limit sell 1 @ 74.21 | market buy 1 @ 74.25
+15:15:11 orders_arb INFO 📄 PAPER ENTRY: sell 1 BRQ6@RTSX @ 74.21 (LIMIT)
+15:15:11 orders_arb INFO 📄 PAPER ENTRY: buy 1 BRU6@RTSX @ 74.25 (MARKET)
+15:15:11 strategy_arb INFO LAYER #6 CLOSE SHORT | PnL=-37.12₽ (gross=-22.12₽ comm=15.00₽) | reason=profit_target | hold=0min | layers=0
+15:15:12 robot_arb INFO ⚠️ CHECK_ENTRY returned signal: {'action': 'entry', 'side': 'short_basis', 'z': 1.72951724042041, 'basis': 0.08500000000000796, 'price_a': 74.095, 'price_b': 74.18}
+15:15:12 robot_arb INFO ENTRY SIGNAL short_basis | Z=1.73 basis=0.09 | A=74.09 B=74.18 | limit buy 1 @ 74.09 | market sell 1 @ 74.11
+15:15:12 orders_arb INFO 📄 PAPER ENTRY: buy 1 BRQ6@RTSX @ 74.09 (LIMIT)
+15:15:12 orders_arb INFO 📄 PAPER ENTRY: sell 1 BRU6@RTSX @ 74.11 (MARKET)
+15:15:12 strategy_arb INFO LAYER #7 OPEN SHORT | A=74.09 ×1 | B=74.11 ×1 | basis=0.01 Z=1.73 | layers=1
+15:15:12 robot_arb INFO LAYER OPEN SHORT_BASIS #7 | A=74.09 ×1 | B=74.11 ×1 | basis=0.09 Z=1.73 | layers=1 used_capital=70,794
+15:15:13 robot_arb INFO Z=1.73 (threshold=1.7) — no signal (dup_check=LOCKED)
+15:15:13 robot_arb INFO Z=1.71 (threshold=1.7) — no signal (dup_check=LOCKED)
+15:15:14 robot_arb INFO Z=1.71 (threshold=1.7) — no signal (dup_check=LOCKED)
+15:15:14 robot_arb INFO Z=1.69 (threshold=1.7) — no signal (dup_check=False)
+15:15:15 robot_arb INFO Z=1.69 (threshold=1.7) — no signal (dup_check=False)
+15:15:15 robot_arb INFO Z=1.67 (threshold=1.7) — no signal (dup_check=False)
+15:15:16 robot_arb INFO EXIT layer #7 reason=profit_target | limit sell 1 @ 74.22 | market buy 1 @ 74.25
+15:15:16 orders_arb INFO 📄 PAPER ENTRY: sell 1 BRQ6@RTSX @ 74.22 (LIMIT)
+15:15:16 orders_arb INFO 📄 PAPER ENTRY: buy 1 BRU6@RTSX @ 74.25 (MARKET)
+15:15:16 strategy_arb INFO LAYER #7 CLOSE SHORT | PnL=-37.12₽ (gross=-22.12₽ comm=15.00₽) | reason=profit_target | hold=0min | layers=0
+15:15:21 robot_arb INFO ⚠️ CHECK_ENTRY returned signal: {'action': 'entry', 'side': 'short_basis', 'z': 2.1176012471995325, 'basis': 0.12000000000000455, 'price_a': 74.05, 'price_b': 74.17}
+15:15:21 robot_arb INFO ENTRY SIGNAL short_basis | Z=2.12 basis=0.12 | A=74.05 B=74.17 | limit buy 1 @ 74.05 | market sell 1 @ 74.10
+15:15:21 orders_arb INFO 📄 PAPER ENTRY: buy 1 BRQ6@RTSX @ 74.05 (LIMIT)
+15:15:21 orders_arb INFO 📄 PAPER ENTRY: sell 1 BRU6@RTSX @ 74.10 (MARKET)
+15:15:21 strategy_arb INFO LAYER #8 OPEN SHORT | A=74.05 ×1 | B=74.10 ×1 | basis=0.05 Z=2.12 | layers=1
+15:15:21 robot_arb INFO LAYER OPEN SHORT_BASIS #8 | A=74.05 ×1 | B=74.10 ×1 | basis=0.12 Z=2.12 | layers=1 used_capital=70,759
+15:15:22 robot_arb INFO EXIT layer #8 reason=profit_target | limit sell 1 @ 74.22 | market buy 1 @ 74.24
+15:15:22 orders_arb INFO 📄 PAPER ENTRY: sell 1 BRQ6@RTSX @ 74.22 (LIMIT)
+15:15:22 orders_arb INFO 📄 PAPER ENTRY: buy 1 BRU6@RTSX @ 74.24 (MARKET)
+15:15:22 strategy_arb INFO LAYER #8 CLOSE SHORT | PnL=+5.79₽ (gross=+20.79₽ comm=15.00₽) | reason=profit_target | hold=0min | layers=0
+15:15:31 robot_arb INFO ⚠️ CHECK_ENTRY returned signal: {'action': 'entry', 'side': 'short_basis', 'z': 2.615581337744782, 'basis': 0.1700000000000017, 'price_a': 74.03, 'price_b': 74.2}
+15:15:31 robot_arb INFO ENTRY SIGNAL short_basis | Z=2.62 basis=0.17 | A=74.03 B=74.20 | limit buy 1 @ 74.03 | market sell 1 @ 74.13
+15:15:31 orders_arb INFO 📄 PAPER ENTRY: buy 1 BRQ6@RTSX @ 74.03 (LIMIT)
+15:15:31 orders_arb INFO 📄 PAPER ENTRY: sell 1 BRU6@RTSX @ 74.13 (MARKET)
+15:15:31 strategy_arb INFO LAYER #9 OPEN SHORT | A=74.03 ×1 | B=74.13 ×1 | basis=0.10 Z=2.62 | layers=1
+15:15:31 robot_arb INFO LAYER OPEN SHORT_BASIS #9 | A=74.03 ×1 | B=74.13 ×1 | basis=0.17 Z=2.62 | layers=1 used_capital=70,743
+15:15:32 robot_arb INFO Z=1.57 (threshold=1.7) — no signal (dup_check=LOCKED)
+15:15:32 robot_arb INFO EXIT layer #9 reason=profit_target | limit sell 1 @ 74.22 | market buy 1 @ 74.27
+15:15:32 orders_arb INFO 📄 PAPER ENTRY: sell 1 BRQ6@RTSX @ 74.22 (LIMIT)
+15:15:32 orders_arb INFO 📄 PAPER ENTRY: buy 1 BRU6@RTSX @ 74.27 (MARKET)
+15:15:32 strategy_arb INFO LAYER #9 CLOSE SHORT | PnL=+21.35₽ (gross=+36.35₽ comm=15.00₽) | reason=profit_target | hold=0min | layers=0
+15:15:33 robot_arb INFO Z=1.58 (threshold=1.7) — no signal (dup_check=False)
+15:15:44 robot_arb INFO Z=1.59 (threshold=1.7) — no signal (dup_check=False)
+15:15:44 robot_arb INFO Z=1.58 (threshold=1.7) — no signal (dup_check=False)
+15:15:45 robot_arb INFO Z=1.58 (threshold=1.7) — no signal (dup_check=False)
+15:15:45 robot_arb INFO Z=1.52 (threshold=1.7) — no signal (dup_check=False)
+15:15:46 robot_arb INFO Z=1.52 (threshold=1.7) — no signal (dup_check=False)
+15:15:49 robot_arb INFO ⚠️ CHECK_ENTRY returned signal: {'action': 'entry', 'side': 'short_basis', 'z': 2.22032596207927, 'basis': 0.14000000000000057, 'price_a': 74.01, 'price_b': 74.15}
+15:15:49 robot_arb INFO ENTRY SIGNAL short_basis | Z=2.22 basis=0.14 | A=74.01 B=74.15 | limit buy 1 @ 74.01 | market sell 1 @ 74.08
+15:15:49 orders_arb INFO 📄 PAPER ENTRY: buy 1 BRQ6@RTSX @ 74.01 (LIMIT)
+15:15:49 orders_arb INFO 📄 PAPER ENTRY: sell 1 BRU6@RTSX @ 74.08 (MARKET)
+15:15:49 strategy_arb INFO LAYER #10 OPEN SHORT | A=74.01 ×1 | B=74.08 ×1 | basis=0.07 Z=2.22 | layers=1
+15:15:49 robot_arb INFO LAYER OPEN SHORT_BASIS #10 | A=74.01 ×1 | B=74.08 ×1 | basis=0.14 Z=2.22 | layers=1 used_capital=70,728
+15:15:50 robot_arb INFO EXIT layer #10 reason=profit_target | limit sell 1 @ 74.24 | market buy 1 @ 74.22
+15:15:50 orders_arb INFO 📄 PAPER ENTRY: sell 1 BRQ6@RTSX @ 74.24 (LIMIT)
+15:15:50 orders_arb INFO 📄 PAPER ENTRY: buy 1 BRU6@RTSX @ 74.22 (MARKET)
+15:15:50 strategy_arb INFO LAYER #10 CLOSE SHORT | PnL=+48.73₽ (gross=+63.73₽ comm=15.00₽) | reason=profit_target | hold=0min | layers=0
+15:15:55 robot_arb INFO ⚠️ CHECK_ENTRY returned signal: {'action': 'entry', 'side': 'short_basis', 'z': 2.1996312723672777, 'basis': 0.14000000000000057, 'price_a': 74.01, 'price_b': 74.15}
+15:15:55 robot_arb INFO ENTRY SIGNAL short_basis | Z=2.20 basis=0.14 | A=74.01 B=74.15 | limit buy 1 @ 74.01 | market sell 1 @ 74.08
+15:15:55 orders_arb INFO 📄 PAPER ENTRY: buy 1 BRQ6@RTSX @ 74.01 (LIMIT)
+15:15:55 orders_arb INFO 📄 PAPER ENTRY: sell 1 BRU6@RTSX @ 74.08 (MARKET)
+15:15:55 strategy_arb INFO LAYER #11 OPEN SHORT | A=74.01 ×1 | B=74.08 ×1 | basis=0.07 Z=2.20 | layers=1
+15:15:55 robot_arb INFO LAYER OPEN SHORT_BASIS #11 | A=74.01 ×1 | B=74.08 ×1 | basis=0.14 Z=2.20 | layers=1 used_capital=70,728
+15:15:55 robot_arb INFO Z=2.17 (threshold=1.7) — no signal (dup_check=LOCKED)
+15:15:56 robot_arb INFO EXIT layer #11 reason=profit_target | limit sell 1 @ 74.23 | market buy 1 @ 74.22
+15:15:56 orders_arb INFO 📄 PAPER ENTRY: sell 1 BRQ6@RTSX @ 74.23 (LIMIT)
+15:15:56 orders_arb INFO 📄 PAPER ENTRY: buy 1 BRU6@RTSX @ 74.22 (MARKET)
+15:15:56 strategy_arb INFO LAYER #11 CLOSE SHORT | PnL=+40.93₽ (gross=+55.93₽ comm=15.00₽) | reason=profit_target | hold=0min | layers=0
+15:16:02 robot_arb INFO ⚠️ CHECK_ENTRY returned signal: {'action': 'entry', 'side': 'short_basis', 'z': 1.8193954218873583, 'basis': 0.10999999999999943, 'price_a': 74.01, 'price_b': 74.12}
+15:16:02 robot_arb INFO ENTRY SIGNAL short_basis | Z=1.82 basis=0.11 | A=74.01 B=74.12 | limit buy 1 @ 74.01 | market sell 1 @ 74.05
+15:16:02 orders_arb INFO 📄 PAPER ENTRY: buy 1 BRQ6@RTSX @ 74.01 (LIMIT)
+15:16:02 orders_arb INFO 📄 PAPER ENTRY: sell 1 BRU6@RTSX @ 74.05 (MARKET)
+15:16:02 strategy_arb INFO LAYER #12 OPEN SHORT | A=74.01 ×1 | B=74.05 ×1 | basis=0.04 Z=1.82 | layers=1
+15:16:02 robot_arb INFO LAYER OPEN SHORT_BASIS #12 | A=74.01 ×1 | B=74.05 ×1 | basis=0.11 Z=1.82 | layers=1 used_capital=70,728
+15:16:03 robot_arb INFO EXIT layer #12 reason=profit_target | limit sell 1 @ 74.19 | market buy 1 @ 74.19
+15:16:03 orders_arb INFO 📄 PAPER ENTRY: sell 1 BRQ6@RTSX @ 74.19 (LIMIT)
+15:16:03 orders_arb INFO 📄 PAPER ENTRY: buy 1 BRU6@RTSX @ 74.19 (MARKET)
+15:16:03 strategy_arb INFO LAYER #12 CLOSE SHORT | PnL=+5.87₽ (gross=+20.87₽ comm=15.00₽) | reason=profit_target | hold=0min | layers=0
+15:16:12 robot_arb INFO ⚠️ CHECK_ENTRY returned signal: {'action': 'entry', 'side': 'short_basis', 'z': 1.838650331471731, 'basis': 0.10999999999999943, 'price_a': 73.93, 'price_b': 74.04}
+15:16:12 robot_arb INFO ENTRY SIGNAL short_basis | Z=1.84 basis=0.11 | A=73.93 B=74.04 | limit buy 1 @ 73.93 | market sell 1 @ 73.97
+15:16:12 orders_arb INFO 📄 PAPER ENTRY: buy 1 BRQ6@RTSX @ 73.93 (LIMIT)
+15:16:12 orders_arb INFO 📄 PAPER ENTRY: sell 1 BRU6@RTSX @ 73.97 (MARKET)
+15:16:12 strategy_arb INFO LAYER #13 OPEN SHORT | A=73.93 ×1 | B=73.97 ×1 | basis=0.04 Z=1.84 | layers=1
+15:16:12 robot_arb INFO LAYER OPEN SHORT_BASIS #13 | A=73.93 ×1 | B=73.97 ×1 | basis=0.11 Z=1.84 | layers=1 used_capital=70,665
+15:16:12 robot_arb INFO EXIT layer #13 reason=profit_target | limit sell 1 @ 74.22 | market buy 1 @ 74.11
+15:16:12 orders_arb INFO 📄 PAPER ENTRY: sell 1 BRQ6@RTSX @ 74.22 (LIMIT)
+15:16:12 orders_arb INFO 📄 PAPER ENTRY: buy 1 BRU6@RTSX @ 74.11 (MARKET)
+15:16:12 strategy_arb INFO LAYER #13 CLOSE SHORT | PnL=+99.60₽ (gross=+114.60₽ comm=15.00₽) | reason=profit_target | hold=0min | layers=0
+15:16:14 robot_arb INFO ⚠️ CHECK_ENTRY returned signal: {'action': 'entry', 'side': 'short_basis', 'z': 1.8131936556464792, 'basis': 0.10999999999999943, 'price_a': 73.93, 'price_b': 74.04}
+15:16:14 robot_arb INFO ENTRY SIGNAL short_basis | Z=1.81 basis=0.11 | A=73.93 B=74.04 | limit buy 1 @ 74.11 | market sell 1 @ 73.97
+15:16:14 orders_arb INFO 📄 PAPER ENTRY: buy 1 BRQ6@RTSX @ 74.11 (LIMIT)
+15:16:14 orders_arb INFO 📄 PAPER ENTRY: sell 1 BRU6@RTSX @ 73.97 (MARKET)
+15:16:14 strategy_arb INFO LAYER #14 OPEN SHORT | A=74.11 ×1 | B=73.97 ×1 | basis=-0.14 Z=1.81 | layers=1
+15:16:14 robot_arb INFO LAYER OPEN SHORT_BASIS #14 | A=74.11 ×1 | B=73.97 ×1 | basis=-0.07 Z=1.81 | layers=1 used_capital=70,806
+15:16:15 robot_arb INFO EXIT layer #14 reason=profit_target | limit sell 1 @ 74.22 | market buy 1 @ 74.11
+15:16:15 orders_arb INFO 📄 PAPER ENTRY: sell 1 BRQ6@RTSX @ 74.22 (LIMIT)
+15:16:15 orders_arb INFO 📄 PAPER ENTRY: buy 1 BRU6@RTSX @ 74.11 (MARKET)
+15:16:15 strategy_arb INFO LAYER #14 CLOSE SHORT | PnL=-40.80₽ (gross=-25.80₽ comm=15.00₽) | reason=profit_target | hold=0min | layers=0
+15:16:22 robot_arb INFO ⚠️ CHECK_ENTRY returned signal: {'action': 'entry', 'side': 'short_basis', 'z': 1.8058116444895704, 'basis': 0.10999999999999943, 'price_a': 73.93, 'price_b': 74.04}
+15:16:22 robot_arb INFO ENTRY SIGNAL short_basis | Z=1.81 basis=0.11 | A=73.93 B=74.04 | limit buy 1 @ 73.93 | market sell 1 @ 73.97
+15:16:22 orders_arb INFO 📄 PAPER ENTRY: buy 1 BRQ6@RTSX @ 73.93 (LIMIT)
+15:16:22 orders_arb INFO 📄 PAPER ENTRY: sell 1 BRU6@RTSX @ 73.97 (MARKET)
+15:16:22 strategy_arb INFO LAYER #15 OPEN SHORT | A=73.93 ×1 | B=73.97 ×1 | basis=0.04 Z=1.81 | layers=1
+15:16:22 robot_arb INFO LAYER OPEN SHORT_BASIS #15 | A=73.93 ×1 | B=73.97 ×1 | basis=0.11 Z=1.81 | layers=1 used_capital=70,665
+15:16:23 robot_arb INFO EXIT layer #15 reason=profit_target | limit sell 1 @ 74.23 | market buy 1 @ 74.11
+15:16:23 orders_arb INFO 📄 PAPER ENTRY: sell 1 BRQ6@RTSX @ 74.23 (LIMIT)
+15:16:23 orders_arb INFO 📄 PAPER ENTRY: buy 1 BRU6@RTSX @ 74.11 (MARKET)
+15:16:23 strategy_arb INFO LAYER #15 CLOSE SHORT | PnL=+107.40₽ (gross=+122.40₽ comm=15.00₽) | reason=profit_target | hold=0min | layers=0
+15:16:49 robot_arb INFO ⚠️ CHECK_ENTRY returned signal: {'action': 'entry', 'side': 'short_basis', 'z': 1.9724787031499054, 'basis': 0.12000000000000455, 'price_a': 73.94, 'price_b': 74.06}
+15:16:49 robot_arb INFO ENTRY SIGNAL short_basis | Z=1.97 basis=0.12 | A=73.94 B=74.06 | limit buy 1 @ 73.94 | market sell 1 @ 73.99
+15:16:49 orders_arb INFO 📄 PAPER ENTRY: buy 1 BRQ6@RTSX @ 73.94 (LIMIT)
+15:16:49 orders_arb INFO 📄 PAPER ENTRY: sell 1 BRU6@RTSX @ 73.99 (MARKET)
+15:16:49 strategy_arb INFO LAYER #16 OPEN SHORT | A=73.94 ×1 | B=73.99 ×1 | basis=0.05 Z=1.97 | layers=1
+15:16:49 robot_arb INFO LAYER OPEN SHORT_BASIS #16 | A=73.94 ×1 | B=73.99 ×1 | basis=0.12 Z=1.97 | layers=1 used_capital=70,673
+15:16:50 robot_arb INFO EXIT layer #16 reason=profit_target | limit sell 1 @ 74.10 | market buy 1 @ 74.13
+15:16:50 orders_arb INFO 📄 PAPER ENTRY: sell 1 BRQ6@RTSX @ 74.10 (LIMIT)
+15:16:50 orders_arb INFO 📄 PAPER ENTRY: buy 1 BRU6@RTSX @ 74.13 (MARKET)
+15:16:50 strategy_arb INFO LAYER #16 CLOSE SHORT | PnL=-1.83₽ (gross=+13.17₽ comm=15.00₽) | reason=profit_target | hold=0min | layers=0
+15:17:01 robot_arb INFO ⚠️ CHECK_ENTRY returned signal: {'action': 'entry', 'side': 'short_basis', 'z': 1.9670360315544024, 'basis': 0.12000000000000455, 'price_a': 73.94, 'price_b': 74.06}
+15:17:01 robot_arb INFO ENTRY SIGNAL short_basis | Z=1.97 basis=0.12 | A=73.94 B=74.06 | limit buy 1 @ 73.94 | market sell 1 @ 73.99
+15:17:01 orders_arb INFO 📄 PAPER ENTRY: buy 1 BRQ6@RTSX @ 73.94 (LIMIT)
+15:17:01 orders_arb INFO 📄 PAPER ENTRY: sell 1 BRU6@RTSX @ 73.99 (MARKET)
+15:17:01 strategy_arb INFO LAYER #17 OPEN SHORT | A=73.94 ×1 | B=73.99 ×1 | basis=0.05 Z=1.97 | layers=1
+15:17:01 robot_arb INFO LAYER OPEN SHORT_BASIS #17 | A=73.94 ×1 | B=73.99 ×1 | basis=0.12 Z=1.97 | layers=1 used_capital=70,673
+15:17:02 robot_arb INFO EXIT layer #17 reason=profit_target | limit sell 1 @ 74.10 | market buy 1 @ 74.13
+15:17:02 orders_arb INFO 📄 PAPER ENTRY: sell 1 BRQ6@RTSX @ 74.10 (LIMIT)
+15:17:02 orders_arb INFO 📄 PAPER ENTRY: buy 1 BRU6@RTSX @ 74.13 (MARKET)
+15:17:02 strategy_arb INFO LAYER #17 CLOSE SHORT | PnL=-1.83₽ (gross=+13.17₽ comm=15.00₽) | reason=profit_target | hold=0min | layers=0
+15:17:15 robot_arb INFO Z=1.53 (threshold=1.7) — no signal (dup_check=False)
+15:17:33 robot_arb INFO ⚠️ CHECK_ENTRY returned signal: {'action': 'entry', 'side': 'short_basis', 'z': 1.9665174523516569, 'basis': 0.12000000000000455, 'price_a': 73.99, 'price_b': 74.11}
+15:17:33 robot_arb INFO ENTRY SIGNAL short_basis | Z=1.97 basis=0.12 | A=73.99 B=74.11 | limit buy 1 @ 73.99 | market sell 1 @ 74.04
+15:17:33 orders_arb INFO 📄 PAPER ENTRY: buy 1 BRQ6@RTSX @ 73.99 (LIMIT)
+15:17:33 orders_arb INFO 📄 PAPER ENTRY: sell 1 BRU6@RTSX @ 74.04 (MARKET)
+15:17:33 strategy_arb INFO LAYER #18 OPEN SHORT | A=73.99 ×1 | B=74.04 ×1 | basis=0.05 Z=1.97 | layers=1
+15:17:33 robot_arb INFO LAYER OPEN SHORT_BASIS #18 | A=73.99 ×1 | B=74.04 ×1 | basis=0.12 Z=1.97 | layers=1 used_capital=70,712
+15:17:34 robot_arb INFO EXIT layer #18 reason=profit_target | limit sell 1 @ 74.23 | market buy 1 @ 74.20
+15:17:34 orders_arb INFO 📄 PAPER ENTRY: sell 1 BRQ6@RTSX @ 74.23 (LIMIT)
+15:17:34 orders_arb INFO 📄 PAPER ENTRY: buy 1 BRU6@RTSX @ 74.20 (MARKET)
+15:17:34 strategy_arb INFO LAYER #18 CLOSE SHORT | PnL=+44.87₽ (gross=+59.87₽ comm=15.00₽) | reason=profit_target | hold=0min | layers=0
+15:17:47 robot_arb INFO ⚠️ CHECK_ENTRY returned signal: {'action': 'entry', 'side': 'short_basis', 'z': 2.2303033230686746, 'basis': 0.14000000000000057, 'price_a': 73.99, 'price_b': 74.13}
+15:17:47 robot_arb INFO ENTRY SIGNAL short_basis | Z=2.23 basis=0.14 | A=73.99 B=74.13 | limit buy 1 @ 73.99 | market sell 1 @ 74.06
+15:17:47 orders_arb INFO 📄 PAPER ENTRY: buy 1 BRQ6@RTSX @ 73.99 (LIMIT)
+15:17:47 orders_arb INFO 📄 PAPER ENTRY: sell 1 BRU6@RTSX @ 74.06 (MARKET)
+15:17:47 strategy_arb INFO LAYER #19 OPEN SHORT | A=73.99 ×1 | B=74.06 ×1 | basis=0.07 Z=2.23 | layers=1
+15:17:47 robot_arb INFO LAYER OPEN SHORT_BASIS #19 | A=73.99 ×1 | B=74.06 ×1 | basis=0.14 Z=2.23 | layers=1 used_capital=70,712
+15:17:47 robot_arb INFO EXIT layer #19 reason=profit_target | limit sell 1 @ 74.27 | market buy 1 @ 74.20
+15:17:47 orders_arb INFO 📄 PAPER ENTRY: sell 1 BRQ6@RTSX @ 74.27 (LIMIT)
+15:17:47 orders_arb INFO 📄 PAPER ENTRY: buy 1 BRU6@RTSX @ 74.20 (MARKET)
+15:17:47 strategy_arb INFO LAYER #19 CLOSE SHORT | PnL=+83.86₽ (gross=+98.86₽ comm=15.00₽) | reason=profit_target | hold=0min | layers=0
+15:17:50 robot_arb INFO ⚠️ CHECK_ENTRY returned signal: {'action': 'entry', 'side': 'short_basis', 'z': 2.210194719773661, 'basis': 0.14000000000000057, 'price_a': 73.99, 'price_b': 74.13}
+15:17:50 robot_arb INFO ENTRY SIGNAL short_basis | Z=2.21 basis=0.14 | A=73.99 B=74.13 | limit buy 1 @ 73.99 | market sell 1 @ 74.06
+15:17:50 orders_arb INFO 📄 PAPER ENTRY: buy 1 BRQ6@RTSX @ 73.99 (LIMIT)
+15:17:50 orders_arb INFO 📄 PAPER ENTRY: sell 1 BRU6@RTSX @ 74.06 (MARKET)
+15:17:50 strategy_arb INFO LAYER #20 OPEN SHORT | A=73.99 ×1 | B=74.06 ×1 | basis=0.07 Z=2.21 | layers=1
+15:17:50 robot_arb INFO LAYER OPEN SHORT_BASIS #20 | A=73.99 ×1 | B=74.06 ×1 | basis=0.14 Z=2.21 | layers=1 used_capital=70,712
+15:17:51 robot_arb INFO EXIT layer #20 reason=profit_target | limit sell 1 @ 74.15 | market buy 1 @ 74.20
+15:17:51 orders_arb INFO 📄 PAPER ENTRY: sell 1 BRQ6@RTSX @ 74.15 (LIMIT)
+15:17:51 orders_arb INFO 📄 PAPER ENTRY: buy 1 BRU6@RTSX @ 74.20 (MARKET)
+15:17:51 strategy_arb INFO LAYER #20 CLOSE SHORT | PnL=-9.74₽ (gross=+5.26₽ comm=15.00₽) | reason=profit_target | hold=0min | layers=0
+15:17:53 robot_arb INFO ⚠️ CHECK_ENTRY returned signal: {'action': 'entry', 'side': 'short_basis', 'z': 2.095287237358086, 'basis': 0.12999999999999545, 'price_a': 74.0, 'price_b': 74.13}
+15:17:53 robot_arb INFO ENTRY SIGNAL short_basis | Z=2.10 basis=0.13 | A=74.00 B=74.13 | limit buy 1 @ 74.00 | market sell 1 @ 74.06
+15:17:53 orders_arb INFO 📄 PAPER ENTRY: buy 1 BRQ6@RTSX @ 74.00 (LIMIT)
+15:17:53 orders_arb INFO 📄 PAPER ENTRY: sell 1 BRU6@RTSX @ 74.06 (MARKET)
+15:17:53 strategy_arb INFO LAYER #21 OPEN SHORT | A=74.00 ×1 | B=74.06 ×1 | basis=0.06 Z=2.10 | layers=1
+15:17:53 robot_arb INFO LAYER OPEN SHORT_BASIS #21 | A=74.00 ×1 | B=74.06 ×1 | basis=0.13 Z=2.10 | layers=1 used_capital=70,720
+15:17:53 robot_arb INFO EXIT layer #21 reason=profit_target | limit sell 1 @ 74.15 | market buy 1 @ 74.20
+15:17:53 orders_arb INFO 📄 PAPER ENTRY: sell 1 BRQ6@RTSX @ 74.15 (LIMIT)
+15:17:53 orders_arb INFO 📄 PAPER ENTRY: buy 1 BRU6@RTSX @ 74.20 (MARKET)
+15:17:53 strategy_arb INFO LAYER #21 CLOSE SHORT | PnL=-17.54₽ (gross=-2.54₽ comm=15.00₽) | reason=profit_target | hold=0min | layers=0
+15:18:00 robot_arb INFO ⚠️ CHECK_ENTRY returned signal: {'action': 'entry', 'side': 'short_basis', 'z': 2.124947271279082, 'basis': 0.12999999999999545, 'price_a': 74.0, 'price_b': 74.13}
+15:18:00 robot_arb INFO ENTRY SIGNAL short_basis | Z=2.12 basis=0.13 | A=74.00 B=74.13 | limit buy 1 @ 74.00 | market sell 1 @ 74.06
+15:18:00 orders_arb INFO 📄 PAPER ENTRY: buy 1 BRQ6@RTSX @ 74.00 (LIMIT)
+15:18:00 orders_arb INFO 📄 PAPER ENTRY: sell 1 BRU6@RTSX @ 74.06 (MARKET)
+15:18:00 strategy_arb INFO LAYER #22 OPEN SHORT | A=74.00 ×1 | B=74.06 ×1 | basis=0.06 Z=2.12 | layers=1
+15:18:00 robot_arb INFO LAYER OPEN SHORT_BASIS #22 | A=74.00 ×1 | B=74.06 ×1 | basis=0.13 Z=2.12 | layers=1 used_capital=70,720
+15:18:01 robot_arb INFO EXIT layer #22 reason=profit_target | limit sell 1 @ 74.15 | market buy 1 @ 74.20
+15:18:01 orders_arb INFO 📄 PAPER ENTRY: sell 1 BRQ6@RTSX @ 74.15 (LIMIT)
+15:18:01 orders_arb INFO 📄 PAPER ENTRY: buy 1 BRU6@RTSX @ 74.20 (MARKET)
+15:18:01 strategy_arb INFO LAYER #22 CLOSE SHORT | PnL=-17.54₽ (gross=-2.54₽ comm=15.00₽) | reason=profit_target | hold=0min | layers=0
+15:18:11 robot_arb INFO ⚠️ CHECK_ENTRY returned signal: {'action': 'entry', 'side': 'short_basis', 'z': 2.1512888633775145, 'basis': 0.12999999999999545, 'price_a': 74.01, 'price_b': 74.14}
+15:18:11 robot_arb INFO ENTRY SIGNAL short_basis | Z=2.15 basis=0.13 | A=74.01 B=74.14 | limit buy 1 @ 74.01 | market sell 1 @ 74.07
+15:18:11 orders_arb INFO 📄 PAPER ENTRY: buy 1 BRQ6@RTSX @ 74.01 (LIMIT)
+15:18:11 orders_arb INFO 📄 PAPER ENTRY: sell 1 BRU6@RTSX @ 74.07 (MARKET)
+15:18:11 strategy_arb INFO LAYER #23 OPEN SHORT | A=74.01 ×1 | B=74.07 ×1 | basis=0.06 Z=2.15 | layers=1
+15:18:11 robot_arb INFO LAYER OPEN SHORT_BASIS #23 | A=74.01 ×1 | B=74.07 ×1 | basis=0.13 Z=2.15 | layers=1 used_capital=70,728
+15:18:11 robot_arb INFO EXIT layer #23 reason=profit_target | limit sell 1 @ 74.28 | market buy 1 @ 74.21
+15:18:11 orders_arb INFO 📄 PAPER ENTRY: sell 1 BRQ6@RTSX @ 74.28 (LIMIT)
+15:18:11 orders_arb INFO 📄 PAPER ENTRY: buy 1 BRU6@RTSX @ 74.21 (MARKET)
+15:18:11 strategy_arb INFO LAYER #23 CLOSE SHORT | PnL=+76.04₽ (gross=+91.04₽ comm=15.00₽) | reason=profit_target | hold=0min | layers=0
+15:18:21 robot_arb INFO ⚠️ CHECK_ENTRY returned signal: {'action': 'entry', 'side': 'short_basis', 'z': 2.113178720745277, 'basis': 0.12999999999999545, 'price_a': 74.01, 'price_b': 74.14}
+15:18:21 robot_arb INFO ENTRY SIGNAL short_basis | Z=2.11 basis=0.13 | A=74.01 B=74.14 | limit buy 1 @ 74.01 | market sell 1 @ 74.07
+15:18:21 orders_arb INFO 📄 PAPER ENTRY: buy 1 BRQ6@RTSX @ 74.01 (LIMIT)
+15:18:21 orders_arb INFO 📄 PAPER ENTRY: sell 1 BRU6@RTSX @ 74.07 (MARKET)
+15:18:21 strategy_arb INFO LAYER #24 OPEN SHORT | A=74.01 ×1 | B=74.07 ×1 | basis=0.06 Z=2.11 | layers=1
+15:18:21 robot_arb INFO LAYER OPEN SHORT_BASIS #24 | A=74.01 ×1 | B=74.07 ×1 | basis=0.13 Z=2.11 | layers=1 used_capital=70,728
+15:18:22 robot_arb INFO EXIT layer #24 reason=profit_target | limit sell 1 @ 74.29 | market buy 1 @ 74.21
+15:18:22 orders_arb INFO 📄 PAPER ENTRY: sell 1 BRQ6@RTSX @ 74.29 (LIMIT)
+15:18:22 orders_arb INFO 📄 PAPER ENTRY: buy 1 BRU6@RTSX @ 74.21 (MARKET)
+15:18:22 strategy_arb INFO LAYER #24 CLOSE SHORT | PnL=+87.74₽ (gross=+102.74₽ comm=15.00₽) | reason=profit_target | hold=0min | layers=0
+15:18:26 robot_arb INFO ⚠️ CHECK_ENTRY returned signal: {'action': 'entry', 'side': 'short_basis', 'z': 1.8609648264556007, 'basis': 0.10999999999999943, 'price_a': 74.03, 'price_b': 74.14}
+15:18:26 robot_arb INFO ENTRY SIGNAL short_basis | Z=1.86 basis=0.11 | A=74.03 B=74.14 | limit buy 1 @ 74.03 | market sell 1 @ 74.07
+15:18:26 orders_arb INFO 📄 PAPER ENTRY: buy 1 BRQ6@RTSX @ 74.03 (LIMIT)
+15:18:26 orders_arb INFO 📄 PAPER ENTRY: sell 1 BRU6@RTSX @ 74.07 (MARKET)
+15:18:26 strategy_arb INFO LAYER #25 OPEN SHORT | A=74.03 ×1 | B=74.07 ×1 | basis=0.04 Z=1.86 | layers=1
+15:18:26 robot_arb INFO LAYER OPEN SHORT_BASIS #25 | A=74.03 ×1 | B=74.07 ×1 | basis=0.11 Z=1.86 | layers=1 used_capital=70,743
+15:18:27 robot_arb INFO EXIT layer #25 reason=profit_target | limit sell 1 @ 74.28 | market buy 1 @ 74.21
+15:18:27 orders_arb INFO 📄 PAPER ENTRY: sell 1 BRQ6@RTSX @ 74.28 (LIMIT)
+15:18:27 orders_arb INFO 📄 PAPER ENTRY: buy 1 BRU6@RTSX @ 74.21 (MARKET)
+15:18:27 strategy_arb INFO LAYER #25 CLOSE SHORT | PnL=+60.44₽ (gross=+75.44₽ comm=15.00₽) | reason=profit_target | hold=0min | layers=0
+15:18:29 robot_arb INFO ⚠️ CHECK_ENTRY returned signal: {'action': 'entry', 'side': 'short_basis', 'z': 1.8778432075729088, 'basis': 0.10999999999999943, 'price_a': 74.03, 'price_b': 74.14}
+15:18:29 robot_arb INFO ENTRY SIGNAL short_basis | Z=1.88 basis=0.11 | A=74.03 B=74.14 | limit buy 1 @ 74.03 | market sell 1 @ 74.07
+15:18:29 orders_arb INFO 📄 PAPER ENTRY: buy 1 BRQ6@RTSX @ 74.03 (LIMIT)
+15:18:29 orders_arb INFO 📄 PAPER ENTRY: sell 1 BRU6@RTSX @ 74.07 (MARKET)
+15:18:29 strategy_arb INFO LAYER #26 OPEN SHORT | A=74.03 ×1 | B=74.07 ×1 | basis=0.04 Z=1.88 | layers=1
+15:18:29 robot_arb INFO LAYER OPEN SHORT_BASIS #26 | A=74.03 ×1 | B=74.07 ×1 | basis=0.11 Z=1.88 | layers=1 used_capital=70,743
+15:18:29 robot_arb INFO EXIT layer #26 reason=profit_target | limit sell 1 @ 74.28 | market buy 1 @ 74.23
+15:18:29 orders_arb INFO 📄 PAPER ENTRY: sell 1 BRQ6@RTSX @ 74.28 (LIMIT)
+15:18:29 orders_arb INFO 📄 PAPER ENTRY: buy 1 BRU6@RTSX @ 74.23 (MARKET)
+15:18:29 strategy_arb INFO LAYER #26 CLOSE SHORT | PnL=+44.83₽ (gross=+59.83₽ comm=15.00₽) | reason=profit_target | hold=0min | layers=0
+15:18:37 robot_arb INFO ⚠️ CHECK_ENTRY returned signal: {'action': 'entry', 'side': 'short_basis', 'z': 2.1804532692460374, 'basis': 0.12999999999999545, 'price_a': 74.03, 'price_b': 74.16}
+15:18:37 robot_arb INFO ENTRY SIGNAL short_basis | Z=2.18 basis=0.13 | A=74.03 B=74.16 | limit buy 1 @ 74.03 | market sell 1 @ 74.09
+15:18:37 orders_arb INFO 📄 PAPER ENTRY: buy 1 BRQ6@RTSX @ 74.03 (LIMIT)
+15:18:37 orders_arb INFO 📄 PAPER ENTRY: sell 1 BRU6@RTSX @ 74.09 (MARKET)
+15:18:37 strategy_arb INFO LAYER #27 OPEN SHORT | A=74.03 ×1 | B=74.09 ×1 | basis=0.06 Z=2.18 | layers=1
+15:18:37 robot_arb INFO LAYER OPEN SHORT_BASIS #27 | A=74.03 ×1 | B=74.09 ×1 | basis=0.13 Z=2.18 | layers=1 used_capital=70,743
+15:18:37 robot_arb INFO EXIT layer #27 reason=profit_target | limit sell 1 @ 74.15 | market buy 1 @ 74.23
+15:18:37 orders_arb INFO 📄 PAPER ENTRY: sell 1 BRQ6@RTSX @ 74.15 (LIMIT)
+15:18:37 orders_arb INFO 📄 PAPER ENTRY: buy 1 BRU6@RTSX @ 74.23 (MARKET)
+15:18:37 strategy_arb INFO LAYER #27 CLOSE SHORT | PnL=-37.09₽ (gross=-22.09₽ comm=15.00₽) | reason=profit_target | hold=0min | layers=0
+15:18:39 robot_arb INFO ⚠️ CHECK_ENTRY returned signal: {'action': 'entry', 'side': 'short_basis', 'z': 2.1393982607435733, 'basis': 0.12999999999999545, 'price_a': 74.03, 'price_b': 74.16}
+15:18:39 robot_arb INFO ENTRY SIGNAL short_basis | Z=2.14 basis=0.13 | A=74.03 B=74.16 | limit buy 1 @ 74.03 | market sell 1 @ 74.09
+15:18:39 orders_arb INFO 📄 PAPER ENTRY: buy 1 BRQ6@RTSX @ 74.03 (LIMIT)
+15:18:39 orders_arb INFO 📄 PAPER ENTRY: sell 1 BRU6@RTSX @ 74.09 (MARKET)
+15:18:39 strategy_arb INFO LAYER #28 OPEN SHORT | A=74.03 ×1 | B=74.09 ×1 | basis=0.06 Z=2.14 | layers=1
+15:18:39 robot_arb INFO LAYER OPEN SHORT_BASIS #28 | A=74.03 ×1 | B=74.09 ×1 | basis=0.13 Z=2.14 | layers=1 used_capital=70,743
+15:18:40 robot_arb INFO EXIT layer #28 reason=profit_target | limit sell 1 @ 74.15 | market buy 1 @ 74.23
+15:18:40 orders_arb INFO 📄 PAPER ENTRY: sell 1 BRQ6@RTSX @ 74.15 (LIMIT)
+15:18:40 orders_arb INFO 📄 PAPER ENTRY: buy 1 BRU6@RTSX @ 74.23 (MARKET)
+15:18:40 strategy_arb INFO LAYER #28 CLOSE SHORT | PnL=-37.09₽ (gross=-22.09₽ comm=15.00₽) | reason=profit_target | hold=0min | layers=0
+15:18:50 robot_arb INFO ⚠️ CHECK_ENTRY returned signal: {'action': 'entry', 'side': 'short_basis', 'z': 2.1869748944669323, 'basis': 0.12999999999999545, 'price_a': 74.03, 'price_b': 74.16}
+15:18:50 robot_arb INFO ENTRY SIGNAL short_basis | Z=2.19 basis=0.13 | A=74.03 B=74.16 | limit buy 1 @ 74.03 | market sell 1 @ 74.09
+15:18:50 orders_arb INFO 📄 PAPER ENTRY: buy 1 BRQ6@RTSX @ 74.03 (LIMIT)
+15:18:50 orders_arb INFO 📄 PAPER ENTRY: sell 1 BRU6@RTSX @ 74.09 (MARKET)
+15:18:50 strategy_arb INFO LAYER #29 OPEN SHORT | A=74.03 ×1 | B=74.09 ×1 | basis=0.06 Z=2.19 | layers=1
+15:18:50 robot_arb INFO LAYER OPEN SHORT_BASIS #29 | A=74.03 ×1 | B=74.09 ×1 | basis=0.13 Z=2.19 | layers=1 used_capital=70,743
+15:18:51 robot_arb INFO EXIT layer #29 reason=profit_target | limit sell 1 @ 74.28 | market buy 1 @ 74.23
+15:18:51 orders_arb INFO 📄 PAPER ENTRY: sell 1 BRQ6@RTSX @ 74.28 (LIMIT)
+15:18:51 orders_arb INFO 📄 PAPER ENTRY: buy 1 BRU6@RTSX @ 74.23 (MARKET)
+15:18:51 strategy_arb INFO LAYER #29 CLOSE SHORT | PnL=+60.41₽ (gross=+75.41₽ comm=15.00₽) | reason=profit_target | hold=0min | layers=0
+15:18:53 robot_arb INFO ⚠️ CHECK_ENTRY returned signal: {'action': 'entry', 'side': 'short_basis', 'z': 2.2450734506702505, 'basis': 0.12999999999999545, 'price_a': 74.03, 'price_b': 74.16}
+15:18:53 robot_arb INFO ENTRY SIGNAL short_basis | Z=2.25 basis=0.13 | A=74.03 B=74.16 | limit buy 1 @ 74.03 | market sell 1 @ 74.09
+15:18:53 orders_arb INFO 📄 PAPER ENTRY: buy 1 BRQ6@RTSX @ 74.03 (LIMIT)
+15:18:53 orders_arb INFO 📄 PAPER ENTRY: sell 1 BRU6@RTSX @ 74.09 (MARKET)
+15:18:53 strategy_arb INFO LAYER #30 OPEN SHORT | A=74.03 ×1 | B=74.09 ×1 | basis=0.06 Z=2.25 | layers=1
+15:18:53 robot_arb INFO LAYER OPEN SHORT_BASIS #30 | A=74.03 ×1 | B=74.09 ×1 | basis=0.13 Z=2.25 | layers=1 used_capital=70,743
+15:18:53 robot_arb INFO EXIT layer #30 reason=profit_target | limit sell 1 @ 74.15 | market buy 1 @ 74.23
+15:18:53 orders_arb INFO 📄 PAPER ENTRY: sell 1 BRQ6@RTSX @ 74.15 (LIMIT)
+15:18:53 orders_arb INFO 📄 PAPER ENTRY: buy 1 BRU6@RTSX @ 74.23 (MARKET)
+15:18:53 strategy_arb INFO LAYER #30 CLOSE SHORT | PnL=-40.99₽ (gross=-25.99₽ comm=15.00₽) | reason=profit_target | hold=0min | layers=0
+15:19:00 robot_arb INFO ⚠️ CHECK_ENTRY returned signal: {'action': 'entry', 'side': 'short_basis', 'z': 2.0004817852300163, 'basis': 0.10999999999999943, 'price_a': 74.05, 'price_b': 74.16}
+15:19:00 robot_arb INFO ENTRY SIGNAL short_basis | Z=2.00 basis=0.11 | A=74.05 B=74.16 | limit buy 1 @ 74.05 | market sell 1 @ 74.09
+15:19:00 orders_arb INFO 📄 PAPER ENTRY: buy 1 BRQ6@RTSX @ 74.05 (LIMIT)
+15:19:00 orders_arb INFO 📄 PAPER ENTRY: sell 1 BRU6@RTSX @ 74.09 (MARKET)
+15:19:00 strategy_arb INFO LAYER #31 OPEN SHORT | A=74.05 ×1 | B=74.09 ×1 | basis=0.04 Z=2.00 | layers=1
+15:19:00 robot_arb INFO LAYER OPEN SHORT_BASIS #31 | A=74.05 ×1 | B=74.09 ×1 | basis=0.11 Z=2.00 | layers=1 used_capital=70,759
+15:19:01 robot_arb INFO EXIT layer #31 reason=profit_target | limit sell 1 @ 74.26 | market buy 1 @ 74.23
+15:19:01 orders_arb INFO 📄 PAPER ENTRY: sell 1 BRQ6@RTSX @ 74.26 (LIMIT)
+15:19:01 orders_arb INFO 📄 PAPER ENTRY: buy 1 BRU6@RTSX @ 74.23 (MARKET)
+15:19:01 strategy_arb INFO LAYER #31 CLOSE SHORT | PnL=+33.11₽ (gross=+48.11₽ comm=15.00₽) | reason=profit_target | hold=0min | layers=0
+15:19:03 robot_arb INFO ⚠️ CHECK_ENTRY returned signal: {'action': 'entry', 'side': 'short_basis', 'z': 2.0090968089458983, 'basis': 0.10999999999999943, 'price_a': 74.05, 'price_b': 74.16}
+15:19:03 robot_arb INFO ENTRY SIGNAL short_basis | Z=2.01 basis=0.11 | A=74.05 B=74.16 | limit buy 1 @ 74.05 | market sell 1 @ 74.09
+15:19:03 orders_arb INFO 📄 PAPER ENTRY: buy 1 BRQ6@RTSX @ 74.05 (LIMIT)
+15:19:03 orders_arb INFO 📄 PAPER ENTRY: sell 1 BRU6@RTSX @ 74.09 (MARKET)
+15:19:03 strategy_arb INFO LAYER #32 OPEN SHORT | A=74.05 ×1 | B=74.09 ×1 | basis=0.04 Z=2.01 | layers=1
+15:19:03 robot_arb INFO LAYER OPEN SHORT_BASIS #32 | A=74.05 ×1 | B=74.09 ×1 | basis=0.11 Z=2.01 | layers=1 used_capital=70,759
+15:19:05 robot_arb INFO EXIT layer #32 reason=profit_target | limit sell 1 @ 74.27 | market buy 1 @ 74.23
+15:19:05 orders_arb INFO 📄 PAPER ENTRY: sell 1 BRQ6@RTSX @ 74.27 (LIMIT)
+15:19:05 orders_arb INFO 📄 PAPER ENTRY: buy 1 BRU6@RTSX @ 74.23 (MARKET)
+15:19:05 strategy_arb INFO LAYER #32 CLOSE SHORT | PnL=+37.01₽ (gross=+52.01₽ comm=15.00₽) | reason=profit_target | hold=0min | layers=0
+15:19:05 robot_arb INFO Z=1.89 (threshold=1.7) — no signal (dup_check=LOCKED)
+15:19:06 robot_arb INFO ⚠️ CHECK_ENTRY returned signal: {'action': 'entry', 'side': 'short_basis', 'z': 2.243372360658516, 'basis': 0.12999999999999545, 'price_a': 74.06, 'price_b': 74.19}
+15:19:06 robot_arb INFO ENTRY SIGNAL short_basis | Z=2.24 basis=0.13 | A=74.06 B=74.19 | limit buy 1 @ 74.06 | market sell 1 @ 74.12
+15:19:06 orders_arb INFO 📄 PAPER ENTRY: buy 1 BRQ6@RTSX @ 74.06 (LIMIT)
+15:19:06 orders_arb INFO 📄 PAPER ENTRY: sell 1 BRU6@RTSX @ 74.12 (MARKET)
+15:19:06 strategy_arb INFO LAYER #33 OPEN SHORT | A=74.06 ×1 | B=74.12 ×1 | basis=0.06 Z=2.24 | layers=1
+15:19:06 robot_arb INFO LAYER OPEN SHORT_BASIS #33 | A=74.06 ×1 | B=74.12 ×1 | basis=0.13 Z=2.24 | layers=1 used_capital=70,767
+15:19:06 robot_arb INFO EXIT layer #33 reason=profit_target | limit sell 1 @ 74.27 | market buy 1 @ 74.26
+15:19:06 orders_arb INFO 📄 PAPER ENTRY: sell 1 BRQ6@RTSX @ 74.27 (LIMIT)
+15:19:06 orders_arb INFO 📄 PAPER ENTRY: buy 1 BRU6@RTSX @ 74.26 (MARKET)
+15:19:06 strategy_arb INFO LAYER #33 CLOSE SHORT | PnL=+29.16₽ (gross=+44.16₽ comm=15.00₽) | reason=profit_target | hold=0min | layers=0
+15:19:23 robot_arb INFO ⚠️ CHECK_ENTRY returned signal: {'action': 'entry', 'side': 'short_basis', 'z': 2.4430324432153805, 'basis': 0.14000000000000057, 'price_a': 74.01, 'price_b': 74.15}
+15:19:23 robot_arb INFO ENTRY SIGNAL short_basis | Z=2.44 basis=0.14 | A=74.01 B=74.15 | limit buy 1 @ 74.01 | market sell 1 @ 74.08
+15:19:23 orders_arb INFO 📄 PAPER ENTRY: buy 1 BRQ6@RTSX @ 74.01 (LIMIT)
+15:19:23 orders_arb INFO 📄 PAPER ENTRY: sell 1 BRU6@RTSX @ 74.08 (MARKET)
+15:19:23 strategy_arb INFO LAYER #34 OPEN SHORT | A=74.01 ×1 | B=74.08 ×1 | basis=0.07 Z=2.44 | layers=1
+15:19:23 robot_arb INFO LAYER OPEN SHORT_BASIS #34 | A=74.01 ×1 | B=74.08 ×1 | basis=0.14 Z=2.44 | layers=1 used_capital=70,728
+15:19:26 robot_arb INFO EXIT layer #34 reason=profit_target | limit sell 1 @ 74.24 | market buy 1 @ 74.22
+15:19:26 orders_arb INFO 📄 PAPER ENTRY: sell 1 BRQ6@RTSX @ 74.24 (LIMIT)
+15:19:26 orders_arb INFO 📄 PAPER ENTRY: buy 1 BRU6@RTSX @ 74.22 (MARKET)
+15:19:26 strategy_arb INFO LAYER #34 CLOSE SHORT | PnL=+48.73₽ (gross=+63.73₽ comm=15.00₽) | reason=profit_target | hold=0min | layers=0
+15:19:48 robot_arb INFO ⚠️ CHECK_ENTRY returned signal: {'action': 'entry', 'side': 'short_basis', 'z': 2.305561818085688, 'basis': 0.12999999999999545, 'price_a': 74.0, 'price_b': 74.13}
+15:19:48 robot_arb INFO ENTRY SIGNAL short_basis | Z=2.31 basis=0.13 | A=74.00 B=74.13 | limit buy 1 @ 74.00 | market sell 1 @ 74.06
+15:19:48 orders_arb INFO 📄 PAPER ENTRY: buy 1 BRQ6@RTSX @ 74.00 (LIMIT)
+15:19:48 orders_arb INFO 📄 PAPER ENTRY: sell 1 BRU6@RTSX @ 74.06 (MARKET)
+15:19:48 strategy_arb INFO LAYER #35 OPEN SHORT | A=74.00 ×1 | B=74.06 ×1 | basis=0.06 Z=2.31 | layers=1
+15:19:48 robot_arb INFO LAYER OPEN SHORT_BASIS #35 | A=74.00 ×1 | B=74.06 ×1 | basis=0.13 Z=2.31 | layers=1 used_capital=70,720
+15:19:49 robot_arb INFO EXIT layer #35 reason=profit_target | limit sell 1 @ 74.25 | market buy 1 @ 74.20
+15:19:49 orders_arb INFO 📄 PAPER ENTRY: sell 1 BRQ6@RTSX @ 74.25 (LIMIT)
+15:19:49 orders_arb INFO 📄 PAPER ENTRY: buy 1 BRU6@RTSX @ 74.20 (MARKET)
+15:19:49 strategy_arb INFO LAYER #35 CLOSE SHORT | PnL=+68.26₽ (gross=+83.26₽ comm=15.00₽) | reason=profit_target | hold=0min | layers=0
+15:19:51 robot_arb INFO ⚠️ CHECK_ENTRY returned signal: {'action': 'entry', 'side': 'short_basis', 'z': 2.7427842298066625, 'basis': 0.1700000000000017, 'price_a': 73.96, 'price_b': 74.13}
+15:19:51 robot_arb INFO ENTRY SIGNAL short_basis | Z=2.74 basis=0.17 | A=73.96 B=74.13 | limit buy 1 @ 73.96 | market sell 1 @ 74.06
+15:19:51 orders_arb INFO 📄 PAPER ENTRY: buy 1 BRQ6@RTSX @ 73.96 (LIMIT)
+15:19:51 orders_arb INFO 📄 PAPER ENTRY: sell 1 BRU6@RTSX @ 74.06 (MARKET)
+15:19:51 strategy_arb INFO LAYER #36 OPEN SHORT | A=73.96 ×1 | B=74.06 ×1 | basis=0.10 Z=2.74 | layers=1
+15:19:51 robot_arb INFO LAYER OPEN SHORT_BASIS #36 | A=73.96 ×1 | B=74.06 ×1 | basis=0.17 Z=2.74 | layers=1 used_capital=70,689
+15:19:52 robot_arb INFO EXIT layer #36 reason=profit_target | limit sell 1 @ 74.25 | market buy 1 @ 74.20
+15:19:52 orders_arb INFO 📄 PAPER ENTRY: sell 1 BRQ6@RTSX @ 74.25 (LIMIT)
+15:19:52 orders_arb INFO 📄 PAPER ENTRY: buy 1 BRU6@RTSX @ 74.20 (MARKET)
+15:19:52 strategy_arb INFO LAYER #36 CLOSE SHORT | PnL=+99.46₽ (gross=+114.46₽ comm=15.00₽) | reason=profit_target | hold=0min | layers=0
+15:19:53 robot_arb INFO ⚠️ CHECK_ENTRY returned signal: {'action': 'entry', 'side': 'short_basis', 'z': 2.6864591468991645, 'basis': 0.1700000000000017, 'price_a': 73.96, 'price_b': 74.13}
+15:19:53 robot_arb INFO ENTRY SIGNAL short_basis | Z=2.69 basis=0.17 | A=73.96 B=74.13 | limit buy 1 @ 73.96 | market sell 1 @ 74.06
+15:19:53 orders_arb INFO 📄 PAPER ENTRY: buy 1 BRQ6@RTSX @ 73.96 (LIMIT)
+15:19:53 orders_arb INFO 📄 PAPER ENTRY: sell 1 BRU6@RTSX @ 74.06 (MARKET)
+15:19:53 strategy_arb INFO LAYER #37 OPEN SHORT | A=73.96 ×1 | B=74.06 ×1 | basis=0.10 Z=2.69 | layers=1
+15:19:53 robot_arb INFO LAYER OPEN SHORT_BASIS #37 | A=73.96 ×1 | B=74.06 ×1 | basis=0.17 Z=2.69 | layers=1 used_capital=70,689
+15:19:54 robot_arb INFO EXIT layer #37 reason=profit_target | limit sell 1 @ 74.25 | market buy 1 @ 74.20
+15:19:54 orders_arb INFO 📄 PAPER ENTRY: sell 1 BRQ6@RTSX @ 74.25 (LIMIT)
+15:19:54 orders_arb INFO 📄 PAPER ENTRY: buy 1 BRU6@RTSX @ 74.20 (MARKET)
+15:19:54 strategy_arb INFO LAYER #37 CLOSE SHORT | PnL=+99.46₽ (gross=+114.46₽ comm=15.00₽) | reason=profit_target | hold=0min | layers=0
+15:19:56 robot_arb INFO ⚠️ CHECK_ENTRY returned signal: {'action': 'entry', 'side': 'short_basis', 'z': 2.561566004223024, 'basis': 0.1599999999999966, 'price_a': 73.97, 'price_b': 74.13}
+15:19:56 robot_arb INFO ENTRY SIGNAL short_basis | Z=2.56 basis=0.16 | A=73.97 B=74.13 | limit buy 1 @ 73.97 | market sell 1 @ 74.06
+15:19:56 orders_arb INFO 📄 PAPER ENTRY: buy 1 BRQ6@RTSX @ 73.97 (LIMIT)
+15:19:56 orders_arb INFO 📄 PAPER ENTRY: sell 1 BRU6@RTSX @ 74.06 (MARKET)
+15:19:56 strategy_arb INFO LAYER #38 OPEN SHORT | A=73.97 ×1 | B=74.06 ×1 | basis=0.09 Z=2.56 | layers=1
+15:19:56 robot_arb INFO LAYER OPEN SHORT_BASIS #38 | A=73.97 ×1 | B=74.06 ×1 | basis=0.16 Z=2.56 | layers=1 used_capital=70,697
+15:19:57 robot_arb INFO EXIT layer #38 reason=profit_target | limit sell 1 @ 74.13 | market buy 1 @ 74.20
+15:19:57 orders_arb INFO 📄 PAPER ENTRY: sell 1 BRQ6@RTSX @ 74.13 (LIMIT)
+15:19:57 orders_arb INFO 📄 PAPER ENTRY: buy 1 BRU6@RTSX @ 74.20 (MARKET)
+15:19:57 strategy_arb INFO LAYER #38 CLOSE SHORT | PnL=-1.94₽ (gross=+13.06₽ comm=15.00₽) | reason=profit_target | hold=0min | layers=0
+15:20:10 robot_arb INFO ⚠️ CHECK_ENTRY returned signal: {'action': 'entry', 'side': 'short_basis', 'z': 2.309552331785461, 'basis': 0.14000000000000057, 'price_a': 73.99, 'price_b': 74.13}
+15:20:10 robot_arb INFO ENTRY SIGNAL short_basis | Z=2.31 basis=0.14 | A=73.99 B=74.13 | limit buy 1 @ 73.99 | market sell 1 @ 74.06
+15:20:10 orders_arb INFO 📄 PAPER ENTRY: buy 1 BRQ6@RTSX @ 73.99 (LIMIT)
+15:20:10 orders_arb INFO 📄 PAPER ENTRY: sell 1 BRU6@RTSX @ 74.06 (MARKET)
+15:20:10 strategy_arb INFO LAYER #39 OPEN SHORT | A=73.99 ×1 | B=74.06 ×1 | basis=0.07 Z=2.31 | layers=1
+15:20:10 robot_arb INFO LAYER OPEN SHORT_BASIS #39 | A=73.99 ×1 | B=74.06 ×1 | basis=0.14 Z=2.31 | layers=1 used_capital=70,712
+15:20:10 robot_arb INFO EXIT layer #39 reason=profit_target | limit sell 1 @ 74.30 | market buy 1 @ 74.20
+15:20:10 orders_arb INFO 📄 PAPER ENTRY: sell 1 BRQ6@RTSX @ 74.30 (LIMIT)
+15:20:10 orders_arb INFO 📄 PAPER ENTRY: buy 1 BRU6@RTSX @ 74.20 (MARKET)
+15:20:10 strategy_arb INFO LAYER #39 CLOSE SHORT | PnL=+107.26₽ (gross=+122.26₽ comm=15.00₽) | reason=profit_target | hold=0min | layers=0
+15:20:16 robot_arb INFO ⚠️ CHECK_ENTRY returned signal: {'action': 'entry', 'side': 'short_basis', 'z': 2.513701221160594, 'basis': 0.1599999999999966, 'price_a': 73.97, 'price_b': 74.13}
+15:20:16 robot_arb INFO ENTRY SIGNAL short_basis | Z=2.51 basis=0.16 | A=73.97 B=74.13 | limit buy 1 @ 73.97 | market sell 1 @ 74.06
+15:20:16 orders_arb INFO 📄 PAPER ENTRY: buy 1 BRQ6@RTSX @ 73.97 (LIMIT)
+15:20:16 orders_arb INFO 📄 PAPER ENTRY: sell 1 BRU6@RTSX @ 74.06 (MARKET)
+15:20:16 strategy_arb INFO LAYER #40 OPEN SHORT | A=73.97 ×1 | B=74.06 ×1 | basis=0.09 Z=2.51 | layers=1
+15:20:16 robot_arb INFO LAYER OPEN SHORT_BASIS #40 | A=73.97 ×1 | B=74.06 ×1 | basis=0.16 Z=2.51 | layers=1 used_capital=70,697
+15:20:16 robot_arb INFO EXIT layer #40 reason=profit_target | limit sell 1 @ 74.30 | market buy 1 @ 74.20
+15:20:16 orders_arb INFO 📄 PAPER ENTRY: sell 1 BRQ6@RTSX @ 74.30 (LIMIT)
+15:20:16 orders_arb INFO 📄 PAPER ENTRY: buy 1 BRU6@RTSX @ 74.20 (MARKET)
+15:20:16 strategy_arb INFO LAYER #40 CLOSE SHORT | PnL=+122.86₽ (gross=+137.86₽ comm=15.00₽) | reason=profit_target | hold=0min | layers=0
+15:20:21 robot_arb INFO ⚠️ CHECK_ENTRY returned signal: {'action': 'entry', 'side': 'short_basis', 'z': 2.4475032795046077, 'basis': 0.1599999999999966, 'price_a': 73.97, 'price_b': 74.13}
+15:20:21 robot_arb INFO ENTRY SIGNAL short_basis | Z=2.45 basis=0.16 | A=73.97 B=74.13 | limit buy 1 @ 73.97 | market sell 1 @ 74.06
+15:20:21 orders_arb INFO 📄 PAPER ENTRY: buy 1 BRQ6@RTSX @ 73.97 (LIMIT)
+15:20:21 orders_arb INFO 📄 PAPER ENTRY: sell 1 BRU6@RTSX @ 74.06 (MARKET)
+15:20:21 strategy_arb INFO LAYER #41 OPEN SHORT | A=73.97 ×1 | B=74.06 ×1 | basis=0.09 Z=2.45 | layers=1
+15:20:21 robot_arb INFO LAYER OPEN SHORT_BASIS #41 | A=73.97 ×1 | B=74.06 ×1 | basis=0.16 Z=2.45 | layers=1 used_capital=70,697
+15:20:21 robot_arb INFO EXIT layer #41 reason=profit_target | limit sell 1 @ 74.19 | market buy 1 @ 74.20
+15:20:21 orders_arb INFO 📄 PAPER ENTRY: sell 1 BRQ6@RTSX @ 74.19 (LIMIT)
+15:20:21 orders_arb INFO 📄 PAPER ENTRY: buy 1 BRU6@RTSX @ 74.20 (MARKET)
+15:20:21 strategy_arb INFO LAYER #41 CLOSE SHORT | PnL=+37.06₽ (gross=+52.06₽ comm=15.00₽) | reason=profit_target | hold=0min | layers=0
+15:20:28 robot_arb INFO ⚠️ CHECK_ENTRY returned signal: {'action': 'entry', 'side': 'short_basis', 'z': 2.106219264094581, 'basis': 0.12999999999999545, 'price_a': 74.0, 'price_b': 74.13}
+15:20:28 robot_arb INFO ENTRY SIGNAL short_basis | Z=2.11 basis=0.13 | A=74.00 B=74.13 | limit buy 1 @ 74.00 | market sell 1 @ 74.06
+15:20:28 orders_arb INFO 📄 PAPER ENTRY: buy 1 BRQ6@RTSX @ 74.00 (LIMIT)
+15:20:28 orders_arb INFO 📄 PAPER ENTRY: sell 1 BRU6@RTSX @ 74.06 (MARKET)
+15:20:28 strategy_arb INFO LAYER #42 OPEN SHORT | A=74.00 ×1 | B=74.06 ×1 | basis=0.06 Z=2.11 | layers=1
+15:20:28 robot_arb INFO LAYER OPEN SHORT_BASIS #42 | A=74.00 ×1 | B=74.06 ×1 | basis=0.13 Z=2.11 | layers=1 used_capital=70,720
+15:20:29 robot_arb INFO EXIT layer #42 reason=profit_target | limit sell 1 @ 74.19 | market buy 1 @ 74.20
+15:20:29 orders_arb INFO 📄 PAPER ENTRY: sell 1 BRQ6@RTSX @ 74.19 (LIMIT)
+15:20:29 orders_arb INFO 📄 PAPER ENTRY: buy 1 BRU6@RTSX @ 74.20 (MARKET)
+15:20:29 strategy_arb INFO LAYER #42 CLOSE SHORT | PnL=+21.46₽ (gross=+36.46₽ comm=15.00₽) | reason=profit_target | hold=0min | layers=0
+15:20:47 robot_arb INFO ⚠️ CHECK_ENTRY returned signal: {'action': 'entry', 'side': 'short_basis', 'z': 2.1865007397223324, 'basis': 0.14000000000000057, 'price_a': 73.99, 'price_b': 74.13}
+15:20:47 robot_arb INFO ENTRY SIGNAL short_basis | Z=2.19 basis=0.14 | A=73.99 B=74.13 | limit buy 1 @ 73.99 | market sell 1 @ 74.06
+15:20:47 orders_arb INFO 📄 PAPER ENTRY: buy 1 BRQ6@RTSX @ 73.99 (LIMIT)
+15:20:47 orders_arb INFO 📄 PAPER ENTRY: sell 1 BRU6@RTSX @ 74.06 (MARKET)
+15:20:47 strategy_arb INFO LAYER #43 OPEN SHORT | A=73.99 ×1 | B=74.06 ×1 | basis=0.07 Z=2.19 | layers=1
+15:20:47 robot_arb INFO LAYER OPEN SHORT_BASIS #43 | A=73.99 ×1 | B=74.06 ×1 | basis=0.14 Z=2.19 | layers=1 used_capital=70,712
+15:20:48 robot_arb INFO Z=2.15 (threshold=1.7) — no signal (dup_check=LOCKED)
+15:20:48 robot_arb INFO EXIT layer #43 reason=profit_target | limit sell 1 @ 74.22 | market buy 1 @ 74.20
+15:20:48 orders_arb INFO 📄 PAPER ENTRY: sell 1 BRQ6@RTSX @ 74.22 (LIMIT)
+15:20:48 orders_arb INFO 📄 PAPER ENTRY: buy 1 BRU6@RTSX @ 74.20 (MARKET)
+15:20:48 strategy_arb INFO LAYER #43 CLOSE SHORT | PnL=+52.66₽ (gross=+67.66₽ comm=15.00₽) | reason=profit_target | hold=0min | layers=0
+15:20:50 robot_arb INFO ⚠️ CHECK_ENTRY returned signal: {'action': 'entry', 'side': 'short_basis', 'z': 2.3363452623184355, 'basis': 0.1599999999999966, 'price_a': 73.97, 'price_b': 74.13}
+15:20:50 robot_arb INFO ENTRY SIGNAL short_basis | Z=2.34 basis=0.16 | A=73.97 B=74.13 | limit buy 1 @ 73.97 | market sell 1 @ 74.06
+15:20:50 orders_arb INFO 📄 PAPER ENTRY: buy 1 BRQ6@RTSX @ 73.97 (LIMIT)
+15:20:50 orders_arb INFO 📄 PAPER ENTRY: sell 1 BRU6@RTSX @ 74.06 (MARKET)
+15:20:50 strategy_arb INFO LAYER #44 OPEN SHORT | A=73.97 ×1 | B=74.06 ×1 | basis=0.09 Z=2.34 | layers=1
+15:20:50 robot_arb INFO LAYER OPEN SHORT_BASIS #44 | A=73.97 ×1 | B=74.06 ×1 | basis=0.16 Z=2.34 | layers=1 used_capital=70,697
+15:20:50 robot_arb INFO EXIT layer #44 reason=profit_target | limit sell 1 @ 74.35 | market buy 1 @ 74.20
+15:20:50 orders_arb INFO 📄 PAPER ENTRY: sell 1 BRQ6@RTSX @ 74.35 (LIMIT)
+15:20:50 orders_arb INFO 📄 PAPER ENTRY: buy 1 BRU6@RTSX @ 74.20 (MARKET)
+15:20:50 strategy_arb INFO LAYER #44 CLOSE SHORT | PnL=+165.76₽ (gross=+180.76₽ comm=15.00₽) | reason=profit_target | hold=0min | layers=0
+15:20:55 robot_arb INFO ⚠️ CHECK_ENTRY returned signal: {'action': 'entry', 'side': 'short_basis', 'z': 2.1919085771611537, 'basis': 0.14999999999999147, 'price_a': 73.98, 'price_b': 74.13}
+15:20:55 robot_arb INFO ENTRY SIGNAL short_basis | Z=2.19 basis=0.15 | A=73.98 B=74.13 | limit buy 1 @ 74.33 | market sell 1 @ 74.06
+15:20:55 orders_arb INFO 📄 PAPER ENTRY: buy 1 BRQ6@RTSX @ 74.33 (LIMIT)
+15:20:55 orders_arb INFO 📄 PAPER ENTRY: sell 1 BRU6@RTSX @ 74.06 (MARKET)
+15:20:55 strategy_arb INFO LAYER #45 OPEN SHORT | A=74.33 ×1 | B=74.06 ×1 | basis=-0.27 Z=2.19 | layers=1
+15:20:55 robot_arb INFO LAYER OPEN SHORT_BASIS #45 | A=74.33 ×1 | B=74.06 ×1 | basis=-0.06 Z=2.19 | layers=1 used_capital=70,974
+15:20:57 robot_arb INFO Z=2.19 (threshold=1.7) — no signal (dup_check=False)
+15:21:00 robot_arb INFO Z=2.15 (threshold=1.7) — no signal (dup_check=False)
+15:21:05 robot_arb INFO Z=2.12 (threshold=1.7) — no signal (dup_check=False)
+15:21:18 robot_arb INFO Z=2.14 (threshold=1.7) — no signal (dup_check=False)
+15:21:32 robot_arb INFO Z=2.16 (threshold=1.7) — no signal (dup_check=False)
+15:21:43 robot_arb INFO Z=1.87 (threshold=1.7) — no signal (dup_check=False)
+15:21:46 robot_arb INFO Z=1.85 (threshold=1.7) — no signal (dup_check=False)
+15:21:54 robot_arb INFO Z=1.77 (threshold=1.7) — no signal (dup_check=False)
+15:21:57 robot_arb INFO Z=1.76 (threshold=1.7) — no signal (dup_check=False)
+15:22:13 robot_arb INFO Z=1.93 (threshold=1.7) — no signal (dup_check=False)
+15:22:29 robot_arb INFO Z=2.42 (threshold=1.7) — no signal (dup_check=False)
+15:22:42 robot_arb INFO Z=2.35 (threshold=1.7) — no signal (dup_check=False)
+15:22:50 robot_arb INFO Z=2.47 (threshold=1.7) — no signal (dup_check=False)
+15:23:01 robot_arb INFO Z=2.60 (threshold=1.7) — no signal (dup_check=False)
+15:23:19 robot_arb INFO Z=2.54 (threshold=1.7) — no signal (dup_check=False)
+15:23:19 robot_arb INFO Z=2.54 (threshold=1.7) — no signal (dup_check=False)
+15:23:28 robot_arb INFO Z=2.60 (threshold=1.7) — no signal (dup_check=False)
+15:23:42 robot_arb INFO Param updated: ticker_a = BRQ6 (was BRQ6)
+15:23:42 robot_arb INFO Param updated: symbol_a = BRQ6@RTSX (was BRQ6@RTSX)
+15:23:42 robot_arb INFO Param updated: ticker_b = BRU6 (was BRU6)
+15:23:42 robot_arb INFO Param updated: symbol_b = BRU6@RTSX (was BRU6@RTSX)
+15:23:42 robot_arb INFO Param updated: lots_a = 1 (was 1)
+15:23:42 robot_arb INFO Param updated: lots_b = 1 (was 1)
+15:23:42 robot_arb INFO Param updated: hedge_ratio = 1 (was 1)
+15:23:42 robot_arb INFO Param updated: capital = 100000 (was 100000)
+15:23:42 robot_arb INFO Param updated: entry_z = 1.7 (was 1.7)
+15:23:42 robot_arb INFO Param updated: entry_z_long = -3.8 (was -3.8)
+15:23:42 robot_arb INFO Param updated: entry_mode = zscore (was zscore)
+15:23:42 robot_arb INFO Param updated: spread_rub_high = 5 (was 5)
+15:23:42 robot_arb INFO Param updated: spread_rub_low = -5 (was -5)
+15:23:42 robot_arb INFO Param updated: risk_free_rate = 0.1425 (was 0.1425)
+15:23:42 robot_arb INFO Param updated: expiration_date = 2026-09-18 (was 2026-09-18)
+15:23:42 robot_arb INFO Param updated: contract_size = 1 (was 1)
+15:23:42 robot_arb INFO Param updated: lookback = 200 (was 200)
+15:23:42 robot_arb INFO Param updated: leg_a_timeout = 5 (was 5)
+15:23:42 robot_arb INFO Param updated: min_fill_ratio = 0.5 (was 0.5)
+15:23:42 robot_arb INFO Param updated: min_profit_type = rub (was rub)
+15:23:42 robot_arb INFO Param updated: min_profit_value = 10 (was 10)
+15:23:42 robot_arb INFO Param updated: risk_type = stop_loss_rub (was stop_loss_rub)
+15:23:42 robot_arb INFO Param updated: risk_value = 30000 (was 30000)
+15:23:42 robot_arb INFO Param updated: allow_long_basis = True (was True)
+15:23:42 robot_arb INFO Param updated: use_commission = True (was True)
+15:23:42 robot_arb INFO Param updated: commission_stock_pct = 7.5 (was 7.5)
+15:23:42 robot_arb INFO Param updated: commission_futures_rt = 7.5 (was 7.5)
+15:23:42 robot_arb INFO Param updated: slippage_bps = 10 (was 10)
+15:24:01 robot_arb INFO Z=2.44 (threshold=1.7) — no signal (dup_check=False)
+15:24:03 robot_arb INFO Z=2.44 (threshold=1.7) — no signal (dup_check=False)
+15:24:36 robot_arb INFO Z=3.03 (threshold=1.7) — no signal (dup_check=False)
+15:24:48 robot_arb INFO Z=3.06 (threshold=1.7) — no signal (dup_check=False)
+15:24:49 robot_arb INFO Z=2.98 (threshold=1.7) — no signal (dup_check=False)
+15:24:50 robot_arb INFO Z=2.04 (threshold=1.7) — no signal (dup_check=False)
+15:24:51 robot_arb INFO Z=2.01 (threshold=1.7) — no signal (dup_check=False)
+15:24:51 robot_arb INFO Z=2.01 (threshold=1.7) — no signal (dup_check=False)
+15:24:52 robot_arb INFO Z=1.99 (threshold=1.7) — no signal (dup_check=False)
+15:24:52 robot_arb INFO Z=1.99 (threshold=1.7) — no signal (dup_check=False)
+15:24:53 robot_arb INFO Z=1.96 (threshold=1.7) — no signal (dup_check=False)
+15:24:53 robot_arb INFO Z=1.96 (threshold=1.7) — no signal (dup_check=False)
+15:24:55 robot_arb INFO Z=2.44 (threshold=1.7) — no signal (dup_check=False)
+15:24:55 robot_arb INFO Z=2.44 (threshold=1.7) — no signal (dup_check=False)
+15:24:56 robot_arb INFO Z=2.39 (threshold=1.7) — no signal (dup_check=False)
+15:24:57 robot_arb INFO Z=2.50 (threshold=1.7) — no signal (dup_check=False)
+15:24:57 robot_arb INFO Z=2.50 (threshold=1.7) — no signal (dup_check=False)
+15:24:58 robot_arb INFO Z=2.45 (threshold=1.7) — no signal (dup_check=False)
+15:24:58 robot_arb INFO Z=2.40 (threshold=1.7) — no signal (dup_check=False)
+15:25:01 robot_arb INFO Z=2.35 (threshold=1.7) — no signal (dup_check=False)
+15:25:02 robot_arb INFO Z=2.73 (threshold=1.7) — no signal (dup_check=False)
+15:25:03 robot_arb INFO Z=2.54 (threshold=1.7) — no signal (dup_check=False)
+15:25:03 robot_arb INFO Z=2.54 (threshold=1.7) — no signal (dup_check=False)
+15:25:04 robot_arb INFO Z=2.48 (threshold=1.7) — no signal (dup_check=False)
+15:25:05 robot_arb INFO Z=2.48 (threshold=1.7) — no signal (dup_check=False)
+15:25:05 robot_arb INFO Z=2.48 (threshold=1.7) — no signal (dup_check=False)
+15:25:06 robot_arb INFO Z=2.48 (threshold=1.7) — no signal (dup_check=False)
+15:25:08 robot_arb INFO Z=2.47 (threshold=1.7) — no signal (dup_check=False)
+15:25:09 robot_arb INFO Z=2.46 (threshold=1.7) — no signal (dup_check=False)
+15:25:10 robot_arb INFO Z=2.37 (threshold=1.7) — no signal (dup_check=False)
+15:25:11 robot_arb INFO Z=2.31 (threshold=1.7) — no signal (dup_check=False)
+15:25:12 robot_arb INFO Z=2.28 (threshold=1.7) — no signal (dup_check=False)
+15:25:13 robot_arb INFO Z=2.38 (threshold=1.7) — no signal (dup_check=False)
+15:25:13 robot_arb INFO Z=2.24 (threshold=1.7) — no signal (dup_check=False)
+15:25:14 robot_arb INFO Z=2.23 (threshold=1.7) — no signal (dup_check=False)
+15:25:16 robot_arb INFO Z=2.14 (threshold=1.7) — no signal (dup_check=False)
+15:25:17 robot_arb INFO Z=2.09 (threshold=1.7) — no signal (dup_check=False)
+15:25:18 robot_arb INFO Z=2.06 (threshold=1.7) — no signal (dup_check=False)
+15:25:18 robot_arb INFO Z=2.29 (threshold=1.7) — no signal (dup_check=False)
+15:25:19 robot_arb INFO Z=1.99 (threshold=1.7) — no signal (dup_check=False)
+15:25:19 robot_arb INFO Z=1.94 (threshold=1.7) — no signal (dup_check=False)
+15:25:21 robot_arb INFO Z=1.83 (threshold=1.7) — no signal (dup_check=False)
+15:25:21 robot_arb INFO Z=1.83 (threshold=1.7) — no signal (dup_check=False)
+15:25:23 robot_arb INFO Z=1.80 (threshold=1.7) — no signal (dup_check=False)
+15:25:23 robot_arb INFO Z=1.80 (threshold=1.7) — no signal (dup_check=False)
+15:25:24 robot_arb INFO Z=1.71 (threshold=1.7) — no signal (dup_check=False)
+15:25:25 robot_arb INFO Z=1.80 (threshold=1.7) — no signal (dup_check=False)
+15:25:26 robot_arb INFO Z=1.73 (threshold=1.7) — no signal (dup_check=False)
+15:25:26 robot_arb INFO Z=1.64 (threshold=1.7) — no signal (dup_check=False)
+15:25:27 robot_arb INFO Z=1.64 (threshold=1.7) — no signal (dup_check=False)
+15:25:28 robot_arb INFO Z=1.62 (threshold=1.7) — no signal (dup_check=False)
+15:25:28 robot_arb INFO Z=1.62 (threshold=1.7) — no signal (dup_check=False)
+15:25:29 robot_arb INFO Z=1.62 (threshold=1.7) — no signal (dup_check=False)
+15:25:30 robot_arb INFO Z=1.60 (threshold=1.7) — no signal (dup_check=False)
+15:25:36 robot_arb INFO Z=1.51 (threshold=1.7) — no signal (dup_check=False)
+15:25:40 robot_arb INFO Z=1.53 (threshold=1.7) — no signal (dup_check=False)
+15:25:41 robot_arb INFO Z=1.52 (threshold=1.7) — no signal (dup_check=False)
+15:25:41 robot_arb INFO Z=1.52 (threshold=1.7) — no signal (dup_check=False)
+15:25:42 robot_arb INFO Z=1.51 (threshold=1.7) — no signal (dup_check=False)
+15:25:43 robot_arb INFO Z=1.51 (threshold=1.7) — no signal (dup_check=False)
+15:25:44 robot_arb INFO Z=1.94 (threshold=1.7) — no signal (dup_check=False)
+15:25:46 robot_arb INFO Z=1.50 (threshold=1.7) — no signal (dup_check=False)
+15:25:47 robot_arb INFO Z=1.91 (threshold=1.7) — no signal (dup_check=False)
+15:25:50 robot_arb INFO Z=1.57 (threshold=1.7) — no signal (dup_check=False)
+15:25:51 robot_arb INFO Z=1.53 (threshold=1.7) — no signal (dup_check=False)
+15:25:52 robot_arb INFO Z=1.76 (threshold=1.7) — no signal (dup_check=False)
+15:25:53 robot_arb INFO Z=1.54 (threshold=1.7) — no signal (dup_check=False)
+15:25:54 robot_arb INFO Z=1.53 (threshold=1.7) — no signal (dup_check=False)
+15:25:54 robot_arb INFO Z=1.74 (threshold=1.7) — no signal (dup_check=False)
+15:25:55 robot_arb INFO Z=1.51 (threshold=1.7) — no signal (dup_check=False)
+15:25:55 robot_arb INFO Z=1.51 (threshold=1.7) — no signal (dup_check=False)
+15:26:00 robot_arb INFO Z=1.60 (threshold=1.7) — no signal (dup_check=False)
+15:26:07 robot_arb INFO Z=1.96 (threshold=1.7) — no signal (dup_check=False)
+15:26:25 robot_arb INFO Z=1.53 (threshold=1.7) — no signal (dup_check=False)

@@ -1,0 +1,1278 @@
+15:23:12 robot_arb INFO === Arbitrage Robot v1 ===
+15:23:12 robot_arb INFO Pair: GAZP / GZU6
+15:23:12 robot_arb INFO Account: 1225953 | Port: 5091 | Paper: True
+15:23:12 robot_arb INFO Params: entry_z=2.7 lookback=400 lots_a=100 lots_b=10 hedge_ratio=10
+15:23:12 robot_arb INFO Min profit: rub=77.77
+15:23:12 robot_arb INFO Risk: stop_loss_rub=50000
+15:23:12 robot_arb INFO State loaded: pnl=39487 trades=355 mode=running
+15:23:12 FinamPy CRITICAL Ошибка доступа к системному хранилищу: No recommended backend was available. Install a recommended 3rd party backend package; or, install the keyrings.alt package if you want to use the non-recommended backends. See https://pypi.org/project/keyring for details.
+15:23:12 FinamPy CRITICAL Ошибка сохранения в системное хранилище: No recommended backend was available. Install a recommended 3rd party backend package; or, install the keyrings.alt package if you want to use the non-recommended backends. See https://pypi.org/project/keyring for details.
+15:23:13 robot_arb INFO FinamPy connected. Accounts: ['1225950', '1225951', '1225952', '1225953']
+15:23:13 robot_arb INFO Subscribed OrderBook: GAZP@RTSX, GZU6@RTSX
+15:23:13 robot_arb INFO Subscribed Quotes: GAZP@RTSX, GZU6@RTSX
+15:23:13 robot_arb INFO Warmup: waiting 10 sec for data streams...
+15:23:23 robot_arb INFO Warmup done. OB_A: False OB_B: False
+15:23:23 robot_arb INFO MOEX ISS poller started (fallback for stock prices)
+15:23:23 robot_arb INFO Main loop started
+15:23:24 robot_arb INFO API listening on :5091
+15:23:24 robot_arb INFO Endpoints: GET /status /health /params | POST /start /stop /pause /params
+15:23:26 robot_arb INFO Signal 15 — shutting down...
+15:23:41 robot_arb INFO === Arbitrage Robot v1 ===
+15:23:41 robot_arb INFO Pair: GAZP / GZU6
+15:23:41 robot_arb INFO Account: 1225953 | Port: 5091 | Paper: True
+15:23:41 robot_arb INFO Params: entry_z=2.7 lookback=400 lots_a=100 lots_b=10 hedge_ratio=10
+15:23:41 robot_arb INFO Min profit: rub=77.77
+15:23:41 robot_arb INFO Risk: stop_loss_rub=50000
+15:23:41 robot_arb INFO State loaded: pnl=39487 trades=355 mode=running
+15:23:41 FinamPy CRITICAL Ошибка доступа к системному хранилищу: No recommended backend was available. Install a recommended 3rd party backend package; or, install the keyrings.alt package if you want to use the non-recommended backends. See https://pypi.org/project/keyring for details.
+15:23:41 FinamPy CRITICAL Ошибка сохранения в системное хранилище: No recommended backend was available. Install a recommended 3rd party backend package; or, install the keyrings.alt package if you want to use the non-recommended backends. See https://pypi.org/project/keyring for details.
+15:23:41 robot_arb INFO FinamPy connected. Accounts: ['1225950', '1225951', '1225952', '1225953']
+15:23:41 robot_arb INFO Subscribed OrderBook: GAZP@RTSX, GZU6@RTSX
+15:23:41 robot_arb INFO Subscribed Quotes: GAZP@RTSX, GZU6@RTSX
+15:23:41 robot_arb INFO Warmup: waiting 10 sec for data streams...
+15:23:51 robot_arb INFO Warmup done. OB_A: False OB_B: False
+15:23:51 robot_arb INFO MOEX ISS poller started (fallback for stock prices)
+15:23:51 robot_arb INFO Main loop started
+15:23:51 robot_arb INFO API listening on :5091
+15:23:51 robot_arb INFO Endpoints: GET /status /health /params | POST /start /stop /pause /params
+15:24:35 robot_arb INFO === Arbitrage Robot v1 ===
+15:24:35 robot_arb INFO Pair: GAZP / GZU6
+15:24:35 robot_arb INFO Account: 1225953 | Port: 5091 | Paper: True
+15:24:35 robot_arb INFO Params: entry_z=2.7 lookback=400 lots_a=100 lots_b=10 hedge_ratio=10
+15:24:35 robot_arb INFO Min profit: rub=77.77
+15:24:35 robot_arb INFO Risk: stop_loss_rub=50000
+15:24:35 FinamPy CRITICAL Ошибка доступа к системному хранилищу: No recommended backend was available. Install a recommended 3rd party backend package; or, install the keyrings.alt package if you want to use the non-recommended backends. See https://pypi.org/project/keyring for details.
+15:24:35 FinamPy CRITICAL Ошибка сохранения в системное хранилище: No recommended backend was available. Install a recommended 3rd party backend package; or, install the keyrings.alt package if you want to use the non-recommended backends. See https://pypi.org/project/keyring for details.
+15:24:36 robot_arb INFO FinamPy connected. Accounts: ['1225950', '1225951', '1225952', '1225953']
+15:24:36 robot_arb INFO Subscribed OrderBook: GAZP@RTSX, GZU6@RTSX
+15:24:36 robot_arb INFO Subscribed Quotes: GAZP@RTSX, GZU6@RTSX
+15:24:36 robot_arb INFO Warmup: waiting 10 sec for data streams...
+15:24:46 robot_arb INFO Warmup done. OB_A: False OB_B: False
+15:24:46 robot_arb INFO MOEX ISS poller started (fallback for stock prices)
+15:24:46 robot_arb INFO Main loop started
+15:26:10 robot_arb INFO Signal 15 — shutting down...
+15:27:30 robot_arb INFO === Arbitrage Robot v1 ===
+15:27:30 robot_arb INFO Pair: GAZP / GZU6
+15:27:30 robot_arb INFO Account: 1225953 | Port: 5094 | Paper: True
+15:27:30 robot_arb INFO Params: entry_z=2.7 lookback=400 lots_a=100 lots_b=10 hedge_ratio=10
+15:27:30 robot_arb INFO Min profit: rub=77.77
+15:27:30 robot_arb INFO Risk: stop_loss_rub=50000
+15:27:30 FinamPy CRITICAL Ошибка доступа к системному хранилищу: No recommended backend was available. Install a recommended 3rd party backend package; or, install the keyrings.alt package if you want to use the non-recommended backends. See https://pypi.org/project/keyring for details.
+15:27:30 FinamPy CRITICAL Ошибка сохранения в системное хранилище: No recommended backend was available. Install a recommended 3rd party backend package; or, install the keyrings.alt package if you want to use the non-recommended backends. See https://pypi.org/project/keyring for details.
+15:27:31 robot_arb INFO FinamPy connected. Accounts: ['1225950', '1225951', '1225952', '1225953']
+15:27:31 robot_arb INFO Subscribed OrderBook: GAZP@RTSX, GZU6@RTSX
+15:27:31 robot_arb INFO Subscribed Quotes: GAZP@RTSX, GZU6@RTSX
+15:27:31 robot_arb INFO Warmup: waiting 10 sec for data streams...
+15:27:41 robot_arb INFO Warmup done. OB_A: False OB_B: False
+15:27:41 robot_arb INFO MOEX ISS poller started (fallback for stock prices)
+15:27:41 robot_arb INFO Main loop started
+15:27:41 robot_arb INFO API listening on :5094
+15:27:41 robot_arb INFO Endpoints: GET /status /health /params | POST /start /stop /pause /params
+15:27:44 robot_arb INFO Param updated: entry_z = 0.1 (was 2.7)
+15:27:44 robot_arb INFO Param updated: entry_z_long = -0.1 (was -5)
+15:27:44 robot_arb INFO Param updated: allow_long_basis = True (was True)
+15:27:59 robot_arb INFO Param updated: min_profit_value = 0.01 (was 77.77)
+15:28:10 robot_arb INFO Signal 15 — shutting down...
+15:28:24 robot_arb INFO === Arbitrage Robot v1 ===
+15:28:24 robot_arb INFO Pair: GAZP / GZU6
+15:28:24 robot_arb INFO Account: 1225953 | Port: 5095 | Paper: True
+15:28:24 robot_arb INFO Params: entry_z=0.1 lookback=400 lots_a=100 lots_b=10 hedge_ratio=10
+15:28:24 robot_arb INFO Min profit: rub=0.01
+15:28:24 robot_arb INFO Risk: stop_loss_rub=50000
+15:28:24 robot_arb INFO State loaded: pnl=0 trades=0 mode=stopped
+15:28:25 FinamPy CRITICAL Ошибка доступа к системному хранилищу: No recommended backend was available. Install a recommended 3rd party backend package; or, install the keyrings.alt package if you want to use the non-recommended backends. See https://pypi.org/project/keyring for details.
+15:28:25 FinamPy CRITICAL Ошибка сохранения в системное хранилище: No recommended backend was available. Install a recommended 3rd party backend package; or, install the keyrings.alt package if you want to use the non-recommended backends. See https://pypi.org/project/keyring for details.
+15:28:25 robot_arb INFO FinamPy connected. Accounts: ['1225950', '1225951', '1225952', '1225953']
+15:28:25 robot_arb INFO Subscribed OrderBook: GAZP@RTSX, GZU6@RTSX
+15:28:25 robot_arb INFO Subscribed Quotes: GAZP@RTSX, GZU6@RTSX
+15:28:25 robot_arb INFO Warmup: waiting 10 sec for data streams...
+15:28:35 robot_arb INFO Warmup done. OB_A: False OB_B: False
+15:28:35 robot_arb INFO MOEX ISS poller started (fallback for stock prices)
+15:28:35 robot_arb INFO Main loop started
+15:28:35 robot_arb INFO API listening on :5095
+15:28:35 robot_arb INFO Endpoints: GET /status /health /params | POST /start /stop /pause /params
+15:28:59 robot_arb INFO === Arbitrage Robot v1 ===
+15:28:59 robot_arb INFO Pair: GAZP / GZU6
+15:28:59 robot_arb INFO Account: 1225953 | Port: 5096 | Paper: True
+15:28:59 robot_arb INFO Params: entry_z=0.1 lookback=400 lots_a=100 lots_b=10 hedge_ratio=10
+15:28:59 robot_arb INFO Min profit: rub=0.01
+15:28:59 robot_arb INFO Risk: stop_loss_rub=50000
+15:29:00 FinamPy CRITICAL Ошибка доступа к системному хранилищу: No recommended backend was available. Install a recommended 3rd party backend package; or, install the keyrings.alt package if you want to use the non-recommended backends. See https://pypi.org/project/keyring for details.
+15:29:00 FinamPy CRITICAL Ошибка сохранения в системное хранилище: No recommended backend was available. Install a recommended 3rd party backend package; or, install the keyrings.alt package if you want to use the non-recommended backends. See https://pypi.org/project/keyring for details.
+15:29:00 robot_arb INFO FinamPy connected. Accounts: ['1225950', '1225951', '1225952', '1225953']
+15:29:00 robot_arb INFO Subscribed OrderBook: GAZP@RTSX, GZU6@RTSX
+15:29:00 robot_arb INFO Subscribed Quotes: GAZP@RTSX, GZU6@RTSX
+15:29:00 robot_arb INFO Warmup: waiting 10 sec for data streams...
+15:29:10 robot_arb INFO Warmup done. OB_A: False OB_B: False
+15:29:10 robot_arb INFO MOEX ISS poller started (fallback for stock prices)
+15:29:10 robot_arb INFO Main loop started
+15:29:10 robot_arb INFO API listening on :5096
+15:29:10 robot_arb INFO Endpoints: GET /status /health /params | POST /start /stop /pause /params
+15:29:13 robot_arb INFO Mode → RUNNING
+15:29:43 robot_arb INFO Param updated: entry_z = 0.1 (was 0.1)
+15:29:43 robot_arb INFO Param updated: entry_z_long = -0.1 (was -0.1)
+15:29:43 robot_arb INFO Param updated: allow_long_basis = True (was True)
+15:30:14 robot_arb INFO === Arbitrage Robot v1 ===
+15:30:14 robot_arb INFO Pair: GAZP / GZU6
+15:30:14 robot_arb INFO Account: 1225953 | Port: 5097 | Paper: True
+15:30:14 robot_arb INFO Params: entry_z=0.1 lookback=400 lots_a=100 lots_b=10 hedge_ratio=10
+15:30:14 robot_arb INFO Min profit: rub=0.01
+15:30:14 robot_arb INFO Risk: stop_loss_rub=50000
+15:30:15 FinamPy CRITICAL Ошибка доступа к системному хранилищу: No recommended backend was available. Install a recommended 3rd party backend package; or, install the keyrings.alt package if you want to use the non-recommended backends. See https://pypi.org/project/keyring for details.
+15:30:15 FinamPy CRITICAL Ошибка сохранения в системное хранилище: No recommended backend was available. Install a recommended 3rd party backend package; or, install the keyrings.alt package if you want to use the non-recommended backends. See https://pypi.org/project/keyring for details.
+15:30:16 robot_arb INFO FinamPy connected. Accounts: ['1225950', '1225951', '1225952', '1225953']
+15:30:16 robot_arb INFO Subscribed OrderBook: GAZP@RTSX, GZU6@RTSX
+15:30:16 robot_arb INFO Subscribed Quotes: GAZP@RTSX, GZU6@RTSX
+15:30:16 robot_arb INFO Warmup: waiting 10 sec for data streams...
+15:30:26 robot_arb INFO Warmup done. OB_A: False OB_B: False
+15:30:26 robot_arb INFO MOEX ISS poller started (fallback for stock prices)
+15:30:26 robot_arb INFO Main loop started
+15:30:26 robot_arb INFO API listening on :5097
+15:30:26 robot_arb INFO Endpoints: GET /status /health /params | POST /start /stop /pause /params
+15:30:26 robot_arb INFO Mode → RUNNING
+15:30:26 robot_arb INFO Param updated: lookback = 10 (was 400)
+15:30:26 robot_arb INFO Param updated: entry_z = 0.3 (was 0.1)
+15:30:26 robot_arb INFO Param updated: entry_z_long = -0.3 (was -0.1)
+15:30:26 robot_arb INFO Param updated: allow_long_basis = True (was True)
+15:30:26 robot_arb INFO Param updated: min_profit_value = 0.01 (was 0.01)
+15:30:41 robot_arb INFO ⚠️ CHECK_ENTRY returned signal: {'action': 'entry', 'side': 'long_basis', 'z': -2.9999999999999245, 'basis': 9075.6, 'price_a': 97.44, 'price_b': 10050.0}
+15:30:41 robot_arb INFO ENTRY SIGNAL long_basis | Z=-3.00 basis=9075.60 | A=97.44 B=10050.00 | limit sell 100 @ 97.43 | market buy 10 @ 10055.02
+15:30:41 orders_arb INFO 📄 PAPER ENTRY: sell 100 GAZP@RTSX @ 97.43 (LIMIT)
+15:30:41 orders_arb INFO 📄 PAPER ENTRY: buy 10 GZU6@RTSX @ 10055.02 (MARKET)
+15:30:41 strategy_arb INFO LAYER #1 OPEN LONG | A=97.43 ×100 | B=10055.02 ×10 | basis=9080.73 Z=-3.00 | layers=1
+15:30:41 robot_arb INFO LAYER OPEN LONG_BASIS #1 | A=97.43 ×100 | B=10055.02 ×10 | basis=9075.60 Z=-3.00 | layers=1 used_capital=116,740
+15:30:41 robot_arb INFO ⚠️ CHECK_ENTRY returned signal: {'action': 'entry', 'side': 'long_basis', 'z': -2.9999999999999245, 'basis': 9075.6, 'price_a': 97.44, 'price_b': 10050.0}
+15:30:41 robot_arb INFO ENTRY SIGNAL long_basis | Z=-3.00 basis=9075.60 | A=97.44 B=10050.00 | limit sell 100 @ 97.43 | market buy 10 @ 10055.02
+15:30:41 orders_arb INFO 📄 PAPER ENTRY: sell 100 GAZP@RTSX @ 97.43 (LIMIT)
+15:30:41 orders_arb INFO 📄 PAPER ENTRY: buy 10 GZU6@RTSX @ 10055.02 (MARKET)
+15:30:41 strategy_arb INFO LAYER #2 OPEN LONG | A=97.43 ×100 | B=10055.02 ×10 | basis=9080.73 Z=-3.00 | layers=2
+15:30:41 robot_arb INFO LAYER OPEN LONG_BASIS #2 | A=97.43 ×100 | B=10055.02 ×10 | basis=9075.60 Z=-3.00 | layers=2 used_capital=233,480
+15:30:42 robot_arb INFO ⚠️ CHECK_ENTRY returned signal: {'action': 'entry', 'side': 'long_basis', 'z': -2.0000000000000284, 'basis': 9075.6, 'price_a': 97.44, 'price_b': 10050.0}
+15:30:42 robot_arb INFO ENTRY SIGNAL long_basis | Z=-2.00 basis=9075.60 | A=97.44 B=10050.00 | limit sell 100 @ 97.43 | market buy 10 @ 10055.02
+15:30:42 orders_arb INFO 📄 PAPER ENTRY: sell 100 GAZP@RTSX @ 97.43 (LIMIT)
+15:30:42 orders_arb INFO 📄 PAPER ENTRY: buy 10 GZU6@RTSX @ 10055.02 (MARKET)
+15:30:42 strategy_arb INFO LAYER #3 OPEN LONG | A=97.43 ×100 | B=10055.02 ×10 | basis=9080.73 Z=-2.00 | layers=3
+15:30:42 robot_arb INFO LAYER OPEN LONG_BASIS #3 | A=97.43 ×100 | B=10055.02 ×10 | basis=9075.60 Z=-2.00 | layers=3 used_capital=350,220
+15:30:42 robot_arb INFO ⚠️ CHECK_ENTRY returned signal: {'action': 'entry', 'side': 'long_basis', 'z': -2.0000000000000284, 'basis': 9075.6, 'price_a': 97.44, 'price_b': 10050.0}
+15:30:42 robot_arb INFO ENTRY SIGNAL long_basis | Z=-2.00 basis=9075.60 | A=97.44 B=10050.00 | limit sell 100 @ 97.43 | market buy 10 @ 10055.02
+15:30:42 orders_arb INFO 📄 PAPER ENTRY: sell 100 GAZP@RTSX @ 97.43 (LIMIT)
+15:30:42 orders_arb INFO 📄 PAPER ENTRY: buy 10 GZU6@RTSX @ 10055.02 (MARKET)
+15:30:42 strategy_arb INFO LAYER #4 OPEN LONG | A=97.43 ×100 | B=10055.02 ×10 | basis=9080.73 Z=-2.00 | layers=4
+15:30:42 robot_arb INFO LAYER OPEN LONG_BASIS #4 | A=97.43 ×100 | B=10055.02 ×10 | basis=9075.60 Z=-2.00 | layers=4 used_capital=466,960
+15:30:43 robot_arb INFO ⚠️ CHECK_ENTRY returned signal: {'action': 'entry', 'side': 'long_basis', 'z': -1.527525231651922, 'basis': 9075.6, 'price_a': 97.44, 'price_b': 10050.0}
+15:30:43 robot_arb INFO ENTRY SIGNAL long_basis | Z=-1.53 basis=9075.60 | A=97.44 B=10050.00 | limit sell 100 @ 97.43 | market buy 10 @ 10055.02
+15:30:43 orders_arb INFO 📄 PAPER ENTRY: sell 100 GAZP@RTSX @ 97.43 (LIMIT)
+15:30:43 orders_arb INFO 📄 PAPER ENTRY: buy 10 GZU6@RTSX @ 10055.02 (MARKET)
+15:30:43 strategy_arb INFO LAYER #5 OPEN LONG | A=97.43 ×100 | B=10055.02 ×10 | basis=9080.73 Z=-1.53 | layers=5
+15:30:43 robot_arb INFO LAYER OPEN LONG_BASIS #5 | A=97.43 ×100 | B=10055.02 ×10 | basis=9075.60 Z=-1.53 | layers=5 used_capital=583,700
+15:30:43 robot_arb INFO ⚠️ CHECK_ENTRY returned signal: {'action': 'entry', 'side': 'long_basis', 'z': -1.527525231651922, 'basis': 9075.6, 'price_a': 97.44, 'price_b': 10050.0}
+15:30:43 robot_arb INFO ENTRY SIGNAL long_basis | Z=-1.53 basis=9075.60 | A=97.44 B=10050.00 | limit sell 100 @ 97.43 | market buy 10 @ 10055.02
+15:30:43 orders_arb INFO 📄 PAPER ENTRY: sell 100 GAZP@RTSX @ 97.43 (LIMIT)
+15:30:43 orders_arb INFO 📄 PAPER ENTRY: buy 10 GZU6@RTSX @ 10055.02 (MARKET)
+15:30:43 strategy_arb INFO LAYER #6 OPEN LONG | A=97.43 ×100 | B=10055.02 ×10 | basis=9080.73 Z=-1.53 | layers=6
+15:30:43 robot_arb INFO LAYER OPEN LONG_BASIS #6 | A=97.43 ×100 | B=10055.02 ×10 | basis=9075.60 Z=-1.53 | layers=6 used_capital=700,440
+15:30:44 robot_arb INFO ⚠️ CHECK_ENTRY returned signal: {'action': 'entry', 'side': 'long_basis', 'z': -1.2247448713916353, 'basis': 9075.6, 'price_a': 97.44, 'price_b': 10050.0}
+15:30:44 robot_arb INFO ENTRY SIGNAL long_basis | Z=-1.22 basis=9075.60 | A=97.44 B=10050.00 | limit sell 100 @ 97.43 | market buy 10 @ 10055.02
+15:30:44 orders_arb INFO 📄 PAPER ENTRY: sell 100 GAZP@RTSX @ 97.43 (LIMIT)
+15:30:44 orders_arb INFO 📄 PAPER ENTRY: buy 10 GZU6@RTSX @ 10055.02 (MARKET)
+15:30:44 strategy_arb INFO LAYER #7 OPEN LONG | A=97.43 ×100 | B=10055.02 ×10 | basis=9080.73 Z=-1.22 | layers=7
+15:30:44 robot_arb INFO LAYER OPEN LONG_BASIS #7 | A=97.43 ×100 | B=10055.02 ×10 | basis=9075.60 Z=-1.22 | layers=7 used_capital=817,180
+15:30:44 robot_arb INFO ⚠️ CHECK_ENTRY returned signal: {'action': 'entry', 'side': 'long_basis', 'z': -1.2247448713916353, 'basis': 9075.6, 'price_a': 97.44, 'price_b': 10050.0}
+15:30:44 robot_arb INFO ENTRY SIGNAL long_basis | Z=-1.22 basis=9075.60 | A=97.44 B=10050.00 | limit sell 100 @ 97.43 | market buy 10 @ 10055.02
+15:30:44 orders_arb INFO 📄 PAPER ENTRY: sell 100 GAZP@RTSX @ 97.43 (LIMIT)
+15:30:44 orders_arb INFO 📄 PAPER ENTRY: buy 10 GZU6@RTSX @ 10055.02 (MARKET)
+15:30:44 strategy_arb INFO LAYER #8 OPEN LONG | A=97.43 ×100 | B=10055.02 ×10 | basis=9080.73 Z=-1.22 | layers=8
+15:30:44 robot_arb INFO LAYER OPEN LONG_BASIS #8 | A=97.43 ×100 | B=10055.02 ×10 | basis=9075.60 Z=-1.22 | layers=8 used_capital=933,920
+15:35:53 robot_arb INFO ⚠️ CHECK_ENTRY returned signal: {'action': 'entry', 'side': 'short_basis', 'z': 0.12342349024820246, 'basis': 9049.6, 'price_a': 97.14, 'price_b': 10021.0}
+15:35:53 robot_arb INFO ENTRY SIGNAL short_basis | Z=0.12 basis=9049.60 | A=97.14 B=10021.00 | limit buy 100 @ 97.14 | market sell 10 @ 10015.99
+15:35:53 orders_arb INFO 📄 PAPER ENTRY: buy 100 GAZP@RTSX @ 97.14 (LIMIT)
+15:35:53 orders_arb INFO 📄 PAPER ENTRY: sell 10 GZU6@RTSX @ 10015.99 (MARKET)
+15:35:53 strategy_arb INFO LAYER #1 OPEN SHORT | A=97.14 ×100 | B=10015.99 ×10 | basis=9044.59 Z=0.12 | layers=1
+15:35:53 robot_arb INFO LAYER OPEN SHORT_BASIS #1 | A=97.14 ×100 | B=10015.99 ×10 | basis=9049.60 Z=0.12 | layers=1 used_capital=116,450
+15:35:53 robot_arb INFO ⚠️ CHECK_ENTRY returned signal: {'action': 'entry', 'side': 'short_basis', 'z': 0.12342349024820246, 'basis': 9049.6, 'price_a': 97.14, 'price_b': 10021.0}
+15:35:53 robot_arb INFO ENTRY SIGNAL short_basis | Z=0.12 basis=9049.60 | A=97.14 B=10021.00 | limit buy 100 @ 97.14 | market sell 10 @ 10015.99
+15:35:53 orders_arb INFO 📄 PAPER ENTRY: buy 100 GAZP@RTSX @ 97.14 (LIMIT)
+15:35:53 orders_arb INFO 📄 PAPER ENTRY: sell 10 GZU6@RTSX @ 10015.99 (MARKET)
+15:35:53 strategy_arb INFO LAYER #2 OPEN SHORT | A=97.14 ×100 | B=10015.99 ×10 | basis=9044.59 Z=0.12 | layers=2
+15:35:53 robot_arb INFO LAYER OPEN SHORT_BASIS #2 | A=97.14 ×100 | B=10015.99 ×10 | basis=9049.60 Z=0.12 | layers=2 used_capital=232,900
+15:35:54 robot_arb INFO ⚠️ CHECK_ENTRY returned signal: {'action': 'entry', 'side': 'short_basis', 'z': 0.12578430214549, 'basis': 9049.6, 'price_a': 97.14, 'price_b': 10021.0}
+15:35:54 robot_arb INFO ENTRY SIGNAL short_basis | Z=0.13 basis=9049.60 | A=97.14 B=10021.00 | limit buy 100 @ 97.14 | market sell 10 @ 10015.99
+15:35:54 orders_arb INFO 📄 PAPER ENTRY: buy 100 GAZP@RTSX @ 97.14 (LIMIT)
+15:35:54 orders_arb INFO 📄 PAPER ENTRY: sell 10 GZU6@RTSX @ 10015.99 (MARKET)
+15:35:54 strategy_arb INFO LAYER #3 OPEN SHORT | A=97.14 ×100 | B=10015.99 ×10 | basis=9044.59 Z=0.13 | layers=3
+15:35:54 robot_arb INFO LAYER OPEN SHORT_BASIS #3 | A=97.14 ×100 | B=10015.99 ×10 | basis=9049.60 Z=0.13 | layers=3 used_capital=349,350
+15:35:54 robot_arb INFO ⚠️ CHECK_ENTRY returned signal: {'action': 'entry', 'side': 'short_basis', 'z': 0.12578430214549, 'basis': 9049.6, 'price_a': 97.14, 'price_b': 10021.0}
+15:35:54 robot_arb INFO ENTRY SIGNAL short_basis | Z=0.13 basis=9049.60 | A=97.14 B=10021.00 | limit buy 100 @ 97.14 | market sell 10 @ 10015.99
+15:35:54 orders_arb INFO 📄 PAPER ENTRY: buy 100 GAZP@RTSX @ 97.14 (LIMIT)
+15:35:54 orders_arb INFO 📄 PAPER ENTRY: sell 10 GZU6@RTSX @ 10015.99 (MARKET)
+15:35:54 strategy_arb INFO LAYER #4 OPEN SHORT | A=97.14 ×100 | B=10015.99 ×10 | basis=9044.59 Z=0.13 | layers=4
+15:35:54 robot_arb INFO LAYER OPEN SHORT_BASIS #4 | A=97.14 ×100 | B=10015.99 ×10 | basis=9049.60 Z=0.13 | layers=4 used_capital=465,800
+15:35:55 robot_arb INFO ⚠️ CHECK_ENTRY returned signal: {'action': 'entry', 'side': 'short_basis', 'z': 0.1281518412395771, 'basis': 9049.6, 'price_a': 97.14, 'price_b': 10021.0}
+15:35:55 robot_arb INFO ENTRY SIGNAL short_basis | Z=0.13 basis=9049.60 | A=97.14 B=10021.00 | limit buy 100 @ 97.14 | market sell 10 @ 10015.99
+15:35:55 orders_arb INFO 📄 PAPER ENTRY: buy 100 GAZP@RTSX @ 97.14 (LIMIT)
+15:35:55 orders_arb INFO 📄 PAPER ENTRY: sell 10 GZU6@RTSX @ 10015.99 (MARKET)
+15:35:55 strategy_arb INFO LAYER #5 OPEN SHORT | A=97.14 ×100 | B=10015.99 ×10 | basis=9044.59 Z=0.13 | layers=5
+15:35:55 robot_arb INFO LAYER OPEN SHORT_BASIS #5 | A=97.14 ×100 | B=10015.99 ×10 | basis=9049.60 Z=0.13 | layers=5 used_capital=582,250
+15:35:55 robot_arb INFO ⚠️ CHECK_ENTRY returned signal: {'action': 'entry', 'side': 'short_basis', 'z': 0.1281518412395771, 'basis': 9049.6, 'price_a': 97.14, 'price_b': 10021.0}
+15:35:55 robot_arb INFO ENTRY SIGNAL short_basis | Z=0.13 basis=9049.60 | A=97.14 B=10021.00 | limit buy 100 @ 97.14 | market sell 10 @ 10015.99
+15:35:55 orders_arb INFO 📄 PAPER ENTRY: buy 100 GAZP@RTSX @ 97.14 (LIMIT)
+15:35:55 orders_arb INFO 📄 PAPER ENTRY: sell 10 GZU6@RTSX @ 10015.99 (MARKET)
+15:35:55 strategy_arb INFO LAYER #6 OPEN SHORT | A=97.14 ×100 | B=10015.99 ×10 | basis=9044.59 Z=0.13 | layers=6
+15:35:55 robot_arb INFO LAYER OPEN SHORT_BASIS #6 | A=97.14 ×100 | B=10015.99 ×10 | basis=9049.60 Z=0.13 | layers=6 used_capital=698,700
+15:35:56 robot_arb INFO ⚠️ CHECK_ENTRY returned signal: {'action': 'entry', 'side': 'short_basis', 'z': 0.13052618192304075, 'basis': 9049.6, 'price_a': 97.14, 'price_b': 10021.0}
+15:35:56 robot_arb INFO ENTRY SIGNAL short_basis | Z=0.13 basis=9049.60 | A=97.14 B=10021.00 | limit buy 100 @ 97.14 | market sell 10 @ 10015.99
+15:35:56 orders_arb INFO 📄 PAPER ENTRY: buy 100 GAZP@RTSX @ 97.14 (LIMIT)
+15:35:56 orders_arb INFO 📄 PAPER ENTRY: sell 10 GZU6@RTSX @ 10015.99 (MARKET)
+15:35:56 strategy_arb INFO LAYER #7 OPEN SHORT | A=97.14 ×100 | B=10015.99 ×10 | basis=9044.59 Z=0.13 | layers=7
+15:35:56 robot_arb INFO LAYER OPEN SHORT_BASIS #7 | A=97.14 ×100 | B=10015.99 ×10 | basis=9049.60 Z=0.13 | layers=7 used_capital=815,150
+15:35:56 robot_arb INFO ⚠️ CHECK_ENTRY returned signal: {'action': 'entry', 'side': 'short_basis', 'z': 0.13052618192304075, 'basis': 9049.6, 'price_a': 97.14, 'price_b': 10021.0}
+15:35:56 robot_arb INFO ENTRY SIGNAL short_basis | Z=0.13 basis=9049.60 | A=97.14 B=10021.00 | limit buy 100 @ 97.14 | market sell 10 @ 10015.99
+15:35:56 orders_arb INFO 📄 PAPER ENTRY: buy 100 GAZP@RTSX @ 97.14 (LIMIT)
+15:35:56 orders_arb INFO 📄 PAPER ENTRY: sell 10 GZU6@RTSX @ 10015.99 (MARKET)
+15:35:56 strategy_arb INFO LAYER #8 OPEN SHORT | A=97.14 ×100 | B=10015.99 ×10 | basis=9044.59 Z=0.13 | layers=8
+15:35:56 robot_arb INFO LAYER OPEN SHORT_BASIS #8 | A=97.14 ×100 | B=10015.99 ×10 | basis=9049.60 Z=0.13 | layers=8 used_capital=931,600
+16:09:52 robot_arb INFO EXIT layer #1 reason=profit_target | limit sell 100 @ 97.00 | market buy 10 @ 10001.00
+16:09:52 orders_arb INFO 📄 PAPER ENTRY: sell 100 GAZP@RTSX @ 97.00 (LIMIT)
+16:09:52 orders_arb INFO 📄 PAPER ENTRY: buy 10 GZU6@RTSX @ 10001.00 (MARKET)
+16:09:52 strategy_arb INFO LAYER #1 CLOSE SHORT | PnL=-67.03₽ (gross=+9.92₽ comm=76.95₽) | reason=profit_target | hold=34min | layers=7
+16:09:52 robot_arb INFO EXIT layer #2 reason=profit_target | limit sell 100 @ 97.00 | market buy 10 @ 10001.00
+16:09:52 orders_arb INFO 📄 PAPER ENTRY: sell 100 GAZP@RTSX @ 97.00 (LIMIT)
+16:09:52 orders_arb INFO 📄 PAPER ENTRY: buy 10 GZU6@RTSX @ 10001.00 (MARKET)
+16:09:52 strategy_arb INFO LAYER #2 CLOSE SHORT | PnL=-67.03₽ (gross=+9.92₽ comm=76.95₽) | reason=profit_target | hold=34min | layers=6
+16:09:53 robot_arb INFO EXIT layer #3 reason=profit_target | limit sell 100 @ 97.00 | market buy 10 @ 10001.00
+16:09:53 orders_arb INFO 📄 PAPER ENTRY: sell 100 GAZP@RTSX @ 97.00 (LIMIT)
+16:09:53 orders_arb INFO 📄 PAPER ENTRY: buy 10 GZU6@RTSX @ 10001.00 (MARKET)
+16:09:53 strategy_arb INFO LAYER #3 CLOSE SHORT | PnL=-67.03₽ (gross=+9.92₽ comm=76.95₽) | reason=profit_target | hold=34min | layers=5
+16:09:53 robot_arb INFO EXIT layer #4 reason=profit_target | limit sell 100 @ 97.00 | market buy 10 @ 10001.00
+16:09:53 orders_arb INFO 📄 PAPER ENTRY: sell 100 GAZP@RTSX @ 97.00 (LIMIT)
+16:09:53 orders_arb INFO 📄 PAPER ENTRY: buy 10 GZU6@RTSX @ 10001.00 (MARKET)
+16:09:53 strategy_arb INFO LAYER #4 CLOSE SHORT | PnL=-67.03₽ (gross=+9.92₽ comm=76.95₽) | reason=profit_target | hold=34min | layers=4
+16:09:54 robot_arb INFO EXIT layer #5 reason=profit_target | limit sell 100 @ 97.00 | market buy 10 @ 10001.00
+16:09:54 orders_arb INFO 📄 PAPER ENTRY: sell 100 GAZP@RTSX @ 97.00 (LIMIT)
+16:09:54 orders_arb INFO 📄 PAPER ENTRY: buy 10 GZU6@RTSX @ 10001.00 (MARKET)
+16:09:54 strategy_arb INFO LAYER #5 CLOSE SHORT | PnL=-67.03₽ (gross=+9.92₽ comm=76.95₽) | reason=profit_target | hold=34min | layers=3
+16:09:54 robot_arb INFO EXIT layer #6 reason=profit_target | limit sell 100 @ 97.00 | market buy 10 @ 10001.00
+16:09:54 orders_arb INFO 📄 PAPER ENTRY: sell 100 GAZP@RTSX @ 97.00 (LIMIT)
+16:09:54 orders_arb INFO 📄 PAPER ENTRY: buy 10 GZU6@RTSX @ 10001.00 (MARKET)
+16:09:54 strategy_arb INFO LAYER #6 CLOSE SHORT | PnL=-67.03₽ (gross=+9.92₽ comm=76.95₽) | reason=profit_target | hold=34min | layers=2
+16:09:55 robot_arb INFO EXIT layer #7 reason=profit_target | limit sell 100 @ 97.00 | market buy 10 @ 10001.00
+16:09:55 orders_arb INFO 📄 PAPER ENTRY: sell 100 GAZP@RTSX @ 97.00 (LIMIT)
+16:09:55 orders_arb INFO 📄 PAPER ENTRY: buy 10 GZU6@RTSX @ 10001.00 (MARKET)
+16:09:55 strategy_arb INFO LAYER #7 CLOSE SHORT | PnL=-67.03₽ (gross=+9.92₽ comm=76.95₽) | reason=profit_target | hold=34min | layers=1
+16:09:55 robot_arb INFO EXIT layer #8 reason=profit_target | limit sell 100 @ 97.00 | market buy 10 @ 10001.00
+16:09:55 orders_arb INFO 📄 PAPER ENTRY: sell 100 GAZP@RTSX @ 97.00 (LIMIT)
+16:09:55 orders_arb INFO 📄 PAPER ENTRY: buy 10 GZU6@RTSX @ 10001.00 (MARKET)
+16:09:55 strategy_arb INFO LAYER #8 CLOSE SHORT | PnL=-67.03₽ (gross=+9.92₽ comm=76.95₽) | reason=profit_target | hold=34min | layers=0
+16:09:56 robot_arb INFO ⚠️ CHECK_ENTRY returned signal: {'action': 'entry', 'side': 'long_basis', 'z': -1.55436435501051, 'basis': 9029.8, 'price_a': 97.02, 'price_b': 10000.0}
+16:09:56 robot_arb INFO ENTRY SIGNAL long_basis | Z=-1.55 basis=9029.80 | A=97.02 B=10000.00 | limit sell 100 @ 97.00 | market buy 10 @ 10005.00
+16:09:56 orders_arb INFO 📄 PAPER ENTRY: sell 100 GAZP@RTSX @ 97.00 (LIMIT)
+16:09:56 orders_arb INFO 📄 PAPER ENTRY: buy 10 GZU6@RTSX @ 10005.00 (MARKET)
+16:09:56 strategy_arb INFO LAYER #9 OPEN LONG | A=97.00 ×100 | B=10005.00 ×10 | basis=9035.00 Z=-1.55 | layers=1
+16:09:56 robot_arb INFO LAYER OPEN LONG_BASIS #9 | A=97.00 ×100 | B=10005.00 ×10 | basis=9029.80 Z=-1.55 | layers=1 used_capital=116,310
+16:09:57 robot_arb INFO ⚠️ CHECK_ENTRY returned signal: {'action': 'entry', 'side': 'long_basis', 'z': -1.55436435501051, 'basis': 9029.8, 'price_a': 97.02, 'price_b': 10000.0}
+16:09:57 robot_arb INFO ENTRY SIGNAL long_basis | Z=-1.55 basis=9029.80 | A=97.02 B=10000.00 | limit sell 100 @ 97.00 | market buy 10 @ 10005.00
+16:09:57 orders_arb INFO 📄 PAPER ENTRY: sell 100 GAZP@RTSX @ 97.00 (LIMIT)
+16:09:57 orders_arb INFO 📄 PAPER ENTRY: buy 10 GZU6@RTSX @ 10005.00 (MARKET)
+16:09:57 strategy_arb INFO LAYER #10 OPEN LONG | A=97.00 ×100 | B=10005.00 ×10 | basis=9035.00 Z=-1.55 | layers=2
+16:09:57 robot_arb INFO LAYER OPEN LONG_BASIS #10 | A=97.00 ×100 | B=10005.00 ×10 | basis=9029.80 Z=-1.55 | layers=2 used_capital=232,620
+16:09:57 robot_arb INFO ⚠️ CHECK_ENTRY returned signal: {'action': 'entry', 'side': 'long_basis', 'z': -1.550092034401484, 'basis': 9029.8, 'price_a': 97.02, 'price_b': 10000.0}
+16:09:57 robot_arb INFO ENTRY SIGNAL long_basis | Z=-1.55 basis=9029.80 | A=97.02 B=10000.00 | limit sell 100 @ 97.00 | market buy 10 @ 10005.00
+16:09:57 orders_arb INFO 📄 PAPER ENTRY: sell 100 GAZP@RTSX @ 97.00 (LIMIT)
+16:09:57 orders_arb INFO 📄 PAPER ENTRY: buy 10 GZU6@RTSX @ 10005.00 (MARKET)
+16:09:57 strategy_arb INFO LAYER #11 OPEN LONG | A=97.00 ×100 | B=10005.00 ×10 | basis=9035.00 Z=-1.55 | layers=3
+16:09:57 robot_arb INFO LAYER OPEN LONG_BASIS #11 | A=97.00 ×100 | B=10005.00 ×10 | basis=9029.80 Z=-1.55 | layers=3 used_capital=348,930
+16:09:58 robot_arb INFO ⚠️ CHECK_ENTRY returned signal: {'action': 'entry', 'side': 'long_basis', 'z': -1.550092034401484, 'basis': 9029.8, 'price_a': 97.02, 'price_b': 10000.0}
+16:09:58 robot_arb INFO ENTRY SIGNAL long_basis | Z=-1.55 basis=9029.80 | A=97.02 B=10000.00 | limit sell 100 @ 97.00 | market buy 10 @ 10005.00
+16:09:58 orders_arb INFO 📄 PAPER ENTRY: sell 100 GAZP@RTSX @ 97.00 (LIMIT)
+16:09:58 orders_arb INFO 📄 PAPER ENTRY: buy 10 GZU6@RTSX @ 10005.00 (MARKET)
+16:09:58 strategy_arb INFO LAYER #12 OPEN LONG | A=97.00 ×100 | B=10005.00 ×10 | basis=9035.00 Z=-1.55 | layers=4
+16:09:58 robot_arb INFO LAYER OPEN LONG_BASIS #12 | A=97.00 ×100 | B=10005.00 ×10 | basis=9029.80 Z=-1.55 | layers=4 used_capital=465,240
+16:09:58 robot_arb INFO ⚠️ CHECK_ENTRY returned signal: {'action': 'entry', 'side': 'long_basis', 'z': -1.545843557234093, 'basis': 9029.8, 'price_a': 97.02, 'price_b': 10000.0}
+16:09:58 robot_arb INFO ENTRY SIGNAL long_basis | Z=-1.55 basis=9029.80 | A=97.02 B=10000.00 | limit sell 100 @ 97.00 | market buy 10 @ 10005.00
+16:09:58 orders_arb INFO 📄 PAPER ENTRY: sell 100 GAZP@RTSX @ 97.00 (LIMIT)
+16:09:58 orders_arb INFO 📄 PAPER ENTRY: buy 10 GZU6@RTSX @ 10005.00 (MARKET)
+16:09:58 strategy_arb INFO LAYER #13 OPEN LONG | A=97.00 ×100 | B=10005.00 ×10 | basis=9035.00 Z=-1.55 | layers=5
+16:09:58 robot_arb INFO LAYER OPEN LONG_BASIS #13 | A=97.00 ×100 | B=10005.00 ×10 | basis=9029.80 Z=-1.55 | layers=5 used_capital=581,550
+16:09:59 robot_arb INFO ⚠️ CHECK_ENTRY returned signal: {'action': 'entry', 'side': 'long_basis', 'z': -1.545843557234093, 'basis': 9029.8, 'price_a': 97.02, 'price_b': 10000.0}
+16:09:59 robot_arb INFO ENTRY SIGNAL long_basis | Z=-1.55 basis=9029.80 | A=97.02 B=10000.00 | limit sell 100 @ 97.00 | market buy 10 @ 10005.00
+16:09:59 orders_arb INFO 📄 PAPER ENTRY: sell 100 GAZP@RTSX @ 97.00 (LIMIT)
+16:09:59 orders_arb INFO 📄 PAPER ENTRY: buy 10 GZU6@RTSX @ 10005.00 (MARKET)
+16:09:59 strategy_arb INFO LAYER #14 OPEN LONG | A=97.00 ×100 | B=10005.00 ×10 | basis=9035.00 Z=-1.55 | layers=6
+16:09:59 robot_arb INFO LAYER OPEN LONG_BASIS #14 | A=97.00 ×100 | B=10005.00 ×10 | basis=9029.80 Z=-1.55 | layers=6 used_capital=697,860
+16:09:59 robot_arb INFO ⚠️ CHECK_ENTRY returned signal: {'action': 'entry', 'side': 'long_basis', 'z': -1.5386824160752228, 'basis': 9029.8, 'price_a': 97.02, 'price_b': 10000.0}
+16:09:59 robot_arb INFO ENTRY SIGNAL long_basis | Z=-1.54 basis=9029.80 | A=97.02 B=10000.00 | limit sell 100 @ 97.00 | market buy 10 @ 10005.00
+16:09:59 orders_arb INFO 📄 PAPER ENTRY: sell 100 GAZP@RTSX @ 97.00 (LIMIT)
+16:09:59 orders_arb INFO 📄 PAPER ENTRY: buy 10 GZU6@RTSX @ 10005.00 (MARKET)
+16:09:59 strategy_arb INFO LAYER #15 OPEN LONG | A=97.00 ×100 | B=10005.00 ×10 | basis=9035.00 Z=-1.54 | layers=7
+16:09:59 robot_arb INFO LAYER OPEN LONG_BASIS #15 | A=97.00 ×100 | B=10005.00 ×10 | basis=9029.80 Z=-1.54 | layers=7 used_capital=814,170
+16:10:00 robot_arb INFO ⚠️ CHECK_ENTRY returned signal: {'action': 'entry', 'side': 'long_basis', 'z': -1.5386824160752228, 'basis': 9029.8, 'price_a': 97.02, 'price_b': 10000.0}
+16:10:00 robot_arb INFO ENTRY SIGNAL long_basis | Z=-1.54 basis=9029.80 | A=97.02 B=10000.00 | limit sell 100 @ 97.00 | market buy 10 @ 10005.00
+16:10:00 orders_arb INFO 📄 PAPER ENTRY: sell 100 GAZP@RTSX @ 97.00 (LIMIT)
+16:10:00 orders_arb INFO 📄 PAPER ENTRY: buy 10 GZU6@RTSX @ 10005.00 (MARKET)
+16:10:00 strategy_arb INFO LAYER #16 OPEN LONG | A=97.00 ×100 | B=10005.00 ×10 | basis=9035.00 Z=-1.54 | layers=8
+16:10:00 robot_arb INFO LAYER OPEN LONG_BASIS #16 | A=97.00 ×100 | B=10005.00 ×10 | basis=9029.80 Z=-1.54 | layers=8 used_capital=930,480
+16:19:37 robot_arb INFO EXIT layer #9 reason=profit_target | limit buy 100 @ 96.86 | market sell 10 @ 9997.00
+16:19:37 orders_arb INFO 📄 PAPER ENTRY: buy 100 GAZP@RTSX @ 96.86 (LIMIT)
+16:19:37 orders_arb INFO 📄 PAPER ENTRY: sell 10 GZU6@RTSX @ 9997.00 (MARKET)
+16:19:37 strategy_arb INFO LAYER #9 CLOSE LONG | PnL=-16.86₽ (gross=+59.99₽ comm=76.85₽) | reason=profit_target | hold=10min | layers=7
+16:19:37 robot_arb INFO EXIT layer #10 reason=profit_target | limit buy 100 @ 96.86 | market sell 10 @ 9997.00
+16:19:37 orders_arb INFO 📄 PAPER ENTRY: buy 100 GAZP@RTSX @ 96.86 (LIMIT)
+16:19:37 orders_arb INFO 📄 PAPER ENTRY: sell 10 GZU6@RTSX @ 9997.00 (MARKET)
+16:19:37 strategy_arb INFO LAYER #10 CLOSE LONG | PnL=-16.86₽ (gross=+59.99₽ comm=76.85₽) | reason=profit_target | hold=10min | layers=6
+16:19:38 robot_arb INFO EXIT layer #11 reason=profit_target | limit buy 100 @ 96.86 | market sell 10 @ 9997.00
+16:19:38 orders_arb INFO 📄 PAPER ENTRY: buy 100 GAZP@RTSX @ 96.86 (LIMIT)
+16:19:38 orders_arb INFO 📄 PAPER ENTRY: sell 10 GZU6@RTSX @ 9997.00 (MARKET)
+16:19:38 strategy_arb INFO LAYER #11 CLOSE LONG | PnL=-16.86₽ (gross=+59.99₽ comm=76.85₽) | reason=profit_target | hold=10min | layers=5
+16:19:38 robot_arb INFO EXIT layer #12 reason=profit_target | limit buy 100 @ 96.86 | market sell 10 @ 9997.00
+16:19:38 orders_arb INFO 📄 PAPER ENTRY: buy 100 GAZP@RTSX @ 96.86 (LIMIT)
+16:19:38 orders_arb INFO 📄 PAPER ENTRY: sell 10 GZU6@RTSX @ 9997.00 (MARKET)
+16:19:38 strategy_arb INFO LAYER #12 CLOSE LONG | PnL=-16.86₽ (gross=+59.99₽ comm=76.85₽) | reason=profit_target | hold=10min | layers=4
+16:19:39 robot_arb INFO EXIT layer #13 reason=profit_target | limit buy 100 @ 96.86 | market sell 10 @ 9997.00
+16:19:39 orders_arb INFO 📄 PAPER ENTRY: buy 100 GAZP@RTSX @ 96.86 (LIMIT)
+16:19:39 orders_arb INFO 📄 PAPER ENTRY: sell 10 GZU6@RTSX @ 9997.00 (MARKET)
+16:19:39 strategy_arb INFO LAYER #13 CLOSE LONG | PnL=-16.86₽ (gross=+59.99₽ comm=76.85₽) | reason=profit_target | hold=10min | layers=3
+16:19:39 robot_arb INFO EXIT layer #14 reason=profit_target | limit buy 100 @ 96.86 | market sell 10 @ 9997.00
+16:19:39 orders_arb INFO 📄 PAPER ENTRY: buy 100 GAZP@RTSX @ 96.86 (LIMIT)
+16:19:39 orders_arb INFO 📄 PAPER ENTRY: sell 10 GZU6@RTSX @ 9997.00 (MARKET)
+16:19:39 strategy_arb INFO LAYER #14 CLOSE LONG | PnL=-16.86₽ (gross=+59.99₽ comm=76.85₽) | reason=profit_target | hold=10min | layers=2
+16:19:40 robot_arb INFO EXIT layer #15 reason=profit_target | limit buy 100 @ 96.86 | market sell 10 @ 9997.00
+16:19:40 orders_arb INFO 📄 PAPER ENTRY: buy 100 GAZP@RTSX @ 96.86 (LIMIT)
+16:19:40 orders_arb INFO 📄 PAPER ENTRY: sell 10 GZU6@RTSX @ 9997.00 (MARKET)
+16:19:40 strategy_arb INFO LAYER #15 CLOSE LONG | PnL=-16.86₽ (gross=+59.99₽ comm=76.85₽) | reason=profit_target | hold=10min | layers=1
+16:19:40 robot_arb INFO EXIT layer #16 reason=profit_target | limit buy 100 @ 96.86 | market sell 10 @ 9997.00
+16:19:40 orders_arb INFO 📄 PAPER ENTRY: buy 100 GAZP@RTSX @ 96.86 (LIMIT)
+16:19:40 orders_arb INFO 📄 PAPER ENTRY: sell 10 GZU6@RTSX @ 9997.00 (MARKET)
+16:19:40 strategy_arb INFO LAYER #16 CLOSE LONG | PnL=-16.86₽ (gross=+59.99₽ comm=76.85₽) | reason=profit_target | hold=10min | layers=0
+16:19:41 robot_arb INFO ⚠️ CHECK_ENTRY returned signal: {'action': 'entry', 'side': 'short_basis', 'z': 1.9363927236651532, 'basis': 9027.5, 'price_a': 96.85, 'price_b': 9996.0}
+16:19:41 robot_arb INFO ENTRY SIGNAL short_basis | Z=1.94 basis=9027.50 | A=96.85 B=9996.00 | limit buy 100 @ 96.86 | market sell 10 @ 9991.00
+16:19:41 orders_arb INFO 📄 PAPER ENTRY: buy 100 GAZP@RTSX @ 96.86 (LIMIT)
+16:19:41 orders_arb INFO 📄 PAPER ENTRY: sell 10 GZU6@RTSX @ 9991.00 (MARKET)
+16:19:41 strategy_arb INFO LAYER #17 OPEN SHORT | A=96.86 ×100 | B=9991.00 ×10 | basis=9022.40 Z=1.94 | layers=1
+16:19:41 robot_arb INFO LAYER OPEN SHORT_BASIS #17 | A=96.86 ×100 | B=9991.00 ×10 | basis=9027.50 Z=1.94 | layers=1 used_capital=116,170
+16:19:42 robot_arb INFO ⚠️ CHECK_ENTRY returned signal: {'action': 'entry', 'side': 'short_basis', 'z': 1.9242878842327449, 'basis': 9027.5, 'price_a': 96.85, 'price_b': 9996.0}
+16:19:42 robot_arb INFO ENTRY SIGNAL short_basis | Z=1.92 basis=9027.50 | A=96.85 B=9996.00 | limit buy 100 @ 96.86 | market sell 10 @ 9991.00
+16:19:42 orders_arb INFO 📄 PAPER ENTRY: buy 100 GAZP@RTSX @ 96.86 (LIMIT)
+16:19:42 orders_arb INFO 📄 PAPER ENTRY: sell 10 GZU6@RTSX @ 9991.00 (MARKET)
+16:19:42 strategy_arb INFO LAYER #18 OPEN SHORT | A=96.86 ×100 | B=9991.00 ×10 | basis=9022.40 Z=1.92 | layers=2
+16:19:42 robot_arb INFO LAYER OPEN SHORT_BASIS #18 | A=96.86 ×100 | B=9991.00 ×10 | basis=9027.50 Z=1.92 | layers=2 used_capital=232,340
+16:19:42 robot_arb INFO ⚠️ CHECK_ENTRY returned signal: {'action': 'entry', 'side': 'short_basis', 'z': 1.9242878842327449, 'basis': 9027.5, 'price_a': 96.85, 'price_b': 9996.0}
+16:19:42 robot_arb INFO ENTRY SIGNAL short_basis | Z=1.92 basis=9027.50 | A=96.85 B=9996.00 | limit buy 100 @ 96.86 | market sell 10 @ 9991.00
+16:19:42 orders_arb INFO 📄 PAPER ENTRY: buy 100 GAZP@RTSX @ 96.86 (LIMIT)
+16:19:42 orders_arb INFO 📄 PAPER ENTRY: sell 10 GZU6@RTSX @ 9991.00 (MARKET)
+16:19:42 strategy_arb INFO LAYER #19 OPEN SHORT | A=96.86 ×100 | B=9991.00 ×10 | basis=9022.40 Z=1.92 | layers=3
+16:19:42 robot_arb INFO LAYER OPEN SHORT_BASIS #19 | A=96.86 ×100 | B=9991.00 ×10 | basis=9027.50 Z=1.92 | layers=3 used_capital=348,510
+16:19:43 robot_arb INFO ⚠️ CHECK_ENTRY returned signal: {'action': 'entry', 'side': 'short_basis', 'z': 1.448910896247363, 'basis': 9027.2, 'price_a': 96.88, 'price_b': 9996.0}
+16:19:43 robot_arb INFO ENTRY SIGNAL short_basis | Z=1.45 basis=9027.20 | A=96.88 B=9996.00 | limit buy 100 @ 96.88 | market sell 10 @ 9991.00
+16:19:43 orders_arb INFO 📄 PAPER ENTRY: buy 100 GAZP@RTSX @ 96.88 (LIMIT)
+16:19:43 orders_arb INFO 📄 PAPER ENTRY: sell 10 GZU6@RTSX @ 9991.00 (MARKET)
+16:19:43 strategy_arb INFO LAYER #20 OPEN SHORT | A=96.88 ×100 | B=9991.00 ×10 | basis=9022.20 Z=1.45 | layers=4
+16:19:43 robot_arb INFO LAYER OPEN SHORT_BASIS #20 | A=96.88 ×100 | B=9991.00 ×10 | basis=9027.20 Z=1.45 | layers=4 used_capital=464,700
+16:19:43 robot_arb INFO ⚠️ CHECK_ENTRY returned signal: {'action': 'entry', 'side': 'short_basis', 'z': 1.448910896247363, 'basis': 9027.2, 'price_a': 96.88, 'price_b': 9996.0}
+16:19:43 robot_arb INFO ENTRY SIGNAL short_basis | Z=1.45 basis=9027.20 | A=96.88 B=9996.00 | limit buy 100 @ 96.88 | market sell 10 @ 9991.00
+16:19:43 orders_arb INFO 📄 PAPER ENTRY: buy 100 GAZP@RTSX @ 96.88 (LIMIT)
+16:19:43 orders_arb INFO 📄 PAPER ENTRY: sell 10 GZU6@RTSX @ 9991.00 (MARKET)
+16:19:43 strategy_arb INFO LAYER #21 OPEN SHORT | A=96.88 ×100 | B=9991.00 ×10 | basis=9022.20 Z=1.45 | layers=5
+16:19:43 robot_arb INFO LAYER OPEN SHORT_BASIS #21 | A=96.88 ×100 | B=9991.00 ×10 | basis=9027.20 Z=1.45 | layers=5 used_capital=580,890
+16:19:44 robot_arb INFO ⚠️ CHECK_ENTRY returned signal: {'action': 'entry', 'side': 'short_basis', 'z': 1.4419016222547738, 'basis': 9027.2, 'price_a': 96.88, 'price_b': 9996.0}
+16:19:44 robot_arb INFO ENTRY SIGNAL short_basis | Z=1.44 basis=9027.20 | A=96.88 B=9996.00 | limit buy 100 @ 96.88 | market sell 10 @ 9991.00
+16:19:44 orders_arb INFO 📄 PAPER ENTRY: buy 100 GAZP@RTSX @ 96.88 (LIMIT)
+16:19:44 orders_arb INFO 📄 PAPER ENTRY: sell 10 GZU6@RTSX @ 9991.00 (MARKET)
+16:19:44 strategy_arb INFO LAYER #22 OPEN SHORT | A=96.88 ×100 | B=9991.00 ×10 | basis=9022.20 Z=1.44 | layers=6
+16:19:44 robot_arb INFO LAYER OPEN SHORT_BASIS #22 | A=96.88 ×100 | B=9991.00 ×10 | basis=9027.20 Z=1.44 | layers=6 used_capital=697,080
+16:19:44 robot_arb INFO ⚠️ CHECK_ENTRY returned signal: {'action': 'entry', 'side': 'short_basis', 'z': 1.4419016222547738, 'basis': 9027.2, 'price_a': 96.88, 'price_b': 9996.0}
+16:19:44 robot_arb INFO ENTRY SIGNAL short_basis | Z=1.44 basis=9027.20 | A=96.88 B=9996.00 | limit buy 100 @ 96.88 | market sell 10 @ 9991.00
+16:19:44 orders_arb INFO 📄 PAPER ENTRY: buy 100 GAZP@RTSX @ 96.88 (LIMIT)
+16:19:44 orders_arb INFO 📄 PAPER ENTRY: sell 10 GZU6@RTSX @ 9991.00 (MARKET)
+16:19:44 strategy_arb INFO LAYER #23 OPEN SHORT | A=96.88 ×100 | B=9991.00 ×10 | basis=9022.20 Z=1.44 | layers=7
+16:19:44 robot_arb INFO LAYER OPEN SHORT_BASIS #23 | A=96.88 ×100 | B=9991.00 ×10 | basis=9027.20 Z=1.44 | layers=7 used_capital=813,270
+16:19:45 robot_arb INFO ⚠️ CHECK_ENTRY returned signal: {'action': 'entry', 'side': 'short_basis', 'z': 1.4349675200401293, 'basis': 9027.2, 'price_a': 96.88, 'price_b': 9996.0}
+16:19:45 robot_arb INFO ENTRY SIGNAL short_basis | Z=1.43 basis=9027.20 | A=96.88 B=9996.00 | limit buy 100 @ 96.88 | market sell 10 @ 9991.00
+16:19:45 orders_arb INFO 📄 PAPER ENTRY: buy 100 GAZP@RTSX @ 96.88 (LIMIT)
+16:19:45 orders_arb INFO 📄 PAPER ENTRY: sell 10 GZU6@RTSX @ 9991.00 (MARKET)
+16:19:45 strategy_arb INFO LAYER #24 OPEN SHORT | A=96.88 ×100 | B=9991.00 ×10 | basis=9022.20 Z=1.43 | layers=8
+16:19:45 robot_arb INFO LAYER OPEN SHORT_BASIS #24 | A=96.88 ×100 | B=9991.00 ×10 | basis=9027.20 Z=1.43 | layers=8 used_capital=929,460
+16:23:36 robot_arb INFO EXIT layer #17 reason=profit_target | limit sell 100 @ 96.84 | market buy 10 @ 9989.99
+16:23:36 orders_arb INFO 📄 PAPER ENTRY: sell 100 GAZP@RTSX @ 96.84 (LIMIT)
+16:23:36 orders_arb INFO 📄 PAPER ENTRY: buy 10 GZU6@RTSX @ 9989.99 (MARKET)
+16:23:36 strategy_arb INFO LAYER #17 CLOSE SHORT | PnL=-86.70₽ (gross=-9.90₽ comm=76.80₽) | reason=profit_target | hold=4min | layers=7
+16:23:37 robot_arb INFO EXIT layer #18 reason=profit_target | limit sell 100 @ 96.84 | market buy 10 @ 9989.99
+16:23:37 orders_arb INFO 📄 PAPER ENTRY: sell 100 GAZP@RTSX @ 96.84 (LIMIT)
+16:23:37 orders_arb INFO 📄 PAPER ENTRY: buy 10 GZU6@RTSX @ 9989.99 (MARKET)
+16:23:37 strategy_arb INFO LAYER #18 CLOSE SHORT | PnL=-86.70₽ (gross=-9.90₽ comm=76.80₽) | reason=profit_target | hold=4min | layers=6
+16:23:37 robot_arb INFO EXIT layer #19 reason=profit_target | limit sell 100 @ 96.84 | market buy 10 @ 9989.99
+16:23:37 orders_arb INFO 📄 PAPER ENTRY: sell 100 GAZP@RTSX @ 96.84 (LIMIT)
+16:23:37 orders_arb INFO 📄 PAPER ENTRY: buy 10 GZU6@RTSX @ 9989.99 (MARKET)
+16:23:37 strategy_arb INFO LAYER #19 CLOSE SHORT | PnL=-86.70₽ (gross=-9.90₽ comm=76.80₽) | reason=profit_target | hold=4min | layers=5
+16:23:39 robot_arb INFO ⚠️ CHECK_ENTRY returned signal: {'action': 'entry', 'side': 'long_basis', 'z': -1.4832477537111037, 'basis': 9016.2, 'price_a': 96.88, 'price_b': 9985.0}
+16:23:39 robot_arb INFO ENTRY SIGNAL long_basis | Z=-1.48 basis=9016.20 | A=96.88 B=9985.00 | limit sell 100 @ 96.84 | market buy 10 @ 9989.99
+16:23:39 orders_arb INFO 📄 PAPER ENTRY: sell 100 GAZP@RTSX @ 96.84 (LIMIT)
+16:23:39 orders_arb INFO 📄 PAPER ENTRY: buy 10 GZU6@RTSX @ 9989.99 (MARKET)
+16:23:39 strategy_arb INFO LAYER #25 OPEN LONG | A=96.84 ×100 | B=9989.99 ×10 | basis=9021.59 Z=-1.48 | layers=6
+16:23:39 robot_arb INFO LAYER OPEN LONG_BASIS #25 | A=96.84 ×100 | B=9989.99 ×10 | basis=9016.20 Z=-1.48 | layers=6 used_capital=697,100
+16:23:39 robot_arb INFO ⚠️ CHECK_ENTRY returned signal: {'action': 'entry', 'side': 'long_basis', 'z': -1.4746630837502106, 'basis': 9016.2, 'price_a': 96.88, 'price_b': 9985.0}
+16:23:39 robot_arb INFO ENTRY SIGNAL long_basis | Z=-1.47 basis=9016.20 | A=96.88 B=9985.00 | limit sell 100 @ 96.84 | market buy 10 @ 9989.99
+16:23:39 orders_arb INFO 📄 PAPER ENTRY: sell 100 GAZP@RTSX @ 96.84 (LIMIT)
+16:23:39 orders_arb INFO 📄 PAPER ENTRY: buy 10 GZU6@RTSX @ 9989.99 (MARKET)
+16:23:39 strategy_arb INFO LAYER #26 OPEN LONG | A=96.84 ×100 | B=9989.99 ×10 | basis=9021.59 Z=-1.47 | layers=7
+16:23:39 robot_arb INFO LAYER OPEN LONG_BASIS #26 | A=96.84 ×100 | B=9989.99 ×10 | basis=9016.20 Z=-1.47 | layers=7 used_capital=813,250
+16:23:40 robot_arb INFO ⚠️ CHECK_ENTRY returned signal: {'action': 'entry', 'side': 'long_basis', 'z': -1.4746630837502106, 'basis': 9016.2, 'price_a': 96.88, 'price_b': 9985.0}
+16:23:40 robot_arb INFO ENTRY SIGNAL long_basis | Z=-1.47 basis=9016.20 | A=96.88 B=9985.00 | limit sell 100 @ 96.84 | market buy 10 @ 9989.99
+16:23:40 orders_arb INFO 📄 PAPER ENTRY: sell 100 GAZP@RTSX @ 96.84 (LIMIT)
+16:23:40 orders_arb INFO 📄 PAPER ENTRY: buy 10 GZU6@RTSX @ 9989.99 (MARKET)
+16:23:40 strategy_arb INFO LAYER #27 OPEN LONG | A=96.84 ×100 | B=9989.99 ×10 | basis=9021.59 Z=-1.47 | layers=8
+16:23:40 robot_arb INFO LAYER OPEN LONG_BASIS #27 | A=96.84 ×100 | B=9989.99 ×10 | basis=9016.20 Z=-1.47 | layers=8 used_capital=929,400
+16:25:20 robot_arb INFO EXIT layer #20 reason=profit_target | limit sell 100 @ 96.93 | market buy 10 @ 9996.00
+16:25:20 orders_arb INFO 📄 PAPER ENTRY: sell 100 GAZP@RTSX @ 96.93 (LIMIT)
+16:25:20 orders_arb INFO 📄 PAPER ENTRY: buy 10 GZU6@RTSX @ 9996.00 (MARKET)
+16:25:20 strategy_arb INFO LAYER #20 CLOSE SHORT | PnL=-76.77₽ (gross=+0.07₽ comm=76.83₽) | reason=profit_target | hold=6min | layers=7
+16:25:21 robot_arb INFO EXIT layer #21 reason=profit_target | limit sell 100 @ 96.93 | market buy 10 @ 9996.00
+16:25:21 orders_arb INFO 📄 PAPER ENTRY: sell 100 GAZP@RTSX @ 96.93 (LIMIT)
+16:25:21 orders_arb INFO 📄 PAPER ENTRY: buy 10 GZU6@RTSX @ 9996.00 (MARKET)
+16:25:21 strategy_arb INFO LAYER #21 CLOSE SHORT | PnL=-76.77₽ (gross=+0.07₽ comm=76.83₽) | reason=profit_target | hold=6min | layers=6
+16:25:21 robot_arb INFO EXIT layer #22 reason=profit_target | limit sell 100 @ 96.93 | market buy 10 @ 9996.00
+16:25:21 orders_arb INFO 📄 PAPER ENTRY: sell 100 GAZP@RTSX @ 96.93 (LIMIT)
+16:25:21 orders_arb INFO 📄 PAPER ENTRY: buy 10 GZU6@RTSX @ 9996.00 (MARKET)
+16:25:21 strategy_arb INFO LAYER #22 CLOSE SHORT | PnL=-76.77₽ (gross=+0.07₽ comm=76.83₽) | reason=profit_target | hold=6min | layers=5
+16:25:22 robot_arb INFO EXIT layer #23 reason=profit_target | limit sell 100 @ 96.93 | market buy 10 @ 9996.00
+16:25:22 orders_arb INFO 📄 PAPER ENTRY: sell 100 GAZP@RTSX @ 96.93 (LIMIT)
+16:25:22 orders_arb INFO 📄 PAPER ENTRY: buy 10 GZU6@RTSX @ 9996.00 (MARKET)
+16:25:22 strategy_arb INFO LAYER #23 CLOSE SHORT | PnL=-76.77₽ (gross=+0.07₽ comm=76.83₽) | reason=profit_target | hold=6min | layers=4
+16:25:22 robot_arb INFO EXIT layer #24 reason=profit_target | limit sell 100 @ 96.93 | market buy 10 @ 9996.00
+16:25:22 orders_arb INFO 📄 PAPER ENTRY: sell 100 GAZP@RTSX @ 96.93 (LIMIT)
+16:25:22 orders_arb INFO 📄 PAPER ENTRY: buy 10 GZU6@RTSX @ 9996.00 (MARKET)
+16:25:22 strategy_arb INFO LAYER #24 CLOSE SHORT | PnL=-76.77₽ (gross=+0.07₽ comm=76.83₽) | reason=profit_target | hold=6min | layers=3
+16:25:23 robot_arb INFO ⚠️ CHECK_ENTRY returned signal: {'action': 'entry', 'side': 'long_basis', 'z': -0.4590862583898538, 'basis': 9027.4, 'price_a': 96.96, 'price_b': 9997.0}
+16:25:23 robot_arb INFO ENTRY SIGNAL long_basis | Z=-0.46 basis=9027.40 | A=96.96 B=9997.00 | limit sell 100 @ 96.93 | market buy 10 @ 10002.00
+16:25:23 orders_arb INFO 📄 PAPER ENTRY: sell 100 GAZP@RTSX @ 96.93 (LIMIT)
+16:25:23 orders_arb INFO 📄 PAPER ENTRY: buy 10 GZU6@RTSX @ 10002.00 (MARKET)
+16:25:23 strategy_arb INFO LAYER #28 OPEN LONG | A=96.93 ×100 | B=10002.00 ×10 | basis=9032.70 Z=-0.46 | layers=4
+16:25:23 robot_arb INFO LAYER OPEN LONG_BASIS #28 | A=96.93 ×100 | B=10002.00 ×10 | basis=9027.40 Z=-0.46 | layers=4 used_capital=464,690
+16:25:24 robot_arb INFO ⚠️ CHECK_ENTRY returned signal: {'action': 'entry', 'side': 'long_basis', 'z': -0.4590862583898538, 'basis': 9027.4, 'price_a': 96.96, 'price_b': 9997.0}
+16:25:24 robot_arb INFO ENTRY SIGNAL long_basis | Z=-0.46 basis=9027.40 | A=96.96 B=9997.00 | limit sell 100 @ 96.93 | market buy 10 @ 10002.00
+16:25:24 orders_arb INFO 📄 PAPER ENTRY: sell 100 GAZP@RTSX @ 96.93 (LIMIT)
+16:25:24 orders_arb INFO 📄 PAPER ENTRY: buy 10 GZU6@RTSX @ 10002.00 (MARKET)
+16:25:24 strategy_arb INFO LAYER #29 OPEN LONG | A=96.93 ×100 | B=10002.00 ×10 | basis=9032.70 Z=-0.46 | layers=5
+16:25:24 robot_arb INFO LAYER OPEN LONG_BASIS #29 | A=96.93 ×100 | B=10002.00 ×10 | basis=9027.40 Z=-0.46 | layers=5 used_capital=580,930
+16:25:24 robot_arb INFO ⚠️ CHECK_ENTRY returned signal: {'action': 'entry', 'side': 'long_basis', 'z': -0.45908625838985395, 'basis': 9027.4, 'price_a': 96.96, 'price_b': 9997.0}
+16:25:24 robot_arb INFO ENTRY SIGNAL long_basis | Z=-0.46 basis=9027.40 | A=96.96 B=9997.00 | limit sell 100 @ 96.93 | market buy 10 @ 10002.00
+16:25:24 orders_arb INFO 📄 PAPER ENTRY: sell 100 GAZP@RTSX @ 96.93 (LIMIT)
+16:25:24 orders_arb INFO 📄 PAPER ENTRY: buy 10 GZU6@RTSX @ 10002.00 (MARKET)
+16:25:24 strategy_arb INFO LAYER #30 OPEN LONG | A=96.93 ×100 | B=10002.00 ×10 | basis=9032.70 Z=-0.46 | layers=6
+16:25:24 robot_arb INFO LAYER OPEN LONG_BASIS #30 | A=96.93 ×100 | B=10002.00 ×10 | basis=9027.40 Z=-0.46 | layers=6 used_capital=697,170
+16:25:25 robot_arb INFO ⚠️ CHECK_ENTRY returned signal: {'action': 'entry', 'side': 'long_basis', 'z': -0.45908625838985395, 'basis': 9027.4, 'price_a': 96.96, 'price_b': 9997.0}
+16:25:25 robot_arb INFO ENTRY SIGNAL long_basis | Z=-0.46 basis=9027.40 | A=96.96 B=9997.00 | limit sell 100 @ 96.93 | market buy 10 @ 10002.00
+16:25:25 orders_arb INFO 📄 PAPER ENTRY: sell 100 GAZP@RTSX @ 96.93 (LIMIT)
+16:25:25 orders_arb INFO 📄 PAPER ENTRY: buy 10 GZU6@RTSX @ 10002.00 (MARKET)
+16:25:25 strategy_arb INFO LAYER #31 OPEN LONG | A=96.93 ×100 | B=10002.00 ×10 | basis=9032.70 Z=-0.46 | layers=7
+16:25:25 robot_arb INFO LAYER OPEN LONG_BASIS #31 | A=96.93 ×100 | B=10002.00 ×10 | basis=9027.40 Z=-0.46 | layers=7 used_capital=813,410
+16:25:25 robot_arb INFO ⚠️ CHECK_ENTRY returned signal: {'action': 'entry', 'side': 'long_basis', 'z': -0.4590862583898538, 'basis': 9027.4, 'price_a': 96.96, 'price_b': 9997.0}
+16:25:25 robot_arb INFO ENTRY SIGNAL long_basis | Z=-0.46 basis=9027.40 | A=96.96 B=9997.00 | limit sell 100 @ 96.94 | market buy 10 @ 10002.00
+16:25:25 orders_arb INFO 📄 PAPER ENTRY: sell 100 GAZP@RTSX @ 96.94 (LIMIT)
+16:25:25 orders_arb INFO 📄 PAPER ENTRY: buy 10 GZU6@RTSX @ 10002.00 (MARKET)
+16:25:25 strategy_arb INFO LAYER #32 OPEN LONG | A=96.94 ×100 | B=10002.00 ×10 | basis=9032.60 Z=-0.46 | layers=8
+16:25:25 robot_arb INFO LAYER OPEN LONG_BASIS #32 | A=96.94 ×100 | B=10002.00 ×10 | basis=9027.40 Z=-0.46 | layers=8 used_capital=929,660
+17:03:42 robot_arb INFO Signal 15 — shutting down...
+17:03:42 robot_arb INFO Signal 15 — shutting down...
+17:03:42 robot_arb INFO Signal 15 — shutting down...
+17:03:54 robot_arb INFO === Arbitrage Robot v1 ===
+17:03:54 robot_arb INFO Pair: GAZP / GZU6
+17:03:54 robot_arb INFO Account: 1225953 | Port: 5090 | Paper: True
+17:03:54 robot_arb INFO Params: entry_z=0.3 lookback=10 lots_a=100 lots_b=10 hedge_ratio=10
+17:03:54 robot_arb INFO Min profit: rub=0.01
+17:03:54 robot_arb INFO Risk: stop_loss_rub=50000
+17:03:54 robot_arb INFO State loaded: pnl=-1315 trades=24 mode=stopped
+17:03:54 FinamPy CRITICAL Ошибка доступа к системному хранилищу: No recommended backend was available. Install a recommended 3rd party backend package; or, install the keyrings.alt package if you want to use the non-recommended backends. See https://pypi.org/project/keyring for details.
+17:03:54 FinamPy CRITICAL Ошибка сохранения в системное хранилище: No recommended backend was available. Install a recommended 3rd party backend package; or, install the keyrings.alt package if you want to use the non-recommended backends. See https://pypi.org/project/keyring for details.
+17:03:55 robot_arb INFO FinamPy connected. Accounts: ['1225950', '1225951', '1225952', '1225953']
+17:03:55 robot_arb INFO Subscribed OrderBook: GAZP@RTSX, GZU6@RTSX
+17:03:55 robot_arb INFO Subscribed Quotes: GAZP@RTSX, GZU6@RTSX
+17:03:55 robot_arb INFO Warmup: waiting 10 sec for data streams...
+17:04:05 robot_arb INFO Warmup done. OB_A: False OB_B: False
+17:04:05 robot_arb INFO MOEX ISS poller started (fallback for stock prices)
+17:04:05 robot_arb INFO Main loop started
+17:04:05 robot_arb INFO API listening on :5090
+17:04:05 robot_arb INFO Endpoints: GET /status /health /params | POST /start /stop /pause /params
+17:04:09 robot_arb INFO Account changed → 1225953
+17:04:09 robot_arb INFO Param updated: ticker_a = GAZP (was GAZP)
+17:04:09 robot_arb INFO Param updated: symbol_a = GAZP@RTSX (was GAZP@RTSX)
+17:04:09 robot_arb INFO Param updated: ticker_b = GZM6 (was GZU6)
+17:04:09 robot_arb INFO Param updated: symbol_b = GZM6@RTSX (was GZU6@RTSX)
+17:04:09 robot_arb INFO Param updated: lots_a = 10 (was 100)
+17:04:09 robot_arb INFO Param updated: lots_b = 1 (was 10)
+17:04:09 robot_arb INFO Param updated: hedge_ratio = 10 (was 10)
+17:04:09 robot_arb INFO Param updated: capital = 1000000 (was 1000000)
+17:04:09 robot_arb INFO Param updated: entry_z = 1.5 (was 0.3)
+17:04:09 robot_arb INFO Param updated: entry_z_long = 1.5 (was -0.3)
+17:04:09 robot_arb INFO Param updated: entry_mode = zscore (was zscore)
+17:04:09 robot_arb INFO Param updated: spread_rub_high = 400 (was 350)
+17:04:09 robot_arb INFO Param updated: spread_rub_low = 200 (was 300)
+17:04:09 robot_arb INFO Param updated: risk_free_rate = 0.16 (was 0.1425)
+17:04:09 robot_arb INFO Param updated: expiration_date = 2026-09-18 (was 2026-09-18)
+17:04:09 robot_arb INFO Param updated: contract_size = 100 (was 100)
+17:04:09 robot_arb INFO Param updated: lookback = 50 (was 10)
+17:04:09 robot_arb INFO Param updated: leg_a_timeout = 5 (was 5)
+17:04:09 robot_arb INFO Param updated: min_fill_ratio = 0.5 (was 0.55)
+17:04:09 robot_arb INFO Param updated: min_profit_type = rub (was rub)
+17:04:09 robot_arb INFO Param updated: min_profit_value = 100 (was 0.01)
+17:04:09 robot_arb INFO Param updated: risk_type = stop_loss_rub (was stop_loss_rub)
+17:04:09 robot_arb INFO Param updated: risk_value = 50000 (was 50000)
+17:04:09 robot_arb INFO Param updated: allow_long_basis = False (was True)
+17:04:09 robot_arb INFO Param updated: use_commission = True (was True)
+17:04:09 robot_arb INFO Param updated: commission_stock_pct = 0.035 (was 0.035)
+17:04:09 robot_arb INFO Param updated: commission_futures_rt = 0.9 (was 0.9)
+17:04:20 robot_arb INFO Account changed → 1225953
+17:04:20 robot_arb INFO Param updated: ticker_a = GAZP (was GAZP)
+17:04:20 robot_arb INFO Param updated: symbol_a = GAZP@RTSX (was GAZP@RTSX)
+17:04:20 robot_arb INFO Param updated: ticker_b = GZM6 (was GZM6)
+17:04:20 robot_arb INFO Param updated: symbol_b = GZM6@RTSX (was GZM6@RTSX)
+17:04:20 robot_arb INFO Param updated: lots_a = 100 (was 10)
+17:04:20 robot_arb INFO Param updated: lots_b = 10 (was 1)
+17:04:20 robot_arb INFO Param updated: hedge_ratio = 10 (was 10)
+17:04:20 robot_arb INFO Param updated: capital = 1000000 (was 1000000)
+17:04:20 robot_arb INFO Param updated: entry_z = 1.5 (was 1.5)
+17:04:20 robot_arb INFO Param updated: entry_z_long = 1.5 (was 1.5)
+17:04:20 robot_arb INFO Param updated: entry_mode = zscore (was zscore)
+17:04:20 robot_arb INFO Param updated: spread_rub_high = 400 (was 400)
+17:04:20 robot_arb INFO Param updated: spread_rub_low = 200 (was 200)
+17:04:20 robot_arb INFO Param updated: risk_free_rate = 0.16 (was 0.16)
+17:04:20 robot_arb INFO Param updated: expiration_date = 2026-09-18 (was 2026-09-18)
+17:04:20 robot_arb INFO Param updated: contract_size = 100 (was 100)
+17:04:20 robot_arb INFO Param updated: lookback = 50 (was 50)
+17:04:20 robot_arb INFO Param updated: leg_a_timeout = 5 (was 5)
+17:04:20 robot_arb INFO Param updated: min_fill_ratio = 0.5 (was 0.5)
+17:04:20 robot_arb INFO Param updated: min_profit_type = rub (was rub)
+17:04:20 robot_arb INFO Param updated: min_profit_value = 100 (was 100)
+17:04:20 robot_arb INFO Param updated: risk_type = stop_loss_rub (was stop_loss_rub)
+17:04:20 robot_arb INFO Param updated: risk_value = 50000 (was 50000)
+17:04:20 robot_arb INFO Param updated: allow_long_basis = False (was False)
+17:04:20 robot_arb INFO Param updated: use_commission = True (was True)
+17:04:20 robot_arb INFO Param updated: commission_stock_pct = 0.035 (was 0.035)
+17:04:20 robot_arb INFO Param updated: commission_futures_rt = 0.9 (was 0.9)
+17:04:32 robot_arb INFO Mode → RUNNING
+17:04:37 robot_arb INFO Signal 15 — shutting down...
+17:04:39 robot_arb INFO === Arbitrage Robot v1 ===
+17:04:39 robot_arb INFO Pair: GAZP / GZU6
+17:04:39 robot_arb INFO Account: 1225953 | Port: 5090 | Paper: True
+17:04:39 robot_arb INFO Params: entry_z=1.5 lookback=50 lots_a=100 lots_b=10 hedge_ratio=10
+17:04:39 robot_arb INFO Min profit: rub=100
+17:04:39 robot_arb INFO Risk: stop_loss_rub=50000
+17:04:39 robot_arb INFO State loaded: pnl=-1315 trades=24 mode=stopped
+17:04:40 FinamPy CRITICAL Ошибка доступа к системному хранилищу: No recommended backend was available. Install a recommended 3rd party backend package; or, install the keyrings.alt package if you want to use the non-recommended backends. See https://pypi.org/project/keyring for details.
+17:04:40 FinamPy CRITICAL Ошибка сохранения в системное хранилище: No recommended backend was available. Install a recommended 3rd party backend package; or, install the keyrings.alt package if you want to use the non-recommended backends. See https://pypi.org/project/keyring for details.
+17:04:40 robot_arb INFO FinamPy connected. Accounts: ['1225950', '1225951', '1225952', '1225953']
+17:04:40 robot_arb INFO Subscribed OrderBook: GAZP@RTSX, GZU6@RTSX
+17:04:40 robot_arb INFO Subscribed Quotes: GAZP@RTSX, GZU6@RTSX
+17:04:40 robot_arb INFO Warmup: waiting 10 sec for data streams...
+17:04:50 robot_arb INFO Warmup done. OB_A: False OB_B: False
+17:04:51 robot_arb INFO MOEX ISS poller started (fallback for stock prices)
+17:04:51 robot_arb INFO Main loop started
+17:04:51 robot_arb INFO API listening on :5090
+17:04:51 robot_arb INFO Endpoints: GET /status /health /params | POST /start /stop /pause /params
+17:05:16 robot_arb INFO Account changed → 1225953-EDP
+17:05:17 robot_arb INFO Param updated: ticker_a = GAZP (was GAZP)
+17:05:17 robot_arb INFO Param updated: symbol_a = GAZP@RTSX (was GAZP@RTSX)
+17:05:17 robot_arb INFO Param updated: ticker_b = GZM6 (was GZU6)
+17:05:17 robot_arb INFO Param updated: symbol_b = GZM6@RTSX (was GZU6@RTSX)
+17:05:17 robot_arb INFO Param updated: lots_a = 100 (was 100)
+17:05:17 robot_arb INFO Param updated: lots_b = 10 (was 10)
+17:05:17 robot_arb INFO Param updated: hedge_ratio = 10 (was 10)
+17:05:17 robot_arb INFO Param updated: capital = 1000000 (was 1000000)
+17:05:17 robot_arb INFO Param updated: entry_z = 1.5 (was 1.5)
+17:05:17 robot_arb INFO Param updated: entry_z_long = 1.5 (was 1.5)
+17:05:17 robot_arb INFO Param updated: entry_mode = zscore (was zscore)
+17:05:17 robot_arb INFO Param updated: spread_rub_high = 400 (was 400)
+17:05:17 robot_arb INFO Param updated: spread_rub_low = 200 (was 200)
+17:05:17 robot_arb INFO Param updated: risk_free_rate = 0.16 (was 0.16)
+17:05:17 robot_arb INFO Param updated: expiration_date = 2026-09-18 (was 2026-09-18)
+17:05:17 robot_arb INFO Param updated: contract_size = 100 (was 100)
+17:05:17 robot_arb INFO Param updated: lookback = 50 (was 50)
+17:05:17 robot_arb INFO Param updated: leg_a_timeout = 5 (was 5)
+17:05:17 robot_arb INFO Param updated: min_fill_ratio = 0.5 (was 0.5)
+17:05:17 robot_arb INFO Param updated: min_profit_type = rub (was rub)
+17:05:17 robot_arb INFO Param updated: min_profit_value = 100 (was 100)
+17:05:17 robot_arb INFO Param updated: risk_type = stop_loss_rub (was stop_loss_rub)
+17:05:17 robot_arb INFO Param updated: risk_value = 50000 (was 50000)
+17:05:17 robot_arb INFO Param updated: allow_long_basis = False (was False)
+17:05:17 robot_arb INFO Param updated: use_commission = True (was True)
+17:05:17 robot_arb INFO Param updated: commission_stock_pct = 0.035 (was 0.035)
+17:05:17 robot_arb INFO Param updated: commission_futures_rt = 0.9 (was 0.9)
+17:05:31 robot_arb INFO Mode → RUNNING
+17:06:14 robot_arb INFO Account changed → 1225953-EDP
+17:06:14 robot_arb INFO Param updated: ticker_a = GAZP (was GAZP)
+17:06:14 robot_arb INFO Param updated: symbol_a = GAZP@RTSX (was GAZP@RTSX)
+17:06:14 robot_arb INFO Param updated: ticker_b = GZM6 (was GZM6)
+17:06:14 robot_arb INFO Param updated: symbol_b = GZM6@RTSX (was GZM6@RTSX)
+17:06:14 robot_arb INFO Param updated: lots_a = 100 (was 100)
+17:06:14 robot_arb INFO Param updated: lots_b = 10 (was 10)
+17:06:14 robot_arb INFO Param updated: hedge_ratio = 10 (was 10)
+17:06:14 robot_arb INFO Param updated: capital = 1000000 (was 1000000)
+17:06:14 robot_arb INFO Param updated: entry_z = 2.7 (was 1.5)
+17:06:14 robot_arb INFO Param updated: entry_z_long = -5 (was 1.5)
+17:06:14 robot_arb INFO Param updated: entry_mode = zscore (was zscore)
+17:06:14 robot_arb INFO Param updated: spread_rub_high = 400 (was 400)
+17:06:14 robot_arb INFO Param updated: spread_rub_low = 200 (was 200)
+17:06:14 robot_arb INFO Param updated: risk_free_rate = 0.16 (was 0.16)
+17:06:14 robot_arb INFO Param updated: expiration_date = 2026-09-18 (was 2026-09-18)
+17:06:14 robot_arb INFO Param updated: contract_size = 100 (was 100)
+17:06:14 robot_arb INFO Param updated: lookback = 150 (was 50)
+17:06:14 robot_arb INFO Param updated: leg_a_timeout = 5 (was 5)
+17:06:14 robot_arb INFO Param updated: min_fill_ratio = 0.5 (was 0.5)
+17:06:14 robot_arb INFO Param updated: min_profit_type = rub (was rub)
+17:06:14 robot_arb INFO Param updated: min_profit_value = 100 (was 100)
+17:06:14 robot_arb INFO Param updated: risk_type = stop_loss_rub (was stop_loss_rub)
+17:06:14 robot_arb INFO Param updated: risk_value = 50000 (was 50000)
+17:06:14 robot_arb INFO Param updated: allow_long_basis = False (was False)
+17:06:14 robot_arb INFO Param updated: use_commission = True (was True)
+17:06:14 robot_arb INFO Param updated: commission_stock_pct = 0.035 (was 0.035)
+17:06:14 robot_arb INFO Param updated: commission_futures_rt = 0.9 (was 0.9)
+17:06:23 robot_arb INFO Account changed → 1225953-EDP
+17:06:24 robot_arb INFO Param updated: ticker_a = GAZP (was GAZP)
+17:06:24 robot_arb INFO Param updated: symbol_a = GAZP@RTSX (was GAZP@RTSX)
+17:06:24 robot_arb INFO Param updated: ticker_b = GZM6 (was GZM6)
+17:06:24 robot_arb INFO Param updated: symbol_b = GZM6@RTSX (was GZM6@RTSX)
+17:06:24 robot_arb INFO Param updated: lots_a = 100 (was 100)
+17:06:24 robot_arb INFO Param updated: lots_b = 10 (was 10)
+17:06:24 robot_arb INFO Param updated: hedge_ratio = 10 (was 10)
+17:06:24 robot_arb INFO Param updated: capital = 1000000 (was 1000000)
+17:06:24 robot_arb INFO Param updated: entry_z = 2.7 (was 2.7)
+17:06:24 robot_arb INFO Param updated: entry_z_long = -5 (was -5)
+17:06:24 robot_arb INFO Param updated: entry_mode = zscore (was zscore)
+17:06:24 robot_arb INFO Param updated: spread_rub_high = 400 (was 400)
+17:06:24 robot_arb INFO Param updated: spread_rub_low = 200 (was 200)
+17:06:24 robot_arb INFO Param updated: risk_free_rate = 0.16 (was 0.16)
+17:06:24 robot_arb INFO Param updated: expiration_date = 2026-09-18 (was 2026-09-18)
+17:06:24 robot_arb INFO Param updated: contract_size = 100 (was 100)
+17:06:24 robot_arb INFO Param updated: lookback = 150 (was 150)
+17:06:24 robot_arb INFO Param updated: leg_a_timeout = 5 (was 5)
+17:06:24 robot_arb INFO Param updated: min_fill_ratio = 0.5 (was 0.5)
+17:06:24 robot_arb INFO Param updated: min_profit_type = rub (was rub)
+17:06:24 robot_arb INFO Param updated: min_profit_value = 100 (was 100)
+17:06:24 robot_arb INFO Param updated: risk_type = stop_loss_rub (was stop_loss_rub)
+17:06:24 robot_arb INFO Param updated: risk_value = 50000 (was 50000)
+17:06:24 robot_arb INFO Param updated: allow_long_basis = False (was False)
+17:06:24 robot_arb INFO Param updated: use_commission = True (was True)
+17:06:24 robot_arb INFO Param updated: commission_stock_pct = 0.035 (was 0.035)
+17:06:24 robot_arb INFO Param updated: commission_futures_rt = 0.9 (was 0.9)
+17:06:33 robot_arb INFO Account changed → 1225953-EDP
+17:06:34 robot_arb INFO Param updated: ticker_a = GAZP (was GAZP)
+17:06:34 robot_arb INFO Param updated: symbol_a = GAZP@RTSX (was GAZP@RTSX)
+17:06:34 robot_arb INFO Param updated: ticker_b = GZM6 (was GZM6)
+17:06:34 robot_arb INFO Param updated: symbol_b = GZM6@RTSX (was GZM6@RTSX)
+17:06:34 robot_arb INFO Param updated: lots_a = 100 (was 100)
+17:06:34 robot_arb INFO Param updated: lots_b = 10 (was 10)
+17:06:34 robot_arb INFO Param updated: hedge_ratio = 10 (was 10)
+17:06:34 robot_arb INFO Param updated: capital = 1000000 (was 1000000)
+17:06:34 robot_arb INFO Param updated: entry_z = 2.7 (was 2.7)
+17:06:34 robot_arb INFO Param updated: entry_z_long = -5 (was -5)
+17:06:34 robot_arb INFO Param updated: entry_mode = zscore (was zscore)
+17:06:34 robot_arb INFO Param updated: spread_rub_high = 400 (was 400)
+17:06:34 robot_arb INFO Param updated: spread_rub_low = 200 (was 200)
+17:06:34 robot_arb INFO Param updated: risk_free_rate = 0.16 (was 0.16)
+17:06:34 robot_arb INFO Param updated: expiration_date = 2026-09-18 (was 2026-09-18)
+17:06:34 robot_arb INFO Param updated: contract_size = 100 (was 100)
+17:06:34 robot_arb INFO Param updated: lookback = 150 (was 150)
+17:06:34 robot_arb INFO Param updated: leg_a_timeout = 5 (was 5)
+17:06:34 robot_arb INFO Param updated: min_fill_ratio = 0.5 (was 0.5)
+17:06:34 robot_arb INFO Param updated: min_profit_type = rub (was rub)
+17:06:34 robot_arb INFO Param updated: min_profit_value = 100 (was 100)
+17:06:34 robot_arb INFO Param updated: risk_type = stop_loss_rub (was stop_loss_rub)
+17:06:34 robot_arb INFO Param updated: risk_value = 50000 (was 50000)
+17:06:34 robot_arb INFO Param updated: allow_long_basis = True (was False)
+17:06:34 robot_arb INFO Param updated: use_commission = True (was True)
+17:06:34 robot_arb INFO Param updated: commission_stock_pct = 0.035 (was 0.035)
+17:06:34 robot_arb INFO Param updated: commission_futures_rt = 0.9 (was 0.9)
+17:07:19 robot_arb INFO Account changed → 1225953-EDP
+17:07:19 robot_arb INFO Param updated: ticker_a = GAZP (was GAZP)
+17:07:19 robot_arb INFO Param updated: symbol_a = GAZP@RTSX (was GAZP@RTSX)
+17:07:19 robot_arb INFO Param updated: ticker_b = GZU6 (was GZM6)
+17:07:19 robot_arb INFO Param updated: symbol_b = GZU6@RTSX (was GZM6@RTSX)
+17:07:19 robot_arb INFO Param updated: lots_a = 100 (was 100)
+17:07:19 robot_arb INFO Param updated: lots_b = 10 (was 10)
+17:07:19 robot_arb INFO Param updated: hedge_ratio = 10 (was 10)
+17:07:19 robot_arb INFO Param updated: capital = 1000000 (was 1000000)
+17:07:19 robot_arb INFO Param updated: entry_z = 2.7 (was 2.7)
+17:07:19 robot_arb INFO Param updated: entry_z_long = -5 (was -5)
+17:07:19 robot_arb INFO Param updated: entry_mode = zscore (was zscore)
+17:07:19 robot_arb INFO Param updated: spread_rub_high = 400 (was 400)
+17:07:19 robot_arb INFO Param updated: spread_rub_low = 200 (was 200)
+17:07:19 robot_arb INFO Param updated: risk_free_rate = 0.16 (was 0.16)
+17:07:19 robot_arb INFO Param updated: expiration_date = 2026-09-18 (was 2026-09-18)
+17:07:19 robot_arb INFO Param updated: contract_size = 100 (was 100)
+17:07:19 robot_arb INFO Param updated: lookback = 150 (was 150)
+17:07:19 robot_arb INFO Param updated: leg_a_timeout = 5 (was 5)
+17:07:19 robot_arb INFO Param updated: min_fill_ratio = 0.5 (was 0.5)
+17:07:19 robot_arb INFO Param updated: min_profit_type = rub (was rub)
+17:07:19 robot_arb INFO Param updated: min_profit_value = 100 (was 100)
+17:07:19 robot_arb INFO Param updated: risk_type = stop_loss_rub (was stop_loss_rub)
+17:07:19 robot_arb INFO Param updated: risk_value = 50000 (was 50000)
+17:07:19 robot_arb INFO Param updated: allow_long_basis = True (was True)
+17:07:19 robot_arb INFO Param updated: use_commission = True (was True)
+17:07:19 robot_arb INFO Param updated: commission_stock_pct = 0.035 (was 0.035)
+17:07:19 robot_arb INFO Param updated: commission_futures_rt = 0.9 (was 0.9)
+17:07:24 robot_arb INFO Account changed → 1225953-EDP
+17:07:24 robot_arb INFO Param updated: ticker_a = GAZP (was GAZP)
+17:07:24 robot_arb INFO Param updated: symbol_a = GAZP@RTSX (was GAZP@RTSX)
+17:07:24 robot_arb INFO Param updated: ticker_b = GZU6 (was GZU6)
+17:07:24 robot_arb INFO Param updated: symbol_b = GZU6@RTSX (was GZU6@RTSX)
+17:07:24 robot_arb INFO Param updated: lots_a = 100 (was 100)
+17:07:24 robot_arb INFO Param updated: lots_b = 10 (was 10)
+17:07:24 robot_arb INFO Param updated: hedge_ratio = 10 (was 10)
+17:07:24 robot_arb INFO Param updated: capital = 1000000 (was 1000000)
+17:07:24 robot_arb INFO Param updated: entry_z = 2.7 (was 2.7)
+17:07:24 robot_arb INFO Param updated: entry_z_long = -5 (was -5)
+17:07:24 robot_arb INFO Param updated: entry_mode = zscore (was zscore)
+17:07:24 robot_arb INFO Param updated: spread_rub_high = 400 (was 400)
+17:07:24 robot_arb INFO Param updated: spread_rub_low = 200 (was 200)
+17:07:24 robot_arb INFO Param updated: risk_free_rate = 0.16 (was 0.16)
+17:07:24 robot_arb INFO Param updated: expiration_date = 2026-09-18 (was 2026-09-18)
+17:07:24 robot_arb INFO Param updated: contract_size = 100 (was 100)
+17:07:24 robot_arb INFO Param updated: lookback = 150 (was 150)
+17:07:24 robot_arb INFO Param updated: leg_a_timeout = 5 (was 5)
+17:07:24 robot_arb INFO Param updated: min_fill_ratio = 0.5 (was 0.5)
+17:07:24 robot_arb INFO Param updated: min_profit_type = rub (was rub)
+17:07:24 robot_arb INFO Param updated: min_profit_value = 100 (was 100)
+17:07:24 robot_arb INFO Param updated: risk_type = stop_loss_rub (was stop_loss_rub)
+17:07:24 robot_arb INFO Param updated: risk_value = 50000 (was 50000)
+17:07:24 robot_arb INFO Param updated: allow_long_basis = True (was True)
+17:07:24 robot_arb INFO Param updated: use_commission = True (was True)
+17:07:24 robot_arb INFO Param updated: commission_stock_pct = 0.035 (was 0.035)
+17:07:24 robot_arb INFO Param updated: commission_futures_rt = 0.9 (was 0.9)
+17:07:52 robot_arb INFO Account changed → 1225953-EDP
+17:07:53 robot_arb INFO Param updated: ticker_a = GAZP (was GAZP)
+17:07:53 robot_arb INFO Param updated: symbol_a = GAZP@RTSX (was GAZP@RTSX)
+17:07:53 robot_arb INFO Param updated: ticker_b = GZU6 (was GZU6)
+17:07:53 robot_arb INFO Param updated: symbol_b = GZU6@RTSX (was GZU6@RTSX)
+17:07:53 robot_arb INFO Param updated: lots_a = 100 (was 100)
+17:07:53 robot_arb INFO Param updated: lots_b = 10 (was 10)
+17:07:53 robot_arb INFO Param updated: hedge_ratio = 10 (was 10)
+17:07:53 robot_arb INFO Param updated: capital = 1000000 (was 1000000)
+17:07:53 robot_arb INFO Param updated: entry_z = 2.7 (was 2.7)
+17:07:53 robot_arb INFO Param updated: entry_z_long = -5 (was -5)
+17:07:53 robot_arb INFO Param updated: entry_mode = zscore (was zscore)
+17:07:53 robot_arb INFO Param updated: spread_rub_high = 400 (was 400)
+17:07:53 robot_arb INFO Param updated: spread_rub_low = 200 (was 200)
+17:07:53 robot_arb INFO Param updated: risk_free_rate = 0.16 (was 0.16)
+17:07:53 robot_arb INFO Param updated: expiration_date = 2026-09-18 (was 2026-09-18)
+17:07:53 robot_arb INFO Param updated: contract_size = 100 (was 100)
+17:07:53 robot_arb INFO Param updated: lookback = 150 (was 150)
+17:07:53 robot_arb INFO Param updated: leg_a_timeout = 5 (was 5)
+17:07:53 robot_arb INFO Param updated: min_fill_ratio = 0.5 (was 0.5)
+17:07:53 robot_arb INFO Param updated: min_profit_type = rub (was rub)
+17:07:53 robot_arb INFO Param updated: min_profit_value = 100 (was 100)
+17:07:53 robot_arb INFO Param updated: risk_type = stop_loss_rub (was stop_loss_rub)
+17:07:53 robot_arb INFO Param updated: risk_value = 50000 (was 50000)
+17:07:53 robot_arb INFO Param updated: allow_long_basis = True (was True)
+17:07:53 robot_arb INFO Param updated: use_commission = True (was True)
+17:07:53 robot_arb INFO Param updated: commission_stock_pct = 0.035 (was 0.035)
+17:07:53 robot_arb INFO Param updated: commission_futures_rt = 0.9 (was 0.9)
+17:08:14 robot_arb INFO Account changed → 1225953-EDP
+17:08:15 robot_arb INFO Param updated: ticker_a = GAZP (was GAZP)
+17:08:15 robot_arb INFO Param updated: symbol_a = GAZP@RTSX (was GAZP@RTSX)
+17:08:15 robot_arb INFO Param updated: ticker_b = GZU6 (was GZU6)
+17:08:15 robot_arb INFO Param updated: symbol_b = GZU6@RTSX (was GZU6@RTSX)
+17:08:15 robot_arb INFO Param updated: lots_a = 100 (was 100)
+17:08:15 robot_arb INFO Param updated: lots_b = 10 (was 10)
+17:08:15 robot_arb INFO Param updated: hedge_ratio = 10 (was 10)
+17:08:15 robot_arb INFO Param updated: capital = 1000000 (was 1000000)
+17:08:15 robot_arb INFO Param updated: entry_z = 2.3 (was 2.7)
+17:08:15 robot_arb INFO Param updated: entry_z_long = -4.7 (was -5)
+17:08:15 robot_arb INFO Param updated: entry_mode = zscore (was zscore)
+17:08:15 robot_arb INFO Param updated: spread_rub_high = 400 (was 400)
+17:08:15 robot_arb INFO Param updated: spread_rub_low = 200 (was 200)
+17:08:15 robot_arb INFO Param updated: risk_free_rate = 0.16 (was 0.16)
+17:08:15 robot_arb INFO Param updated: expiration_date = 2026-09-18 (was 2026-09-18)
+17:08:15 robot_arb INFO Param updated: contract_size = 100 (was 100)
+17:08:15 robot_arb INFO Param updated: lookback = 150 (was 150)
+17:08:15 robot_arb INFO Param updated: leg_a_timeout = 5 (was 5)
+17:08:15 robot_arb INFO Param updated: min_fill_ratio = 0.5 (was 0.5)
+17:08:15 robot_arb INFO Param updated: min_profit_type = rub (was rub)
+17:08:15 robot_arb INFO Param updated: min_profit_value = 100 (was 100)
+17:08:15 robot_arb INFO Param updated: risk_type = stop_loss_rub (was stop_loss_rub)
+17:08:15 robot_arb INFO Param updated: risk_value = 50000 (was 50000)
+17:08:15 robot_arb INFO Param updated: allow_long_basis = True (was True)
+17:08:15 robot_arb INFO Param updated: use_commission = True (was True)
+17:08:15 robot_arb INFO Param updated: commission_stock_pct = 0.035 (was 0.035)
+17:08:15 robot_arb INFO Param updated: commission_futures_rt = 0.9 (was 0.9)
+17:08:24 robot_arb INFO Account changed → 1225953-EDP
+17:08:24 robot_arb INFO Param updated: ticker_a = GAZP (was GAZP)
+17:08:24 robot_arb INFO Param updated: symbol_a = GAZP@RTSX (was GAZP@RTSX)
+17:08:24 robot_arb INFO Param updated: ticker_b = GZU6 (was GZU6)
+17:08:24 robot_arb INFO Param updated: symbol_b = GZU6@RTSX (was GZU6@RTSX)
+17:08:24 robot_arb INFO Param updated: lots_a = 100 (was 100)
+17:08:24 robot_arb INFO Param updated: lots_b = 10 (was 10)
+17:08:24 robot_arb INFO Param updated: hedge_ratio = 10 (was 10)
+17:08:24 robot_arb INFO Param updated: capital = 1000000 (was 1000000)
+17:08:24 robot_arb INFO Param updated: entry_z = 2.3 (was 2.3)
+17:08:24 robot_arb INFO Param updated: entry_z_long = -4.7 (was -4.7)
+17:08:24 robot_arb INFO Param updated: entry_mode = zscore (was zscore)
+17:08:24 robot_arb INFO Param updated: spread_rub_high = 400 (was 400)
+17:08:24 robot_arb INFO Param updated: spread_rub_low = 200 (was 200)
+17:08:24 robot_arb INFO Param updated: risk_free_rate = 0.1425 (was 0.16)
+17:08:24 robot_arb INFO Param updated: expiration_date = 2026-09-18 (was 2026-09-18)
+17:08:24 robot_arb INFO Param updated: contract_size = 100 (was 100)
+17:08:24 robot_arb INFO Param updated: lookback = 150 (was 150)
+17:08:24 robot_arb INFO Param updated: leg_a_timeout = 5 (was 5)
+17:08:24 robot_arb INFO Param updated: min_fill_ratio = 0.5 (was 0.5)
+17:08:24 robot_arb INFO Param updated: min_profit_type = rub (was rub)
+17:08:24 robot_arb INFO Param updated: min_profit_value = 100 (was 100)
+17:08:24 robot_arb INFO Param updated: risk_type = stop_loss_rub (was stop_loss_rub)
+17:08:24 robot_arb INFO Param updated: risk_value = 50000 (was 50000)
+17:08:24 robot_arb INFO Param updated: allow_long_basis = True (was True)
+17:08:24 robot_arb INFO Param updated: use_commission = True (was True)
+17:08:24 robot_arb INFO Param updated: commission_stock_pct = 0.035 (was 0.035)
+17:08:24 robot_arb INFO Param updated: commission_futures_rt = 0.9 (was 0.9)
+17:08:26 robot_arb INFO Account changed → 1225953-EDP
+17:08:26 robot_arb INFO Param updated: ticker_a = GAZP (was GAZP)
+17:08:26 robot_arb INFO Param updated: symbol_a = GAZP@RTSX (was GAZP@RTSX)
+17:08:26 robot_arb INFO Param updated: ticker_b = GZU6 (was GZU6)
+17:08:26 robot_arb INFO Param updated: symbol_b = GZU6@RTSX (was GZU6@RTSX)
+17:08:26 robot_arb INFO Param updated: lots_a = 100 (was 100)
+17:08:26 robot_arb INFO Param updated: lots_b = 10 (was 10)
+17:08:26 robot_arb INFO Param updated: hedge_ratio = 10 (was 10)
+17:08:26 robot_arb INFO Param updated: capital = 1000000 (was 1000000)
+17:08:26 robot_arb INFO Param updated: entry_z = 2.3 (was 2.3)
+17:08:26 robot_arb INFO Param updated: entry_z_long = -4.7 (was -4.7)
+17:08:26 robot_arb INFO Param updated: entry_mode = zscore (was zscore)
+17:08:26 robot_arb INFO Param updated: spread_rub_high = 400 (was 400)
+17:08:26 robot_arb INFO Param updated: spread_rub_low = 200 (was 200)
+17:08:26 robot_arb INFO Param updated: risk_free_rate = 0.1425 (was 0.1425)
+17:08:26 robot_arb INFO Param updated: expiration_date = 2026-09-18 (was 2026-09-18)
+17:08:26 robot_arb INFO Param updated: contract_size = 100 (was 100)
+17:08:26 robot_arb INFO Param updated: lookback = 150 (was 150)
+17:08:26 robot_arb INFO Param updated: leg_a_timeout = 5 (was 5)
+17:08:26 robot_arb INFO Param updated: min_fill_ratio = 0.5 (was 0.5)
+17:08:26 robot_arb INFO Param updated: min_profit_type = rub (was rub)
+17:08:26 robot_arb INFO Param updated: min_profit_value = 100 (was 100)
+17:08:26 robot_arb INFO Param updated: risk_type = stop_loss_rub (was stop_loss_rub)
+17:08:26 robot_arb INFO Param updated: risk_value = 50000 (was 50000)
+17:08:26 robot_arb INFO Param updated: allow_long_basis = True (was True)
+17:08:26 robot_arb INFO Param updated: use_commission = True (was True)
+17:08:26 robot_arb INFO Param updated: commission_stock_pct = 0.035 (was 0.035)
+17:08:26 robot_arb INFO Param updated: commission_futures_rt = 0.9 (was 0.9)
+17:08:35 robot_arb INFO Account changed → 1225953-EDP
+17:08:35 robot_arb INFO Param updated: ticker_a = GAZP (was GAZP)
+17:08:35 robot_arb INFO Param updated: symbol_a = GAZP@RTSX (was GAZP@RTSX)
+17:08:35 robot_arb INFO Param updated: ticker_b = GZU6 (was GZU6)
+17:08:35 robot_arb INFO Param updated: symbol_b = GZU6@RTSX (was GZU6@RTSX)
+17:08:35 robot_arb INFO Param updated: lots_a = 100 (was 100)
+17:08:35 robot_arb INFO Param updated: lots_b = 10 (was 10)
+17:08:35 robot_arb INFO Param updated: hedge_ratio = 10 (was 10)
+17:08:35 robot_arb INFO Param updated: capital = 1000000 (was 1000000)
+17:08:35 robot_arb INFO Param updated: entry_z = 2.3 (was 2.3)
+17:08:35 robot_arb INFO Param updated: entry_z_long = -4.7 (was -4.7)
+17:08:35 robot_arb INFO Param updated: entry_mode = zscore (was zscore)
+17:08:35 robot_arb INFO Param updated: spread_rub_high = 400 (was 400)
+17:08:35 robot_arb INFO Param updated: spread_rub_low = 200 (was 200)
+17:08:35 robot_arb INFO Param updated: risk_free_rate = 0.1425 (was 0.1425)
+17:08:35 robot_arb INFO Param updated: expiration_date = 2026-09-18 (was 2026-09-18)
+17:08:35 robot_arb INFO Param updated: contract_size = 100 (was 100)
+17:08:35 robot_arb INFO Param updated: lookback = 150 (was 150)
+17:08:35 robot_arb INFO Param updated: leg_a_timeout = 5 (was 5)
+17:08:35 robot_arb INFO Param updated: min_fill_ratio = 0.5 (was 0.5)
+17:08:35 robot_arb INFO Param updated: min_profit_type = rub (was rub)
+17:08:35 robot_arb INFO Param updated: min_profit_value = 100 (was 100)
+17:08:35 robot_arb INFO Param updated: risk_type = stop_loss_rub (was stop_loss_rub)
+17:08:35 robot_arb INFO Param updated: risk_value = 50000 (was 50000)
+17:08:35 robot_arb INFO Param updated: allow_long_basis = True (was True)
+17:08:35 robot_arb INFO Param updated: use_commission = True (was True)
+17:08:35 robot_arb INFO Param updated: commission_stock_pct = 0.035 (was 0.035)
+17:08:35 robot_arb INFO Param updated: commission_futures_rt = 0.9 (was 0.9)
+17:11:58 robot_arb INFO Account changed → 1225953-EDP
+17:11:59 robot_arb INFO Param updated: ticker_a = GAZP (was GAZP)
+17:11:59 robot_arb INFO Param updated: symbol_a = GAZP@RTSX (was GAZP@RTSX)
+17:11:59 robot_arb INFO Param updated: ticker_b = GZU6 (was GZU6)
+17:11:59 robot_arb INFO Param updated: symbol_b = GZU6@RTSX (was GZU6@RTSX)
+17:11:59 robot_arb INFO Param updated: lots_a = 100 (was 100)
+17:11:59 robot_arb INFO Param updated: lots_b = 10 (was 10)
+17:11:59 robot_arb INFO Param updated: hedge_ratio = 10 (was 10)
+17:11:59 robot_arb INFO Param updated: capital = 1000000 (was 1000000)
+17:11:59 robot_arb INFO Param updated: entry_z = 2.2 (was 2.3)
+17:11:59 robot_arb INFO Param updated: entry_z_long = -4.7 (was -4.7)
+17:11:59 robot_arb INFO Param updated: entry_mode = zscore (was zscore)
+17:11:59 robot_arb INFO Param updated: spread_rub_high = 400 (was 400)
+17:11:59 robot_arb INFO Param updated: spread_rub_low = 200 (was 200)
+17:11:59 robot_arb INFO Param updated: risk_free_rate = 0.1425 (was 0.1425)
+17:11:59 robot_arb INFO Param updated: expiration_date = 2026-09-18 (was 2026-09-18)
+17:11:59 robot_arb INFO Param updated: contract_size = 100 (was 100)
+17:11:59 robot_arb INFO Param updated: lookback = 150 (was 150)
+17:11:59 robot_arb INFO Param updated: leg_a_timeout = 5 (was 5)
+17:11:59 robot_arb INFO Param updated: min_fill_ratio = 0.5 (was 0.5)
+17:11:59 robot_arb INFO Param updated: min_profit_type = rub (was rub)
+17:11:59 robot_arb INFO Param updated: min_profit_value = 100 (was 100)
+17:11:59 robot_arb INFO Param updated: risk_type = stop_loss_rub (was stop_loss_rub)
+17:11:59 robot_arb INFO Param updated: risk_value = 50000 (was 50000)
+17:11:59 robot_arb INFO Param updated: allow_long_basis = True (was True)
+17:11:59 robot_arb INFO Param updated: use_commission = True (was True)
+17:11:59 robot_arb INFO Param updated: commission_stock_pct = 0.035 (was 0.035)
+17:11:59 robot_arb INFO Param updated: commission_futures_rt = 0.9 (was 0.9)
+17:12:10 robot_arb INFO Account changed → 1225953-EDP
+17:12:10 robot_arb INFO Param updated: ticker_a = GAZP (was GAZP)
+17:12:10 robot_arb INFO Param updated: symbol_a = GAZP@RTSX (was GAZP@RTSX)
+17:12:10 robot_arb INFO Param updated: ticker_b = GZU6 (was GZU6)
+17:12:10 robot_arb INFO Param updated: symbol_b = GZU6@RTSX (was GZU6@RTSX)
+17:12:10 robot_arb INFO Param updated: lots_a = 100 (was 100)
+17:12:10 robot_arb INFO Param updated: lots_b = 10 (was 10)
+17:12:10 robot_arb INFO Param updated: hedge_ratio = 10 (was 10)
+17:12:10 robot_arb INFO Param updated: capital = 1000000 (was 1000000)
+17:12:10 robot_arb INFO Param updated: entry_z = 2.2 (was 2.2)
+17:12:10 robot_arb INFO Param updated: entry_z_long = -4.7 (was -4.7)
+17:12:10 robot_arb INFO Param updated: entry_mode = zscore (was zscore)
+17:12:10 robot_arb INFO Param updated: spread_rub_high = 400 (was 400)
+17:12:10 robot_arb INFO Param updated: spread_rub_low = 200 (was 200)
+17:12:10 robot_arb INFO Param updated: risk_free_rate = 0.1425 (was 0.1425)
+17:12:10 robot_arb INFO Param updated: expiration_date = 2026-09-18 (was 2026-09-18)
+17:12:10 robot_arb INFO Param updated: contract_size = 100 (was 100)
+17:12:10 robot_arb INFO Param updated: lookback = 150 (was 150)
+17:12:10 robot_arb INFO Param updated: leg_a_timeout = 5 (was 5)
+17:12:10 robot_arb INFO Param updated: min_fill_ratio = 0.5 (was 0.5)
+17:12:10 robot_arb INFO Param updated: min_profit_type = rub (was rub)
+17:12:10 robot_arb INFO Param updated: min_profit_value = 100 (was 100)
+17:12:10 robot_arb INFO Param updated: risk_type = stop_loss_rub (was stop_loss_rub)
+17:12:10 robot_arb INFO Param updated: risk_value = 50000 (was 50000)
+17:12:10 robot_arb INFO Param updated: allow_long_basis = True (was True)
+17:12:10 robot_arb INFO Param updated: use_commission = True (was True)
+17:12:10 robot_arb INFO Param updated: commission_stock_pct = 0.035 (was 0.035)
+17:12:10 robot_arb INFO Param updated: commission_futures_rt = 0.9 (was 0.9)
+17:17:56 robot_arb INFO ⚠️ CHECK_ENTRY returned signal: {'action': 'entry', 'side': 'long_basis', 'z': -5.768854084849209, 'basis': 9028.5, 'price_a': 97.15, 'price_b': 10000.0}
+17:17:56 robot_arb INFO ENTRY SIGNAL long_basis | Z=-5.77 basis=9028.50 | A=97.15 B=10000.00 | limit sell 100 @ 97.15 | market buy 10 @ 10005.00
+17:17:56 orders_arb INFO 📄 PAPER ENTRY: sell 100 GAZP@RTSX @ 97.15 (LIMIT)
+17:17:56 orders_arb INFO 📄 PAPER ENTRY: buy 10 GZU6@RTSX @ 10005.00 (MARKET)
+17:17:56 strategy_arb INFO LAYER #1 OPEN LONG | A=97.15 ×100 | B=10005.00 ×10 | basis=9033.50 Z=-5.77 | layers=1
+17:17:56 robot_arb INFO LAYER OPEN LONG_BASIS #1 | A=97.15 ×100 | B=10005.00 ×10 | basis=9028.50 Z=-5.77 | layers=1 used_capital=116,460
+17:17:57 robot_arb INFO ⚠️ CHECK_ENTRY returned signal: {'action': 'entry', 'side': 'long_basis', 'z': -5.768854084849209, 'basis': 9028.5, 'price_a': 97.15, 'price_b': 10000.0}
+17:17:57 robot_arb INFO ENTRY SIGNAL long_basis | Z=-5.77 basis=9028.50 | A=97.15 B=10000.00 | limit sell 100 @ 97.15 | market buy 10 @ 10005.00
+17:17:57 orders_arb INFO 📄 PAPER ENTRY: sell 100 GAZP@RTSX @ 97.15 (LIMIT)
+17:17:57 orders_arb INFO 📄 PAPER ENTRY: buy 10 GZU6@RTSX @ 10005.00 (MARKET)
+17:17:57 strategy_arb INFO LAYER #2 OPEN LONG | A=97.15 ×100 | B=10005.00 ×10 | basis=9033.50 Z=-5.77 | layers=2
+17:17:57 robot_arb INFO LAYER OPEN LONG_BASIS #2 | A=97.15 ×100 | B=10005.00 ×10 | basis=9028.50 Z=-5.77 | layers=2 used_capital=232,920
+17:17:57 robot_arb INFO ⚠️ CHECK_ENTRY returned signal: {'action': 'entry', 'side': 'long_basis', 'z': -5.194354165593882, 'basis': 9028.5, 'price_a': 97.15, 'price_b': 10000.0}
+17:17:57 robot_arb INFO ENTRY SIGNAL long_basis | Z=-5.19 basis=9028.50 | A=97.15 B=10000.00 | limit sell 100 @ 97.15 | market buy 10 @ 10005.00
+17:17:57 orders_arb INFO 📄 PAPER ENTRY: sell 100 GAZP@RTSX @ 97.15 (LIMIT)
+17:17:57 orders_arb INFO 📄 PAPER ENTRY: buy 10 GZU6@RTSX @ 10005.00 (MARKET)
+17:17:57 strategy_arb INFO LAYER #3 OPEN LONG | A=97.15 ×100 | B=10005.00 ×10 | basis=9033.50 Z=-5.19 | layers=3
+17:17:57 robot_arb INFO LAYER OPEN LONG_BASIS #3 | A=97.15 ×100 | B=10005.00 ×10 | basis=9028.50 Z=-5.19 | layers=3 used_capital=349,380
+17:17:58 robot_arb INFO ⚠️ CHECK_ENTRY returned signal: {'action': 'entry', 'side': 'long_basis', 'z': -5.194354165593882, 'basis': 9028.5, 'price_a': 97.15, 'price_b': 10000.0}
+17:17:58 robot_arb INFO ENTRY SIGNAL long_basis | Z=-5.19 basis=9028.50 | A=97.15 B=10000.00 | limit sell 100 @ 97.15 | market buy 10 @ 10005.00
+17:17:58 orders_arb INFO 📄 PAPER ENTRY: sell 100 GAZP@RTSX @ 97.15 (LIMIT)
+17:17:58 orders_arb INFO 📄 PAPER ENTRY: buy 10 GZU6@RTSX @ 10005.00 (MARKET)
+17:17:58 strategy_arb INFO LAYER #4 OPEN LONG | A=97.15 ×100 | B=10005.00 ×10 | basis=9033.50 Z=-5.19 | layers=4
+17:17:58 robot_arb INFO LAYER OPEN LONG_BASIS #4 | A=97.15 ×100 | B=10005.00 ×10 | basis=9028.50 Z=-5.19 | layers=4 used_capital=465,840
+17:17:58 robot_arb INFO ⚠️ CHECK_ENTRY returned signal: {'action': 'entry', 'side': 'long_basis', 'z': -4.758061915693636, 'basis': 9028.5, 'price_a': 97.15, 'price_b': 10000.0}
+17:17:58 robot_arb INFO ENTRY SIGNAL long_basis | Z=-4.76 basis=9028.50 | A=97.15 B=10000.00 | limit sell 100 @ 97.15 | market buy 10 @ 10005.00
+17:17:58 orders_arb INFO 📄 PAPER ENTRY: sell 100 GAZP@RTSX @ 97.15 (LIMIT)
+17:17:58 orders_arb INFO 📄 PAPER ENTRY: buy 10 GZU6@RTSX @ 10005.00 (MARKET)
+17:17:58 strategy_arb INFO LAYER #5 OPEN LONG | A=97.15 ×100 | B=10005.00 ×10 | basis=9033.50 Z=-4.76 | layers=5
+17:17:58 robot_arb INFO LAYER OPEN LONG_BASIS #5 | A=97.15 ×100 | B=10005.00 ×10 | basis=9028.50 Z=-4.76 | layers=5 used_capital=582,300
+17:19:04 robot_arb INFO EXIT layer #1 reason=profit_target | limit buy 100 @ 97.08 | market sell 10 @ 10010.99
+17:19:04 orders_arb INFO 📄 PAPER ENTRY: buy 100 GAZP@RTSX @ 97.08 (LIMIT)
+17:19:04 orders_arb INFO 📄 PAPER ENTRY: sell 10 GZU6@RTSX @ 10010.99 (MARKET)
+17:19:04 strategy_arb INFO LAYER #1 CLOSE LONG | PnL=+52.94₽ (gross=+129.92₽ comm=76.98₽) | reason=profit_target | hold=1min | layers=4
+17:19:04 robot_arb INFO EXIT layer #2 reason=profit_target | limit buy 100 @ 97.08 | market sell 10 @ 10010.99
+17:19:04 orders_arb INFO 📄 PAPER ENTRY: buy 100 GAZP@RTSX @ 97.08 (LIMIT)
+17:19:04 orders_arb INFO 📄 PAPER ENTRY: sell 10 GZU6@RTSX @ 10010.99 (MARKET)
+17:19:04 strategy_arb INFO LAYER #2 CLOSE LONG | PnL=+52.94₽ (gross=+129.92₽ comm=76.98₽) | reason=profit_target | hold=1min | layers=3
+17:19:05 robot_arb INFO EXIT layer #3 reason=profit_target | limit buy 100 @ 97.08 | market sell 10 @ 10010.99
+17:19:05 orders_arb INFO 📄 PAPER ENTRY: buy 100 GAZP@RTSX @ 97.08 (LIMIT)
+17:19:05 orders_arb INFO 📄 PAPER ENTRY: sell 10 GZU6@RTSX @ 10010.99 (MARKET)
+17:19:05 strategy_arb INFO LAYER #3 CLOSE LONG | PnL=+52.94₽ (gross=+129.92₽ comm=76.98₽) | reason=profit_target | hold=1min | layers=2
+17:19:05 robot_arb INFO EXIT layer #4 reason=profit_target | limit buy 100 @ 97.08 | market sell 10 @ 10010.99
+17:19:05 orders_arb INFO 📄 PAPER ENTRY: buy 100 GAZP@RTSX @ 97.08 (LIMIT)
+17:19:05 orders_arb INFO 📄 PAPER ENTRY: sell 10 GZU6@RTSX @ 10010.99 (MARKET)
+17:19:05 strategy_arb INFO LAYER #4 CLOSE LONG | PnL=+52.94₽ (gross=+129.92₽ comm=76.98₽) | reason=profit_target | hold=1min | layers=1
+17:19:09 robot_arb INFO EXIT layer #5 reason=profit_target | limit buy 100 @ 97.09 | market sell 10 @ 10008.99
+17:19:09 orders_arb INFO 📄 PAPER ENTRY: buy 100 GAZP@RTSX @ 97.09 (LIMIT)
+17:19:09 orders_arb INFO 📄 PAPER ENTRY: sell 10 GZU6@RTSX @ 10008.99 (MARKET)
+17:19:09 strategy_arb INFO LAYER #5 CLOSE LONG | PnL=+22.95₽ (gross=+99.93₽ comm=76.98₽) | reason=profit_target | hold=1min | layers=0
+17:22:49 robot_arb INFO ⚠️ CHECK_ENTRY returned signal: {'action': 'entry', 'side': 'short_basis', 'z': 3.161422875003382, 'basis': 9040.0, 'price_a': 97.0, 'price_b': 10010.0}
+17:22:49 robot_arb INFO ENTRY SIGNAL short_basis | Z=3.16 basis=9040.00 | A=97.00 B=10010.00 | limit buy 100 @ 97.03 | market sell 10 @ 10005.00
+17:22:49 orders_arb INFO 📄 PAPER ENTRY: buy 100 GAZP@RTSX @ 97.03 (LIMIT)
+17:22:49 orders_arb INFO 📄 PAPER ENTRY: sell 10 GZU6@RTSX @ 10005.00 (MARKET)
+17:22:49 strategy_arb INFO LAYER #6 OPEN SHORT | A=97.03 ×100 | B=10005.00 ×10 | basis=9034.70 Z=3.16 | layers=1
+17:22:49 robot_arb INFO LAYER OPEN SHORT_BASIS #6 | A=97.03 ×100 | B=10005.00 ×10 | basis=9040.00 Z=3.16 | layers=1 used_capital=116,340
+17:22:49 robot_arb INFO ⚠️ CHECK_ENTRY returned signal: {'action': 'entry', 'side': 'short_basis', 'z': 3.0953154389688327, 'basis': 9040.0, 'price_a': 97.0, 'price_b': 10010.0}
+17:22:49 robot_arb INFO ENTRY SIGNAL short_basis | Z=3.10 basis=9040.00 | A=97.00 B=10010.00 | limit buy 100 @ 97.03 | market sell 10 @ 10005.00
+17:22:49 orders_arb INFO 📄 PAPER ENTRY: buy 100 GAZP@RTSX @ 97.03 (LIMIT)
+17:22:49 orders_arb INFO 📄 PAPER ENTRY: sell 10 GZU6@RTSX @ 10005.00 (MARKET)
+17:22:49 strategy_arb INFO LAYER #7 OPEN SHORT | A=97.03 ×100 | B=10005.00 ×10 | basis=9034.70 Z=3.10 | layers=2
+17:22:49 robot_arb INFO LAYER OPEN SHORT_BASIS #7 | A=97.03 ×100 | B=10005.00 ×10 | basis=9040.00 Z=3.10 | layers=2 used_capital=232,680
+17:22:50 robot_arb INFO ⚠️ CHECK_ENTRY returned signal: {'action': 'entry', 'side': 'short_basis', 'z': 3.0953154389688327, 'basis': 9040.0, 'price_a': 97.0, 'price_b': 10010.0}
+17:22:50 robot_arb INFO ENTRY SIGNAL short_basis | Z=3.10 basis=9040.00 | A=97.00 B=10010.00 | limit buy 100 @ 97.03 | market sell 10 @ 10005.00
+17:22:50 orders_arb INFO 📄 PAPER ENTRY: buy 100 GAZP@RTSX @ 97.03 (LIMIT)
+17:22:50 orders_arb INFO 📄 PAPER ENTRY: sell 10 GZU6@RTSX @ 10005.00 (MARKET)
+17:22:50 strategy_arb INFO LAYER #8 OPEN SHORT | A=97.03 ×100 | B=10005.00 ×10 | basis=9034.70 Z=3.10 | layers=3
+17:22:50 robot_arb INFO LAYER OPEN SHORT_BASIS #8 | A=97.03 ×100 | B=10005.00 ×10 | basis=9040.00 Z=3.10 | layers=3 used_capital=349,020
+17:22:50 robot_arb INFO ⚠️ CHECK_ENTRY returned signal: {'action': 'entry', 'side': 'short_basis', 'z': 3.0327925893039307, 'basis': 9040.0, 'price_a': 97.0, 'price_b': 10010.0}
+17:22:50 robot_arb INFO ENTRY SIGNAL short_basis | Z=3.03 basis=9040.00 | A=97.00 B=10010.00 | limit buy 100 @ 97.03 | market sell 10 @ 10005.00
+17:22:50 orders_arb INFO 📄 PAPER ENTRY: buy 100 GAZP@RTSX @ 97.03 (LIMIT)
+17:22:50 orders_arb INFO 📄 PAPER ENTRY: sell 10 GZU6@RTSX @ 10005.00 (MARKET)
+17:22:50 strategy_arb INFO LAYER #9 OPEN SHORT | A=97.03 ×100 | B=10005.00 ×10 | basis=9034.70 Z=3.03 | layers=4
+17:22:50 robot_arb INFO LAYER OPEN SHORT_BASIS #9 | A=97.03 ×100 | B=10005.00 ×10 | basis=9040.00 Z=3.03 | layers=4 used_capital=465,360
+17:22:51 robot_arb INFO ⚠️ CHECK_ENTRY returned signal: {'action': 'entry', 'side': 'short_basis', 'z': 3.0327925893039307, 'basis': 9040.0, 'price_a': 97.0, 'price_b': 10010.0}
+17:22:51 robot_arb INFO ENTRY SIGNAL short_basis | Z=3.03 basis=9040.00 | A=97.00 B=10010.00 | limit buy 100 @ 97.03 | market sell 10 @ 10005.00
+17:22:51 orders_arb INFO 📄 PAPER ENTRY: buy 100 GAZP@RTSX @ 97.03 (LIMIT)
+17:22:51 orders_arb INFO 📄 PAPER ENTRY: sell 10 GZU6@RTSX @ 10005.00 (MARKET)
+17:22:51 strategy_arb INFO LAYER #10 OPEN SHORT | A=97.03 ×100 | B=10005.00 ×10 | basis=9034.70 Z=3.03 | layers=5
+17:22:51 robot_arb INFO LAYER OPEN SHORT_BASIS #10 | A=97.03 ×100 | B=10005.00 ×10 | basis=9040.00 Z=3.03 | layers=5 used_capital=581,700
+17:22:51 robot_arb INFO ⚠️ CHECK_ENTRY returned signal: {'action': 'entry', 'side': 'short_basis', 'z': 2.9735347204656994, 'basis': 9040.0, 'price_a': 97.0, 'price_b': 10010.0}
+17:22:51 robot_arb INFO ENTRY SIGNAL short_basis | Z=2.97 basis=9040.00 | A=97.00 B=10010.00 | limit buy 100 @ 97.03 | market sell 10 @ 10005.00
+17:22:51 orders_arb INFO 📄 PAPER ENTRY: buy 100 GAZP@RTSX @ 97.03 (LIMIT)
+17:22:51 orders_arb INFO 📄 PAPER ENTRY: sell 10 GZU6@RTSX @ 10005.00 (MARKET)
+17:22:51 strategy_arb INFO LAYER #11 OPEN SHORT | A=97.03 ×100 | B=10005.00 ×10 | basis=9034.70 Z=2.97 | layers=6
+17:22:51 robot_arb INFO LAYER OPEN SHORT_BASIS #11 | A=97.03 ×100 | B=10005.00 ×10 | basis=9040.00 Z=2.97 | layers=6 used_capital=698,040
+17:22:52 robot_arb INFO ⚠️ CHECK_ENTRY returned signal: {'action': 'entry', 'side': 'short_basis', 'z': 2.9735347204656994, 'basis': 9040.0, 'price_a': 97.0, 'price_b': 10010.0}
+17:22:52 robot_arb INFO ENTRY SIGNAL short_basis | Z=2.97 basis=9040.00 | A=97.00 B=10010.00 | limit buy 100 @ 97.03 | market sell 10 @ 10005.00
+17:22:52 orders_arb INFO 📄 PAPER ENTRY: buy 100 GAZP@RTSX @ 97.03 (LIMIT)
+17:22:52 orders_arb INFO 📄 PAPER ENTRY: sell 10 GZU6@RTSX @ 10005.00 (MARKET)
+17:22:52 strategy_arb INFO LAYER #12 OPEN SHORT | A=97.03 ×100 | B=10005.00 ×10 | basis=9034.70 Z=2.97 | layers=7
+17:22:52 robot_arb INFO LAYER OPEN SHORT_BASIS #12 | A=97.03 ×100 | B=10005.00 ×10 | basis=9040.00 Z=2.97 | layers=7 used_capital=814,380
+17:22:52 robot_arb INFO ⚠️ CHECK_ENTRY returned signal: {'action': 'entry', 'side': 'short_basis', 'z': 2.917260839336635, 'basis': 9040.0, 'price_a': 97.0, 'price_b': 10010.0}
+17:22:52 robot_arb INFO ENTRY SIGNAL short_basis | Z=2.92 basis=9040.00 | A=97.00 B=10010.00 | limit buy 100 @ 97.03 | market sell 10 @ 10005.00
+17:22:52 orders_arb INFO 📄 PAPER ENTRY: buy 100 GAZP@RTSX @ 97.03 (LIMIT)
+17:22:52 orders_arb INFO 📄 PAPER ENTRY: sell 10 GZU6@RTSX @ 10005.00 (MARKET)
+17:22:52 strategy_arb INFO LAYER #13 OPEN SHORT | A=97.03 ×100 | B=10005.00 ×10 | basis=9034.70 Z=2.92 | layers=8
+17:22:52 robot_arb INFO LAYER OPEN SHORT_BASIS #13 | A=97.03 ×100 | B=10005.00 ×10 | basis=9040.00 Z=2.92 | layers=8 used_capital=930,720
+18:13:10 robot_arb INFO Account changed → 1225953-EDP
+18:13:10 robot_arb INFO Param updated: ticker_a = GAZP (was GAZP)
+18:13:10 robot_arb INFO Param updated: symbol_a = GAZP@RTSX (was GAZP@RTSX)
+18:13:10 robot_arb INFO Param updated: ticker_b = GZU6 (was GZU6)
+18:13:10 robot_arb INFO Param updated: symbol_b = GZU6@RTSX (was GZU6@RTSX)
+18:13:10 robot_arb INFO Param updated: lots_a = 100 (was 100)
+18:13:10 robot_arb INFO Param updated: lots_b = 10 (was 10)
+18:13:10 robot_arb INFO Param updated: hedge_ratio = 10 (was 10)
+18:13:10 robot_arb INFO Param updated: capital = 1000000 (was 1000000)
+18:13:10 robot_arb INFO Param updated: entry_z = 2.2 (was 2.2)
+18:13:10 robot_arb INFO Param updated: entry_z_long = -4.7 (was -4.7)
+18:13:10 robot_arb INFO Param updated: entry_mode = zscore (was zscore)
+18:13:10 robot_arb INFO Param updated: spread_rub_high = 400 (was 400)
+18:13:10 robot_arb INFO Param updated: spread_rub_low = 200 (was 200)
+18:13:10 robot_arb INFO Param updated: risk_free_rate = 0.1425 (was 0.1425)
+18:13:10 robot_arb INFO Param updated: expiration_date = 2026-09-18 (was 2026-09-18)
+18:13:10 robot_arb INFO Param updated: contract_size = 100 (was 100)
+18:13:10 robot_arb INFO Param updated: lookback = 150 (was 150)
+18:13:10 robot_arb INFO Param updated: leg_a_timeout = 5 (was 5)
+18:13:10 robot_arb INFO Param updated: min_fill_ratio = 0.5 (was 0.5)
+18:13:10 robot_arb INFO Param updated: min_profit_type = rub (was rub)
+18:13:10 robot_arb INFO Param updated: min_profit_value = 100 (was 100)
+18:13:10 robot_arb INFO Param updated: risk_type = stop_loss_rub (was stop_loss_rub)
+18:13:10 robot_arb INFO Param updated: risk_value = 50000 (was 50000)
+18:13:10 robot_arb INFO Param updated: allow_long_basis = True (was True)
+18:13:10 robot_arb INFO Param updated: use_commission = True (was True)
+18:13:10 robot_arb INFO Param updated: commission_stock_pct = 0.035 (was 0.035)
+18:13:10 robot_arb INFO Param updated: commission_futures_rt = 0.9 (was 0.9)
+18:14:22 robot_arb INFO Account changed → 1225953-EDP
+18:14:23 robot_arb INFO Param updated: ticker_a = GAZP (was GAZP)
+18:14:23 robot_arb INFO Param updated: symbol_a = GAZP@RTSX (was GAZP@RTSX)
+18:14:23 robot_arb INFO Param updated: ticker_b = GZU6 (was GZU6)
+18:14:23 robot_arb INFO Param updated: symbol_b = GZU6@RTSX (was GZU6@RTSX)
+18:14:23 robot_arb INFO Param updated: lots_a = 100 (was 100)
+18:14:23 robot_arb INFO Param updated: lots_b = 10 (was 10)
+18:14:23 robot_arb INFO Param updated: hedge_ratio = 10 (was 10)
+18:14:23 robot_arb INFO Param updated: capital = 1000000 (was 1000000)
+18:14:23 robot_arb INFO Param updated: entry_z = 2.2 (was 2.2)
+18:14:23 robot_arb INFO Param updated: entry_z_long = -4.7 (was -4.7)
+18:14:23 robot_arb INFO Param updated: entry_mode = zscore (was zscore)
+18:14:23 robot_arb INFO Param updated: spread_rub_high = 400 (was 400)
+18:14:23 robot_arb INFO Param updated: spread_rub_low = 200 (was 200)
+18:14:23 robot_arb INFO Param updated: risk_free_rate = 0.1425 (was 0.1425)
+18:14:23 robot_arb INFO Param updated: expiration_date = 2026-09-18 (was 2026-09-18)
+18:14:23 robot_arb INFO Param updated: contract_size = 100 (was 100)
+18:14:23 robot_arb INFO Param updated: lookback = 150 (was 150)
+18:14:23 robot_arb INFO Param updated: leg_a_timeout = 5 (was 5)
+18:14:23 robot_arb INFO Param updated: min_fill_ratio = 0.5 (was 0.5)
+18:14:23 robot_arb INFO Param updated: min_profit_type = rub (was rub)
+18:14:23 robot_arb INFO Param updated: min_profit_value = 100 (was 100)
+18:14:23 robot_arb INFO Param updated: risk_type = stop_loss_rub (was stop_loss_rub)
+18:14:23 robot_arb INFO Param updated: risk_value = 500000 (was 50000)
+18:14:23 robot_arb INFO Param updated: allow_long_basis = False (was True)
+18:14:23 robot_arb INFO Param updated: use_commission = True (was True)
+18:14:23 robot_arb INFO Param updated: commission_stock_pct = 0.035 (was 0.035)
+18:14:23 robot_arb INFO Param updated: commission_futures_rt = 0.9 (was 0.9)
+18:14:33 robot_arb INFO Account changed → 1225953-EDP
+18:14:34 robot_arb INFO Param updated: ticker_a = GAZP (was GAZP)
+18:14:34 robot_arb INFO Param updated: symbol_a = GAZP@RTSX (was GAZP@RTSX)
+18:14:34 robot_arb INFO Param updated: ticker_b = GZU6 (was GZU6)
+18:14:34 robot_arb INFO Param updated: symbol_b = GZU6@RTSX (was GZU6@RTSX)
+18:14:34 robot_arb INFO Param updated: lots_a = 100 (was 100)
+18:14:34 robot_arb INFO Param updated: lots_b = 10 (was 10)
+18:14:34 robot_arb INFO Param updated: hedge_ratio = 10 (was 10)
+18:14:34 robot_arb INFO Param updated: capital = 1000000 (was 1000000)
+18:14:34 robot_arb INFO Param updated: entry_z = 2.2 (was 2.2)
+18:14:34 robot_arb INFO Param updated: entry_z_long = -4.7 (was -4.7)
+18:14:34 robot_arb INFO Param updated: entry_mode = zscore (was zscore)
+18:14:34 robot_arb INFO Param updated: spread_rub_high = 400 (was 400)
+18:14:34 robot_arb INFO Param updated: spread_rub_low = 200 (was 200)
+18:14:34 robot_arb INFO Param updated: risk_free_rate = 0.1425 (was 0.1425)
+18:14:34 robot_arb INFO Param updated: expiration_date = 2026-09-18 (was 2026-09-18)
+18:14:34 robot_arb INFO Param updated: contract_size = 100 (was 100)
+18:14:34 robot_arb INFO Param updated: lookback = 150 (was 150)
+18:14:34 robot_arb INFO Param updated: leg_a_timeout = 5 (was 5)
+18:14:34 robot_arb INFO Param updated: min_fill_ratio = 0.5 (was 0.5)
+18:14:34 robot_arb INFO Param updated: min_profit_type = rub (was rub)
+18:14:34 robot_arb INFO Param updated: min_profit_value = 100 (was 100)
+18:14:34 robot_arb INFO Param updated: risk_type = stop_loss_rub (was stop_loss_rub)
+18:14:34 robot_arb INFO Param updated: risk_value = 500000 (was 500000)
+18:14:34 robot_arb INFO Param updated: allow_long_basis = False (was False)
+18:14:34 robot_arb INFO Param updated: use_commission = True (was True)
+18:14:34 robot_arb INFO Param updated: commission_stock_pct = 0.035 (was 0.035)
+18:14:34 robot_arb INFO Param updated: commission_futures_rt = 0.9 (was 0.9)
+04:14:38 robot_arb INFO EXIT layer #6 reason=profit_target | limit sell 100 @ 97.20 | market buy 10 @ 10004.00
+04:14:38 orders_arb INFO 📄 PAPER ENTRY: sell 100 GAZP@RTSX @ 97.20 (LIMIT)
+04:14:38 orders_arb INFO 📄 PAPER ENTRY: buy 10 GZU6@RTSX @ 10004.00 (MARKET)
+04:14:38 strategy_arb INFO LAYER #6 CLOSE SHORT | PnL=+102.97₽ (gross=+179.96₽ comm=76.98₽) | reason=profit_target | hold=652min | layers=7
+04:14:39 robot_arb INFO EXIT layer #7 reason=profit_target | limit sell 100 @ 97.20 | market buy 10 @ 10004.00
+04:14:39 orders_arb INFO 📄 PAPER ENTRY: sell 100 GAZP@RTSX @ 97.20 (LIMIT)
+04:14:39 orders_arb INFO 📄 PAPER ENTRY: buy 10 GZU6@RTSX @ 10004.00 (MARKET)
+04:14:39 strategy_arb INFO LAYER #7 CLOSE SHORT | PnL=+102.97₽ (gross=+179.96₽ comm=76.98₽) | reason=profit_target | hold=652min | layers=6
+04:14:39 robot_arb INFO EXIT layer #8 reason=profit_target | limit sell 100 @ 97.20 | market buy 10 @ 10004.00
+04:14:39 orders_arb INFO 📄 PAPER ENTRY: sell 100 GAZP@RTSX @ 97.20 (LIMIT)
+04:14:39 orders_arb INFO 📄 PAPER ENTRY: buy 10 GZU6@RTSX @ 10004.00 (MARKET)
+04:14:39 strategy_arb INFO LAYER #8 CLOSE SHORT | PnL=+102.97₽ (gross=+179.96₽ comm=76.98₽) | reason=profit_target | hold=652min | layers=5
+04:14:40 robot_arb INFO EXIT layer #9 reason=profit_target | limit sell 100 @ 97.20 | market buy 10 @ 10004.00
+04:14:40 orders_arb INFO 📄 PAPER ENTRY: sell 100 GAZP@RTSX @ 97.20 (LIMIT)
+04:14:40 orders_arb INFO 📄 PAPER ENTRY: buy 10 GZU6@RTSX @ 10004.00 (MARKET)
+04:14:40 strategy_arb INFO LAYER #9 CLOSE SHORT | PnL=+102.97₽ (gross=+179.96₽ comm=76.98₽) | reason=profit_target | hold=652min | layers=4
+04:14:40 robot_arb INFO EXIT layer #10 reason=profit_target | limit sell 100 @ 97.20 | market buy 10 @ 10004.00
+04:14:40 orders_arb INFO 📄 PAPER ENTRY: sell 100 GAZP@RTSX @ 97.20 (LIMIT)
+04:14:40 orders_arb INFO 📄 PAPER ENTRY: buy 10 GZU6@RTSX @ 10004.00 (MARKET)
+04:14:40 strategy_arb INFO LAYER #10 CLOSE SHORT | PnL=+102.97₽ (gross=+179.96₽ comm=76.98₽) | reason=profit_target | hold=652min | layers=3
+04:14:41 robot_arb INFO EXIT layer #11 reason=profit_target | limit sell 100 @ 97.20 | market buy 10 @ 10004.00
+04:14:41 orders_arb INFO 📄 PAPER ENTRY: sell 100 GAZP@RTSX @ 97.20 (LIMIT)
+04:14:41 orders_arb INFO 📄 PAPER ENTRY: buy 10 GZU6@RTSX @ 10004.00 (MARKET)
+04:14:41 strategy_arb INFO LAYER #11 CLOSE SHORT | PnL=+102.97₽ (gross=+179.96₽ comm=76.98₽) | reason=profit_target | hold=652min | layers=2
+04:14:41 robot_arb INFO EXIT layer #12 reason=profit_target | limit sell 100 @ 97.20 | market buy 10 @ 10004.00
+04:14:41 orders_arb INFO 📄 PAPER ENTRY: sell 100 GAZP@RTSX @ 97.20 (LIMIT)
+04:14:41 orders_arb INFO 📄 PAPER ENTRY: buy 10 GZU6@RTSX @ 10004.00 (MARKET)
+04:14:41 strategy_arb INFO LAYER #12 CLOSE SHORT | PnL=+102.97₽ (gross=+179.96₽ comm=76.98₽) | reason=profit_target | hold=652min | layers=1
+04:14:42 robot_arb INFO EXIT layer #13 reason=profit_target | limit sell 100 @ 97.20 | market buy 10 @ 10004.00
+04:14:42 orders_arb INFO 📄 PAPER ENTRY: sell 100 GAZP@RTSX @ 97.20 (LIMIT)
+04:14:42 orders_arb INFO 📄 PAPER ENTRY: buy 10 GZU6@RTSX @ 10004.00 (MARKET)
+04:14:42 strategy_arb INFO LAYER #13 CLOSE SHORT | PnL=+102.97₽ (gross=+179.96₽ comm=76.98₽) | reason=profit_target | hold=652min | layers=0
+04:18:59 robot_arb INFO ⚠️ CHECK_ENTRY returned signal: {'action': 'entry', 'side': 'short_basis', 'z': 2.645927145322002, 'basis': 9027.9, 'price_a': 97.11, 'price_b': 9999.0}
+04:18:59 robot_arb INFO ENTRY SIGNAL short_basis | Z=2.65 basis=9027.90 | A=97.11 B=9999.00 | limit buy 100 @ 97.16 | market sell 10 @ 9994.00
+04:18:59 orders_arb INFO 📄 PAPER ENTRY: buy 100 GAZP@RTSX @ 97.16 (LIMIT)
+04:18:59 orders_arb INFO 📄 PAPER ENTRY: sell 10 GZU6@RTSX @ 9994.00 (MARKET)
+04:18:59 strategy_arb INFO LAYER #14 OPEN SHORT | A=97.16 ×100 | B=9994.00 ×10 | basis=9022.40 Z=2.65 | layers=1
+04:18:59 robot_arb INFO LAYER OPEN SHORT_BASIS #14 | A=97.16 ×100 | B=9994.00 ×10 | basis=9027.90 Z=2.65 | layers=1 used_capital=116,470
+04:19:00 robot_arb INFO ⚠️ CHECK_ENTRY returned signal: {'action': 'entry', 'side': 'short_basis', 'z': 2.573442332504569, 'basis': 9027.9, 'price_a': 97.11, 'price_b': 9999.0}
+04:19:00 robot_arb INFO ENTRY SIGNAL short_basis | Z=2.57 basis=9027.90 | A=97.11 B=9999.00 | limit buy 100 @ 97.16 | market sell 10 @ 9994.00
+04:19:00 orders_arb INFO 📄 PAPER ENTRY: buy 100 GAZP@RTSX @ 97.16 (LIMIT)
+04:19:00 orders_arb INFO 📄 PAPER ENTRY: sell 10 GZU6@RTSX @ 9994.00 (MARKET)
+04:19:00 strategy_arb INFO LAYER #15 OPEN SHORT | A=97.16 ×100 | B=9994.00 ×10 | basis=9022.40 Z=2.57 | layers=2
+04:19:00 robot_arb INFO LAYER OPEN SHORT_BASIS #15 | A=97.16 ×100 | B=9994.00 ×10 | basis=9027.90 Z=2.57 | layers=2 used_capital=232,940
+04:19:00 robot_arb INFO ⚠️ CHECK_ENTRY returned signal: {'action': 'entry', 'side': 'short_basis', 'z': 2.573442332504569, 'basis': 9027.9, 'price_a': 97.11, 'price_b': 9999.0}
+04:19:00 robot_arb INFO ENTRY SIGNAL short_basis | Z=2.57 basis=9027.90 | A=97.11 B=9999.00 | limit buy 100 @ 97.16 | market sell 10 @ 9994.00
+04:19:00 orders_arb INFO 📄 PAPER ENTRY: buy 100 GAZP@RTSX @ 97.16 (LIMIT)
+04:19:00 orders_arb INFO 📄 PAPER ENTRY: sell 10 GZU6@RTSX @ 9994.00 (MARKET)
+04:19:00 strategy_arb INFO LAYER #16 OPEN SHORT | A=97.16 ×100 | B=9994.00 ×10 | basis=9022.40 Z=2.57 | layers=3
+04:19:00 robot_arb INFO LAYER OPEN SHORT_BASIS #16 | A=97.16 ×100 | B=9994.00 ×10 | basis=9027.90 Z=2.57 | layers=3 used_capital=349,410
+04:19:01 robot_arb INFO ⚠️ CHECK_ENTRY returned signal: {'action': 'entry', 'side': 'short_basis', 'z': 2.505804058100753, 'basis': 9027.9, 'price_a': 97.11, 'price_b': 9999.0}
+04:19:01 robot_arb INFO ENTRY SIGNAL short_basis | Z=2.51 basis=9027.90 | A=97.11 B=9999.00 | limit buy 100 @ 97.16 | market sell 10 @ 9994.00
+04:19:01 orders_arb INFO 📄 PAPER ENTRY: buy 100 GAZP@RTSX @ 97.16 (LIMIT)
+04:19:01 orders_arb INFO 📄 PAPER ENTRY: sell 10 GZU6@RTSX @ 9994.00 (MARKET)
+04:19:01 strategy_arb INFO LAYER #17 OPEN SHORT | A=97.16 ×100 | B=9994.00 ×10 | basis=9022.40 Z=2.51 | layers=4
+04:19:01 robot_arb INFO LAYER OPEN SHORT_BASIS #17 | A=97.16 ×100 | B=9994.00 ×10 | basis=9027.90 Z=2.51 | layers=4 used_capital=465,880
+04:19:01 robot_arb INFO ⚠️ CHECK_ENTRY returned signal: {'action': 'entry', 'side': 'short_basis', 'z': 2.505804058100753, 'basis': 9027.9, 'price_a': 97.11, 'price_b': 9999.0}
+04:19:01 robot_arb INFO ENTRY SIGNAL short_basis | Z=2.51 basis=9027.90 | A=97.11 B=9999.00 | limit buy 100 @ 97.16 | market sell 10 @ 9994.00
+04:19:01 orders_arb INFO 📄 PAPER ENTRY: buy 100 GAZP@RTSX @ 97.16 (LIMIT)
+04:19:01 orders_arb INFO 📄 PAPER ENTRY: sell 10 GZU6@RTSX @ 9994.00 (MARKET)
+04:19:01 strategy_arb INFO LAYER #18 OPEN SHORT | A=97.16 ×100 | B=9994.00 ×10 | basis=9022.40 Z=2.51 | layers=5
+04:19:01 robot_arb INFO LAYER OPEN SHORT_BASIS #18 | A=97.16 ×100 | B=9994.00 ×10 | basis=9027.90 Z=2.51 | layers=5 used_capital=582,350
+04:19:02 robot_arb INFO ⚠️ CHECK_ENTRY returned signal: {'action': 'entry', 'side': 'short_basis', 'z': 2.4424813451010605, 'basis': 9027.9, 'price_a': 97.11, 'price_b': 9999.0}
+04:19:02 robot_arb INFO ENTRY SIGNAL short_basis | Z=2.44 basis=9027.90 | A=97.11 B=9999.00 | limit buy 100 @ 97.16 | market sell 10 @ 9994.00
+04:19:02 orders_arb INFO 📄 PAPER ENTRY: buy 100 GAZP@RTSX @ 97.16 (LIMIT)
+04:19:02 orders_arb INFO 📄 PAPER ENTRY: sell 10 GZU6@RTSX @ 9994.00 (MARKET)
+04:19:02 strategy_arb INFO LAYER #19 OPEN SHORT | A=97.16 ×100 | B=9994.00 ×10 | basis=9022.40 Z=2.44 | layers=6
+04:19:02 robot_arb INFO LAYER OPEN SHORT_BASIS #19 | A=97.16 ×100 | B=9994.00 ×10 | basis=9027.90 Z=2.44 | layers=6 used_capital=698,820
+04:19:02 robot_arb INFO ⚠️ CHECK_ENTRY returned signal: {'action': 'entry', 'side': 'short_basis', 'z': 2.4424813451010605, 'basis': 9027.9, 'price_a': 97.11, 'price_b': 9999.0}
+04:19:02 robot_arb INFO ENTRY SIGNAL short_basis | Z=2.44 basis=9027.90 | A=97.11 B=9999.00 | limit buy 100 @ 97.16 | market sell 10 @ 9994.00
+04:19:02 orders_arb INFO 📄 PAPER ENTRY: buy 100 GAZP@RTSX @ 97.16 (LIMIT)
+04:19:02 orders_arb INFO 📄 PAPER ENTRY: sell 10 GZU6@RTSX @ 9994.00 (MARKET)
+04:19:02 strategy_arb INFO LAYER #20 OPEN SHORT | A=97.16 ×100 | B=9994.00 ×10 | basis=9022.40 Z=2.44 | layers=7
+04:19:02 robot_arb INFO LAYER OPEN SHORT_BASIS #20 | A=97.16 ×100 | B=9994.00 ×10 | basis=9027.90 Z=2.44 | layers=7 used_capital=815,290
+04:19:03 robot_arb INFO ⚠️ CHECK_ENTRY returned signal: {'action': 'entry', 'side': 'short_basis', 'z': 2.3830218749380014, 'basis': 9027.9, 'price_a': 97.11, 'price_b': 9999.0}
+04:19:03 robot_arb INFO ENTRY SIGNAL short_basis | Z=2.38 basis=9027.90 | A=97.11 B=9999.00 | limit buy 100 @ 97.16 | market sell 10 @ 9994.00
+04:19:03 orders_arb INFO 📄 PAPER ENTRY: buy 100 GAZP@RTSX @ 97.16 (LIMIT)
+04:19:03 orders_arb INFO 📄 PAPER ENTRY: sell 10 GZU6@RTSX @ 9994.00 (MARKET)
+04:19:03 strategy_arb INFO LAYER #21 OPEN SHORT | A=97.16 ×100 | B=9994.00 ×10 | basis=9022.40 Z=2.38 | layers=8
+04:19:03 robot_arb INFO LAYER OPEN SHORT_BASIS #21 | A=97.16 ×100 | B=9994.00 ×10 | basis=9027.90 Z=2.38 | layers=8 used_capital=931,760
+04:59:15 robot_arb INFO EXIT layer #14 reason=profit_target | limit sell 100 @ 97.32 | market buy 10 @ 10004.00
+04:59:15 orders_arb INFO 📄 PAPER ENTRY: sell 100 GAZP@RTSX @ 97.32 (LIMIT)
+04:59:15 orders_arb INFO 📄 PAPER ENTRY: buy 10 GZU6@RTSX @ 10004.00 (MARKET)
+04:59:15 strategy_arb INFO LAYER #14 CLOSE SHORT | PnL=-17.06₽ (gross=+60.01₽ comm=77.07₽) | reason=profit_target | hold=40min | layers=7
+04:59:15 robot_arb INFO EXIT layer #15 reason=profit_target | limit sell 100 @ 97.32 | market buy 10 @ 10004.00
+04:59:16 orders_arb INFO 📄 PAPER ENTRY: sell 100 GAZP@RTSX @ 97.32 (LIMIT)
+04:59:16 orders_arb INFO 📄 PAPER ENTRY: buy 10 GZU6@RTSX @ 10004.00 (MARKET)
+04:59:16 strategy_arb INFO LAYER #15 CLOSE SHORT | PnL=-17.06₽ (gross=+60.01₽ comm=77.07₽) | reason=profit_target | hold=40min | layers=6
+04:59:16 robot_arb INFO EXIT layer #16 reason=profit_target | limit sell 100 @ 97.32 | market buy 10 @ 10004.00
+04:59:16 orders_arb INFO 📄 PAPER ENTRY: sell 100 GAZP@RTSX @ 97.32 (LIMIT)
+04:59:16 orders_arb INFO 📄 PAPER ENTRY: buy 10 GZU6@RTSX @ 10004.00 (MARKET)
+04:59:16 strategy_arb INFO LAYER #16 CLOSE SHORT | PnL=-17.06₽ (gross=+60.01₽ comm=77.07₽) | reason=profit_target | hold=40min | layers=5
+04:59:17 robot_arb INFO EXIT layer #17 reason=profit_target | limit sell 100 @ 97.32 | market buy 10 @ 10004.00
+04:59:17 orders_arb INFO 📄 PAPER ENTRY: sell 100 GAZP@RTSX @ 97.32 (LIMIT)
+04:59:17 orders_arb INFO 📄 PAPER ENTRY: buy 10 GZU6@RTSX @ 10004.00 (MARKET)
+04:59:17 strategy_arb INFO LAYER #17 CLOSE SHORT | PnL=-17.06₽ (gross=+60.01₽ comm=77.07₽) | reason=profit_target | hold=40min | layers=4
+04:59:17 robot_arb INFO EXIT layer #18 reason=profit_target | limit sell 100 @ 97.32 | market buy 10 @ 10004.00
+04:59:17 orders_arb INFO 📄 PAPER ENTRY: sell 100 GAZP@RTSX @ 97.32 (LIMIT)
+04:59:17 orders_arb INFO 📄 PAPER ENTRY: buy 10 GZU6@RTSX @ 10004.00 (MARKET)
+04:59:17 strategy_arb INFO LAYER #18 CLOSE SHORT | PnL=-17.06₽ (gross=+60.01₽ comm=77.07₽) | reason=profit_target | hold=40min | layers=3
+04:59:18 robot_arb INFO EXIT layer #19 reason=profit_target | limit sell 100 @ 97.32 | market buy 10 @ 10004.00
+04:59:18 orders_arb INFO 📄 PAPER ENTRY: sell 100 GAZP@RTSX @ 97.32 (LIMIT)
+04:59:18 orders_arb INFO 📄 PAPER ENTRY: buy 10 GZU6@RTSX @ 10004.00 (MARKET)
+04:59:18 strategy_arb INFO LAYER #19 CLOSE SHORT | PnL=-17.06₽ (gross=+60.01₽ comm=77.07₽) | reason=profit_target | hold=40min | layers=2
+04:59:18 robot_arb INFO EXIT layer #20 reason=profit_target | limit sell 100 @ 97.32 | market buy 10 @ 10004.00
+04:59:18 orders_arb INFO 📄 PAPER ENTRY: sell 100 GAZP@RTSX @ 97.32 (LIMIT)
+04:59:18 orders_arb INFO 📄 PAPER ENTRY: buy 10 GZU6@RTSX @ 10004.00 (MARKET)
+04:59:18 strategy_arb INFO LAYER #20 CLOSE SHORT | PnL=-17.06₽ (gross=+60.01₽ comm=77.07₽) | reason=profit_target | hold=40min | layers=1
+04:59:19 robot_arb INFO EXIT layer #21 reason=profit_target | limit sell 100 @ 97.32 | market buy 10 @ 10004.00
+04:59:19 orders_arb INFO 📄 PAPER ENTRY: sell 100 GAZP@RTSX @ 97.32 (LIMIT)
+04:59:19 orders_arb INFO 📄 PAPER ENTRY: buy 10 GZU6@RTSX @ 10004.00 (MARKET)
+04:59:19 strategy_arb INFO LAYER #21 CLOSE SHORT | PnL=-17.06₽ (gross=+60.01₽ comm=77.07₽) | reason=profit_target | hold=40min | layers=0
+05:00:46 robot_arb INFO ⚠️ CHECK_ENTRY returned signal: {'action': 'entry', 'side': 'short_basis', 'z': 2.204450626181642, 'basis': 9025.8, 'price_a': 97.32, 'price_b': 9999.0}
+05:00:46 robot_arb INFO ENTRY SIGNAL short_basis | Z=2.20 basis=9025.80 | A=97.32 B=9999.00 | limit buy 100 @ 97.35 | market sell 10 @ 9994.00
+05:00:46 orders_arb INFO 📄 PAPER ENTRY: buy 100 GAZP@RTSX @ 97.35 (LIMIT)
+05:00:46 orders_arb INFO 📄 PAPER ENTRY: sell 10 GZU6@RTSX @ 9994.00 (MARKET)
+05:00:46 strategy_arb INFO LAYER #22 OPEN SHORT | A=97.35 ×100 | B=9994.00 ×10 | basis=9020.50 Z=2.20 | layers=1
+05:00:46 robot_arb INFO LAYER OPEN SHORT_BASIS #22 | A=97.35 ×100 | B=9994.00 ×10 | basis=9025.80 Z=2.20 | layers=1 used_capital=116,660
+05:00:46 robot_arb INFO ⚠️ CHECK_ENTRY returned signal: {'action': 'entry', 'side': 'short_basis', 'z': 2.204450626181642, 'basis': 9025.8, 'price_a': 97.32, 'price_b': 9999.0}
+05:00:46 robot_arb INFO ENTRY SIGNAL short_basis | Z=2.20 basis=9025.80 | A=97.32 B=9999.00 | limit buy 100 @ 97.35 | market sell 10 @ 9994.00
+05:00:46 orders_arb INFO 📄 PAPER ENTRY: buy 100 GAZP@RTSX @ 97.35 (LIMIT)
+05:00:46 orders_arb INFO 📄 PAPER ENTRY: sell 10 GZU6@RTSX @ 9994.00 (MARKET)
+05:00:46 strategy_arb INFO LAYER #23 OPEN SHORT | A=97.35 ×100 | B=9994.00 ×10 | basis=9020.50 Z=2.20 | layers=2
+05:00:46 robot_arb INFO LAYER OPEN SHORT_BASIS #23 | A=97.35 ×100 | B=9994.00 ×10 | basis=9025.80 Z=2.20 | layers=2 used_capital=233,320
+05:01:08 robot_arb INFO ⚠️ CHECK_ENTRY returned signal: {'action': 'entry', 'side': 'short_basis', 'z': 2.430956136727587, 'basis': 9025.9, 'price_a': 97.31, 'price_b': 9999.0}
+05:01:08 robot_arb INFO ENTRY SIGNAL short_basis | Z=2.43 basis=9025.90 | A=97.31 B=9999.00 | limit buy 100 @ 97.32 | market sell 10 @ 9994.00
+05:01:08 orders_arb INFO 📄 PAPER ENTRY: buy 100 GAZP@RTSX @ 97.32 (LIMIT)
+05:01:08 orders_arb INFO 📄 PAPER ENTRY: sell 10 GZU6@RTSX @ 9994.00 (MARKET)
+05:01:08 strategy_arb INFO LAYER #24 OPEN SHORT | A=97.32 ×100 | B=9994.00 ×10 | basis=9020.80 Z=2.43 | layers=3
+05:01:08 robot_arb INFO LAYER OPEN SHORT_BASIS #24 | A=97.32 ×100 | B=9994.00 ×10 | basis=9025.90 Z=2.43 | layers=3 used_capital=349,950
+05:01:09 robot_arb INFO ⚠️ CHECK_ENTRY returned signal: {'action': 'entry', 'side': 'short_basis', 'z': 2.3788555729208736, 'basis': 9025.9, 'price_a': 97.31, 'price_b': 9999.0}
+05:01:09 robot_arb INFO ENTRY SIGNAL short_basis | Z=2.38 basis=9025.90 | A=97.31 B=9999.00 | limit buy 100 @ 97.32 | market sell 10 @ 9994.00
+05:01:09 orders_arb INFO 📄 PAPER ENTRY: buy 100 GAZP@RTSX @ 97.32 (LIMIT)
+05:01:09 orders_arb INFO 📄 PAPER ENTRY: sell 10 GZU6@RTSX @ 9994.00 (MARKET)
+05:01:09 strategy_arb INFO LAYER #25 OPEN SHORT | A=97.32 ×100 | B=9994.00 ×10 | basis=9020.80 Z=2.38 | layers=4
+05:01:09 robot_arb INFO LAYER OPEN SHORT_BASIS #25 | A=97.32 ×100 | B=9994.00 ×10 | basis=9025.90 Z=2.38 | layers=4 used_capital=466,580
+05:01:09 robot_arb INFO ⚠️ CHECK_ENTRY returned signal: {'action': 'entry', 'side': 'short_basis', 'z': 2.3788555729208736, 'basis': 9025.9, 'price_a': 97.31, 'price_b': 9999.0}
+05:01:09 robot_arb INFO ENTRY SIGNAL short_basis | Z=2.38 basis=9025.90 | A=97.31 B=9999.00 | limit buy 100 @ 97.32 | market sell 10 @ 9994.00
+05:01:09 orders_arb INFO 📄 PAPER ENTRY: buy 100 GAZP@RTSX @ 97.32 (LIMIT)
+05:01:09 orders_arb INFO 📄 PAPER ENTRY: sell 10 GZU6@RTSX @ 9994.00 (MARKET)
+05:01:09 strategy_arb INFO LAYER #26 OPEN SHORT | A=97.32 ×100 | B=9994.00 ×10 | basis=9020.80 Z=2.38 | layers=5
+05:01:09 robot_arb INFO LAYER OPEN SHORT_BASIS #26 | A=97.32 ×100 | B=9994.00 ×10 | basis=9025.90 Z=2.38 | layers=5 used_capital=583,210
+05:01:10 robot_arb INFO ⚠️ CHECK_ENTRY returned signal: {'action': 'entry', 'side': 'short_basis', 'z': 2.3294118824597003, 'basis': 9025.9, 'price_a': 97.31, 'price_b': 9999.0}
+05:01:10 robot_arb INFO ENTRY SIGNAL short_basis | Z=2.33 basis=9025.90 | A=97.31 B=9999.00 | limit buy 100 @ 97.32 | market sell 10 @ 9994.00
+05:01:10 orders_arb INFO 📄 PAPER ENTRY: buy 100 GAZP@RTSX @ 97.32 (LIMIT)
+05:01:10 orders_arb INFO 📄 PAPER ENTRY: sell 10 GZU6@RTSX @ 9994.00 (MARKET)
+05:01:10 strategy_arb INFO LAYER #27 OPEN SHORT | A=97.32 ×100 | B=9994.00 ×10 | basis=9020.80 Z=2.33 | layers=6
+05:01:10 robot_arb INFO LAYER OPEN SHORT_BASIS #27 | A=97.32 ×100 | B=9994.00 ×10 | basis=9025.90 Z=2.33 | layers=6 used_capital=699,840
+05:01:10 robot_arb INFO ⚠️ CHECK_ENTRY returned signal: {'action': 'entry', 'side': 'short_basis', 'z': 2.3294118824597003, 'basis': 9025.9, 'price_a': 97.31, 'price_b': 9999.0}
+05:01:10 robot_arb INFO ENTRY SIGNAL short_basis | Z=2.33 basis=9025.90 | A=97.31 B=9999.00 | limit buy 100 @ 97.32 | market sell 10 @ 9994.00
+05:01:10 orders_arb INFO 📄 PAPER ENTRY: buy 100 GAZP@RTSX @ 97.32 (LIMIT)
+05:01:10 orders_arb INFO 📄 PAPER ENTRY: sell 10 GZU6@RTSX @ 9994.00 (MARKET)
+05:01:10 strategy_arb INFO LAYER #28 OPEN SHORT | A=97.32 ×100 | B=9994.00 ×10 | basis=9020.80 Z=2.33 | layers=7
+05:01:10 robot_arb INFO LAYER OPEN SHORT_BASIS #28 | A=97.32 ×100 | B=9994.00 ×10 | basis=9025.90 Z=2.33 | layers=7 used_capital=816,470
+05:01:11 robot_arb INFO ⚠️ CHECK_ENTRY returned signal: {'action': 'entry', 'side': 'short_basis', 'z': 2.2823970349129867, 'basis': 9025.9, 'price_a': 97.31, 'price_b': 9999.0}
+05:01:11 robot_arb INFO ENTRY SIGNAL short_basis | Z=2.28 basis=9025.90 | A=97.31 B=9999.00 | limit buy 100 @ 97.32 | market sell 10 @ 9994.00
+05:01:11 orders_arb INFO 📄 PAPER ENTRY: buy 100 GAZP@RTSX @ 97.32 (LIMIT)
+05:01:11 orders_arb INFO 📄 PAPER ENTRY: sell 10 GZU6@RTSX @ 9994.00 (MARKET)
+05:01:11 strategy_arb INFO LAYER #29 OPEN SHORT | A=97.32 ×100 | B=9994.00 ×10 | basis=9020.80 Z=2.28 | layers=8
+05:01:11 robot_arb INFO LAYER OPEN SHORT_BASIS #29 | A=97.32 ×100 | B=9994.00 ×10 | basis=9025.90 Z=2.28 | layers=8 used_capital=933,100
+07:34:23 robot_arb INFO Signal 15 — shutting down...
