@@ -85,6 +85,11 @@ def load_params() -> OFParams:
 
 params = load_params()
 strategy = OrderFlowStrategy(params)
+
+# Aggression tracking (ticks at improving prices) — module-level for callback access
+_agg_buy_vol = 0
+_agg_sell_vol = 0
+_last_tick_price = 0.0
 orders = OrderManager(dp_url=DP_URL, account=ACCOUNT, symbol=SYMBOL)
 
 # --- FinamPy connection ---
@@ -134,11 +139,6 @@ def connect_finam():
 
     fp = FinamPy(token)
     log.info(f"FinamPy connected. Accounts: {fp.account_ids}")
-
-    # Aggression tracking (ticks at improving prices)
-    _agg_buy_vol = 0
-    _agg_sell_vol = 0
-    _last_tick_price = 0.0
 
     # Subscribe to latest trades (обезличенные сделки)
     try:
@@ -233,6 +233,7 @@ def _on_latest_trades(event):
             ))
 
             # Track aggression (ticks at improving prices)
+            global _agg_buy_vol, _agg_sell_vol, _last_tick_price
             if _last_tick_price > 0 and price != _last_tick_price:
                 if price > _last_tick_price:
                     _agg_buy_vol += size
@@ -289,6 +290,7 @@ def _on_new_bar(event, finam_timeframe=None):
             )
 
             # Feed aggression data to signal engine
+            global _agg_buy_vol, _agg_sell_vol
             strategy.signals.add_bar_aggression(_agg_buy_vol, _agg_sell_vol)
             _agg_buy_vol = 0
             _agg_sell_vol = 0
