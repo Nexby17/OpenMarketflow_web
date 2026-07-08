@@ -137,6 +137,10 @@ class BasisCalculator:
         self._spread_history: deque[float] = deque(maxlen=lookback * 5)
         self._price_a: float = 0.0
         self._price_b: float = 0.0
+        self._bid_a: float = 0.0
+        self._ask_a: float = 0.0
+        self._bid_b: float = 0.0
+        self._ask_b: float = 0.0
         self._ts: float = 0.0
 
     @property
@@ -196,6 +200,16 @@ class BasisCalculator:
                 self._price_b = price
                 self._ts = time.time()
 
+    def update_market(self, bid_a: float = 0, ask_a: float = 0,
+                      bid_b: float = 0, ask_b: float = 0):
+        """Update best bid/ask for market spread calculation."""
+        with self._lock:
+            if bid_a > 0: self._bid_a = bid_a
+            if ask_a > 0: self._ask_a = ask_a
+            if bid_b > 0: self._bid_b = bid_b
+            if ask_b > 0: self._ask_b = ask_b
+            self._ts = time.time()
+
     @property
     def price_a(self) -> float:
         return self._price_a
@@ -203,6 +217,22 @@ class BasisCalculator:
     @property
     def price_b(self) -> float:
         return self._price_b
+
+    @property
+    def bid_a(self) -> float:
+        return self._bid_a
+
+    @property
+    def ask_a(self) -> float:
+        return self._ask_a
+
+    @property
+    def bid_b(self) -> float:
+        return self._bid_b
+
+    @property
+    def ask_b(self) -> float:
+        return self._ask_b
 
     @property
     def basis(self) -> float:
@@ -213,10 +243,13 @@ class BasisCalculator:
 
     @property
     def spread_rub(self) -> float:
-        """Real spread in ₽: futures - (spot × contract_size)."""
+        """Realizable SHORT spread: bid_B - ask_A × hedge_ratio.
+        Falls back to LAST price mid if no OB data."""
+        if self._bid_b > 0 and self._ask_a > 0:
+            return self._bid_b - self._ask_a * self._hedge_ratio
         if self._price_a <= 0 or self._price_b <= 0:
             return 0.0
-        return self._price_b - self._price_a * self._contract_size
+        return self._price_b - self._price_a * self._hedge_ratio
 
     @property
     def spread_pct(self) -> float:

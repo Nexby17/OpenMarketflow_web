@@ -215,25 +215,18 @@ class ArbOrderManager:
                 return 'cancelled'
             if not_found:
                 return 'not_found'
-        # DP server fallback — try both accounts
-        for acc in [self._stock_account, self._account]:
-            try:
-                r = requests.post(
-                    f"{self._dp_url}/order/cancel",
-                    params={"account": acc, "order_id": order_id},
-                    timeout=self._timeout,
-                )
-                data = r.json()
-                if "error" in data:
-                    err = data.get('error', '')
-                    if 'NOT_FOUND' in err.upper() or 'not found' in err.lower():
-                        continue  # try next account
-                    log.warning(f"Cancel error {order_id}: {err}")
-                    return 'error'
+        # DP server fallback — cancel via gRPC connector
+        try:
+            r = requests.post(
+                f"{self._dp_url}/api/orders/cancel-all",
+                timeout=self._timeout,
+            )
+            data = r.json()
+            if data.get("status") == "ok":
                 return 'cancelled'
-            except Exception as e:
-                log.error(f"Cancel exception: {e}")
-                return 'error'
+        except Exception as e:
+            log.warning(f"DP cancel-all fallback failed: {e}")
+        return 'error'
         # Both accounts returned NOT_FOUND — order is done
         return 'not_found'
 
@@ -421,3 +414,61 @@ class ArbOrderManager:
             lots_a, lots_b, limit_price_a,
             timeout, min_fill_ratio, paper, market_price_b,
         )
+
+    def execute_both_market(self, symbol_a: str, symbol_b: str,
+                            side_a: str, side_b: str,
+                            lots_a: int, lots_b: int,
+                            paper: bool = True,
+                            est_price_a: float = 0.0,
+                            est_price_b: float = 0.0) -> dict:
+        """Execute both legs as MARKET simultaneously — no waiting, no polling.
+        Returns dict with estimated fill prices from orderbook snapshot."""
+        result = {"leg_a": None, "leg_b": None, "success": False, "error": ""}
+
+        if paper:
+            log.info(f"PAPER BOTH MKT: A={side_a} {lots_a} {symbol_a} @ {est_price_a:.2f} | B={side_b} {lots_b} {symbol_b} @ {est_price_b:.2f}")
+            result["leg_a"] = LegResult(filled=True, price=est_price_a, quantity=lots_a)
+            result["leg_b"] = LegResult(filled=True, price=est_price_b, quantity=lots_b)
+            result["success"] = True
+            return result
+
+        # Place both market orders simultaneously
+        log.info(f"MARKET ENTRY: A={side_a} {lots_a} {symbol_a} | B={side_b} {lots_b} {symbol_b}")
+        res_a = self._place_market(symbol_a, side_a, lots_a, tag="arb_mkt_a")
+        res_b = self._place_market(symbol_b, side_b, lots_b, tag="arb_mkt_b")
+
+        ok_a = res_a is not None
+        ok_b = res_b is not None
+
+        if ok_a and ok_b:
+            log.info(f"Both legs placed: A id={res_a.get('order_id','?')} B id={res_b.get('order_id','?')}")
+            result["leg_a"] = LegResult(filled=True, price=est_price_a, quantity=lots_a)
+            result["leg_b"] = LegResult(filled=True, price=est_price_b, quantity=lots_b)
+            result["success"] = True
+            return result
+
+        # Emergency: close the leg that succeeded
+        if ok_a and not ok_b:
+            log.error("Leg B market failed — emergency closing leg A")
+            emergency = SELL if side_a == BUY else BUY
+            for attempt in range(3):
+                r = self._place_market(symbol_a, emergency, lots_a, tag=f"arb_emergency_a_{attempt}")
+                if r:
+                    log.info(f"Emergency close A ok: {r.get('order_id','?')}")
+                    break
+                time.sleep(0.5)
+            result["error"] = "leg_b_failed"
+        elif ok_b and not ok_a:
+            log.error("Leg A market failed — emergency closing leg B")
+            emergency = SELL if side_b == BUY else BUY
+            for attempt in range(3):
+                r = self._place_market(symbol_b, emergency, lots_b, tag=f"arb_emergency_b_{attempt}")
+                if r:
+                    log.info(f"Emergency close B ok: {r.get('order_id','?')}")
+                    break
+                time.sleep(0.5)
+            result["error"] = "leg_a_failed"
+        else:
+            result["error"] = "both_legs_failed"
+
+        return result

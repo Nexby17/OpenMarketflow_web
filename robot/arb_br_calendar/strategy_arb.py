@@ -482,25 +482,30 @@ class ArbitrageStrategy:
         return comm
 
     def _layer_unrealized_pnl(self, layer: ArbLayer) -> float:
-        """Calculate unrealized PnL of a single layer (net of commission)."""
-        pa = self.basis_calc.price_a
-        pb = self.basis_calc.price_b
-        if pa <= 0 or pb <= 0:
-            # No price data — use last known entry prices (no PnL movement, just commission estimate)
-            pa = layer.entry_price_a
-            pb = layer.entry_price_b
-            if pa <= 0 or pb <= 0:
+        """Calculate unrealized PnL using market bid/ask (net of commission).
+        To close: pay ask when buying, receive bid when selling."""
+        bid_a = self.basis_calc.bid_a or self.basis_calc.price_a
+        ask_a = self.basis_calc.ask_a or self.basis_calc.price_a
+        bid_b = self.basis_calc.bid_b or self.basis_calc.price_b
+        ask_b = self.basis_calc.ask_b or self.basis_calc.price_b
+        if bid_a <= 0 or ask_a <= 0 or bid_b <= 0 or ask_b <= 0:
+            bid_a = ask_a = layer.entry_price_a
+            bid_b = ask_b = layer.entry_price_b
+            if bid_a <= 0 or bid_b <= 0:
                 return 0.0
 
         if layer.side == LONG_BASIS:
-            pnl_b = (pb - layer.entry_price_b) * layer.lots_b * self.p.mult_b
-            pnl_a = (layer.entry_price_a - pa) * layer.lots_a * self.p.mult_a
+            # LONG: entered sell A / buy B. Close: buy A @ ask, sell B @ bid
+            pnl_a = (layer.entry_price_a - ask_a) * layer.lots_a * self.p.mult_a
+            pnl_b = (bid_b - layer.entry_price_b) * layer.lots_b * self.p.mult_b
         else:
-            pnl_b = (layer.entry_price_b - pb) * layer.lots_b * self.p.mult_b
-            pnl_a = (pa - layer.entry_price_a) * layer.lots_a * self.p.mult_a
+            # SHORT: entered buy A / sell B. Close: sell A @ bid, buy B @ ask
+            pnl_a = (bid_a - layer.entry_price_a) * layer.lots_a * self.p.mult_a
+            pnl_b = (layer.entry_price_b - ask_b) * layer.lots_b * self.p.mult_b
 
-        gross = pnl_b + pnl_a
-        comm = self._calc_commission(layer.entry_price_a, pa, layer.lots_a, layer.lots_b)
+        gross = pnl_a + pnl_b
+        comm = self._calc_commission(layer.entry_price_a, bid_a if layer.side == SHORT_BASIS else ask_a,
+                                      layer.lots_a, layer.lots_b)
         return gross - comm
 
     def _calc_unrealized_pnl(self) -> float:
