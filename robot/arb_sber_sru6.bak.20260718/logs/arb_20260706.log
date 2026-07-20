@@ -1,0 +1,400 @@
+09:14:52 robot_arb INFO === Arbitrage Robot v1 ===
+09:14:52 robot_arb INFO Pair: SBER / SRU6
+09:14:52 robot_arb INFO Account: 1225953 | Port: 5091 | Paper: True
+09:14:52 robot_arb INFO Params: entry_z=2.7 lookback=200 lots_a=100 lots_b=1 hedge_ratio=0.01
+09:14:52 robot_arb INFO Min profit: rub=200
+09:14:52 robot_arb INFO Risk: stop_loss_rub=500000
+09:14:52 FinamPy CRITICAL Ошибка доступа к системному хранилищу: No recommended backend was available. Install a recommended 3rd party backend package; or, install the keyrings.alt package if you want to use the non-recommended backends. See https://pypi.org/project/keyring for details.
+09:14:52 FinamPy CRITICAL Ошибка сохранения в системное хранилище: No recommended backend was available. Install a recommended 3rd party backend package; or, install the keyrings.alt package if you want to use the non-recommended backends. See https://pypi.org/project/keyring for details.
+09:14:52 robot_arb INFO FinamPy connected. Accounts: ['1225950', '1225951', '1225952', '1225953']
+09:14:52 robot_arb INFO Subscribed OrderBook: SBER@RTSX, SRU6@RTSX
+09:14:52 robot_arb INFO Subscribed Quotes: SBER@RTSX, SRU6@RTSX
+09:14:52 robot_arb INFO Warmup: waiting 10 sec for data streams...
+09:15:02 robot_arb INFO Warmup done. OB_A: False OB_B: False
+09:15:02 robot_arb INFO MOEX ISS poller started (fallback for stock prices)
+09:15:02 robot_arb INFO Main loop started
+09:15:04 robot_arb INFO API listening on :5091
+09:15:04 robot_arb INFO Endpoints: GET /status /health /params | POST /start /stop /pause /params
+10:14:31 robot_arb INFO Mode → RUNNING
+10:14:37 robot_arb INFO Mode → STOPPED
+10:26:01 robot_arb INFO Signal 15 — shutting down...
+10:26:01 robot_arb INFO === Arbitrage Robot v1 ===
+10:26:01 robot_arb INFO Pair: SBER / SRU6
+10:26:01 robot_arb INFO Account: 1225953 | Port: 5091 | Paper: True
+10:26:01 robot_arb INFO Params: entry_z=2.7 lookback=200 lots_a=100 lots_b=10 hedge_ratio=10
+10:26:01 robot_arb INFO Min profit: rub=77.77
+10:26:01 robot_arb INFO Risk: stop_loss_rub=500000
+10:26:01 robot_arb INFO State loaded: pnl=0 trades=0 mode=stopped
+10:26:01 FinamPy CRITICAL Ошибка доступа к системному хранилищу: No recommended backend was available. Install a recommended 3rd party backend package; or, install the keyrings.alt package if you want to use the non-recommended backends. See https://pypi.org/project/keyring for details.
+10:26:01 FinamPy CRITICAL Ошибка сохранения в системное хранилище: No recommended backend was available. Install a recommended 3rd party backend package; or, install the keyrings.alt package if you want to use the non-recommended backends. See https://pypi.org/project/keyring for details.
+10:26:02 robot_arb INFO FinamPy connected. Accounts: ['1225950', '1225951', '1225952', '1225953']
+10:26:02 robot_arb INFO Subscribed OrderBook: SBER@RTSX, SRU6@RTSX
+10:26:02 robot_arb INFO Subscribed Quotes: SBER@RTSX, SRU6@RTSX
+10:26:02 robot_arb INFO Warmup: waiting 10 sec for data streams...
+10:26:12 robot_arb INFO Warmup done. OB_A: False OB_B: False
+10:26:12 robot_arb INFO MOEX ISS poller started (fallback for stock prices)
+10:26:12 robot_arb INFO Main loop started
+10:26:12 robot_arb INFO API listening on :5091
+10:26:12 robot_arb INFO Endpoints: GET /status /health /params | POST /start /stop /pause /params
+10:47:23 robot_arb INFO Param updated: allow_long_basis = True (was True)
+10:59:06 robot_arb INFO Mode → RUNNING
+10:59:15 robot_arb INFO Mode → STOPPED
+10:59:41 robot_arb INFO Mode → RUNNING
+10:59:57 robot_arb INFO Mode → STOPPED
+11:02:36 robot_arb INFO Signal 15 — shutting down...
+11:02:37 robot_arb INFO === Arbitrage Robot v1 ===
+11:02:37 robot_arb INFO Pair: SBER / SRU6
+11:02:37 robot_arb INFO Account: 1225953 | Port: 5091 | Paper: True
+11:02:37 robot_arb INFO Params: entry_z=2.7 lookback=200 lots_a=100 lots_b=10 hedge_ratio=10
+11:02:37 robot_arb INFO Min profit: rub=77.77
+11:02:37 robot_arb INFO Risk: stop_loss_rub=500000
+11:02:37 robot_arb INFO State loaded: pnl=0 trades=0 mode=stopped
+11:02:37 FinamPy CRITICAL Ошибка доступа к системному хранилищу: No recommended backend was available. Install a recommended 3rd party backend package; or, install the keyrings.alt package if you want to use the non-recommended backends. See https://pypi.org/project/keyring for details.
+11:02:37 FinamPy CRITICAL Ошибка сохранения в системное хранилище: No recommended backend was available. Install a recommended 3rd party backend package; or, install the keyrings.alt package if you want to use the non-recommended backends. See https://pypi.org/project/keyring for details.
+11:02:37 robot_arb INFO FinamPy connected. Accounts: ['1225950', '1225951', '1225952', '1225953']
+11:02:37 robot_arb INFO Subscribed OrderBook: SBER@RTSX, SRU6@RTSX
+11:02:37 robot_arb INFO Subscribed Quotes: SBER@RTSX, SRU6@RTSX
+11:02:37 robot_arb INFO Warmup: waiting 10 sec for data streams...
+11:02:45 robot_arb INFO Signal 15 — shutting down...
+11:02:45 robot_arb INFO === Arbitrage Robot v1 ===
+11:02:45 robot_arb INFO Pair: SBER / SRU6
+11:02:45 robot_arb INFO Account: 1225953 | Port: 5091 | Paper: True
+11:02:45 robot_arb INFO Params: entry_z=2.7 lookback=200 lots_a=100 lots_b=10 hedge_ratio=10
+11:02:45 robot_arb INFO Min profit: rub=77.77
+11:02:45 robot_arb INFO Risk: stop_loss_rub=500000
+11:02:45 robot_arb INFO State loaded: pnl=0 trades=0 mode=stopped
+11:02:45 FinamPy CRITICAL Ошибка доступа к системному хранилищу: No recommended backend was available. Install a recommended 3rd party backend package; or, install the keyrings.alt package if you want to use the non-recommended backends. See https://pypi.org/project/keyring for details.
+11:02:45 FinamPy CRITICAL Ошибка сохранения в системное хранилище: No recommended backend was available. Install a recommended 3rd party backend package; or, install the keyrings.alt package if you want to use the non-recommended backends. See https://pypi.org/project/keyring for details.
+11:02:46 robot_arb INFO FinamPy connected. Accounts: ['1225950', '1225951', '1225952', '1225953']
+11:02:46 robot_arb INFO Subscribed OrderBook: SBER@RTSX, SRU6@RTSX
+11:02:46 robot_arb INFO Subscribed Quotes: SBER@RTSX, SRU6@RTSX
+11:02:46 robot_arb INFO Warmup: waiting 10 sec for data streams...
+11:02:56 robot_arb INFO Warmup done. OB_A: False OB_B: False
+11:02:56 robot_arb INFO MOEX ISS poller started (fallback for stock prices)
+11:02:56 robot_arb INFO Main loop started
+11:02:56 robot_arb INFO API listening on :5091
+11:02:56 robot_arb INFO Endpoints: GET /status /health /params | POST /start /stop /pause /params
+11:03:00 robot_arb INFO Mode → RUNNING
+11:04:20 robot_arb INFO Mode → STOPPED
+11:14:06 robot_arb INFO Signal 15 — shutting down...
+11:14:06 robot_arb INFO === Arbitrage Robot v1 ===
+11:14:06 robot_arb INFO Pair: SBER / SRU6
+11:14:06 robot_arb INFO Account: 1225953 | Port: 5091 | Paper: True
+11:14:06 robot_arb INFO Params: entry_z=2.7 lookback=200 lots_a=100 lots_b=10 hedge_ratio=10
+11:14:06 robot_arb INFO Min profit: rub=77.77
+11:14:06 robot_arb INFO Risk: stop_loss_rub=500000
+11:14:06 robot_arb INFO State loaded: pnl=0 trades=0 mode=stopped
+11:14:06 FinamPy CRITICAL Ошибка доступа к системному хранилищу: No recommended backend was available. Install a recommended 3rd party backend package; or, install the keyrings.alt package if you want to use the non-recommended backends. See https://pypi.org/project/keyring for details.
+11:14:06 FinamPy CRITICAL Ошибка сохранения в системное хранилище: No recommended backend was available. Install a recommended 3rd party backend package; or, install the keyrings.alt package if you want to use the non-recommended backends. See https://pypi.org/project/keyring for details.
+11:14:07 robot_arb INFO FinamPy connected. Accounts: ['1225950', '1225951', '1225952', '1225953']
+11:14:07 robot_arb INFO Subscribed OrderBook: SBER@RTSX, SRU6@RTSX
+11:14:07 robot_arb INFO Subscribed Quotes: SBER@RTSX, SRU6@RTSX
+11:14:07 robot_arb INFO Warmup: waiting 10 sec for data streams...
+11:14:17 robot_arb INFO Warmup done. OB_A: False OB_B: False
+11:14:17 robot_arb INFO MOEX ISS poller started (fallback for stock prices)
+11:14:17 robot_arb INFO Main loop started
+11:14:17 robot_arb INFO API listening on :5091
+11:14:17 robot_arb INFO Endpoints: GET /status /health /params | POST /start /stop /pause /params
+11:55:35 robot_arb INFO Signal 15 — shutting down...
+11:55:36 robot_arb INFO === Arbitrage Robot v1 ===
+11:55:36 robot_arb INFO Pair: SBER / SRU6
+11:55:36 robot_arb INFO Account: 1225953 | Port: 5091 | Paper: True
+11:55:36 robot_arb INFO Params: entry_z=2.7 lookback=200 lots_a=100 lots_b=10 hedge_ratio=10
+11:55:36 robot_arb INFO Min profit: rub=77.77
+11:55:36 robot_arb INFO Risk: stop_loss_rub=500000
+11:55:36 robot_arb INFO State loaded: pnl=0 trades=0 mode=stopped
+11:55:36 FinamPy CRITICAL Ошибка доступа к системному хранилищу: No recommended backend was available. Install a recommended 3rd party backend package; or, install the keyrings.alt package if you want to use the non-recommended backends. See https://pypi.org/project/keyring for details.
+11:55:36 FinamPy CRITICAL Ошибка сохранения в системное хранилище: No recommended backend was available. Install a recommended 3rd party backend package; or, install the keyrings.alt package if you want to use the non-recommended backends. See https://pypi.org/project/keyring for details.
+11:55:36 robot_arb INFO FinamPy connected. Accounts: ['1225950', '1225951', '1225952', '1225953']
+11:55:36 robot_arb INFO Subscribed OrderBook: SBER@RTSX, SRU6@RTSX
+11:55:36 robot_arb INFO Subscribed Quotes: SBER@RTSX, SRU6@RTSX
+11:55:36 robot_arb INFO Warmup: waiting 10 sec for data streams...
+11:55:46 robot_arb INFO Warmup done. OB_A: False OB_B: False
+11:55:46 robot_arb INFO MOEX ISS poller started (fallback for stock prices)
+11:55:46 robot_arb INFO Main loop started
+11:55:46 robot_arb INFO API listening on :5091
+11:55:46 robot_arb INFO Endpoints: GET /status /health /params | POST /start /stop /pause /params
+11:55:50 robot_arb INFO Mode → RUNNING
+12:08:27 robot_arb INFO ⚠️ CHECK_ENTRY returned signal: {'action': 'entry', 'side': 'short_basis', 'z': 2.7209153068381893, 'basis': 24813.7, 'price_a': 303.03, 'price_b': 27844.0}
+12:08:27 robot_arb INFO ENTRY SIGNAL short_basis | Z=2.72 basis=24813.70 | A=303.03 B=27844.00 | limit buy 100 @ 303.03 | market sell 10 @ 27830.08
+12:08:27 orders_arb INFO 📄 PAPER ENTRY: buy 100 SBER@RTSX @ 303.03 (LIMIT)
+12:08:27 orders_arb INFO 📄 PAPER ENTRY: sell 10 SRU6@RTSX @ 27830.08 (MARKET)
+12:08:27 strategy_arb INFO LAYER #1 OPEN SHORT | A=303.03 ×100 | B=27830.08 ×10 | basis=24799.78 Z=2.72 | layers=1
+12:08:27 robot_arb INFO LAYER OPEN SHORT_BASIS #1 | A=303.03 ×100 | B=27830.08 ×10 | basis=24813.70 Z=2.72 | layers=1 used_capital=608,030
+12:17:25 robot_arb INFO EXIT layer #1 reason=profit_target | limit sell 100 @ 302.90 | market buy 10 @ 27787.89
+12:17:25 orders_arb INFO 📄 PAPER ENTRY: sell 100 SBER@RTSX @ 302.90 (LIMIT)
+12:17:25 orders_arb INFO 📄 PAPER ENTRY: buy 10 SRU6@RTSX @ 27787.89 (MARKET)
+12:17:25 strategy_arb INFO LAYER #1 CLOSE SHORT | PnL=+70.83₽ (gross=+291.91₽ comm=221.08₽) | reason=profit_target | hold=9min | layers=0
+12:17:26 robot_arb INFO ⚠️ CHECK_ENTRY returned signal: {'action': 'entry', 'side': 'long_basis', 'z': -5.94918760502375, 'basis': 24744.9, 'price_a': 302.91, 'price_b': 27774.0}
+12:17:26 robot_arb INFO ENTRY SIGNAL long_basis | Z=-5.95 basis=24744.90 | A=302.91 B=27774.00 | limit sell 100 @ 302.90 | market buy 10 @ 27787.89
+12:17:26 orders_arb INFO 📄 PAPER ENTRY: sell 100 SBER@RTSX @ 302.90 (LIMIT)
+12:17:26 orders_arb INFO 📄 PAPER ENTRY: buy 10 SRU6@RTSX @ 27787.89 (MARKET)
+12:17:26 strategy_arb INFO LAYER #2 OPEN LONG | A=302.90 ×100 | B=27787.89 ×10 | basis=24758.89 Z=-5.95 | layers=1
+12:17:26 robot_arb INFO LAYER OPEN LONG_BASIS #2 | A=302.90 ×100 | B=27787.89 ×10 | basis=24744.90 Z=-5.95 | layers=1 used_capital=607,900
+12:17:31 robot_arb INFO EXIT layer #2 reason=profit_target | limit buy 100 @ 302.48 | market sell 10 @ 27762.11
+12:17:31 orders_arb INFO 📄 PAPER ENTRY: buy 100 SBER@RTSX @ 302.48 (LIMIT)
+12:17:31 orders_arb INFO 📄 PAPER ENTRY: sell 10 SRU6@RTSX @ 27762.11 (MARKET)
+12:17:31 strategy_arb INFO LAYER #2 CLOSE LONG | PnL=-58.63₽ (gross=+162.25₽ comm=220.88₽) | reason=profit_target | hold=0min | layers=0
+12:17:32 robot_arb INFO ⚠️ CHECK_ENTRY returned signal: {'action': 'entry', 'side': 'short_basis', 'z': 2.8611593248378036, 'basis': 24751.2, 'price_a': 302.48, 'price_b': 27776.0}
+12:17:32 robot_arb INFO ENTRY SIGNAL short_basis | Z=2.86 basis=24751.20 | A=302.48 B=27776.00 | limit buy 100 @ 302.48 | market sell 10 @ 27762.11
+12:17:32 orders_arb INFO 📄 PAPER ENTRY: buy 100 SBER@RTSX @ 302.48 (LIMIT)
+12:17:32 orders_arb INFO 📄 PAPER ENTRY: sell 10 SRU6@RTSX @ 27762.11 (MARKET)
+12:17:32 strategy_arb INFO LAYER #3 OPEN SHORT | A=302.48 ×100 | B=27762.11 ×10 | basis=24737.31 Z=2.86 | layers=1
+12:17:32 robot_arb INFO LAYER OPEN SHORT_BASIS #3 | A=302.48 ×100 | B=27762.11 ×10 | basis=24751.20 Z=2.86 | layers=1 used_capital=607,480
+12:31:27 robot_arb INFO EXIT layer #3 reason=profit_target | limit sell 100 @ 302.07 | market buy 10 @ 27693.84
+12:31:27 orders_arb INFO 📄 PAPER ENTRY: sell 100 SBER@RTSX @ 302.07 (LIMIT)
+12:31:27 orders_arb INFO 📄 PAPER ENTRY: buy 10 SRU6@RTSX @ 27693.84 (MARKET)
+12:31:27 strategy_arb INFO LAYER #3 CLOSE SHORT | PnL=+52.13₽ (gross=+272.72₽ comm=220.59₽) | reason=profit_target | hold=14min | layers=0
+12:32:25 robot_arb INFO ⚠️ CHECK_ENTRY returned signal: {'action': 'entry', 'side': 'short_basis', 'z': 3.7965961463948563, 'basis': 24703.3, 'price_a': 301.37, 'price_b': 27717.0}
+12:32:25 robot_arb INFO ENTRY SIGNAL short_basis | Z=3.80 basis=24703.30 | A=301.37 B=27717.00 | limit buy 100 @ 301.37 | market sell 10 @ 27703.14
+12:32:25 orders_arb INFO 📄 PAPER ENTRY: buy 100 SBER@RTSX @ 301.37 (LIMIT)
+12:32:25 orders_arb INFO 📄 PAPER ENTRY: sell 10 SRU6@RTSX @ 27703.14 (MARKET)
+12:32:25 strategy_arb INFO LAYER #4 OPEN SHORT | A=301.37 ×100 | B=27703.14 ×10 | basis=24689.44 Z=3.80 | layers=1
+12:32:25 robot_arb INFO LAYER OPEN SHORT_BASIS #4 | A=301.37 ×100 | B=27703.14 ×10 | basis=24703.30 Z=3.80 | layers=1 used_capital=606,370
+12:32:30 robot_arb INFO EXIT layer #4 reason=profit_target | limit sell 100 @ 301.73 | market buy 10 @ 27715.85
+12:32:30 orders_arb INFO 📄 PAPER ENTRY: sell 100 SBER@RTSX @ 301.73 (LIMIT)
+12:32:30 orders_arb INFO 📄 PAPER ENTRY: buy 10 SRU6@RTSX @ 27715.85 (MARKET)
+12:32:30 strategy_arb INFO LAYER #4 CLOSE SHORT | PnL=+12.82₽ (gross=+232.91₽ comm=220.09₽) | reason=profit_target | hold=0min | layers=0
+12:39:10 robot_arb INFO ⚠️ CHECK_ENTRY returned signal: {'action': 'entry', 'side': 'short_basis', 'z': 3.192521054572359, 'basis': 24666.2, 'price_a': 301.48, 'price_b': 27681.0}
+12:39:10 robot_arb INFO ENTRY SIGNAL short_basis | Z=3.19 basis=24666.20 | A=301.48 B=27681.00 | limit buy 100 @ 301.48 | market sell 10 @ 27667.16
+12:39:10 orders_arb INFO 📄 PAPER ENTRY: buy 100 SBER@RTSX @ 301.48 (LIMIT)
+12:39:10 orders_arb INFO 📄 PAPER ENTRY: sell 10 SRU6@RTSX @ 27667.16 (MARKET)
+12:39:10 strategy_arb INFO LAYER #5 OPEN SHORT | A=301.48 ×100 | B=27667.16 ×10 | basis=24652.36 Z=3.19 | layers=1
+12:39:10 robot_arb INFO LAYER OPEN SHORT_BASIS #5 | A=301.48 ×100 | B=27667.16 ×10 | basis=24666.20 Z=3.19 | layers=1 used_capital=606,480
+12:45:23 robot_arb INFO Signal 15 — shutting down...
+12:45:23 robot_arb INFO === Arbitrage Robot v1 ===
+12:45:23 robot_arb INFO Pair: SBER / SRU6
+12:45:23 robot_arb INFO Account: 1225953 | Port: 5091 | Paper: True
+12:45:23 robot_arb INFO Params: entry_z=2.7 lookback=200 lots_a=100 lots_b=10 hedge_ratio=10
+12:45:23 robot_arb INFO Min profit: rub=77.77
+12:45:23 robot_arb INFO Risk: stop_loss_rub=500000
+12:45:23 robot_arb INFO State loaded: pnl=77 trades=4 mode=stopped
+12:45:23 FinamPy CRITICAL Ошибка доступа к системному хранилищу: No recommended backend was available. Install a recommended 3rd party backend package; or, install the keyrings.alt package if you want to use the non-recommended backends. See https://pypi.org/project/keyring for details.
+12:45:23 FinamPy CRITICAL Ошибка сохранения в системное хранилище: No recommended backend was available. Install a recommended 3rd party backend package; or, install the keyrings.alt package if you want to use the non-recommended backends. See https://pypi.org/project/keyring for details.
+12:45:24 robot_arb INFO FinamPy connected. Accounts: ['1225950', '1225951', '1225952', '1225953']
+12:45:24 robot_arb INFO Subscribed OrderBook: SBER@RTSX, SRU6@RTSX
+12:45:24 robot_arb INFO Subscribed Quotes: SBER@RTSX, SRU6@RTSX
+12:45:24 robot_arb INFO Warmup: waiting 10 sec for data streams...
+12:45:34 robot_arb INFO Warmup done. OB_A: False OB_B: False
+12:45:34 robot_arb INFO MOEX ISS poller started (fallback for stock prices)
+12:45:34 robot_arb INFO Main loop started
+12:45:34 robot_arb INFO API listening on :5091
+12:45:34 robot_arb INFO Endpoints: GET /status /health /params | POST /start /stop /pause /params
+12:46:25 robot_arb INFO Signal 15 — shutting down...
+12:46:26 robot_arb INFO === Arbitrage Robot v1 ===
+12:46:26 robot_arb INFO Pair: SBER / SRU6
+12:46:26 robot_arb INFO Account: 1225953 | Port: 5091 | Paper: True
+12:46:26 robot_arb INFO Params: entry_z=2.7 lookback=200 lots_a=100 lots_b=10 hedge_ratio=10
+12:46:26 robot_arb INFO Min profit: rub=77.77
+12:46:26 robot_arb INFO Risk: stop_loss_rub=500000
+12:46:26 robot_arb INFO State loaded: pnl=77 trades=4 mode=stopped
+12:46:26 FinamPy CRITICAL Ошибка доступа к системному хранилищу: No recommended backend was available. Install a recommended 3rd party backend package; or, install the keyrings.alt package if you want to use the non-recommended backends. See https://pypi.org/project/keyring for details.
+12:46:26 FinamPy CRITICAL Ошибка сохранения в системное хранилище: No recommended backend was available. Install a recommended 3rd party backend package; or, install the keyrings.alt package if you want to use the non-recommended backends. See https://pypi.org/project/keyring for details.
+12:46:26 robot_arb INFO FinamPy connected. Accounts: ['1225950', '1225951', '1225952', '1225953']
+12:46:26 robot_arb INFO Subscribed OrderBook: SBER@RTSX, SRU6@RTSX
+12:46:26 robot_arb INFO Subscribed Quotes: SBER@RTSX, SRU6@RTSX
+12:46:26 robot_arb INFO Warmup: waiting 10 sec for data streams...
+12:46:36 robot_arb INFO Warmup done. OB_A: False OB_B: False
+12:46:36 robot_arb INFO MOEX ISS poller started (fallback for stock prices)
+12:46:36 robot_arb INFO Main loop started
+12:46:36 robot_arb INFO API listening on :5091
+12:46:36 robot_arb INFO Endpoints: GET /status /health /params | POST /start /stop /pause /params
+12:52:07 robot_arb INFO Signal 15 — shutting down...
+12:52:08 robot_arb INFO === Arbitrage Robot v1 ===
+12:52:08 robot_arb INFO Pair: SBER / SRU6
+12:52:08 robot_arb INFO Account: 1225953 | Port: 5091 | Paper: True
+12:52:08 robot_arb INFO Params: entry_z=2.7 lookback=200 lots_a=100 lots_b=10 hedge_ratio=10
+12:52:08 robot_arb INFO Min profit: rub=77.77
+12:52:08 robot_arb INFO Risk: stop_loss_rub=500000
+12:52:08 robot_arb INFO State loaded: pnl=77 trades=4 mode=stopped
+12:52:08 FinamPy CRITICAL Ошибка доступа к системному хранилищу: No recommended backend was available. Install a recommended 3rd party backend package; or, install the keyrings.alt package if you want to use the non-recommended backends. See https://pypi.org/project/keyring for details.
+12:52:08 FinamPy CRITICAL Ошибка сохранения в системное хранилище: No recommended backend was available. Install a recommended 3rd party backend package; or, install the keyrings.alt package if you want to use the non-recommended backends. See https://pypi.org/project/keyring for details.
+12:52:08 robot_arb INFO FinamPy connected. Accounts: ['1225950', '1225951', '1225952', '1225953']
+12:52:08 robot_arb INFO Subscribed OrderBook: SBER@RTSX, SRU6@RTSX
+12:52:08 robot_arb INFO Subscribed Quotes: SBER@RTSX, SRU6@RTSX
+12:52:08 robot_arb INFO Warmup: waiting 10 sec for data streams...
+12:52:18 robot_arb INFO Warmup done. OB_A: False OB_B: False
+12:52:18 robot_arb INFO MOEX ISS poller started (fallback for stock prices)
+12:52:18 robot_arb INFO Main loop started
+12:52:18 robot_arb INFO API listening on :5091
+12:52:18 robot_arb INFO Endpoints: GET /status /health /params | POST /start /stop /pause /params
+12:52:30 robot_arb WARNING Failed to get account info: name 'now' is not defined
+12:54:36 robot_arb INFO Mode → RUNNING
+12:54:50 robot_arb INFO Param updated: allow_long_basis = True (was True)
+12:59:55 robot_arb INFO EXIT layer #5 reason=profit_target | limit sell 100 @ 300.91 | market buy 10 @ 27593.79
+12:59:55 orders_arb INFO 📄 PAPER ENTRY: sell 100 SBER@RTSX @ 300.91 (LIMIT)
+12:59:55 orders_arb INFO 📄 PAPER ENTRY: buy 10 SRU6@RTSX @ 27593.79 (MARKET)
+12:59:55 strategy_arb INFO LAYER #5 CLOSE SHORT | PnL=-56.14₽ (gross=+163.70₽ comm=219.84₽) | reason=profit_target | hold=21min | layers=0
+13:00:01 robot_arb INFO ⚠️ CHECK_ENTRY returned signal: {'action': 'entry', 'side': 'short_basis', 'z': 2.955495352041748, 'basis': 24599.1, 'price_a': 300.59, 'price_b': 27605.0}
+13:00:01 robot_arb INFO ENTRY SIGNAL short_basis | Z=2.96 basis=24599.10 | A=300.59 B=27605.00 | limit buy 100 @ 300.60 | market sell 10 @ 27591.20
+13:00:01 orders_arb INFO 📄 PAPER ENTRY: buy 100 SBER@RTSX @ 300.60 (LIMIT)
+13:00:01 orders_arb INFO 📄 PAPER ENTRY: sell 10 SRU6@RTSX @ 27591.20 (MARKET)
+13:00:01 strategy_arb INFO LAYER #6 OPEN SHORT | A=300.60 ×100 | B=27591.20 ×10 | basis=24585.20 Z=2.96 | layers=1
+13:00:01 robot_arb INFO LAYER OPEN SHORT_BASIS #6 | A=300.60 ×100 | B=27591.20 ×10 | basis=24599.10 Z=2.96 | layers=1 used_capital=605,600
+13:00:17 robot_arb INFO EXIT layer #6 reason=profit_target | limit sell 100 @ 300.88 | market buy 10 @ 27577.78
+13:00:17 orders_arb INFO 📄 PAPER ENTRY: sell 100 SBER@RTSX @ 300.88 (LIMIT)
+13:00:17 orders_arb INFO 📄 PAPER ENTRY: buy 10 SRU6@RTSX @ 27577.78 (MARKET)
+13:00:17 strategy_arb INFO LAYER #6 CLOSE SHORT | PnL=+194.64₽ (gross=+414.15₽ comm=219.52₽) | reason=profit_target | hold=0min | layers=0
+13:00:47 robot_arb INFO ⚠️ CHECK_ENTRY returned signal: {'action': 'entry', 'side': 'short_basis', 'z': 3.3865885914800593, 'basis': 24588.3, 'price_a': 300.27, 'price_b': 27591.0}
+13:00:47 robot_arb INFO ENTRY SIGNAL short_basis | Z=3.39 basis=24588.30 | A=300.27 B=27591.00 | limit buy 100 @ 300.28 | market sell 10 @ 27577.20
+13:00:47 orders_arb INFO 📄 PAPER ENTRY: buy 100 SBER@RTSX @ 300.28 (LIMIT)
+13:00:47 orders_arb INFO 📄 PAPER ENTRY: sell 10 SRU6@RTSX @ 27577.20 (MARKET)
+13:00:47 strategy_arb INFO LAYER #7 OPEN SHORT | A=300.28 ×100 | B=27577.20 ×10 | basis=24574.40 Z=3.39 | layers=1
+13:00:47 robot_arb INFO LAYER OPEN SHORT_BASIS #7 | A=300.28 ×100 | B=27577.20 ×10 | basis=24588.30 Z=3.39 | layers=1 used_capital=605,280
+13:00:52 robot_arb INFO EXIT layer #7 reason=profit_target | limit sell 100 @ 300.76 | market buy 10 @ 27604.80
+13:00:52 orders_arb INFO 📄 PAPER ENTRY: sell 100 SBER@RTSX @ 300.76 (LIMIT)
+13:00:52 orders_arb INFO 📄 PAPER ENTRY: buy 10 SRU6@RTSX @ 27604.80 (MARKET)
+13:00:52 strategy_arb INFO LAYER #7 CLOSE SHORT | PnL=-15.27₽ (gross=+204.09₽ comm=219.36₽) | reason=profit_target | hold=0min | layers=0
+13:02:41 robot_arb INFO Mode → STOPPED
+16:42:41 robot_arb INFO Signal 15 — shutting down...
+18:28:17 robot_arb INFO === Arbitrage Robot v1 ===
+18:28:17 robot_arb INFO Pair: SBER / SRU6
+18:28:17 robot_arb INFO Account: 1225953 | Port: 5091 | Paper: True
+18:28:17 robot_arb INFO Params: entry_z=2.7 lookback=200 lots_a=100 lots_b=10 hedge_ratio=10
+18:28:17 robot_arb INFO Min profit: rub=77.77
+18:28:17 robot_arb INFO Risk: stop_loss_rub=500000
+18:28:17 robot_arb INFO State loaded: pnl=200 trades=7 mode=stopped
+18:28:18 robot_arb INFO FinamPy connected. Accounts: ['1225950', '1225951', '1225952', '1225953']
+18:28:25 robot_arb INFO === Arbitrage Robot v1 ===
+18:28:25 robot_arb INFO Pair: SBER / SRU6
+18:28:25 robot_arb INFO Account: 1225953 | Port: 5091 | Paper: True
+18:28:25 robot_arb INFO Params: entry_z=2.7 lookback=200 lots_a=100 lots_b=10 hedge_ratio=10
+18:28:25 robot_arb INFO Min profit: rub=77.77
+18:28:25 robot_arb INFO Risk: stop_loss_rub=500000
+18:28:25 robot_arb INFO State loaded: pnl=200 trades=7 mode=stopped
+18:28:26 robot_arb INFO FinamPy connected. Accounts: ['1225950', '1225951', '1225952', '1225953']
+18:28:33 robot_arb INFO === Arbitrage Robot v1 ===
+18:28:33 robot_arb INFO Pair: SBER / SRU6
+18:28:33 robot_arb INFO Account: 1225953 | Port: 5091 | Paper: True
+18:28:33 robot_arb INFO Params: entry_z=2.7 lookback=200 lots_a=100 lots_b=10 hedge_ratio=10
+18:28:33 robot_arb INFO Min profit: rub=77.77
+18:28:33 robot_arb INFO Risk: stop_loss_rub=500000
+18:28:33 robot_arb INFO State loaded: pnl=200 trades=7 mode=stopped
+18:28:34 robot_arb INFO FinamPy connected. Accounts: ['1225950', '1225951', '1225952', '1225953']
+18:28:41 robot_arb INFO === Arbitrage Robot v1 ===
+18:28:41 robot_arb INFO Pair: SBER / SRU6
+18:28:41 robot_arb INFO Account: 1225953 | Port: 5091 | Paper: True
+18:28:41 robot_arb INFO Params: entry_z=2.7 lookback=200 lots_a=100 lots_b=10 hedge_ratio=10
+18:28:41 robot_arb INFO Min profit: rub=77.77
+18:28:41 robot_arb INFO Risk: stop_loss_rub=500000
+18:28:41 robot_arb INFO State loaded: pnl=200 trades=7 mode=stopped
+18:28:42 robot_arb INFO FinamPy connected. Accounts: ['1225950', '1225951', '1225952', '1225953']
+18:28:50 robot_arb INFO === Arbitrage Robot v1 ===
+18:28:50 robot_arb INFO Pair: SBER / SRU6
+18:28:50 robot_arb INFO Account: 1225953 | Port: 5091 | Paper: True
+18:28:50 robot_arb INFO Params: entry_z=2.7 lookback=200 lots_a=100 lots_b=10 hedge_ratio=10
+18:28:50 robot_arb INFO Min profit: rub=77.77
+18:28:50 robot_arb INFO Risk: stop_loss_rub=500000
+18:28:50 robot_arb INFO State loaded: pnl=200 trades=7 mode=stopped
+18:28:50 robot_arb INFO FinamPy connected. Accounts: ['1225950', '1225951', '1225952', '1225953']
+18:28:57 robot_arb INFO === Arbitrage Robot v1 ===
+18:28:57 robot_arb INFO Pair: SBER / SRU6
+18:28:57 robot_arb INFO Account: 1225953 | Port: 5091 | Paper: True
+18:28:57 robot_arb INFO Params: entry_z=2.7 lookback=200 lots_a=100 lots_b=10 hedge_ratio=10
+18:28:57 robot_arb INFO Min profit: rub=77.77
+18:28:57 robot_arb INFO Risk: stop_loss_rub=500000
+18:28:57 robot_arb INFO State loaded: pnl=200 trades=7 mode=stopped
+18:28:58 robot_arb INFO FinamPy connected. Accounts: ['1225950', '1225951', '1225952', '1225953']
+18:29:06 robot_arb INFO === Arbitrage Robot v1 ===
+18:29:06 robot_arb INFO Pair: SBER / SRU6
+18:29:06 robot_arb INFO Account: 1225953 | Port: 5091 | Paper: True
+18:29:06 robot_arb INFO Params: entry_z=2.7 lookback=200 lots_a=100 lots_b=10 hedge_ratio=10
+18:29:06 robot_arb INFO Min profit: rub=77.77
+18:29:06 robot_arb INFO Risk: stop_loss_rub=500000
+18:29:06 robot_arb INFO State loaded: pnl=200 trades=7 mode=stopped
+18:29:06 robot_arb INFO FinamPy connected. Accounts: ['1225950', '1225951', '1225952', '1225953']
+18:29:14 robot_arb INFO === Arbitrage Robot v1 ===
+18:29:14 robot_arb INFO Pair: SBER / SRU6
+18:29:14 robot_arb INFO Account: 1225953 | Port: 5091 | Paper: True
+18:29:14 robot_arb INFO Params: entry_z=2.7 lookback=200 lots_a=100 lots_b=10 hedge_ratio=10
+18:29:14 robot_arb INFO Min profit: rub=77.77
+18:29:14 robot_arb INFO Risk: stop_loss_rub=500000
+18:29:14 robot_arb INFO State loaded: pnl=200 trades=7 mode=stopped
+18:29:14 robot_arb INFO FinamPy connected. Accounts: ['1225950', '1225951', '1225952', '1225953']
+18:29:15 robot_arb INFO === Arbitrage Robot v1 ===
+18:29:15 robot_arb INFO Pair: SBER / SRU6
+18:29:15 robot_arb INFO Account: 1225953 | Port: 5091 | Paper: True
+18:29:15 robot_arb INFO Params: entry_z=2.7 lookback=200 lots_a=100 lots_b=10 hedge_ratio=10
+18:29:15 robot_arb INFO Min profit: rub=77.77
+18:29:15 robot_arb INFO Risk: stop_loss_rub=500000
+18:29:15 robot_arb INFO State loaded: pnl=200 trades=7 mode=stopped
+18:29:16 robot_arb INFO FinamPy connected. Accounts: ['1225950', '1225951', '1225952', '1225953']
+18:29:23 robot_arb INFO === Arbitrage Robot v1 ===
+18:29:23 robot_arb INFO Pair: SBER / SRU6
+18:29:23 robot_arb INFO Account: 1225953 | Port: 5091 | Paper: True
+18:29:23 robot_arb INFO Params: entry_z=2.7 lookback=200 lots_a=100 lots_b=10 hedge_ratio=10
+18:29:23 robot_arb INFO Min profit: rub=77.77
+18:29:23 robot_arb INFO Risk: stop_loss_rub=500000
+18:29:23 robot_arb INFO State loaded: pnl=200 trades=7 mode=stopped
+18:29:24 robot_arb INFO FinamPy connected. Accounts: ['1225950', '1225951', '1225952', '1225953']
+18:29:31 robot_arb INFO === Arbitrage Robot v1 ===
+18:29:31 robot_arb INFO Pair: SBER / SRU6
+18:29:31 robot_arb INFO Account: 1225953 | Port: 5091 | Paper: True
+18:29:31 robot_arb INFO Params: entry_z=2.7 lookback=200 lots_a=100 lots_b=10 hedge_ratio=10
+18:29:31 robot_arb INFO Min profit: rub=77.77
+18:29:31 robot_arb INFO Risk: stop_loss_rub=500000
+18:29:31 robot_arb INFO State loaded: pnl=200 trades=7 mode=stopped
+18:29:32 robot_arb INFO FinamPy connected. Accounts: ['1225950', '1225951', '1225952', '1225953']
+18:29:40 robot_arb INFO === Arbitrage Robot v1 ===
+18:29:40 robot_arb INFO Pair: SBER / SRU6
+18:29:40 robot_arb INFO Account: 1225953 | Port: 5091 | Paper: True
+18:29:40 robot_arb INFO Params: entry_z=2.7 lookback=200 lots_a=100 lots_b=10 hedge_ratio=10
+18:29:40 robot_arb INFO Min profit: rub=77.77
+18:29:40 robot_arb INFO Risk: stop_loss_rub=500000
+18:29:40 robot_arb INFO State loaded: pnl=200 trades=7 mode=stopped
+18:29:40 robot_arb INFO FinamPy connected. Accounts: ['1225950', '1225951', '1225952', '1225953']
+18:29:48 robot_arb INFO === Arbitrage Robot v1 ===
+18:29:48 robot_arb INFO Pair: SBER / SRU6
+18:29:48 robot_arb INFO Account: 1225953 | Port: 5091 | Paper: True
+18:29:48 robot_arb INFO Params: entry_z=2.7 lookback=200 lots_a=100 lots_b=10 hedge_ratio=10
+18:29:48 robot_arb INFO Min profit: rub=77.77
+18:29:48 robot_arb INFO Risk: stop_loss_rub=500000
+18:29:48 robot_arb INFO State loaded: pnl=200 trades=7 mode=stopped
+18:29:48 robot_arb INFO FinamPy connected. Accounts: ['1225950', '1225951', '1225952', '1225953']
+18:29:56 robot_arb INFO === Arbitrage Robot v1 ===
+18:29:56 robot_arb INFO Pair: SBER / SRU6
+18:29:56 robot_arb INFO Account: 1225953 | Port: 5091 | Paper: True
+18:29:56 robot_arb INFO Params: entry_z=2.7 lookback=200 lots_a=100 lots_b=10 hedge_ratio=10
+18:29:56 robot_arb INFO Min profit: rub=77.77
+18:29:56 robot_arb INFO Risk: stop_loss_rub=500000
+18:29:56 robot_arb INFO State loaded: pnl=200 trades=7 mode=stopped
+18:29:56 robot_arb INFO FinamPy connected. Accounts: ['1225950', '1225951', '1225952', '1225953']
+18:29:56 robot_arb INFO Orders manager linked to FinamPy gRPC
+18:29:56 robot_arb INFO Subscribed OrderBook: SBER@RTSX, SRU6@RTSX
+18:29:56 robot_arb INFO Subscribed Quotes: SBER@RTSX, SRU6@RTSX
+18:29:56 robot_arb INFO Warmup: waiting 10 sec for data streams...
+18:30:06 robot_arb INFO Warmup done. OB_A: False OB_B: False
+18:30:06 robot_arb INFO MOEX ISS poller started (fallback for stock prices)
+18:30:06 robot_arb INFO Main loop started
+18:30:07 robot_arb INFO API listening on :5091
+18:30:07 robot_arb INFO Endpoints: GET /status /health /params | POST /start /stop /pause /params
+18:30:10 robot_arb INFO Mode → RUNNING
+18:30:27 robot_arb INFO Mode → STOPPED
+18:34:25 robot_arb INFO Param updated: use_evening = True (was False)
+20:13:53 robot_arb INFO Mode → RUNNING
+20:13:59 robot_arb INFO ⚠️ CHECK_ENTRY returned signal: {'action': 'entry', 'side': 'short_basis', 'z': 2.7816979377410695, 'basis': 24388.7, 'price_a': 298.53, 'price_b': 27374.0}
+20:13:59 robot_arb INFO ENTRY SIGNAL short_basis | Z=2.78 basis=24388.70 | A=298.53 B=27374.00 | limit buy 100 @ 298.56 | market sell 10 @ 27360.31
+20:13:59 orders_arb INFO 📄 PAPER ENTRY: buy 100 SBER@RTSX @ 298.56 (LIMIT)
+20:13:59 orders_arb INFO 📄 PAPER ENTRY: sell 10 SRU6@RTSX @ 27360.31 (MARKET)
+20:13:59 strategy_arb INFO LAYER #1 OPEN SHORT | A=298.56 ×100 | B=27360.31 ×10 | basis=24374.71 Z=2.78 | layers=1
+20:13:59 robot_arb INFO LAYER OPEN SHORT_BASIS #1 | A=298.56 ×100 | B=27360.31 ×10 | basis=24388.70 Z=2.78 | layers=1 used_capital=603,560
+20:44:47 robot_arb INFO Signal 15 — shutting down...
+20:44:47 robot_arb INFO === Arbitrage Robot v1 ===
+20:44:47 robot_arb INFO Pair: SBER / SRU6
+20:44:47 robot_arb INFO Account: 1225953 | Port: 5091 | Paper: True
+20:44:47 robot_arb INFO Params: entry_z=2.7 lookback=200 lots_a=100 lots_b=10 hedge_ratio=10
+20:44:47 robot_arb INFO Min profit: rub=77.77
+20:44:47 robot_arb INFO Risk: stop_loss_rub=500000
+20:44:47 robot_arb INFO State loaded: pnl=200 trades=7 mode=stopped
+20:44:48 robot_arb INFO FinamPy connected. Accounts: ['1225950', '1225951', '1225952', '1225953']
+20:44:48 robot_arb INFO Orders manager linked to FinamPy gRPC
+20:44:48 robot_arb INFO Subscribed OrderBook: SBER@RTSX, SRU6@RTSX
+20:44:48 robot_arb INFO Subscribed Quotes: SBER@RTSX, SRU6@RTSX
+20:44:48 robot_arb INFO Warmup: waiting 10 sec for data streams...
+20:44:58 robot_arb INFO Warmup done. OB_A: False OB_B: False
+20:44:58 robot_arb INFO MOEX ISS poller started (fallback for stock prices)
+20:44:58 robot_arb INFO Main loop started
+20:44:59 robot_arb INFO API listening on :5091
+20:44:59 robot_arb INFO Endpoints: GET /status /health /params | POST /start /stop /pause /params
+20:45:02 robot_arb INFO Mode → RUNNING
+03:45:34 robot_arb INFO Signal 15 — shutting down...

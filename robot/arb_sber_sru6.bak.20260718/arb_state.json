@@ -1,0 +1,9 @@
+{
+  "realized_pnl": 0.0,
+  "peak_pnl": 0.0,
+  "max_dd": 0.0,
+  "trade_history": [],
+  "layers": [],
+  "next_layer_id": 1,
+  "mode": "stopped"
+}

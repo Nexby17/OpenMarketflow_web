@@ -1,4 +1,4 @@
-"""Arbitrage Robot — main entry point.
+"""Arbitrage Robot - main entry point.
 
 Subscribes to OrderBook + Quote for both instruments via FinamPy gRPC.
 Runs ArbitrageStrategy, executes via ArbOrderManager (limit+market).
@@ -79,12 +79,14 @@ PORT = args.port
 strategy = ArbitrageStrategy(params)
 orders_mgr = ArbOrderManager(dp_url=DP_URL, account=ACCOUNT)
 execution_lock = threading.Lock()  # prevents concurrent entry/exit from different threads
+grpc_lock = threading.Lock()  # FinamPy gRPC is NOT thread-safe
 
 def _attach_finam_to_orders():
     global fp
     if fp:
         orders_mgr.set_finam_py(fp)
-        log.info("Orders manager linked to FinamPy gRPC")
+        orders_mgr.start_trade_subscription()
+        log.info("Orders manager linked to FinamPy gRPC + trade subscription")
 
 # Active account (can be changed via API)
 _active_account = ACCOUNT
@@ -146,6 +148,15 @@ def load_state_from_disk():
 def save_config():
     cfg_path = os.path.join(os.getcwd(), "arb_config.json")
     data = {k: getattr(params, k) for k in dir(params) if not k.startswith("_") and not callable(getattr(params, k))}
+    # Preserve critical fields that should not be overwritten by params defaults
+    try:
+        with open(cfg_path) as f:
+            existing = json.load(f)
+        for key in ('capital', 'lookback', 'hedge_ratio'):
+            if key in existing:
+                data[key] = existing[key]
+    except Exception:
+        pass
     with open(cfg_path, "w") as f:
         json.dump(data, f, indent=2)
 
@@ -161,33 +172,122 @@ def _to_float(val) -> float:
     return float(val)
 
 
-def _quote_reconnect_loop(symbols):
-    """Reconnect loop for FinamPy quote stream (it drops after snapshot)."""
+def _quote_reconnect_loop(symbol):
+    """Reconnect loop for FinamPy quote stream (one symbol per thread)."""
     while _running:
         try:
-            fp.subscribe_quote_thread(symbols)
+            with grpc_lock:
+                fp.subscribe_quote_thread(symbol)
         except Exception as e:
             if _running:
-                log.debug(f"Quote stream ended, reconnecting in 2s: {e}")
+                log.warning(f"Quote stream ended [{symbol}], reconnecting in 2s: {e}")
                 time.sleep(2)
 
 
-def _ob_reconnect_loop(symbols):
-    """Reconnect loop for FinamPy orderbook stream."""
+def _ob_poll_grpc_locked(sym, name):
+    """Single OB poll under grpc_lock. Returns rows or raises."""
+    from FinamPy.grpc.marketdata_service_pb2 import OrderBookRequest
+    resp, _ = fp.marketdata_stub.OrderBook.with_call(
+        request=OrderBookRequest(symbol=sym),
+        timeout=5, metadata=(fp.metadata,))
+    rows = []
+    for r in resp.orderbook.rows:
+        price = float(r.price.value) if r.price and r.price.value else 0
+        buy = float(r.buy_size.value) if r.buy_size and r.buy_size.value else 0
+        sell = float(r.sell_size.value) if r.sell_size and r.sell_size.value else 0
+        action = int(r.action)
+        rows.append((price, int(buy), int(sell), action))
+    return rows
+
+
+def _ob_poller():
+    """Poll FinamPy unary OrderBook for both instruments (streaming doesn't work for FORTS).
+    Updates OB trackers with real bid/ask every ~1 sec.
+    Uses concurrent.futures to prevent gRPC hangs from blocking the poller."""
+    from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
+    _stale_count = 0
     while _running:
         try:
-            fp.subscribe_order_book_thread(*symbols)
-        except Exception as e:
-            if _running:
-                log.debug(f"OB stream ended, reconnecting in 2s: {e}")
+            if not fp:
                 time.sleep(2)
+                continue
+            # Use thread pool with hard timeout to prevent gRPC hangs
+            with ThreadPoolExecutor(max_workers=1) as executor:
+                fa = executor.submit(lambda: _ob_poll_grpc_locked(params.symbol_a, "A"))
+                fb = executor.submit(lambda: _ob_poll_grpc_locked(params.symbol_b, "B"))
+                try:
+                    rows_a = fa.result(timeout=8)
+                    err_a = None
+                except Exception as e:
+                    rows_a = None
+                    err_a = e
+                try:
+                    rows_b = fb.result(timeout=8)
+                    err_b = None
+                except Exception as e:
+                    rows_b = None
+                    err_b = e
+            # Process results
+            for name, rows, err, ob_tracker in [("A", rows_a, err_a, strategy.ob_a),
+                                                 ("B", rows_b, err_b, strategy.ob_b)]:
+                if err:
+                    err_str = str(err)
+                    if "UNAUTHENTICATED" in err_str or "expired" in err_str.lower():
+                        log.warning(f"OB poll {name}: token expired, reconnecting...")
+                        _reconnect_finam()
+                    elif "TimeoutError" in type(err).__name__ or "FuturesTimeout" in type(err).__name__:
+                        log.warning(f"OB poll {name}: gRPC timeout (stale)")
+                        _stale_count += 1
+                        if _stale_count >= 3:
+                            log.warning(f"OB poll stale {_stale_count}x, forcing reconnect...")
+                            _reconnect_finam()
+                            _stale_count = 0
+                    else:
+                        log.warning(f"OB poll {name} error: {err}")
+                elif rows:
+                    ob_tracker.update(rows)
+                    _push_market()
+                    _update_data_ts()
+                    _stale_count = 0
+        except Exception as e:
+            log.warning(f"OB poll outer error: {e}")
+        time.sleep(1)
+    log.warning("OB poller thread exited!")
+
+
+_reconnect_count = 0
+_last_reconnect_ts = 0
+_last_ob_poll_ts = 0
+
+def _reconnect_finam():
+    """Reconnect FinamPy when JWT refresh token expires.
+    Must NOT hold grpc_lock — FinamPy() constructor may block on gRPC handshake."""
+    global fp, _reconnect_count, _last_reconnect_ts
+    import time as _time
+    now = _time.time()
+    if now - _last_reconnect_ts < 30:
+        log.debug(f"Reconnect throttled (last was {now - _last_reconnect_ts:.0f}s ago)")
+        return False
+    _last_reconnect_ts = now
+    _reconnect_count += 1
+    try:
+        token = os.environ.get("FINAM_API_KEY")
+        log.info(f"FinamPy reconnecting (#{_reconnect_count})...")
+        fp = FinamPy(token)
+        with grpc_lock:
+            _attach_finam_to_orders()
+        log.info(f"FinamPy reconnected (#{_reconnect_count}). Accounts: {fp.account_ids}")
+        return True
+    except Exception as e:
+        log.error(f"FinamPy reconnect failed (#{_reconnect_count}): {e}")
+        return False
 
 
 def connect_finam():
     global fp
-    token = os.environ.get("FINAM_TOKEN")
+    token = os.environ.get("FINAM_API_KEY")
     if not token:
-        log.error("FINAM_TOKEN not set!")
+        log.error("FINAM_API_KEY not set!")
         return False
 
     fp = FinamPy(token)
@@ -197,29 +297,16 @@ def connect_finam():
     sym_a = params.symbol_a
     sym_b = params.symbol_b
 
-    # Single OrderBook subscription — both instruments in one call
-    try:
-        fp.on_order_book.subscribe(_on_order_book)
-        t = threading.Thread(target=_ob_reconnect_loop,
-                             args=((sym_a, sym_b),), daemon=True, name="ob")
-        t.start()
-        log.info(f"Subscribed OrderBook: {sym_a}, {sym_b}")
-    except AttributeError:
-        log.warning("subscribe_order_book_thread not available")
-    except Exception as e:
-        log.error(f"OB subscription error: {e}")
+    # OrderBook — use unary polling (streaming doesn't work for FORTS)
+    t_ob = threading.Thread(target=_ob_poller, daemon=True, name="ob-poll")
+    t_ob.start()
+    log.info(f"OrderBook polling started: {sym_a}, {sym_b} (unary, 1s interval)")
 
-    # Single Quote subscription — both instruments
-    try:
-        fp.on_quote.subscribe(_on_quote)
-        t = threading.Thread(target=_quote_reconnect_loop,
-                             args=((sym_a, sym_b),), daemon=True, name="quote")
-        t.start()
-        log.info(f"Subscribed Quotes: {sym_a}, {sym_b}")
-    except AttributeError:
-        log.warning("subscribe_quote_thread not available")
-    except Exception as e:
-        log.error(f"Quote subscription error: {e}")
+    # Quote subscription — DISABLED for FORTS pairs.
+    # FinamPy quote streams don't work for FORTS (constantly reconnect every 2s).
+    # They also block gRPC channel and prevent OB unary polling from working.
+    # For futures: OB polling + MOEX ISS fallback provides all needed data.
+    log.info(f"Quote streams disabled (FORTS pair — using OB polling + MOEX fallback)")
 
     return True
 
@@ -231,7 +318,7 @@ def _on_order_book(event):
     try:
         _update_data_ts()
         for ob in event.order_book:
-            symbol = ob.secsi.secsym if hasattr(ob, 'secsi') else ""
+            symbol = getattr(ob, 'symbol', '') or ''
             rows = []
             for r in ob.rows:
                 price = _to_float(r.price)
@@ -252,34 +339,42 @@ def _on_order_book(event):
                         strategy.ob_a.update(rows)
                     else:
                         strategy.ob_b.update(rows)
+                # Push market bid/ask to basis calculator
+                _push_market()
     except Exception as e:
         log.error(f"OB callback error: {e}")
 
 
 def _on_quote(event):
-    """Route quote updates to correct price tracker."""
+    """Route quote updates — use q.last (real last trade price), not mid-price.
+    For FORTS futures, bid/ask may be 0 — rely on MOX poller instead."""
     try:
         _update_data_ts()
         for q in event.quote:
+            symbol = q.secsi.secsym if hasattr(q, 'secsi') else ""
             bid = _to_float(q.bid)
             ask = _to_float(q.ask)
-            last = (bid + ask) / 2 if bid > 0 and ask > 0 else (bid or ask)
+            last_q = _to_float(q.last)  # real last trade price from proto
+            # Use last_q as primary, fallback to (bid+ask)/2
+            last = last_q if last_q > 0 else ((bid + ask) / 2 if bid > 0 and ask > 0 else 0)
             if last <= 0:
                 continue
-            # Route by symbol or price magnitude
-            symbol = q.secsi.secsym if hasattr(q, 'secsi') else ""
+            # Route ONLY by symbol — NO fallback by price magnitude
+            matched = False
             if symbol and (params.ticker_a in symbol or symbol in params.ticker_a):
                 strategy.basis_calc.update_price_a(last)
+                if bid > 0 or ask > 0:
+                    strategy.basis_calc.update_market(bid_a=bid, ask_a=ask)
+                matched = True
             elif symbol and (params.ticker_b in symbol or symbol in params.ticker_b):
                 strategy.basis_calc.update_price_b(last)
-            else:
-                # Fallback: GAZP ~98, GZM6 ~980
-                if last < 1000:
-                    strategy.basis_calc.update_price_a(last)
-                else:
-                    strategy.basis_calc.update_price_b(last)
+                if bid > 0 and ask > 0:
+                    strategy.basis_calc.update_market(bid_b=bid, ask_b=ask)
+                matched = True
+            if not matched and symbol:
+                log.debug(f"Quote unmatched symbol: {symbol} last={last:.2f}")
     except Exception as e:
-        log.error(f"Quote callback error: {e}")
+        log.warning(f"Quote callback error: {e}")
 
 
 # ========== MOEX ISS Fallback (for stocks not streamed by FinamPy) ==========
@@ -296,39 +391,46 @@ def _moex_poller():
             # Always poll (even when stopped) so UI shows live data
             import json as _json
 
-            # --- Stock (instrument A) ---
+            # --- Instrument A (stock or futures) ---
             ticker_a = params.ticker_a
-            if not any(c.isdigit() for c in ticker_a):  # stock
+            is_stock_a = not any(c.isdigit() for c in ticker_a)
+            if is_stock_a:  # stock
                 url_a = (f"https://iss.moex.com/iss/engines/stock/markets/shares/boards/TQBR/securities/{ticker_a}.json"
                          f"?iss.meta=off&iss.only=marketdata&marketdata.columns=LAST,BID,OFFER,BIDDEPTH,OFFERDEPTH")
-                try:
-                    req = urllib.request.Request(url_a)
-                    with urllib.request.urlopen(req, timeout=5) as resp:
-                        data = _json.loads(resp.read())
-                        md = data.get("marketdata", {})
-                        if md.get("data") and len(md["data"]) > 0:
-                            rowdict = dict(zip(md["columns"], md["data"][0]))
-                            last = float(rowdict.get("LAST") or 0)
-                            bid = float(rowdict.get("BID") or 0)
-                            ask = float(rowdict.get("OFFER") or 0)
-                            bid_vol = int(rowdict.get("BIDDEPTH") or 0)
-                            ask_vol = int(rowdict.get("OFFERDEPTH") or 0)
-                            if last > 0:
-                                _update_data_ts()
-                                strategy.basis_calc.update_price_a(last)
-                                # Update L2 orderbook tracker
+            else:  # futures (e.g. BRQ6)
+                url_a = (f"https://iss.moex.com/iss/engines/futures/markets/forts/securities/{ticker_a}/marketdata.json"
+                         f"?iss.meta=off&iss.only=marketdata&marketdata.columns=LAST,BID,OFFER,BIDDEPTH,OFFERDEPTH")
+            try:
+                req = urllib.request.Request(url_a)
+                with urllib.request.urlopen(req, timeout=5) as resp:
+                    data = _json.loads(resp.read())
+                    md = data.get("marketdata", {})
+                    if md.get("data") and len(md["data"]) > 0:
+                        rowdict = dict(zip(md["columns"], md["data"][0]))
+                        last = float(rowdict.get("LAST") or 0)
+                        bid = float(rowdict.get("BID") or 0)
+                        ask = float(rowdict.get("OFFER") or 0)
+                        bid_vol = int(rowdict.get("BIDDEPTH") or 0)
+                        ask_vol = int(rowdict.get("OFFERDEPTH") or 0)
+                        if last > 0:
+                            _update_data_ts()
+                            strategy.basis_calc.update_price_a(last)
+                            # Only update OB when MOEX has real bid/ask (stocks).
+                            # For futures MOEX returns bid=0/ask=0 — don't overwrite
+                            # FinamPy OB polling which has real L2 data.
+                            if bid > 0 and ask > 0:
                                 rows = []
-                                if bid > 0:
-                                    rows.append((bid, max(bid_vol, 1), 0, 1))
-                                if ask > 0:
-                                    rows.append((ask, 0, max(ask_vol, 1), 1))
-                                if rows:
-                                    strategy.ob_a.update(rows)
-                                if last != last_log_a:
-                                    last_log_a = last
-                                    log.debug(f"MOEX {ticker_a}: {last:.2f} bid={bid:.2f} ask={ask:.2f}")
-                except Exception as e:
-                    log.debug(f"MOEX stock poll error: {e}")
+                                rows.append((bid, max(bid_vol, 1), 0, 1))
+                                rows.append((ask, 0, max(ask_vol, 1), 1))
+                                strategy.ob_a.update(rows)
+                                _push_market()
+                            else:
+                                _push_market()
+                            if last != last_log_a:
+                                last_log_a = last
+                                log.info(f"MOEX {ticker_a}: {last:.2f} bid={bid:.2f} ask={ask:.2f}")
+            except Exception as e:
+                log.warning(f"MOEX {ticker_a} poll error: {e}")
 
             # --- Futures (instrument B) ---
             ticker_b = params.ticker_b
@@ -349,26 +451,62 @@ def _moex_poller():
                             ask_vol = int(rowdict.get("OFFERDEPTH") or 0)
                             if last > 0:
                                 strategy.basis_calc.update_price_b(last)
-                                # Use LAST for orderbook if bid/ask missing
-                                eff_bid = bid if bid > 0 else last
-                                eff_ask = ask if ask > 0 else last
-                                rows = []
-                                rows.append((eff_bid, max(bid_vol, 1), 0, 1))
-                                rows.append((eff_ask, 0, max(ask_vol, 1), 1))
-                                strategy.ob_b.update(rows)
+                                # Only update OB when MOEX has real bid/ask (stocks).
+                                # For futures MOEX returns bid=0/ask=0 — don't overwrite
+                                # FinamPy OB polling which has real L2 data.
+                                if bid > 0 and ask > 0:
+                                    rows = []
+                                    rows.append((bid, max(bid_vol, 1), 0, 1))
+                                    rows.append((ask, 0, max(ask_vol, 1), 1))
+                                    strategy.ob_b.update(rows)
+                                    _push_market()
+                                # else: MOEX has no OB for FORTS — do NOT push stale data
                                 if last != last_log_b:
                                     last_log_b = last
-                                    log.debug(f"MOEX {ticker_b}: {last:.2f} bid={bid:.2f} ask={ask:.2f}")
+                                    log.info(f"MOEX {ticker_b}: {last:.2f} bid={bid:.2f} ask={ask:.2f}")
                 except Exception as e:
-                    log.debug(f"MOEX futures poll error: {e}")
+                    log.warning(f"MOEX {ticker_b} poll error: {e}")
 
         except Exception as e:
-            log.debug(f"MOEX poll error: {e}")
+            log.warning(f"MOEX poll outer error: {e}")
         time.sleep(2)
 
 
 
 # ========== Main loop ==========
+
+def _sync_broker():
+    """Sync PnL and positions from FinamPy broker for active account."""
+    try:
+        acc_id = _active_account
+        resp, _ = fp.accounts_stub.GetAccount.with_call(
+            request=GetAccountRequest(account_id=acc_id),
+            timeout=10, metadata=(fp.metadata,))
+
+        eq_val = resp.equity.value if hasattr(resp.equity, 'value') else '0'
+        equity = float(str(eq_val)) if eq_val else 0.0
+        unreal_raw = resp.unrealized_profit.value if hasattr(resp.unrealized_profit, 'value') else '0'
+        unreal = float(str(unreal_raw)) if unreal_raw else 0.0
+
+        positions = []
+        daily_pnl = 0.0
+        for p in resp.positions:
+            qty_raw = p.quantity.value if hasattr(p.quantity, 'value') else (p.quantity if hasattr(p, 'quantity') else 0)
+            qty = int(float(str(qty_raw))) if qty_raw else 0
+            dpnl_raw = p.daily_pnl.value if hasattr(p.daily_pnl, 'value') else 0
+            dpnl = float(str(dpnl_raw)) if dpnl_raw else 0.0
+            daily_pnl += dpnl
+            if qty != 0:
+                positions.append({"symbol": p.symbol, "qty": qty, "dailyPnl": round(dpnl, 2)})
+
+        strategy.broker_equity = equity
+        strategy.broker_pnl_today = daily_pnl
+        strategy.broker_pnl_total = unreal
+        strategy.broker_positions = positions
+        strategy.broker_sync_time = time.time()
+    except Exception as e:
+        log.warning(f"Broker sync error: {e}")
+
 
 def main_loop():
     global _mode
@@ -378,14 +516,23 @@ def main_loop():
 
     while _running:
         try:
-            # Update basis tracking (push to history) — always, even when stopped
+            # Update basis tracking (push to history) - always, even when stopped
             now = time.time()
             if now - last_basis_push > 1.0:  # push every 1 sec
                 strategy.basis_calc._push_spread()  # push directly, don't read zscore
                 last_basis_push = now
 
             if _mode != "running":
-                time.sleep(1)
+                # Even when stopped/paused, attempt to close remaining layers
+                if strategy.layers:
+                    log.info(f"Cleanup: {len(strategy.layers)} open layers in mode={_mode}, attempting close...")
+                    with execution_lock:
+                        _execute_exit({"action": "exit_all", "reason": "cleanup", "pnl": 0, "layer_id": None}, force_market=True)
+                    if not strategy.layers:
+                        save_state()
+                    time.sleep(1)
+                else:
+                    time.sleep(1)
                 continue
 
             # Release expired locks
@@ -417,7 +564,7 @@ def main_loop():
                     strategy.clear_entry_active()
                     strategy._set_lock(2.0)  # cooldown after any entry attempt
             elif z_now > params.entry_z - 0.2:
-                log.info(f"Z={z_now:.2f} (threshold={params.entry_z}) — no signal (dup_check={strategy._is_duplicate_entry('short_basis', z_now) if not strategy.entry_lock else 'LOCKED'})")
+                log.info(f"Z={z_now:.2f} (threshold={params.entry_z}) - no signal (dup_check={strategy._is_duplicate_entry('short_basis', z_now) if not strategy.entry_lock else 'LOCKED'})")
 
             # Check exit (per-layer or all)
             exit_signal = strategy.check_exit()
@@ -432,6 +579,13 @@ def main_loop():
                 save_state()
                 last_save = time.time()
 
+            # === BROKER SYNC: sync PnL + positions from FinamPy every 30s ===
+            if time.time() - strategy.broker_sync_time > 30.0:
+                try:
+                    _sync_broker()
+                except Exception as e:
+                    log.debug(f"Broker sync: {e}")
+
             time.sleep(0.5)
 
         except Exception as e:
@@ -441,7 +595,7 @@ def main_loop():
     log.info("Main loop stopped")
 
 
-# ========== Telegram (stub — not configured) ==========
+# ========== Telegram (stub - not configured) ==========
 def _send_telegram(msg: str):
     try:
         pass  # TODO: integrate with Telegram bot when needed
@@ -451,137 +605,139 @@ def _send_telegram(msg: str):
 
 # ========== Entry/Exit execution ==========
 
+_push_market_count = 0
+def _push_market():
+    """Push current OB bid/ask to basis_calc for market spread calculation.
+    For FORTS leg B: skip if OB deviates >0.2% from last price (stale data)."""
+    global _push_market_count
+    ba = strategy.ob_a.best_bid
+    aa = strategy.ob_a.best_ask
+    bb = strategy.ob_b.best_bid
+    ab = strategy.ob_b.best_ask
+    # Guard: skip stale OB for FORTS leg B
+    pb = strategy.basis_calc.price_b
+    if pb > 0:
+        for name, val in [("bb", bb), ("ab", ab)]:
+            if val > 0 and abs(val - pb) / pb > 0.002:
+                if name == "bb":
+                    bb = pb
+                else:
+                    ab = pb
+    strategy.basis_calc.update_market(ba, aa, bb, ab)
+    _push_market_count += 1
+    if _push_market_count <= 20 or _push_market_count % 100 == 0:
+        log.info(f"_push_market #{_push_market_count}: ba={ba:.3f} aa={aa:.3f} bb={bb:.3f} ab={ab:.3f} -> bid_a={strategy.basis_calc.bid_a:.3f}")
+
+
 def _market_fill_price(side: str) -> float:
-    """Compute realistic market fill price from L2 orderbook + slippage.
-    BUY  → best_ask + slippage  (pay more)
-    SELL → best_bid - slippage  (receive less)
-    Fallback to mid/last if no L2.
-    """
-    slippage = 0.0
-    ref_price = 0.0
-    if side == BUY:
-        ref_price = strategy.ob_b.best_ask
-    else:
-        ref_price = strategy.ob_b.best_bid
-
-    if ref_price <= 0:
-        # No L2 for B — fallback to basis_calc price (mid/last)
-        ref_price = strategy.basis_calc.price_b
-
-    if ref_price > 0:
-        slippage = ref_price * params.slippage_bps / 10000.0
-        if side == BUY:
-            ref_price += slippage
-        else:
-            ref_price -= slippage
-
-    return ref_price
+    """DEPRECATED: kept for backward compat. Use basis_calc bid/ask directly."""
+    return 0.0
 
 
 def _execute_entry(signal: dict):
-    """Execute entry: limit on A + market on B."""
+    """Execute entry: LIMIT on both legs (by OB), MARKET fallback."""
     side = signal["side"]
     z = signal["z"]
 
+    # Prices from OB
+    ob_a = strategy.ob_a
+    ob_b = strategy.ob_b
+    price_a = strategy.basis_calc.price_a
+    price_b = strategy.basis_calc.price_b
+
     if side == "long_basis":
-        # LONG_BASIS: buy B (cheap), sell A (expensive)
-        # Leg A: SELL limit @ best_bid (passive)
-        # Leg B: BUY market @ best_ask + slippage (aggressive)
         side_a = SELL
         side_b = BUY
-        limit_price = strategy.ob_a.best_bid
+        # SELL A → limit at best_bid (passive)
+        # BUY B → limit at best_ask (passive)
+        limit_a = ob_a.best_bid if ob_a.best_bid > 0 else price_a
+        limit_b = ob_b.best_ask if ob_b.best_ask > 0 else price_b
     else:
-        # SHORT_BASIS: sell B (expensive), buy A (cheap)
-        # Leg A: BUY limit @ best_ask (passive)
-        # Leg B: SELL market @ best_bid - slippage (aggressive)
         side_a = BUY
         side_b = SELL
-        limit_price = strategy.ob_a.best_ask
+        # BUY A → limit at best_ask (passive)
+        # SELL B → limit at best_bid (passive)
+        limit_a = ob_a.best_ask if ob_a.best_ask > 0 else price_a
+        limit_b = ob_b.best_bid if ob_b.best_bid > 0 else price_b
 
-    if limit_price <= 0:
-        log.warning(f"Entry signal but no L2 data for {params.symbol_a} — skipping")
+    if price_a <= 0 or price_b <= 0:
+        log.warning(f"No price data — skipping entry (A={price_a:.2f} B={price_b:.2f})")
         strategy._set_lock(5.0)
         return
 
-    # Compute market fill price for leg B from L2 + slippage
-    market_price_b = _market_fill_price(side_b)
-    if market_price_b <= 0:
-        log.warning(f"No price data for {params.symbol_b} — skipping entry")
-        strategy._set_lock(5.0)
-        return
-
-    # Check liquidity
-    if PAPER_MODE:
-        total_vol = strategy.ob_a.total_volume + strategy.ob_b.total_volume
-        if total_vol < 1:
-            log.warning(f"No market data — skipping entry")
-            strategy._set_lock(5.0)
-            return
+    if limit_a <= 0 or limit_b <= 0:
+        log.warning(f"No OB data — falling back to MARKET")
+        result = orders_mgr.execute_both_limit(
+            symbol_a=params.symbol_a,
+            symbol_b=params.symbol_b,
+            side_a=side_a,
+            side_b=side_b,
+            lots_a=params.lots_a,
+            lots_b=params.lots_b,
+            limit_price_a=price_a,
+            limit_price_b=price_b,
+            paper=PAPER_MODE,
+            est_price_a=price_a,
+            est_price_b=price_b,
+            force_market=True,
+        )
     else:
-        total_vol = strategy.ob_a.total_volume + strategy.ob_b.total_volume
-        if total_vol < 1:
-            log.warning(f"Low liquidity: total_vol={total_vol} — skipping entry")
-            strategy._set_lock(10.0)
-            return
+        spread = limit_b - limit_a if side == "short_basis" else limit_a - limit_b
+        log.info(f"ENTRY {side.upper()} | Z={z:.2f} | "
+                 f"A {side_a} {params.lots_a} @ {limit_a:.2f} (ob={ob_a.best_bid}/{ob_a.best_ask}) | "
+                 f"B {side_b} {params.lots_b} @ {limit_b:.2f} (ob={ob_b.best_bid}/{ob_b.best_ask}) | "
+                 f"ob spread={spread:.2f}")
 
-    log.info(f"ENTRY SIGNAL {side} | Z={z:.2f} basis={signal['basis']:.2f} | "
-             f"A={signal['price_a']:.2f} B={signal['price_b']:.2f} | "
-             f"limit {side_a} {params.lots_a} @ {limit_price:.2f} | "
-             f"market {side_b} {params.lots_b} @ {market_price_b:.2f}")
-
-    result = orders_mgr.execute_entry(
-        symbol_a=params.symbol_a,
-        symbol_b=params.symbol_b,
-        side_a=side_a,
-        side_b=side_b,
-        lots_a=params.lots_a,
-        lots_b=params.lots_b,
-        limit_price_a=limit_price,
-        timeout=params.leg_a_timeout,
-        min_fill_ratio=params.min_fill_ratio,
-        paper=PAPER_MODE,
-        market_price_b=market_price_b,
-    )
+        result = orders_mgr.execute_both_limit(
+            symbol_a=params.symbol_a,
+            symbol_b=params.symbol_b,
+            side_a=side_a,
+            side_b=side_b,
+            lots_a=params.lots_a,
+            lots_b=params.lots_b,
+            limit_price_a=limit_a,
+            limit_price_b=limit_b,
+            paper=PAPER_MODE,
+            est_price_a=price_a,
+            est_price_b=price_b,
+            limit_timeout=3.0,
+        )
 
     if result["success"]:
         fill_a = result["leg_a"]
         fill_b = result["leg_b"]
         side_int = LONG_BASIS if side == "long_basis" else SHORT_BASIS
+        # fill_a.quantity is in SHARES (from gRPC), convert to LOTS for internal tracking
+        # fill_b.quantity is always 1 (1 futures contract = 1 lot)
+        actual_lots_a = params.lots_a  # use configured lots, not raw fill quantity
+        actual_lots_b = params.lots_b
         strategy.open_layer(
             side=side_int,
             price_a=fill_a.price,
             price_b=fill_b.price,
-            lots_a=fill_a.quantity,
-            lots_b=fill_b.quantity,
+            lots_a=actual_lots_a,
+            lots_b=actual_lots_b,
             z=z,
         )
-        log.info(
-            f"LAYER OPEN {side.upper()} #{strategy.layers[-1].layer_id} | "
-            f"A={fill_a.price:.2f} ×{fill_a.quantity} | "
-            f"B={fill_b.price:.2f} ×{fill_b.quantity} | "
-            f"basis={strategy.basis_calc.basis:.2f} Z={z:.2f} | "
-            f"layers={len(strategy.layers)} used_capital={strategy._used_capital():,.0f}"
-        )
-        _send_telegram(
-            f"📈 LAYER #{strategy.layers[-1].layer_id} {side.upper()}\n"
-            f"A: {fill_a.price:.2f} ×{fill_a.quantity}\n"
-            f"B: {fill_b.price:.2f} ×{fill_b.quantity}\n"
-            f"Z={z:.2f} layers={len(strategy.layers)}"
-        )
+        log.info(f"LAYER OPEN {side.upper()} #{strategy.layers[-1].layer_id} | "
+                 f"A={fill_a.price:.2f} ×{actual_lots_a} lots ({fill_a.quantity} sh) | "
+                 f"B={fill_b.price:.2f} ×{actual_lots_b} | "
+                 f"Z={z:.2f} layers={len(strategy.layers)}")
     else:
         log.warning(f"Entry failed: {result['error']}")
         strategy._set_lock(10.0)
 
 
-def _execute_exit(signal: dict):
-    """Execute exit for a specific layer (or all layers for risk stop)."""
+def _execute_exit(signal: dict, force_market: bool = False):
+    """Execute exit for a specific layer (or all layers for risk stop).
+    force_market=True for manual_stop/cleanup - use market orders."""
     layer_id = signal.get("layer_id")
 
     # Exit ALL layers (risk stop / manual stop)
     if layer_id is None and signal.get("action") == "exit_all":
         if not strategy.layers:
             return
-        log.info(f"EXIT ALL {len(strategy.layers)} layers — reason={signal['reason']}")
+        log.info(f"EXIT ALL {len(strategy.layers)} layers - reason={signal['reason']}")
         if PAPER_MODE:
             pa = strategy.basis_calc.price_a
             pb = strategy.basis_calc.price_b
@@ -590,7 +746,7 @@ def _execute_exit(signal: dict):
         else:
             # Close each layer sequentially
             for layer in list(strategy.layers):
-                _execute_single_exit(layer, signal["reason"])
+                _execute_single_exit(layer, signal["reason"], force_market=force_market)
         return
 
     # Exit single layer
@@ -609,57 +765,79 @@ def _execute_exit(signal: dict):
     if not layer:
         return
 
-    _execute_single_exit(layer, signal["reason"])
+    _execute_single_exit(layer, signal["reason"], force_market=force_market)
 
 
-def _execute_single_exit(layer, reason: str):
-    """Execute exit for one layer: reverse legs."""
+def _execute_single_exit(layer, reason: str, force_market: bool = True):
+    """Execute exit for one layer: LIMIT (normal) or MARKET (force_market=emergency)."""
+    price_a = strategy.basis_calc.price_a
+    price_b = strategy.basis_calc.price_b
+    ob_a = strategy.ob_a
+    ob_b = strategy.ob_b
+
     if layer.side == LONG_BASIS:
-        # Exit LONG_BASIS: sell B, buy back A
         side_a = BUY
         side_b = SELL
-        limit_price = strategy.ob_a.best_ask
+        # BUY A → limit at best_ask, SELL B → limit at best_bid
+        limit_a = ob_a.best_ask if ob_a.best_ask > 0 else price_a
+        limit_b = ob_b.best_bid if ob_b.best_bid > 0 else price_b
     else:
-        # Exit SHORT_BASIS: buy B back, sell A
         side_a = SELL
         side_b = BUY
-        limit_price = strategy.ob_a.best_ask
+        # SELL A → limit at best_bid, BUY B → limit at best_ask
+        limit_a = ob_a.best_bid if ob_a.best_bid > 0 else price_a
+        limit_b = ob_b.best_ask if ob_b.best_ask > 0 else price_b
 
-    if limit_price <= 0:
-        limit_price = strategy.basis_calc.price_a
-        if limit_price <= 0:
-            log.error(f"Cannot exit layer #{layer.layer_id} — no price data")
-            return
-
-    market_price_b = _market_fill_price(side_b)
-    if market_price_b <= 0:
-        log.error(f"Cannot exit layer #{layer.layer_id} — no B price data")
+    if price_a <= 0 or price_b <= 0:
+        log.error(f"Cannot exit layer #{layer.layer_id} — no price data")
         return
 
-    log.info(f"EXIT layer #{layer.layer_id} reason={reason} | "
-             f"limit {side_a} {layer.lots_a} @ {limit_price:.2f} | "
-             f"market {side_b} {layer.lots_b} @ {market_price_b:.2f}")
-
-    result = orders_mgr.execute_exit(
-        symbol_a=params.symbol_a,
-        symbol_b=params.symbol_b,
-        side_a=side_a,
-        side_b=side_b,
-        lots_a=layer.lots_a,
-        lots_b=layer.lots_b,
-        limit_price_a=limit_price,
-        timeout=params.leg_a_timeout,
-        min_fill_ratio=params.min_fill_ratio,
-        paper=PAPER_MODE,
-        market_price_b=market_price_b,
-    )
+    if force_market or limit_a <= 0 or limit_b <= 0:
+        log.info(f"EXIT #{layer.layer_id} MARKET reason={reason} | A {side_a} {layer.lots_a} @ {price_a:.2f} | B {side_b} {layer.lots_b} @ {price_b:.2f}")
+        result = orders_mgr.execute_both_limit(
+            symbol_a=params.symbol_a,
+            symbol_b=params.symbol_b,
+            side_a=side_a,
+            side_b=side_b,
+            lots_a=layer.lots_a,
+            lots_b=layer.lots_b,
+            limit_price_a=price_a,
+            limit_price_b=price_b,
+            paper=PAPER_MODE,
+            est_price_a=price_a,
+            est_price_b=price_b,
+            force_market=True,
+        )
+    else:
+        log.info(f"EXIT #{layer.layer_id} LIMIT reason={reason} | A {side_a} {layer.lots_a} @ {limit_a:.2f} | B {side_b} {layer.lots_b} @ {limit_b:.2f}")
+        result = orders_mgr.execute_both_limit(
+            symbol_a=params.symbol_a,
+            symbol_b=params.symbol_b,
+            side_a=side_a,
+            side_b=side_b,
+            lots_a=layer.lots_a,
+            lots_b=layer.lots_b,
+            limit_price_a=limit_a,
+            limit_price_b=limit_b,
+            paper=PAPER_MODE,
+            est_price_a=price_a,
+            est_price_b=price_b,
+            limit_timeout=3.0,
+        )
 
     if result["success"]:
-        fill_a = result["leg_a"]
-        fill_b = result["leg_b"]
-        strategy.close_layer(layer, fill_a.price, fill_b.price, reason)
+        # Use actual fill prices from broker, not quote stream
+        fill_a_price = result["leg_a"].price
+        fill_b_price = result["leg_b"].price
+        strategy.close_layer(layer, fill_a_price, fill_b_price, reason)
+        # Log slippage vs quote
+        slip_a = fill_a_price - price_a
+        slip_b = fill_b_price - price_b
+        if abs(slip_a) > 0.01 or abs(slip_b) > 0.01:
+            log.info(f"Exit slippage: A quote={price_a:.2f} fill={fill_a_price:.2f} ({slip_a:+.2f}) B quote={price_b:.2f} fill={fill_b_price:.2f} ({slip_b:+.2f})")
+        log.info(f"Exit OK layer #{layer.layer_id} reason={reason}")
     else:
-        log.error(f"Exit failed layer #{layer.layer_id}: {result['error']} — retrying next tick")
+        log.error(f"Exit failed layer #{layer.layer_id}: {result['error']} — retry next tick")
 
 
 # ========== API ==========
@@ -753,9 +931,10 @@ class APIHandler(BaseHTTPRequestHandler):
                     _accounts_cache_ts = now
                     # Always add EDP account if not present
                     edp_ids = [a["id"] for a in accounts]
-                    if "1225953-EDP" not in edp_ids:
-                        _accounts_cache["accounts"].append({
-                            "id": "1225953-EDP", "name": "КлФ-2049688 (EDP)",
+                    # Always ensure Main account is in the list
+                    if "1225953" not in edp_ids:
+                        _accounts_cache["accounts"].insert(0, {
+                            "id": "1225953", "name": "1225953 (Main)",
                             "balance": None, "free": None, "margin": None, "go": None,
                             "pnlToday": None, "pnlTotal": None, "positions": []
                         })
@@ -766,8 +945,7 @@ class APIHandler(BaseHTTPRequestHandler):
                         self._json(200, {**_accounts_cache, "active": _active_account})
                     else:
                         self._json(200, {"accounts": [
-                            {"id": "1225953", "name": "1225953"},
-                            {"id": "1225953-EDP", "name": "КлФ-2049688 (EDP)"},
+                            {"id": "1225953", "name": "1225953 (Main)"},
                         ], "active": _active_account})
 
             elif path == "/instruments":
@@ -814,7 +992,7 @@ class APIHandler(BaseHTTPRequestHandler):
                 else:
                     acquired = execution_lock.acquire(timeout=10)
                     try:
-                        _execute_exit({"action": "exit_all", "reason": "manual_stop", "pnl": 0, "layer_id": None})
+                        _execute_exit({"action": "exit_all", "reason": "manual_stop", "pnl": 0, "layer_id": None}, force_market=True)
                     finally:
                         if acquired:
                             execution_lock.release()
@@ -835,10 +1013,9 @@ class APIHandler(BaseHTTPRequestHandler):
                 data = json.loads(body)
                 log.warning(f"POST /account received: {data}")
                 new_acc = data.get("account", "")
-                # PROTECT: only allow FORTS account (1225953) for arb robot
-                # Stock account 1225950 is hardcoded in orders_mgr._stock_account
+                # BR Calendar: both legs are FORTS futures - allow 1225953 and EDP
                 if new_acc != "1225953":
-                    log.warning(f"Account change to {new_acc} BLOCKED — must be 1225953 for FORTS")
+                    log.warning(f"Account change to {new_acc} BLOCKED")
                     self._json(200, {"ok": True, "account": _active_account, "warning": f"Account locked to {_active_account}"})
                     return
                 if new_acc:
@@ -888,17 +1065,17 @@ class APIHandler(BaseHTTPRequestHandler):
                 data = json.loads(body)
                 new_ticker_a = data.get("ticker_a", "GAZP")
                 new_ticker_b = data.get("ticker_b", "GZM6")
-            
+
             base = os.path.dirname(os.path.abspath(__file__))
             new_dir = os.path.join(base, f"arb_{new_ticker_a.lower()}_{new_ticker_b.lower()}")
             os.makedirs(new_dir, exist_ok=True)
-            
+
             # Copy robot files
             for f in ["main_arb.py", "strategy_arb.py", "orders_arb.py", "arb_engine.py", "config_arb.py"]:
                 src = os.path.join(base, f)
                 if os.path.exists(src):
                     shutil.copy2(src, os.path.join(new_dir, f))
-            
+
             # Create new config
             new_config = {}
             cfg_path = os.path.join(base, "arb_config.json")
@@ -911,10 +1088,19 @@ class APIHandler(BaseHTTPRequestHandler):
             new_config["symbol_b"] = new_ticker_b + "@RTSX"
             with open(os.path.join(new_dir, "arb_config.json"), "w") as cf:
                 json.dump(new_config, cf, indent=2)
-            
+
             log.info(f"Robot copied: {new_dir} ({new_ticker_a}/{new_ticker_b})")
             self._json(200, {"ok": True, "path": new_dir, "dir": os.path.basename(new_dir),
                               "ticker_a": new_ticker_a, "ticker_b": new_ticker_b})
+
+        elif path == "/reset-stats":
+            strategy.realized_pnl = 0.0
+            strategy.peak_pnl = 0.0
+            strategy.max_dd = 0.0
+            strategy.trade_history = []
+            save_state()
+            log.info("Statistics reset: realizedPnl=0, trades=0")
+            self._json(200, {"ok": True})
 
         else:
             self._json(404, {"error": "not found"})
@@ -924,7 +1110,7 @@ class APIHandler(BaseHTTPRequestHandler):
 
 def on_shutdown(signum, frame):
     global _running, _mode
-    log.info(f"Signal {signum} — shutting down...")
+    log.info(f"Signal {signum} - shutting down...")
     _running = False
     _mode = "stopped"
     save_state()
@@ -955,11 +1141,22 @@ if __name__ == "__main__":
     load_state_from_disk()
 
     if not connect_finam():
-        log.error("Failed to connect FinamPy — running without L2 (paper simulation only)")
+        log.error("Failed to connect FinamPy - running without L2 (paper simulation only)")
 
     log.info("Warmup: waiting 10 sec for data streams...")
     time.sleep(10)
     log.info(f"Warmup done. OB_A: {strategy.ob_a.has_data} OB_B: {strategy.ob_b.has_data}")
+
+    # Cancel any pending orders from previous run
+    if not PAPER_MODE:
+        log.info("Cancelling leftover orders from previous run...")
+        try:
+            import requests as _req
+            r = _req.post(f"{DP_URL}/api/orders/cancel-all", timeout=10)
+            res = r.json()
+            log.info(f"Cancel leftover: {res}")
+        except Exception as e:
+            log.warning(f"Cancel leftover failed: {e}")
 
     # Start MOEX ISS fallback poller for stock prices
     t_moex = threading.Thread(target=_moex_poller, daemon=True, name="moex-poller")

@@ -30,6 +30,20 @@ parser.add_argument("--no-paper", dest="paper", action="store_false")
 parser.add_argument("--port", type=int, default=config.PORT)
 args, _ = parser.parse_known_args()
 
+# MOEX stock lot sizes (shares per lot)
+_STOCK_LOTS = {
+    'GAZP': 10, 'SBER': 10, 'LKOH': 10, 'ROSN': 10, 'TATN': 10,
+    'GMKN': 10, 'ALRS': 10, 'VTBR': 10, 'MTSS': 10, 'NVTK': 10,
+    'MOEX': 10, 'SNGS': 10, 'CHMF': 10, 'NLMK': 10,
+    'POLY': 10, 'YNDX': 1, 'FIVE': 10, 'PLZL': 10,
+}
+
+def _lots_to_shares(symbol: str, lots: int) -> int:
+    """Convert lots to shares for MOEX stocks. No-op for futures."""
+    ticker = symbol.split('@')[0]
+    ls = _STOCK_LOTS.get(ticker, 10)
+    return lots * ls if ls > 1 else lots
+
 # --- Logging ---
 LOG_DIR = Path(__file__).parent / "logs"
 LOG_DIR.mkdir(exist_ok=True)
@@ -84,7 +98,10 @@ def _attach_finam_to_orders():
     global fp
     if fp:
         orders_mgr.set_finam_py(fp)
-        log.info("Orders manager linked to FinamPy gRPC")
+        orders_mgr.start_trade_subscription()
+        orders_mgr._on_unauthenticated = _reconnect_finam
+        orders_mgr.cancel_pending_orders(params.symbol_a, params.symbol_b)
+        log.info("Orders manager linked to FinamPy gRPC + trade subscription + reconnect")
 
 # Active account (can be changed via API)
 _active_account = ACCOUNT
@@ -110,6 +127,31 @@ if os.path.exists(cfg_path):
 fp: FinamPy | None = None
 _running = True
 _mode = "stopped"
+
+_reconnect_count = 0
+_last_reconnect_ts = 0
+
+
+def _reconnect_finam():
+    """Reconnect FinamPy when JWT refresh token expires.
+    Called when order placement fails with UNAUTHENTICATED."""
+    global fp, _reconnect_count, _last_reconnect_ts
+    now = time.time()
+    if now - _last_reconnect_ts < 30:
+        log.debug(f"Reconnect throttled (last was {now - _last_reconnect_ts:.0f}s ago)")
+        return False
+    _last_reconnect_ts = now
+    _reconnect_count += 1
+    try:
+        token = os.environ.get("FINAM_API_KEY")
+        log.info(f"FinamPy reconnecting (#{_reconnect_count})...")
+        fp = FinamPy(token)
+        _attach_finam_to_orders()
+        log.info(f"FinamPy reconnected (#{_reconnect_count}). Accounts: {fp.account_ids}")
+        return True
+    except Exception as e:
+        log.error(f"FinamPy reconnect failed (#{_reconnect_count}): {e}")
+        return False
 _last_data_ts = 0.0  # timestamp of last price/data update
 
 
@@ -168,26 +210,94 @@ def _quote_reconnect_loop(symbols):
             fp.subscribe_quote_thread(symbols)
         except Exception as e:
             if _running:
-                log.debug(f"Quote stream ended, reconnecting in 2s: {e}")
-                time.sleep(2)
+                if 'UNAUTHENTICATED' in str(e):
+                    log.warning("Quote stream: JWT expired, reconnecting FinamPy...")
+                    _reconnect_finam()
+                else:
+                    log.debug(f"Quote stream ended, reconnecting in 2s: {e}")
+                    time.sleep(2)
 
 
-def _ob_reconnect_loop(symbols):
-    """Reconnect loop for FinamPy orderbook stream."""
+def _ob_poll_grpc_locked(sym, name):
+    """Single OB poll under grpc_lock. Returns rows or raises.
+    For stocks, converts RTSX→MISX for OB data (Finam gRPC OB requires correct MIC)."""
+    from FinamPy.grpc.marketdata_service_pb2 import OrderBookRequest
+    # Stocks need MISX for OB data, futures use RTSX
+    ob_sym = sym.replace("@RTSX", "@MISX") if any(sym.startswith(p) for p in ['GAZP','SBER','LKOH','ROSN','NVTK','GMKN','PLZL','YNDX','MTSS','MGNT','CHMF','NLMK','ALRS','RUAL','POLY','FIVE','RTKM','TATN','VTBR','SNGS','AFLT','AFKS','ASTR','PHOR','HYDR','IRAO','FEES','SMLT','TRNFP']) else sym
+    resp, _ = fp.marketdata_stub.OrderBook.with_call(
+        request=OrderBookRequest(symbol=ob_sym),
+        timeout=5, metadata=(fp.metadata,))
+    rows = []
+    for r in resp.orderbook.rows:
+        price = float(r.price.value) if r.price and r.price.value else 0
+        buy = float(r.buy_size.value) if r.buy_size and r.buy_size.value else 0
+        sell = float(r.sell_size.value) if r.sell_size and r.sell_size.value else 0
+        action = int(r.action)
+        rows.append((price, int(buy), int(sell), action))
+    return rows
+
+
+def _ob_poller():
+    """Poll FinamPy unary OrderBook for both instruments.
+    Updates OB trackers with real bid/ask every ~1 sec.
+    Detects token expiry and triggers reconnect."""
+    from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
+    _stale_count = 0
     while _running:
         try:
-            fp.subscribe_order_book_thread(*symbols)
-        except Exception as e:
-            if _running:
-                log.debug(f"OB stream ended, reconnecting in 2s: {e}")
+            if not fp:
                 time.sleep(2)
+                continue
+            with ThreadPoolExecutor(max_workers=1) as executor:
+                fa = executor.submit(lambda: _ob_poll_grpc_locked(params.symbol_a, "A"))
+                fb = executor.submit(lambda: _ob_poll_grpc_locked(params.symbol_b, "B"))
+                try:
+                    rows_a = fa.result(timeout=8)
+                    err_a = None
+                except Exception as e:
+                    rows_a = None
+                    err_a = e
+                try:
+                    rows_b = fb.result(timeout=8)
+                    err_b = None
+                except Exception as e:
+                    rows_b = None
+                    err_b = e
+            for name, rows, err, ob_tracker in [("A", rows_a, err_a, strategy.ob_a),
+                                                 ("B", rows_b, err_b, strategy.ob_b)]:
+                if err:
+                    err_str = str(err)
+                    if "UNAUTHENTICATED" in err_str or "expired" in err_str.lower():
+                        log.warning(f"OB poll {name}: token expired, reconnecting...")
+                        _reconnect_finam()
+                    elif "TimeoutError" in type(err).__name__ or "FuturesTimeout" in type(err).__name__:
+                        log.warning(f"OB poll {name}: gRPC timeout (stale)")
+                        _stale_count += 1
+                        if _stale_count >= 3:
+                            log.warning(f"OB poll stale {_stale_count}x, forcing reconnect...")
+                            _reconnect_finam()
+                            _stale_count = 0
+                    else:
+                        # Rate limit (429) or other error — backoff
+                        if "Too Many" in err_str or "429" in err_str:
+                            log.warning(f"OB poll {name}: rate limited, backing off...")
+                            time.sleep(30)  # wait for rate limit reset
+                        else:
+                            log.warning(f"OB poll {name} error: {err}")
+                elif rows:
+                    ob_tracker.update(rows)
+                    _stale_count = 0
+        except Exception as e:
+            log.warning(f"OB poll outer error: {e}")
+        time.sleep(1)
+    log.warning("OB poller thread exited!")
 
 
 def connect_finam():
     global fp
-    token = os.environ.get("FINAM_TOKEN")
+    token = os.environ.get("FINAM_API_KEY")
     if not token:
-        log.error("FINAM_TOKEN not set!")
+        log.error("FINAM_API_KEY not set!")
         return False
 
     fp = FinamPy(token)
@@ -197,19 +307,12 @@ def connect_finam():
     sym_a = params.symbol_a
     sym_b = params.symbol_b
 
-    # Single OrderBook subscription — both instruments in one call
-    try:
-        fp.on_order_book.subscribe(_on_order_book)
-        t = threading.Thread(target=_ob_reconnect_loop,
-                             args=((sym_a, sym_b),), daemon=True, name="ob")
-        t.start()
-        log.info(f"Subscribed OrderBook: {sym_a}, {sym_b}")
-    except AttributeError:
-        log.warning("subscribe_order_book_thread not available")
-    except Exception as e:
-        log.error(f"OB subscription error: {e}")
+    # OB polling (replaces streaming — detects token expiry)
+    t = threading.Thread(target=_ob_poller, daemon=True, name="ob")
+    t.start()
+    log.info(f"OB poller started: {sym_a}, {sym_b}")
 
-    # Single Quote subscription — both instruments
+    # Quote subscription
     try:
         fp.on_quote.subscribe(_on_quote)
         t = threading.Thread(target=_quote_reconnect_loop,
@@ -385,7 +488,16 @@ def main_loop():
                 last_basis_push = now
 
             if _mode != "running":
-                time.sleep(1)
+                # Even when stopped/paused, attempt to close remaining layers
+                if strategy.layers:
+                    log.info(f"Cleanup: {len(strategy.layers)} open layers in mode={_mode}, attempting close...")
+                    with execution_lock:
+                        _execute_exit({"action": "exit_all", "reason": "cleanup", "pnl": 0, "layer_id": None}, force_market=True)
+                    if not strategy.layers:
+                        save_state()
+                    time.sleep(1)
+                else:
+                    time.sleep(1)
                 continue
 
             # Release expired locks
@@ -569,12 +681,19 @@ def _execute_entry(signal: dict):
             f"Z={z:.2f} layers={len(strategy.layers)}"
         )
     else:
-        log.warning(f"Entry failed: {result['error']}")
-        strategy._set_lock(10.0)
+        err = result.get('error', '')
+        log.warning(f"Entry failed: {err}")
+        # Auto-reconnect if UNAUTHENTICATED (JWT expired)
+        if 'UNAUTHENTICATED' in err or 'Invalid access key' in err:
+            log.warning("Detected expired JWT — reconnecting FinamPy...")
+            if _reconnect_finam():
+                log.info("FinamPy reconnected — next entry attempt will use fresh token")
+        # No cooldown — retry on next tick if Z still valid
 
 
-def _execute_exit(signal: dict):
-    """Execute exit for a specific layer (or all layers for risk stop)."""
+def _execute_exit(signal: dict, force_market: bool = False):
+    """Execute exit for a specific layer (or all layers for risk stop).
+    force_market=True for manual_stop/cleanup — use market orders."""
     layer_id = signal.get("layer_id")
 
     # Exit ALL layers (risk stop / manual stop)
@@ -590,7 +709,7 @@ def _execute_exit(signal: dict):
         else:
             # Close each layer sequentially
             for layer in list(strategy.layers):
-                _execute_single_exit(layer, signal["reason"])
+                _execute_single_exit(layer, signal["reason"], force_market=force_market)
         return
 
     # Exit single layer
@@ -609,22 +728,41 @@ def _execute_exit(signal: dict):
     if not layer:
         return
 
-    _execute_single_exit(layer, signal["reason"])
+    _execute_single_exit(layer, signal["reason"], force_market=force_market)
 
 
-def _execute_single_exit(layer, reason: str):
-    """Execute exit for one layer: reverse legs."""
+def _execute_single_exit(layer, reason: str, force_market: bool = False):
+    """Execute exit for one layer: reverse legs.
+    force_market=True for manual_stop/cleanup — use market orders to guarantee fill."""
     if layer.side == LONG_BASIS:
-        # Exit LONG_BASIS: sell B, buy back A
         side_a = BUY
         side_b = SELL
-        limit_price = strategy.ob_a.best_ask
     else:
-        # Exit SHORT_BASIS: buy B back, sell A
         side_a = SELL
         side_b = BUY
-        limit_price = strategy.ob_a.best_ask
 
+    if force_market:
+        # Market exit: guaranteed fill, no timeout
+        log.info(f"EXIT layer #{layer.layer_id} reason={reason} | MARKET {side_a} {layer.lots_a} + {side_b} {layer.lots_b}")
+        est_a = strategy.basis_calc.price_a or (strategy.ob_a.best_bid + strategy.ob_a.best_ask) / 2 or 0
+        est_b = strategy.basis_calc.price_b or (strategy.ob_b.best_bid + strategy.ob_b.best_ask) / 2 or 0
+        if est_a <= 0 or est_b <= 0:
+            log.error(f"Cannot market-exit layer #{layer.layer_id} — no price data")
+            return
+        res_a = orders_mgr._place_market(params.symbol_a, side_a, _lots_to_shares(params.symbol_a, layer.lots_a), tag=f"arb_exit_{layer.layer_id}")
+        res_b = orders_mgr._place_market(params.symbol_b, side_b, layer.lots_b, tag=f"arb_exit_{layer.layer_id}")
+        # Get real fill prices from broker
+        real_a = orders_mgr._get_real_fill_price(res_a.get('order_id',''), est_a) if res_a else est_a
+        real_b = orders_mgr._get_real_fill_price(res_b.get('order_id',''), est_b) if res_b else est_b
+        if res_a and res_b:
+            strategy.close_layer(layer, real_a, real_b, reason)
+            log.info(f"Market exit OK layer #{layer.layer_id} A@{real_a:.2f} B@{real_b:.2f}")
+        else:
+            log.error(f"Market exit failed layer #{layer.layer_id}: A={'OK' if res_a else 'FAIL'} B={'OK' if res_b else 'FAIL'}")
+        return
+
+    # Limit exit: normal profit-taking exit
+    limit_price = strategy.ob_a.best_ask
     if limit_price <= 0:
         limit_price = strategy.basis_calc.price_a
         if limit_price <= 0:
@@ -712,7 +850,7 @@ class APIHandler(BaseHTTPRequestHandler):
                     if now - _accounts_cache_ts < 60 and _accounts_cache:
                         self._json(200, {**_accounts_cache, "active": _active_account})
                         return
-                    account_ids = list(fp.account_ids) if hasattr(fp, 'account_ids') else ["1225953"]
+                    account_ids = [config.ACCOUNT_ID]
                     accounts = []
                     for aid in account_ids:
                         try:
@@ -720,9 +858,7 @@ class APIHandler(BaseHTTPRequestHandler):
                                 request=GetAccountRequest(account_id=aid),
                                 timeout=10, metadata=(fp.metadata,))
                             eq_val = resp.equity.value if hasattr(resp.equity, 'value') else str(resp.equity or '')
-                            if not eq_val:
-                                continue
-                            equity = float(eq_val)
+                            equity = float(eq_val) if eq_val else 0.0
                             unreal = float(resp.unrealized_profit.value) if hasattr(resp.unrealized_profit, 'value') else float(resp.unrealized_profit or 0)
                             free_cash = 0.0
                             margin = 0.0
@@ -748,17 +884,16 @@ class APIHandler(BaseHTTPRequestHandler):
                                 "positions": positions
                             })
                         except Exception as e:
-                            log.debug(f"Account {aid}: {e}")
+                            log.warning(f"Account {aid}: {e}")
+                            accounts.append({
+                                "id": aid, "name": f"{aid} (EDP)",
+                                "balance": 0.0, "free": 0.0,
+                                "margin": 0.0, "go": 0.0,
+                                "pnlToday": 0.0, "pnlTotal": 0.0,
+                                "positions": []
+                            })
                     _accounts_cache = {"accounts": accounts}
                     _accounts_cache_ts = now
-                    # Always add EDP account if not present
-                    edp_ids = [a["id"] for a in accounts]
-                    if "1225953-EDP" not in edp_ids:
-                        _accounts_cache["accounts"].append({
-                            "id": "1225953-EDP", "name": "КлФ-2049688 (EDP)",
-                            "balance": None, "free": None, "margin": None, "go": None,
-                            "pnlToday": None, "pnlTotal": None, "positions": []
-                        })
                     self._json(200, {**_accounts_cache, "active": _active_account})
                 except Exception as e:
                     log.warning(f"Failed to get account info: {e}")
@@ -814,7 +949,7 @@ class APIHandler(BaseHTTPRequestHandler):
                 else:
                     acquired = execution_lock.acquire(timeout=10)
                     try:
-                        _execute_exit({"action": "exit_all", "reason": "manual_stop", "pnl": 0, "layer_id": None})
+                        _execute_exit({"action": "exit_all", "reason": "manual_stop", "pnl": 0, "layer_id": None}, force_market=True)
                     finally:
                         if acquired:
                             execution_lock.release()
@@ -835,10 +970,9 @@ class APIHandler(BaseHTTPRequestHandler):
                 data = json.loads(body)
                 log.warning(f"POST /account received: {data}")
                 new_acc = data.get("account", "")
-                # PROTECT: only allow FORTS account (1225953) for arb robot
-                # Stock account 1225950 is hardcoded in orders_mgr._stock_account
-                if new_acc != "1225953":
-                    log.warning(f"Account change to {new_acc} BLOCKED — must be 1225953 for FORTS")
+                # PROTECT: only allow configured account for arb robot
+                if new_acc != config.ACCOUNT_ID:
+                    log.warning(f"Account change to {new_acc} BLOCKED — locked to {config.ACCOUNT_ID}")
                     self._json(200, {"ok": True, "account": _active_account, "warning": f"Account locked to {_active_account}"})
                     return
                 if new_acc:
@@ -915,6 +1049,15 @@ class APIHandler(BaseHTTPRequestHandler):
             log.info(f"Robot copied: {new_dir} ({new_ticker_a}/{new_ticker_b})")
             self._json(200, {"ok": True, "path": new_dir, "dir": os.path.basename(new_dir),
                               "ticker_a": new_ticker_a, "ticker_b": new_ticker_b})
+
+        elif path == "/reset-stats":
+            strategy.realized_pnl = 0.0
+            strategy.peak_pnl = 0.0
+            strategy.max_dd = 0.0
+            strategy.trade_history = []
+            save_state()
+            log.info("Statistics reset: realizedPnl=0, trades=0")
+            self._json(200, {"ok": True})
 
         else:
             self._json(404, {"error": "not found"})

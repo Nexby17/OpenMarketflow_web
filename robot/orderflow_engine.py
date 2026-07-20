@@ -635,18 +635,28 @@ class SignalEngine:
                 if rc >= confirm_count:
                     return True
 
-        # CVD Acceleration reverse
+        # CVD Acceleration reverse — count consecutive bars against position
         if use_cvd_accel:
             n = len(self._bar_history)
             cap = self._cvd_accel_period
             if n >= cap + 1:
-                cvd_now = self._bar_history[-1].cvd
-                cvd_prev = self._bar_history[-(cap + 1)].cvd
-                cvd_accel = cvd_now - cvd_prev
-                # If accel fires opposite to our position direction
-                if position_dir == 1 and cvd_accel < -self._cvd_accel_threshold:
-                    return True
-                elif position_dir == -1 and cvd_accel > self._cvd_accel_threshold:
+                # Check last N bars for consecutive accel against position
+                accel_reverse_bars = 0
+                for i in range(1, confirm_count + 1):
+                    idx_now = len(self._bar_history) - (i - 1)
+                    idx_prev = idx_now - cap
+                    if idx_prev < 0 or idx_now < 0:
+                        break
+                    cvd_now = self._bar_history[idx_now - 1].cvd
+                    cvd_prev = self._bar_history[idx_prev - 1].cvd
+                    cvd_accel = cvd_now - cvd_prev
+                    if position_dir == 1 and cvd_accel < -self._cvd_accel_threshold:
+                        accel_reverse_bars += 1
+                    elif position_dir == -1 and cvd_accel > self._cvd_accel_threshold:
+                        accel_reverse_bars += 1
+                    else:
+                        break  # non-consecutive, stop counting
+                if accel_reverse_bars >= confirm_count:
                     return True
 
         if use_dm_wall and ob_tracker is not None:

@@ -1,0 +1,856 @@
+12:48:38 robot_arb INFO === Arbitrage Robot v1 ===
+12:48:38 robot_arb INFO Pair: BRQ6 / BRU6
+12:48:38 robot_arb INFO Account: 1225953 | Port: 5092 | Paper: False
+12:48:38 robot_arb INFO Params: entry_z=1.7 lookback=200 lots_a=1 lots_b=1 hedge_ratio=1
+12:48:38 robot_arb INFO Min profit: rub=30
+12:48:38 robot_arb INFO Risk: stop_loss_rub=30000
+12:48:38 robot_arb INFO State loaded: pnl=0 trades=0 mode=stopped
+12:48:39 robot_arb INFO FinamPy connected. Accounts: ['1225950', '1225951', '1225952', '1225953']
+12:48:39 robot_arb INFO Orders manager linked to FinamPy gRPC
+12:48:39 robot_arb INFO Subscribed OrderBook: BRQ6@RTSX, BRU6@RTSX
+12:48:39 robot_arb INFO Subscribed Quotes: BRQ6@RTSX, BRU6@RTSX
+12:48:39 robot_arb INFO Warmup: waiting 10 sec for data streams...
+12:48:49 robot_arb INFO Warmup done. OB_A: False OB_B: False
+12:48:49 robot_arb INFO MOEX ISS poller started (fallback for stock prices)
+12:48:49 robot_arb INFO Main loop started
+12:48:49 robot_arb INFO API listening on :5092
+12:48:49 robot_arb INFO Endpoints: GET /status /health /params | POST /start /stop /pause /params
+13:00:17 robot_arb INFO Param updated: ticker_a = BRQ6 (was BRQ6)
+13:00:17 robot_arb INFO Param updated: symbol_a = BRQ6@RTSX (was BRQ6@RTSX)
+13:00:17 robot_arb INFO Param updated: ticker_b = BRU6 (was BRU6)
+13:00:17 robot_arb INFO Param updated: symbol_b = BRU6@RTSX (was BRU6@RTSX)
+13:00:17 robot_arb INFO Param updated: lots_a = 1 (was 1)
+13:00:17 robot_arb INFO Param updated: lots_b = 1 (was 1)
+13:00:17 robot_arb INFO Param updated: hedge_ratio = 1 (was 1)
+13:00:17 robot_arb INFO Param updated: capital = 100000 (was 100000)
+13:00:17 robot_arb INFO Param updated: entry_z = 1.7 (was 1.7)
+13:00:17 robot_arb INFO Param updated: entry_z_long = -3.8 (was -3.8)
+13:00:17 robot_arb INFO Param updated: entry_mode = zscore (was zscore)
+13:00:17 robot_arb INFO Param updated: spread_rub_high = 5 (was 5)
+13:00:17 robot_arb INFO Param updated: spread_rub_low = -5 (was -5)
+13:00:17 robot_arb INFO Param updated: risk_free_rate = 0.1425 (was 0.1425)
+13:00:17 robot_arb INFO Param updated: expiration_date = 2026-09-18 (was 2026-09-18)
+13:00:17 robot_arb INFO Param updated: contract_size = 1 (was 1)
+13:00:17 robot_arb INFO Param updated: lookback = 200 (was 200)
+13:00:17 robot_arb INFO Param updated: leg_a_timeout = 5 (was 5)
+13:00:17 robot_arb INFO Param updated: min_fill_ratio = 0.5 (was 0.5)
+13:00:17 robot_arb INFO Param updated: min_profit_type = rub (was rub)
+13:00:17 robot_arb INFO Param updated: min_profit_value = 30 (was 30)
+13:00:17 robot_arb INFO Param updated: risk_type = stop_loss_rub (was stop_loss_rub)
+13:00:17 robot_arb INFO Param updated: risk_value = 30000 (was 30000)
+13:00:17 robot_arb INFO Param updated: allow_long_basis = True (was True)
+13:00:17 robot_arb INFO Param updated: use_commission = True (was True)
+13:00:17 robot_arb INFO Param updated: commission_stock_pct = 7.5 (was 7.5)
+13:00:17 robot_arb INFO Param updated: commission_futures_rt = 7.5 (was 7.5)
+13:00:17 robot_arb INFO Param updated: slippage_bps = 10 (was 10)
+13:47:07 robot_arb INFO === Arbitrage Robot v1 ===
+13:47:07 robot_arb INFO Pair: BRQ6 / BRU6
+13:47:07 robot_arb INFO Account: 1225953 | Port: 5092 | Paper: False
+13:47:07 robot_arb INFO Params: entry_z=1.7 lookback=200 lots_a=1 lots_b=1 hedge_ratio=1
+13:47:07 robot_arb INFO Min profit: rub=30
+13:47:07 robot_arb INFO Risk: stop_loss_rub=30000
+13:47:07 robot_arb INFO State loaded: pnl=0 trades=0 mode=stopped
+13:47:07 robot_arb INFO FinamPy connected. Accounts: ['1225950', '1225951', '1225952', '1225953']
+13:47:07 robot_arb INFO Orders manager linked to FinamPy gRPC
+13:47:07 robot_arb INFO Subscribed OrderBook: BRQ6@RTSX, BRU6@RTSX
+13:47:07 robot_arb INFO Subscribed Quotes: BRQ6@RTSX, BRU6@RTSX
+13:47:07 robot_arb INFO Warmup: waiting 10 sec for data streams...
+13:47:17 robot_arb INFO Warmup done. OB_A: False OB_B: False
+13:47:17 robot_arb INFO MOEX ISS poller started (fallback for stock prices)
+13:47:17 robot_arb INFO Main loop started
+13:47:17 robot_arb INFO API listening on :5092
+13:47:17 robot_arb INFO Endpoints: GET /status /health /params | POST /start /stop /pause /params
+13:47:20 robot_arb INFO Param updated: ticker_a = BRQ6 (was BRQ6)
+13:47:20 robot_arb INFO Param updated: symbol_a = BRQ6@RTSX (was BRQ6@RTSX)
+13:47:20 robot_arb INFO Param updated: ticker_b = BRU6 (was BRU6)
+13:47:20 robot_arb INFO Param updated: symbol_b = BRU6@RTSX (was BRU6@RTSX)
+13:47:20 robot_arb INFO Param updated: lots_a = 1 (was 1)
+13:47:20 robot_arb INFO Param updated: lots_b = 1 (was 1)
+13:47:20 robot_arb INFO Param updated: hedge_ratio = 1 (was 1)
+13:47:20 robot_arb INFO Param updated: capital = 100000 (was 100000)
+13:47:20 robot_arb INFO Param updated: entry_z = 1.7 (was 1.7)
+13:47:20 robot_arb INFO Param updated: entry_z_long = -3.8 (was -3.8)
+13:47:20 robot_arb INFO Param updated: entry_mode = zscore (was zscore)
+13:47:20 robot_arb INFO Param updated: spread_rub_high = 5 (was 5)
+13:47:20 robot_arb INFO Param updated: spread_rub_low = -5 (was -5)
+13:47:20 robot_arb INFO Param updated: risk_free_rate = 0.1425 (was 0.1425)
+13:47:20 robot_arb INFO Param updated: expiration_date = 2026-09-18 (was 2026-09-18)
+13:47:20 robot_arb INFO Param updated: contract_size = 1 (was 1)
+13:47:20 robot_arb INFO Param updated: lookback = 200 (was 200)
+13:47:20 robot_arb INFO Param updated: leg_a_timeout = 5 (was 5)
+13:47:20 robot_arb INFO Param updated: min_fill_ratio = 0.5 (was 0.5)
+13:47:20 robot_arb INFO Param updated: min_profit_type = rub (was rub)
+13:47:20 robot_arb INFO Param updated: min_profit_value = 30 (was 30)
+13:47:20 robot_arb INFO Param updated: risk_type = stop_loss_rub (was stop_loss_rub)
+13:47:20 robot_arb INFO Param updated: risk_value = 30000 (was 30000)
+13:47:20 robot_arb INFO Param updated: allow_long_basis = True (was True)
+13:47:20 robot_arb INFO Param updated: use_commission = True (was True)
+13:47:20 robot_arb INFO Param updated: commission_stock_pct = 7.5 (was 7.5)
+13:47:20 robot_arb INFO Param updated: commission_futures_rt = 7.5 (was 7.5)
+13:47:20 robot_arb INFO Param updated: slippage_bps = 10 (was 10)
+13:50:41 robot_arb INFO === Arbitrage Robot v1 ===
+13:50:41 robot_arb INFO Pair: BRQ6 / BRU6
+13:50:41 robot_arb INFO Account: 1225953 | Port: 5092 | Paper: False
+13:50:41 robot_arb INFO Params: entry_z=1.7 lookback=200 lots_a=1 lots_b=1 hedge_ratio=1
+13:50:41 robot_arb INFO Min profit: rub=30
+13:50:41 robot_arb INFO Risk: stop_loss_rub=30000
+13:50:41 robot_arb INFO State loaded: pnl=0 trades=0 mode=stopped
+13:50:42 robot_arb INFO FinamPy connected. Accounts: ['1225950', '1225951', '1225952', '1225953']
+13:50:42 robot_arb INFO Orders manager linked to FinamPy gRPC
+13:50:42 robot_arb INFO Subscribed OrderBook: BRQ6@RTSX, BRU6@RTSX
+13:50:42 robot_arb INFO Subscribed Quotes: BRQ6@RTSX, BRU6@RTSX
+13:50:42 robot_arb INFO Warmup: waiting 10 sec for data streams...
+13:50:52 robot_arb INFO Warmup done. OB_A: False OB_B: False
+13:50:52 robot_arb INFO MOEX ISS poller started (fallback for stock prices)
+13:50:52 robot_arb INFO Main loop started
+13:50:52 robot_arb INFO API listening on :5092
+13:50:52 robot_arb INFO Endpoints: GET /status /health /params | POST /start /stop /pause /params
+13:54:57 robot_arb INFO Param updated: ticker_a = BRQ6 (was BRQ6)
+13:54:57 robot_arb INFO Param updated: symbol_a = BRQ6@RTSX (was BRQ6@RTSX)
+13:54:57 robot_arb INFO Param updated: ticker_b = BRU6 (was BRU6)
+13:54:57 robot_arb INFO Param updated: symbol_b = BRU6@RTSX (was BRU6@RTSX)
+13:54:57 robot_arb INFO Param updated: lots_a = 1 (was 1)
+13:54:57 robot_arb INFO Param updated: lots_b = 1 (was 1)
+13:54:57 robot_arb INFO Param updated: hedge_ratio = 1 (was 1)
+13:54:57 robot_arb INFO Param updated: capital = 100000 (was 100000)
+13:54:57 robot_arb INFO Param updated: entry_z = 1.7 (was 1.7)
+13:54:57 robot_arb INFO Param updated: entry_z_long = -3.8 (was -3.8)
+13:54:57 robot_arb INFO Param updated: entry_mode = zscore (was zscore)
+13:54:57 robot_arb INFO Param updated: spread_rub_high = 5 (was 5)
+13:54:57 robot_arb INFO Param updated: spread_rub_low = -5 (was -5)
+13:54:57 robot_arb INFO Param updated: risk_free_rate = 0.1425 (was 0.1425)
+13:54:57 robot_arb INFO Param updated: expiration_date = 2026-09-18 (was 2026-09-18)
+13:54:57 robot_arb INFO Param updated: contract_size = 1 (was 1)
+13:54:57 robot_arb INFO Param updated: lookback = 200 (was 200)
+13:54:57 robot_arb INFO Param updated: leg_a_timeout = 5 (was 5)
+13:54:57 robot_arb INFO Param updated: min_fill_ratio = 0.5 (was 0.5)
+13:54:57 robot_arb INFO Param updated: min_profit_type = rub (was rub)
+13:54:57 robot_arb INFO Param updated: min_profit_value = 30 (was 30)
+13:54:57 robot_arb INFO Param updated: risk_type = stop_loss_rub (was stop_loss_rub)
+13:54:57 robot_arb INFO Param updated: risk_value = 30000 (was 30000)
+13:54:57 robot_arb INFO Param updated: allow_long_basis = True (was True)
+13:54:57 robot_arb INFO Param updated: use_commission = True (was True)
+13:54:57 robot_arb INFO Param updated: commission_stock_pct = 7.5 (was 7.5)
+13:54:57 robot_arb INFO Param updated: commission_futures_rt = 7.5 (was 7.5)
+13:54:57 robot_arb INFO Param updated: slippage_bps = 10 (was 10)
+13:56:08 robot_arb INFO Param updated: ticker_a = BRQ6 (was BRQ6)
+13:56:08 robot_arb INFO Param updated: symbol_a = BRQ6@RTSX (was BRQ6@RTSX)
+13:56:08 robot_arb INFO Param updated: ticker_b = BRU6 (was BRU6)
+13:56:08 robot_arb INFO Param updated: symbol_b = BRU6@RTSX (was BRU6@RTSX)
+13:56:08 robot_arb INFO Param updated: lots_a = 1 (was 1)
+13:56:08 robot_arb INFO Param updated: lots_b = 1 (was 1)
+13:56:08 robot_arb INFO Param updated: hedge_ratio = 1 (was 1)
+13:56:08 robot_arb INFO Param updated: capital = 100000 (was 100000)
+13:56:08 robot_arb INFO Param updated: entry_z = 1.9 (was 1.7)
+13:56:08 robot_arb INFO Param updated: entry_z_long = -3.8 (was -3.8)
+13:56:08 robot_arb INFO Param updated: entry_mode = zscore (was zscore)
+13:56:08 robot_arb INFO Param updated: spread_rub_high = 5 (was 5)
+13:56:08 robot_arb INFO Param updated: spread_rub_low = -5 (was -5)
+13:56:08 robot_arb INFO Param updated: risk_free_rate = 0.1425 (was 0.1425)
+13:56:08 robot_arb INFO Param updated: expiration_date = 2026-09-18 (was 2026-09-18)
+13:56:08 robot_arb INFO Param updated: contract_size = 1 (was 1)
+13:56:08 robot_arb INFO Param updated: lookback = 200 (was 200)
+13:56:08 robot_arb INFO Param updated: leg_a_timeout = 5 (was 5)
+13:56:08 robot_arb INFO Param updated: min_fill_ratio = 0.5 (was 0.5)
+13:56:08 robot_arb INFO Param updated: min_profit_type = rub (was rub)
+13:56:08 robot_arb INFO Param updated: min_profit_value = 30 (was 30)
+13:56:08 robot_arb INFO Param updated: risk_type = stop_loss_rub (was stop_loss_rub)
+13:56:08 robot_arb INFO Param updated: risk_value = 30000 (was 30000)
+13:56:08 robot_arb INFO Param updated: allow_long_basis = True (was True)
+13:56:08 robot_arb INFO Param updated: use_commission = True (was True)
+13:56:08 robot_arb INFO Param updated: commission_stock_pct = 7.5 (was 7.5)
+13:56:08 robot_arb INFO Param updated: commission_futures_rt = 7.5 (was 7.5)
+13:56:08 robot_arb INFO Param updated: slippage_bps = 10 (was 10)
+13:56:13 robot_arb INFO Mode → RUNNING
+13:57:08 robot_arb INFO Param updated: ticker_a = BRQ6 (was BRQ6)
+13:57:08 robot_arb INFO Param updated: symbol_a = BRQ6@RTSX (was BRQ6@RTSX)
+13:57:08 robot_arb INFO Param updated: ticker_b = BRU6 (was BRU6)
+13:57:08 robot_arb INFO Param updated: symbol_b = BRU6@RTSX (was BRU6@RTSX)
+13:57:08 robot_arb INFO Param updated: lots_a = 1 (was 1)
+13:57:08 robot_arb INFO Param updated: lots_b = 1 (was 1)
+13:57:08 robot_arb INFO Param updated: hedge_ratio = 1 (was 1)
+13:57:08 robot_arb INFO Param updated: capital = 100000 (was 100000)
+13:57:08 robot_arb INFO Param updated: entry_z = 1.9 (was 1.9)
+13:57:08 robot_arb INFO Param updated: entry_z_long = -3.8 (was -3.8)
+13:57:08 robot_arb INFO Param updated: entry_mode = zscore (was zscore)
+13:57:08 robot_arb INFO Param updated: spread_rub_high = 5 (was 5)
+13:57:08 robot_arb INFO Param updated: spread_rub_low = -5 (was -5)
+13:57:08 robot_arb INFO Param updated: risk_free_rate = 0.1425 (was 0.1425)
+13:57:08 robot_arb INFO Param updated: expiration_date = 2026-09-18 (was 2026-09-18)
+13:57:08 robot_arb INFO Param updated: contract_size = 1 (was 1)
+13:57:08 robot_arb INFO Param updated: lookback = 200 (was 200)
+13:57:08 robot_arb INFO Param updated: leg_a_timeout = 5 (was 5)
+13:57:08 robot_arb INFO Param updated: min_fill_ratio = 0.5 (was 0.5)
+13:57:08 robot_arb INFO Param updated: min_profit_type = rub (was rub)
+13:57:08 robot_arb INFO Param updated: min_profit_value = 30 (was 30)
+13:57:08 robot_arb INFO Param updated: risk_type = stop_loss_rub (was stop_loss_rub)
+13:57:08 robot_arb INFO Param updated: risk_value = 30000 (was 30000)
+13:57:08 robot_arb INFO Param updated: allow_long_basis = True (was True)
+13:57:08 robot_arb INFO Param updated: use_commission = True (was True)
+13:57:08 robot_arb INFO Param updated: commission_stock_pct = 7.5 (was 7.5)
+13:57:08 robot_arb INFO Param updated: commission_futures_rt = 7.5 (was 7.5)
+13:57:08 robot_arb INFO Param updated: slippage_bps = 10 (was 10)
+13:57:33 robot_arb INFO ⚠️ CHECK_ENTRY returned signal: {'action': 'entry', 'side': 'short_basis', 'z': 1.9819166737793088, 'basis': 0.024999999999991473, 'price_a': 77.715, 'price_b': 77.74}
+13:57:33 robot_arb INFO ENTRY SIGNAL short_basis | Z=1.98 basis=0.02 | A=77.72 B=77.74 | limit buy 1 @ 77.72 | market sell 1 @ 77.66
+13:57:33 orders_arb INFO gRPC sending: limit buy 1 BRQ6@RTSX acc=1225953 @ 77.715
+13:57:33 orders_arb INFO gRPC limit placed: buy 1 BRQ6@RTSX acc=1225953 @ 77.715 id=1960787325227872231
+13:57:38 robot_arb WARNING Entry failed: leg_a_timeout
+13:57:39 robot_arb INFO Z=1.92 (threshold=1.9) - no signal (dup_check=LOCKED)
+13:57:39 robot_arb INFO Z=1.92 (threshold=1.9) - no signal (dup_check=LOCKED)
+13:57:40 robot_arb INFO Z=1.99 (threshold=1.9) - no signal (dup_check=LOCKED)
+13:57:40 robot_arb INFO ⚠️ CHECK_ENTRY returned signal: {'action': 'entry', 'side': 'short_basis', 'z': 1.9859523715287957, 'basis': 0.0049999999999954525, 'price_a': 77.715, 'price_b': 77.72}
+13:57:40 robot_arb INFO ENTRY SIGNAL short_basis | Z=1.99 basis=0.00 | A=77.72 B=77.72 | limit buy 1 @ 77.72 | market sell 1 @ 77.64
+13:57:40 orders_arb INFO gRPC sending: limit buy 1 BRQ6@RTSX acc=1225953 @ 77.715
+13:57:40 orders_arb INFO gRPC limit placed: buy 1 BRQ6@RTSX acc=1225953 @ 77.715 id=1960787325227872806
+13:57:46 robot_arb WARNING Entry failed: leg_a_timeout
+13:57:48 robot_arb INFO Z=1.97 (threshold=1.9) - no signal (dup_check=LOCKED)
+13:57:49 robot_arb INFO ⚠️ CHECK_ENTRY returned signal: {'action': 'entry', 'side': 'short_basis', 'z': 1.988647997994431, 'basis': 0.0, 'price_a': 77.72, 'price_b': 77.72}
+13:57:49 robot_arb INFO ENTRY SIGNAL short_basis | Z=1.99 basis=0.00 | A=77.72 B=77.72 | limit buy 1 @ 77.72 | market sell 1 @ 77.64
+13:57:49 orders_arb INFO gRPC sending: limit buy 1 BRQ6@RTSX acc=1225953 @ 77.72
+13:57:49 orders_arb INFO gRPC limit placed: buy 1 BRQ6@RTSX acc=1225953 @ 77.72 id=1960787325227873644
+13:57:55 robot_arb WARNING Entry failed: leg_a_timeout
+13:57:56 robot_arb INFO Z=2.01 (threshold=1.9) - no signal (dup_check=LOCKED)
+13:57:57 robot_arb INFO ⚠️ CHECK_ENTRY returned signal: {'action': 'entry', 'side': 'short_basis', 'z': 2.024828567365371, 'basis': 0.0, 'price_a': 77.72, 'price_b': 77.72}
+13:57:57 robot_arb INFO ENTRY SIGNAL short_basis | Z=2.02 basis=0.00 | A=77.72 B=77.72 | limit buy 1 @ 77.72 | market sell 1 @ 77.64
+13:57:57 orders_arb INFO gRPC sending: limit buy 1 BRQ6@RTSX acc=1225953 @ 77.72
+13:57:57 orders_arb INFO gRPC limit placed: buy 1 BRQ6@RTSX acc=1225953 @ 77.72 id=1960787325227874083
+13:58:02 robot_arb WARNING Entry failed: leg_a_timeout
+13:58:03 robot_arb INFO Z=2.25 (threshold=1.9) - no signal (dup_check=LOCKED)
+13:58:03 robot_arb INFO Z=2.25 (threshold=1.9) - no signal (dup_check=LOCKED)
+13:58:04 robot_arb INFO Z=2.08 (threshold=1.9) - no signal (dup_check=LOCKED)
+13:58:04 robot_arb INFO ⚠️ CHECK_ENTRY returned signal: {'action': 'entry', 'side': 'short_basis', 'z': 2.079809204437247, 'basis': 0.0, 'price_a': 77.75, 'price_b': 77.75}
+13:58:04 robot_arb INFO ENTRY SIGNAL short_basis | Z=2.08 basis=0.00 | A=77.75 B=77.75 | limit buy 1 @ 77.75 | market sell 1 @ 77.67
+13:58:04 orders_arb INFO gRPC sending: limit buy 1 BRQ6@RTSX acc=1225953 @ 77.75
+13:58:05 orders_arb INFO gRPC limit placed: buy 1 BRQ6@RTSX acc=1225953 @ 77.75 id=1960787325227874702
+13:58:10 robot_arb WARNING Entry failed: leg_a_timeout
+13:58:12 robot_arb INFO ⚠️ CHECK_ENTRY returned signal: {'action': 'entry', 'side': 'short_basis', 'z': 2.04306414104818, 'basis': -0.010000000000005116, 'price_a': 77.77000000000001, 'price_b': 77.76}
+13:58:12 robot_arb INFO ENTRY SIGNAL short_basis | Z=2.04 basis=-0.01 | A=77.77 B=77.76 | limit buy 1 @ 77.77 | market sell 1 @ 77.68
+13:58:12 orders_arb INFO gRPC sending: limit buy 1 BRQ6@RTSX acc=1225953 @ 77.77000000000001
+13:58:12 orders_arb INFO gRPC limit placed: buy 1 BRQ6@RTSX acc=1225953 @ 77.77000000000001 id=1960787325227875359
+13:58:18 robot_arb WARNING Entry failed: leg_a_timeout
+13:58:18 robot_arb INFO Z=1.82 (threshold=1.9) - no signal (dup_check=LOCKED)
+13:58:21 robot_arb INFO Z=1.80 (threshold=1.9) - no signal (dup_check=False)
+13:58:25 robot_arb INFO Z=1.82 (threshold=1.9) - no signal (dup_check=False)
+13:58:26 robot_arb INFO Z=1.88 (threshold=1.9) - no signal (dup_check=False)
+13:58:31 robot_arb INFO ⚠️ CHECK_ENTRY returned signal: {'action': 'entry', 'side': 'short_basis', 'z': 1.927789318928661, 'basis': -0.04999999999999716, 'price_a': 77.81, 'price_b': 77.76}
+13:58:31 robot_arb INFO ENTRY SIGNAL short_basis | Z=1.93 basis=-0.05 | A=77.81 B=77.76 | limit buy 1 @ 77.81 | market sell 1 @ 77.68
+13:58:31 orders_arb INFO gRPC sending: limit buy 1 BRQ6@RTSX acc=1225953 @ 77.81
+13:58:31 orders_arb INFO gRPC limit placed: buy 1 BRQ6@RTSX acc=1225953 @ 77.81 id=1960787325227876887
+13:58:37 robot_arb WARNING Entry failed: leg_a_timeout
+13:58:38 robot_arb INFO Z=1.88 (threshold=1.9) - no signal (dup_check=LOCKED)
+13:58:45 robot_arb INFO ⚠️ CHECK_ENTRY returned signal: {'action': 'entry', 'side': 'short_basis', 'z': 2.0617377728578186, 'basis': -0.04000000000000625, 'price_a': 77.80000000000001, 'price_b': 77.76}
+13:58:45 robot_arb INFO ENTRY SIGNAL short_basis | Z=2.06 basis=-0.04 | A=77.80 B=77.76 | limit buy 1 @ 77.80 | market sell 1 @ 77.68
+13:58:45 orders_arb INFO gRPC sending: limit buy 1 BRQ6@RTSX acc=1225953 @ 77.80000000000001
+13:58:45 orders_arb INFO gRPC limit placed: buy 1 BRQ6@RTSX acc=1225953 @ 77.80000000000001 id=1960787325227877880
+13:58:51 robot_arb WARNING Entry failed: leg_a_timeout
+13:58:55 robot_arb INFO ⚠️ CHECK_ENTRY returned signal: {'action': 'entry', 'side': 'short_basis', 'z': 1.9152258458213907, 'basis': -0.07000000000000739, 'price_a': 77.80000000000001, 'price_b': 77.73}
+13:58:55 robot_arb INFO ENTRY SIGNAL short_basis | Z=1.92 basis=-0.07 | A=77.80 B=77.73 | limit buy 1 @ 77.80 | market sell 1 @ 77.65
+13:58:55 orders_arb INFO gRPC sending: limit buy 1 BRQ6@RTSX acc=1225953 @ 77.80000000000001
+13:58:55 orders_arb INFO gRPC limit placed: buy 1 BRQ6@RTSX acc=1225953 @ 77.80000000000001 id=1960787325227879005
+13:59:01 robot_arb WARNING Entry failed: leg_a_timeout
+13:59:03 robot_arb INFO ⚠️ CHECK_ENTRY returned signal: {'action': 'entry', 'side': 'short_basis', 'z': 2.0484689121831723, 'basis': -0.05000000000001137, 'price_a': 77.80000000000001, 'price_b': 77.75}
+13:59:03 robot_arb INFO ENTRY SIGNAL short_basis | Z=2.05 basis=-0.05 | A=77.80 B=77.75 | limit buy 1 @ 77.80 | market sell 1 @ 77.67
+13:59:03 orders_arb INFO gRPC sending: limit buy 1 BRQ6@RTSX acc=1225953 @ 77.80000000000001
+13:59:03 orders_arb INFO gRPC limit placed: buy 1 BRQ6@RTSX acc=1225953 @ 77.80000000000001 id=1960787325227879436
+13:59:09 robot_arb WARNING Entry failed: leg_a_timeout
+13:59:12 robot_arb INFO ⚠️ CHECK_ENTRY returned signal: {'action': 'entry', 'side': 'short_basis', 'z': 2.1320984482930054, 'basis': -0.03999999999999204, 'price_a': 77.78999999999999, 'price_b': 77.75}
+13:59:12 robot_arb INFO ENTRY SIGNAL short_basis | Z=2.13 basis=-0.04 | A=77.79 B=77.75 | limit buy 1 @ 77.79 | market sell 1 @ 77.67
+13:59:12 orders_arb INFO gRPC sending: limit buy 1 BRQ6@RTSX acc=1225953 @ 77.78999999999999
+13:59:12 orders_arb INFO gRPC limit placed: buy 1 BRQ6@RTSX acc=1225953 @ 77.78999999999999 id=1960787325227879694
+13:59:18 robot_arb WARNING Entry failed: leg_a_timeout
+13:59:18 robot_arb INFO Z=1.85 (threshold=1.9) - no signal (dup_check=LOCKED)
+13:59:21 robot_arb INFO ⚠️ CHECK_ENTRY returned signal: {'action': 'entry', 'side': 'short_basis', 'z': 1.9018689484188278, 'basis': -0.06499999999999773, 'price_a': 77.815, 'price_b': 77.75}
+13:59:21 robot_arb INFO ENTRY SIGNAL short_basis | Z=1.90 basis=-0.06 | A=77.81 B=77.75 | limit buy 1 @ 77.81 | market sell 1 @ 77.67
+13:59:21 orders_arb INFO gRPC sending: limit buy 1 BRQ6@RTSX acc=1225953 @ 77.815
+13:59:22 orders_arb INFO gRPC limit placed: buy 1 BRQ6@RTSX acc=1225953 @ 77.815 id=1960787325227884405
+13:59:27 robot_arb WARNING Entry failed: leg_a_timeout
+14:01:15 robot_arb INFO Param updated: ticker_a = BRQ6 (was BRQ6)
+14:01:15 robot_arb INFO Param updated: symbol_a = BRQ6@RTSX (was BRQ6@RTSX)
+14:01:15 robot_arb INFO Param updated: ticker_b = BRU6 (was BRU6)
+14:01:15 robot_arb INFO Param updated: symbol_b = BRU6@RTSX (was BRU6@RTSX)
+14:01:15 robot_arb INFO Param updated: lots_a = 1 (was 1)
+14:01:15 robot_arb INFO Param updated: lots_b = 1 (was 1)
+14:01:15 robot_arb INFO Param updated: hedge_ratio = 1 (was 1)
+14:01:15 robot_arb INFO Param updated: capital = 100000 (was 100000)
+14:01:15 robot_arb INFO Param updated: entry_z = 1.7 (was 1.9)
+14:01:15 robot_arb INFO Param updated: entry_z_long = -3.8 (was -3.8)
+14:01:15 robot_arb INFO Param updated: entry_mode = zscore (was zscore)
+14:01:15 robot_arb INFO Param updated: spread_rub_high = 5 (was 5)
+14:01:15 robot_arb INFO Param updated: spread_rub_low = -5 (was -5)
+14:01:15 robot_arb INFO Param updated: risk_free_rate = 0.1425 (was 0.1425)
+14:01:15 robot_arb INFO Param updated: expiration_date = 2026-09-18 (was 2026-09-18)
+14:01:15 robot_arb INFO Param updated: contract_size = 1 (was 1)
+14:01:15 robot_arb INFO Param updated: lookback = 200 (was 200)
+14:01:15 robot_arb INFO Param updated: leg_a_timeout = 5 (was 5)
+14:01:15 robot_arb INFO Param updated: min_fill_ratio = 0.5 (was 0.5)
+14:01:15 robot_arb INFO Param updated: min_profit_type = rub (was rub)
+14:01:15 robot_arb INFO Param updated: min_profit_value = 30 (was 30)
+14:01:15 robot_arb INFO Param updated: risk_type = stop_loss_rub (was stop_loss_rub)
+14:01:15 robot_arb INFO Param updated: risk_value = 30000 (was 30000)
+14:01:15 robot_arb INFO Param updated: allow_long_basis = True (was True)
+14:01:15 robot_arb INFO Param updated: use_commission = True (was True)
+14:01:15 robot_arb INFO Param updated: commission_stock_pct = 7.5 (was 7.5)
+14:01:15 robot_arb INFO Param updated: commission_futures_rt = 7.5 (was 7.5)
+14:01:15 robot_arb INFO Param updated: slippage_bps = 10 (was 10)
+14:02:48 robot_arb INFO Z=1.52 (threshold=1.7) - no signal (dup_check=False)
+14:02:49 robot_arb INFO Z=1.53 (threshold=1.7) - no signal (dup_check=False)
+14:02:50 robot_arb INFO Z=1.54 (threshold=1.7) - no signal (dup_check=False)
+14:02:52 robot_arb INFO Z=1.57 (threshold=1.7) - no signal (dup_check=False)
+14:02:55 robot_arb INFO Z=1.56 (threshold=1.7) - no signal (dup_check=False)
+14:02:57 robot_arb INFO Z=1.62 (threshold=1.7) - no signal (dup_check=False)
+14:02:59 robot_arb INFO Z=1.56 (threshold=1.7) - no signal (dup_check=False)
+14:03:10 robot_arb INFO Z=1.55 (threshold=1.7) - no signal (dup_check=False)
+14:03:14 robot_arb INFO Z=1.60 (threshold=1.7) - no signal (dup_check=False)
+14:03:17 robot_arb INFO Z=1.60 (threshold=1.7) - no signal (dup_check=False)
+14:03:18 robot_arb INFO Z=1.59 (threshold=1.7) - no signal (dup_check=False)
+14:03:18 robot_arb INFO Z=1.59 (threshold=1.7) - no signal (dup_check=False)
+14:03:19 robot_arb INFO Z=1.51 (threshold=1.7) - no signal (dup_check=False)
+14:03:21 robot_arb INFO Z=1.57 (threshold=1.7) - no signal (dup_check=False)
+14:03:25 robot_arb INFO Z=1.55 (threshold=1.7) - no signal (dup_check=False)
+14:03:26 robot_arb INFO Z=1.52 (threshold=1.7) - no signal (dup_check=False)
+14:03:28 robot_arb INFO Z=1.53 (threshold=1.7) - no signal (dup_check=False)
+14:03:29 robot_arb INFO Z=1.55 (threshold=1.7) - no signal (dup_check=False)
+14:03:33 robot_arb INFO Z=1.51 (threshold=1.7) - no signal (dup_check=False)
+14:03:34 robot_arb INFO Z=1.61 (threshold=1.7) - no signal (dup_check=False)
+14:03:35 robot_arb INFO Z=1.55 (threshold=1.7) - no signal (dup_check=False)
+14:03:36 robot_arb INFO Z=1.65 (threshold=1.7) - no signal (dup_check=False)
+14:03:40 robot_arb INFO Z=1.66 (threshold=1.7) - no signal (dup_check=False)
+14:03:41 robot_arb INFO Z=1.70 (threshold=1.7) - no signal (dup_check=False)
+14:03:41 robot_arb INFO Z=1.70 (threshold=1.7) - no signal (dup_check=False)
+14:03:42 robot_arb INFO Z=1.67 (threshold=1.7) - no signal (dup_check=False)
+14:03:42 robot_arb INFO Z=1.67 (threshold=1.7) - no signal (dup_check=False)
+14:03:44 robot_arb INFO Z=1.65 (threshold=1.7) - no signal (dup_check=False)
+14:03:47 robot_arb INFO ⚠️ CHECK_ENTRY returned signal: {'action': 'entry', 'side': 'short_basis', 'z': 1.7137033161719144, 'basis': -0.3149999999999977, 'price_a': 77.985, 'price_b': 77.67}
+14:03:47 robot_arb INFO ENTRY SIGNAL short_basis | Z=1.71 basis=-0.31 | A=77.98 B=77.67 | limit buy 1 @ 77.98 | market sell 1 @ 77.59
+14:03:47 orders_arb INFO gRPC sending: limit buy 1 BRQ6@RTSX acc=1225953 @ 77.985
+14:03:47 orders_arb INFO gRPC limit placed: buy 1 BRQ6@RTSX acc=1225953 @ 77.985 id=1960787325227931589
+14:03:53 robot_arb WARNING Entry failed: leg_a_timeout
+14:03:55 robot_arb INFO Z=1.60 (threshold=1.7) - no signal (dup_check=False)
+14:03:56 robot_arb INFO Z=1.60 (threshold=1.7) - no signal (dup_check=False)
+14:03:58 robot_arb INFO Z=1.55 (threshold=1.7) - no signal (dup_check=False)
+14:03:59 robot_arb INFO Z=1.63 (threshold=1.7) - no signal (dup_check=False)
+14:03:59 robot_arb INFO Z=1.63 (threshold=1.7) - no signal (dup_check=False)
+14:04:00 robot_arb INFO Z=1.63 (threshold=1.7) - no signal (dup_check=False)
+14:04:01 robot_arb INFO Z=1.63 (threshold=1.7) - no signal (dup_check=False)
+14:04:01 robot_arb INFO Z=1.61 (threshold=1.7) - no signal (dup_check=False)
+14:04:03 robot_arb INFO Z=1.58 (threshold=1.7) - no signal (dup_check=False)
+14:04:04 robot_arb INFO Z=1.61 (threshold=1.7) - no signal (dup_check=False)
+14:04:04 robot_arb INFO Z=1.59 (threshold=1.7) - no signal (dup_check=False)
+14:04:05 robot_arb INFO Z=1.59 (threshold=1.7) - no signal (dup_check=False)
+14:04:06 robot_arb INFO Z=1.62 (threshold=1.7) - no signal (dup_check=False)
+14:04:07 robot_arb INFO Z=1.62 (threshold=1.7) - no signal (dup_check=False)
+14:04:07 robot_arb INFO Z=1.60 (threshold=1.7) - no signal (dup_check=False)
+14:04:08 robot_arb INFO Z=1.60 (threshold=1.7) - no signal (dup_check=False)
+14:04:08 robot_arb INFO Z=1.58 (threshold=1.7) - no signal (dup_check=False)
+14:04:09 robot_arb INFO Z=1.58 (threshold=1.7) - no signal (dup_check=False)
+14:04:09 robot_arb INFO Param updated: ticker_a = BRQ6 (was BRQ6)
+14:04:09 robot_arb INFO Param updated: symbol_a = BRQ6@RTSX (was BRQ6@RTSX)
+14:04:09 robot_arb INFO Param updated: ticker_b = BRU6 (was BRU6)
+14:04:09 robot_arb INFO Param updated: symbol_b = BRU6@RTSX (was BRU6@RTSX)
+14:04:09 robot_arb INFO Param updated: lots_a = 1 (was 1)
+14:04:09 robot_arb INFO Param updated: lots_b = 1 (was 1)
+14:04:09 robot_arb INFO Param updated: hedge_ratio = 1 (was 1)
+14:04:09 robot_arb INFO Param updated: capital = 100000 (was 100000)
+14:04:09 robot_arb INFO Param updated: entry_z = 1.7 (was 1.7)
+14:04:09 robot_arb INFO Param updated: entry_z_long = -3.8 (was -3.8)
+14:04:09 robot_arb INFO Param updated: entry_mode = zscore (was zscore)
+14:04:09 robot_arb INFO Param updated: spread_rub_high = 5 (was 5)
+14:04:09 robot_arb INFO Param updated: spread_rub_low = -5 (was -5)
+14:04:09 robot_arb INFO Param updated: risk_free_rate = 0.1425 (was 0.1425)
+14:04:09 robot_arb INFO Param updated: expiration_date = 2026-09-18 (was 2026-09-18)
+14:04:09 robot_arb INFO Param updated: contract_size = 1 (was 1)
+14:04:09 robot_arb INFO Param updated: lookback = 200 (was 200)
+14:04:09 robot_arb INFO Param updated: leg_a_timeout = 5 (was 5)
+14:04:09 robot_arb INFO Param updated: min_fill_ratio = 0.5 (was 0.5)
+14:04:09 robot_arb INFO Param updated: min_profit_type = rub (was rub)
+14:04:09 robot_arb INFO Param updated: min_profit_value = 30 (was 30)
+14:04:09 robot_arb INFO Param updated: risk_type = stop_loss_rub (was stop_loss_rub)
+14:04:09 robot_arb INFO Param updated: risk_value = 30000 (was 30000)
+14:04:09 robot_arb INFO Param updated: allow_long_basis = True (was True)
+14:04:09 robot_arb INFO Param updated: use_commission = True (was True)
+14:04:09 robot_arb INFO Param updated: commission_stock_pct = 7.5 (was 7.5)
+14:04:09 robot_arb INFO Param updated: commission_futures_rt = 7.5 (was 7.5)
+14:04:09 robot_arb INFO Param updated: slippage_bps = 10 (was 10)
+14:04:09 robot_arb INFO Z=1.56 (threshold=1.7) - no signal (dup_check=False)
+14:04:10 robot_arb INFO Z=1.56 (threshold=1.7) - no signal (dup_check=False)
+14:04:10 robot_arb INFO Z=1.54 (threshold=1.7) - no signal (dup_check=False)
+14:04:12 robot_arb INFO Z=1.56 (threshold=1.7) - no signal (dup_check=False)
+14:04:13 robot_arb INFO Z=1.57 (threshold=1.7) - no signal (dup_check=False)
+14:04:14 robot_arb INFO Z=1.65 (threshold=1.7) - no signal (dup_check=False)
+14:04:15 robot_arb INFO Z=1.68 (threshold=1.7) - no signal (dup_check=False)
+14:04:16 robot_arb INFO Z=1.68 (threshold=1.7) - no signal (dup_check=False)
+14:04:18 robot_arb INFO Z=1.68 (threshold=1.7) - no signal (dup_check=False)
+14:04:19 robot_arb INFO Z=1.68 (threshold=1.7) - no signal (dup_check=False)
+14:04:20 robot_arb INFO Z=1.68 (threshold=1.7) - no signal (dup_check=False)
+14:04:24 robot_arb INFO Z=1.70 (threshold=1.7) - no signal (dup_check=False)
+14:04:28 robot_arb INFO ⚠️ CHECK_ENTRY returned signal: {'action': 'entry', 'side': 'short_basis', 'z': 1.934472406902684, 'basis': -0.26500000000000057, 'price_a': 77.965, 'price_b': 77.7}
+14:04:28 robot_arb INFO ENTRY SIGNAL short_basis | Z=1.93 basis=-0.27 | A=77.97 B=77.70 | limit buy 1 @ 77.97 | market sell 1 @ 77.62
+14:04:28 orders_arb INFO gRPC sending: limit buy 1 BRQ6@RTSX acc=1225953 @ 77.965
+14:04:28 orders_arb INFO gRPC limit placed: buy 1 BRQ6@RTSX acc=1225953 @ 77.965 id=1960787325227936582
+14:04:34 robot_arb WARNING Entry failed: leg_a_timeout
+14:04:34 robot_arb INFO Z=2.05 (threshold=1.7) - no signal (dup_check=LOCKED)
+14:04:36 robot_arb INFO ⚠️ CHECK_ENTRY returned signal: {'action': 'entry', 'side': 'short_basis', 'z': 2.049015857918898, 'basis': -0.2400000000000091, 'price_a': 77.96000000000001, 'price_b': 77.72}
+14:04:36 robot_arb INFO ENTRY SIGNAL short_basis | Z=2.05 basis=-0.24 | A=77.96 B=77.72 | limit buy 1 @ 77.96 | market sell 1 @ 77.64
+14:04:36 orders_arb INFO gRPC sending: limit buy 1 BRQ6@RTSX acc=1225953 @ 77.96000000000001
+14:04:36 orders_arb INFO gRPC limit placed: buy 1 BRQ6@RTSX acc=1225953 @ 77.96000000000001 id=1960787325227937152
+14:04:42 robot_arb WARNING Entry failed: leg_a_timeout
+14:04:49 robot_arb INFO ⚠️ CHECK_ENTRY returned signal: {'action': 'entry', 'side': 'short_basis', 'z': 1.9677015541339737, 'basis': -0.2600000000000051, 'price_a': 77.96000000000001, 'price_b': 77.7}
+14:04:49 robot_arb INFO ENTRY SIGNAL short_basis | Z=1.97 basis=-0.26 | A=77.96 B=77.70 | limit buy 1 @ 77.96 | market sell 1 @ 77.62
+14:04:49 orders_arb INFO gRPC sending: limit buy 1 BRQ6@RTSX acc=1225953 @ 77.96000000000001
+14:04:49 orders_arb INFO gRPC limit placed: buy 1 BRQ6@RTSX acc=1225953 @ 77.96000000000001 id=1960787325227937963
+14:04:54 robot_arb WARNING Entry failed: leg_a_timeout
+14:04:55 robot_arb INFO Z=1.59 (threshold=1.7) - no signal (dup_check=LOCKED)
+14:04:55 robot_arb INFO Z=1.59 (threshold=1.7) - no signal (dup_check=LOCKED)
+14:04:57 robot_arb INFO Z=1.66 (threshold=1.7) - no signal (dup_check=False)
+14:04:57 robot_arb INFO Z=1.66 (threshold=1.7) - no signal (dup_check=False)
+14:04:59 robot_arb INFO Z=1.69 (threshold=1.7) - no signal (dup_check=False)
+14:05:02 robot_arb INFO Z=1.58 (threshold=1.7) - no signal (dup_check=False)
+14:05:04 robot_arb INFO Z=1.50 (threshold=1.7) - no signal (dup_check=False)
+14:05:08 robot_arb INFO Z=1.60 (threshold=1.7) - no signal (dup_check=False)
+14:05:09 robot_arb INFO Z=1.60 (threshold=1.7) - no signal (dup_check=False)
+14:05:10 robot_arb INFO ⚠️ CHECK_ENTRY returned signal: {'action': 'entry', 'side': 'short_basis', 'z': 1.858932230070605, 'basis': -0.2849999999999966, 'price_a': 77.975, 'price_b': 77.69}
+14:05:10 robot_arb INFO ENTRY SIGNAL short_basis | Z=1.86 basis=-0.28 | A=77.97 B=77.69 | limit buy 1 @ 77.97 | market sell 1 @ 77.61
+14:05:10 orders_arb INFO gRPC sending: limit buy 1 BRQ6@RTSX acc=1225953 @ 77.975
+14:05:10 orders_arb INFO gRPC limit placed: buy 1 BRQ6@RTSX acc=1225953 @ 77.975 id=1960787325227940541
+14:05:16 robot_arb WARNING Entry failed: leg_a_timeout
+14:05:17 robot_arb INFO Z=1.52 (threshold=1.7) - no signal (dup_check=LOCKED)
+14:05:20 robot_arb INFO Z=1.50 (threshold=1.7) - no signal (dup_check=False)
+14:05:24 robot_arb INFO Z=1.63 (threshold=1.7) - no signal (dup_check=False)
+14:05:25 robot_arb INFO Z=1.54 (threshold=1.7) - no signal (dup_check=False)
+14:05:27 robot_arb INFO Z=1.63 (threshold=1.7) - no signal (dup_check=False)
+14:05:27 robot_arb INFO Z=1.63 (threshold=1.7) - no signal (dup_check=False)
+14:05:28 robot_arb INFO Z=1.52 (threshold=1.7) - no signal (dup_check=False)
+14:05:33 robot_arb INFO Z=1.53 (threshold=1.7) - no signal (dup_check=False)
+14:05:38 robot_arb INFO Z=1.59 (threshold=1.7) - no signal (dup_check=False)
+14:05:38 robot_arb INFO Z=1.62 (threshold=1.7) - no signal (dup_check=False)
+14:05:41 robot_arb INFO ⚠️ CHECK_ENTRY returned signal: {'action': 'entry', 'side': 'short_basis', 'z': 1.7269261098229782, 'basis': -0.3100000000000023, 'price_a': 77.97, 'price_b': 77.66}
+14:05:41 robot_arb INFO ENTRY SIGNAL short_basis | Z=1.73 basis=-0.31 | A=77.97 B=77.66 | limit buy 1 @ 77.97 | market sell 1 @ 77.58
+14:05:41 orders_arb INFO gRPC sending: limit buy 1 BRQ6@RTSX acc=1225953 @ 77.97
+14:05:41 orders_arb INFO gRPC limit placed: buy 1 BRQ6@RTSX acc=1225953 @ 77.97 id=1960787325227941710
+14:05:46 orders_arb WARNING gRPC cancel error 1960787325227941710 acc=1225950: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.UNAUTHENTIC
+14:05:46 orders_arb WARNING gRPC cancel error 1960787325227941710 acc=1225953: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.UNAUTHENTIC
+14:05:47 robot_arb WARNING Entry failed: leg_a_timeout
+14:05:49 robot_arb INFO ⚠️ CHECK_ENTRY returned signal: {'action': 'entry', 'side': 'short_basis', 'z': 2.091990251092173, 'basis': -0.25, 'price_a': 77.89, 'price_b': 77.64}
+14:05:49 robot_arb INFO ENTRY SIGNAL short_basis | Z=2.09 basis=-0.25 | A=77.89 B=77.64 | limit buy 1 @ 77.89 | market sell 1 @ 77.56
+14:05:49 orders_arb INFO gRPC sending: limit buy 1 BRQ6@RTSX acc=1225953 @ 77.89
+14:05:49 orders_arb ERROR gRPC order error (BRQ6@RTSX buy 1@77.89): code=StatusCode.INTERNAL details=Trading is not available at the moment
+14:05:49 orders_arb WARNING gRPC limit failed, falling back to DP server
+14:05:49 orders_arb INFO Limit placed (DP): arb_entry_a buy 1 BRQ6@RTSX @ 77.89 id=1960787325227942798
+14:05:54 orders_arb WARNING gRPC cancel error 1960787325227942798 acc=1225950: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.UNAUTHENTIC
+14:05:54 orders_arb WARNING gRPC cancel error 1960787325227942798 acc=1225953: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.UNAUTHENTIC
+14:05:55 robot_arb WARNING Entry failed: leg_a_timeout
+14:05:57 robot_arb INFO Z=1.70 (threshold=1.7) - no signal (dup_check=False)
+14:06:00 robot_arb INFO ⚠️ CHECK_ENTRY returned signal: {'action': 'entry', 'side': 'short_basis', 'z': 1.7688590757220788, 'basis': -0.30000000000001137, 'price_a': 77.9, 'price_b': 77.6}
+14:06:00 robot_arb INFO ENTRY SIGNAL short_basis | Z=1.77 basis=-0.30 | A=77.90 B=77.60 | limit buy 1 @ 77.90 | market sell 1 @ 77.52
+14:06:00 orders_arb INFO gRPC sending: limit buy 1 BRQ6@RTSX acc=1225953 @ 77.9
+14:06:00 orders_arb ERROR gRPC order error (BRQ6@RTSX buy 1@77.9): code=StatusCode.INTERNAL details=Trading is not available at the moment
+14:06:00 orders_arb WARNING gRPC limit failed, falling back to DP server
+14:06:00 orders_arb INFO Limit placed (DP): arb_entry_a buy 1 BRQ6@RTSX @ 77.9 id=1960787325227944341
+14:06:05 orders_arb WARNING gRPC cancel error 1960787325227944341 acc=1225950: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.INTERNAL
+	d
+14:06:05 orders_arb WARNING gRPC cancel error 1960787325227944341 acc=1225953: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.UNAUTHENTIC
+14:06:05 robot_arb WARNING Entry failed: leg_a_timeout
+14:06:12 robot_arb INFO Z=1.58 (threshold=1.7) - no signal (dup_check=False)
+14:07:20 robot_arb INFO Z=1.66 (threshold=1.7) - no signal (dup_check=False)
+14:07:23 robot_arb INFO Z=1.66 (threshold=1.7) - no signal (dup_check=False)
+14:07:25 robot_arb INFO Z=1.68 (threshold=1.7) - no signal (dup_check=False)
+14:08:05 robot_arb INFO ⚠️ CHECK_ENTRY returned signal: {'action': 'entry', 'side': 'short_basis', 'z': 1.8882178602546782, 'basis': -0.3399999999999892, 'price_a': 77.96, 'price_b': 77.62}
+14:08:05 robot_arb INFO ENTRY SIGNAL short_basis | Z=1.89 basis=-0.34 | A=77.96 B=77.62 | limit buy 1 @ 77.96 | market sell 1 @ 77.54
+14:08:05 orders_arb INFO gRPC sending: limit buy 1 BRQ6@RTSX acc=1225953 @ 77.96
+14:08:05 orders_arb ERROR gRPC order error (BRQ6@RTSX buy 1@77.96): code=StatusCode.INTERNAL details=Trading is not available at the moment
+14:08:05 orders_arb WARNING gRPC limit failed, falling back to DP server
+14:08:05 orders_arb INFO Limit placed (DP): arb_entry_a buy 1 BRQ6@RTSX @ 77.96 id=1960787325227957938
+14:08:10 orders_arb WARNING gRPC cancel error 1960787325227957938 acc=1225950: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.UNAUTHENTIC
+14:08:11 orders_arb WARNING gRPC cancel error 1960787325227957938 acc=1225953: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.UNAUTHENTIC
+14:08:11 robot_arb WARNING Entry failed: leg_a_timeout
+14:08:16 robot_arb INFO ⚠️ CHECK_ENTRY returned signal: {'action': 'entry', 'side': 'short_basis', 'z': 1.7662408383478188, 'basis': -0.37999999999999545, 'price_a': 77.99, 'price_b': 77.61}
+14:08:16 robot_arb INFO ENTRY SIGNAL short_basis | Z=1.77 basis=-0.38 | A=77.99 B=77.61 | limit buy 1 @ 77.99 | market sell 1 @ 77.53
+14:08:16 orders_arb INFO gRPC sending: limit buy 1 BRQ6@RTSX acc=1225953 @ 77.99
+14:08:16 orders_arb ERROR gRPC order error (BRQ6@RTSX buy 1@77.99): code=StatusCode.INTERNAL details=Trading is not available at the moment
+14:08:16 orders_arb WARNING gRPC limit failed, falling back to DP server
+14:08:16 orders_arb INFO Limit placed (DP): arb_entry_a buy 1 BRQ6@RTSX @ 77.99 id=1960787325227959469
+14:08:21 orders_arb WARNING gRPC cancel error 1960787325227959469 acc=1225950: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.UNAUTHENTIC
+14:08:21 orders_arb WARNING gRPC cancel error 1960787325227959469 acc=1225953: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.INTERNAL
+	d
+14:08:21 robot_arb WARNING Entry failed: leg_a_timeout
+14:08:23 robot_arb INFO Z=1.85 (threshold=1.7) - no signal (dup_check=LOCKED)
+14:08:25 robot_arb INFO ⚠️ CHECK_ENTRY returned signal: {'action': 'entry', 'side': 'short_basis', 'z': 1.829082449811931, 'basis': -0.37000000000000455, 'price_a': 77.98, 'price_b': 77.61}
+14:08:25 robot_arb INFO ENTRY SIGNAL short_basis | Z=1.83 basis=-0.37 | A=77.98 B=77.61 | limit buy 1 @ 77.98 | market sell 1 @ 77.53
+14:08:25 orders_arb INFO gRPC sending: limit buy 1 BRQ6@RTSX acc=1225953 @ 77.98
+14:08:25 orders_arb ERROR gRPC order error (BRQ6@RTSX buy 1@77.98): code=StatusCode.INTERNAL details=Trading is not available at the moment
+14:08:25 orders_arb WARNING gRPC limit failed, falling back to DP server
+14:08:26 orders_arb INFO Limit placed (DP): arb_entry_a buy 1 BRQ6@RTSX @ 77.98 id=1960787325227959960
+14:08:31 orders_arb WARNING gRPC cancel error 1960787325227959960 acc=1225950: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.UNAUTHENTIC
+14:08:31 orders_arb WARNING gRPC cancel error 1960787325227959960 acc=1225953: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.INTERNAL
+	d
+14:08:31 robot_arb WARNING Entry failed: leg_a_timeout
+14:08:33 robot_arb INFO Z=1.81 (threshold=1.7) - no signal (dup_check=LOCKED)
+14:08:38 robot_arb INFO ⚠️ CHECK_ENTRY returned signal: {'action': 'entry', 'side': 'short_basis', 'z': 1.9264611558175415, 'basis': -0.3499999999999943, 'price_a': 77.96, 'price_b': 77.61}
+14:08:38 robot_arb INFO ENTRY SIGNAL short_basis | Z=1.93 basis=-0.35 | A=77.96 B=77.61 | limit buy 1 @ 77.96 | market sell 1 @ 77.53
+14:08:38 orders_arb INFO gRPC sending: limit buy 1 BRQ6@RTSX acc=1225953 @ 77.96
+14:08:38 orders_arb ERROR gRPC order error (BRQ6@RTSX buy 1@77.96): code=StatusCode.INTERNAL details=Trading is not available at the moment
+14:08:38 orders_arb WARNING gRPC limit failed, falling back to DP server
+14:08:39 orders_arb INFO Limit placed (DP): arb_entry_a buy 1 BRQ6@RTSX @ 77.96 id=1960787325227960681
+14:08:44 orders_arb WARNING gRPC cancel error 1960787325227960681 acc=1225950: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.INTERNAL
+	d
+14:08:44 orders_arb WARNING gRPC cancel error 1960787325227960681 acc=1225953: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.UNAUTHENTIC
+14:08:44 robot_arb WARNING Entry failed: leg_a_timeout
+14:08:46 robot_arb INFO Z=1.95 (threshold=1.7) - no signal (dup_check=LOCKED)
+14:08:56 robot_arb INFO ⚠️ CHECK_ENTRY returned signal: {'action': 'entry', 'side': 'short_basis', 'z': 2.0035681980975504, 'basis': -0.3400000000000034, 'price_a': 77.95, 'price_b': 77.61}
+14:08:56 robot_arb INFO ENTRY SIGNAL short_basis | Z=2.00 basis=-0.34 | A=77.95 B=77.61 | limit buy 1 @ 77.95 | market sell 1 @ 77.53
+14:08:56 orders_arb INFO gRPC sending: limit buy 1 BRQ6@RTSX acc=1225953 @ 77.95
+14:08:56 orders_arb ERROR gRPC order error (BRQ6@RTSX buy 1@77.95): code=StatusCode.INTERNAL details=Jwt token check failed: UNAUTHENTICATED: Token is expired
+14:08:56 orders_arb WARNING gRPC limit failed, falling back to DP server
+14:08:56 orders_arb INFO Limit placed (DP): arb_entry_a buy 1 BRQ6@RTSX @ 77.95 id=1960787325227962014
+14:09:01 orders_arb WARNING gRPC cancel error 1960787325227962014 acc=1225950: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.INTERNAL
+	d
+14:09:01 orders_arb WARNING gRPC cancel error 1960787325227962014 acc=1225953: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.INTERNAL
+	d
+14:09:01 robot_arb WARNING Entry failed: leg_a_timeout
+14:09:27 robot_arb INFO ⚠️ CHECK_ENTRY returned signal: {'action': 'entry', 'side': 'short_basis', 'z': 1.7818874018475483, 'basis': -0.4099999999999966, 'price_a': 78.02, 'price_b': 77.61}
+14:09:27 robot_arb INFO ENTRY SIGNAL short_basis | Z=1.78 basis=-0.41 | A=78.02 B=77.61 | limit buy 1 @ 78.02 | market sell 1 @ 77.53
+14:09:27 orders_arb INFO gRPC sending: limit buy 1 BRQ6@RTSX acc=1225953 @ 78.02
+14:09:27 orders_arb ERROR gRPC order error (BRQ6@RTSX buy 1@78.02): code=StatusCode.INTERNAL details=Jwt token check failed: UNAUTHENTICATED: Token is expired
+14:09:27 orders_arb WARNING gRPC limit failed, falling back to DP server
+14:09:27 orders_arb INFO Limit placed (DP): arb_entry_a buy 1 BRQ6@RTSX @ 78.02 id=1960787325227964563
+14:09:33 orders_arb WARNING gRPC cancel error 1960787325227964563 acc=1225950: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.INTERNAL
+	d
+14:09:33 orders_arb WARNING gRPC cancel error 1960787325227964563 acc=1225953: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.UNAUTHENTIC
+14:09:33 robot_arb WARNING Entry failed: leg_a_timeout
+14:09:47 robot_arb INFO ⚠️ CHECK_ENTRY returned signal: {'action': 'entry', 'side': 'short_basis', 'z': 2.08973417641089, 'basis': -0.35999999999999943, 'price_a': 78.08, 'price_b': 77.72}
+14:09:47 robot_arb INFO ENTRY SIGNAL short_basis | Z=2.09 basis=-0.36 | A=78.08 B=77.72 | limit buy 1 @ 78.08 | market sell 1 @ 77.64
+14:09:47 orders_arb INFO gRPC sending: limit buy 1 BRQ6@RTSX acc=1225953 @ 78.08
+14:09:47 orders_arb ERROR gRPC order error (BRQ6@RTSX buy 1@78.08): code=StatusCode.INTERNAL details=Jwt token check failed: UNAUTHENTICATED: Token is expired
+14:09:47 orders_arb WARNING gRPC limit failed, falling back to DP server
+14:09:47 orders_arb INFO Limit placed (DP): arb_entry_a buy 1 BRQ6@RTSX @ 78.08 id=1960787325227973453
+14:09:52 orders_arb WARNING gRPC cancel error 1960787325227973453 acc=1225950: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.INTERNAL
+	d
+14:09:52 orders_arb WARNING gRPC cancel error 1960787325227973453 acc=1225953: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.UNAUTHENTIC
+14:09:52 robot_arb WARNING Entry failed: leg_a_timeout
+14:09:56 robot_arb INFO ⚠️ CHECK_ENTRY returned signal: {'action': 'entry', 'side': 'short_basis', 'z': 2.109265510935236, 'basis': -0.35999999999999943, 'price_a': 78.1, 'price_b': 77.74}
+14:09:56 robot_arb INFO ENTRY SIGNAL short_basis | Z=2.11 basis=-0.36 | A=78.10 B=77.74 | limit buy 1 @ 78.10 | market sell 1 @ 77.66
+14:09:56 orders_arb INFO gRPC sending: limit buy 1 BRQ6@RTSX acc=1225953 @ 78.1
+14:09:57 orders_arb ERROR gRPC order error (BRQ6@RTSX buy 1@78.1): code=StatusCode.INTERNAL details=Jwt token check failed: UNAUTHENTICATED: Token is expired
+14:09:57 orders_arb WARNING gRPC limit failed, falling back to DP server
+14:09:57 orders_arb INFO Limit placed (DP): arb_entry_a buy 1 BRQ6@RTSX @ 78.1 id=1960787325227976081
+14:10:02 orders_arb WARNING gRPC cancel error 1960787325227976081 acc=1225950: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.INTERNAL
+	d
+14:10:02 orders_arb WARNING gRPC cancel error 1960787325227976081 acc=1225953: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.INTERNAL
+	d
+14:10:02 robot_arb WARNING Entry failed: leg_a_timeout
+14:10:03 robot_arb INFO Z=1.53 (threshold=1.7) - no signal (dup_check=LOCKED)
+14:10:05 robot_arb INFO Z=1.64 (threshold=1.7) - no signal (dup_check=False)
+14:10:20 robot_arb INFO Z=1.63 (threshold=1.7) - no signal (dup_check=False)
+14:10:20 robot_arb INFO Z=1.69 (threshold=1.7) - no signal (dup_check=False)
+14:10:21 robot_arb INFO Z=1.69 (threshold=1.7) - no signal (dup_check=False)
+14:10:22 robot_arb INFO Z=1.69 (threshold=1.7) - no signal (dup_check=False)
+14:10:51 robot_arb INFO ⚠️ CHECK_ENTRY returned signal: {'action': 'entry', 'side': 'short_basis', 'z': 2.197130236840625, 'basis': -0.37999999999999545, 'price_a': 78.13, 'price_b': 77.75}
+14:10:51 robot_arb INFO ENTRY SIGNAL short_basis | Z=2.20 basis=-0.38 | A=78.13 B=77.75 | limit buy 1 @ 78.13 | market sell 1 @ 77.67
+14:10:51 orders_arb INFO gRPC sending: limit buy 1 BRQ6@RTSX acc=1225953 @ 78.13
+14:10:51 orders_arb ERROR gRPC order error (BRQ6@RTSX buy 1@78.13): code=StatusCode.INTERNAL details=Trading is not available at the moment
+14:10:51 orders_arb WARNING gRPC limit failed, falling back to DP server
+14:10:52 orders_arb INFO Limit placed (DP): arb_entry_a buy 1 BRQ6@RTSX @ 78.13 id=1960787325227986800
+14:10:57 orders_arb WARNING gRPC cancel error 1960787325227986800 acc=1225950: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.INTERNAL
+	d
+14:10:57 orders_arb WARNING gRPC cancel error 1960787325227986800 acc=1225953: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.UNAUTHENTIC
+14:10:57 robot_arb WARNING Entry failed: leg_a_timeout
+14:10:58 robot_arb INFO Z=2.25 (threshold=1.7) - no signal (dup_check=LOCKED)
+14:10:59 robot_arb INFO Z=1.70 (threshold=1.7) - no signal (dup_check=False)
+14:11:05 robot_arb INFO ⚠️ CHECK_ENTRY returned signal: {'action': 'entry', 'side': 'short_basis', 'z': 1.7365527459118812, 'basis': -0.4650000000000034, 'price_a': 78.215, 'price_b': 77.75}
+14:11:05 robot_arb INFO ENTRY SIGNAL short_basis | Z=1.74 basis=-0.47 | A=78.22 B=77.75 | limit buy 1 @ 78.22 | market sell 1 @ 77.67
+14:11:05 orders_arb INFO gRPC sending: limit buy 1 BRQ6@RTSX acc=1225953 @ 78.215
+14:11:05 orders_arb ERROR gRPC order error (BRQ6@RTSX buy 1@78.215): code=StatusCode.INTERNAL details=Jwt token check failed: UNAUTHENTICATED: Token is expired
+14:11:05 orders_arb WARNING gRPC limit failed, falling back to DP server
+14:11:06 orders_arb INFO Limit placed (DP): arb_entry_a buy 1 BRQ6@RTSX @ 78.215 id=1960787325227989047
+14:11:11 orders_arb WARNING gRPC cancel error 1960787325227989047 acc=1225950: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.INTERNAL
+	d
+14:11:11 orders_arb WARNING gRPC cancel error 1960787325227989047 acc=1225953: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.UNAUTHENTIC
+14:11:11 robot_arb WARNING Entry failed: leg_a_timeout
+14:11:12 robot_arb INFO Z=1.79 (threshold=1.7) - no signal (dup_check=LOCKED)
+14:11:13 robot_arb INFO ⚠️ CHECK_ENTRY returned signal: {'action': 'entry', 'side': 'short_basis', 'z': 1.7949473284607957, 'basis': -0.44999999999998863, 'price_a': 78.19999999999999, 'price_b': 77.75}
+14:11:13 robot_arb INFO ENTRY SIGNAL short_basis | Z=1.79 basis=-0.45 | A=78.20 B=77.75 | limit buy 1 @ 78.20 | market sell 1 @ 77.67
+14:11:13 orders_arb INFO gRPC sending: limit buy 1 BRQ6@RTSX acc=1225953 @ 78.19999999999999
+14:11:13 orders_arb ERROR gRPC order error (BRQ6@RTSX buy 1@78.19999999999999): code=StatusCode.INTERNAL details=Trading is not available at the moment
+14:11:13 orders_arb WARNING gRPC limit failed, falling back to DP server
+14:11:13 orders_arb INFO Limit placed (DP): arb_entry_a buy 1 BRQ6@RTSX @ 78.19999999999999 id=1960787325227989952
+14:11:19 orders_arb WARNING gRPC cancel error 1960787325227989952 acc=1225950: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.INTERNAL
+	d
+14:11:19 orders_arb WARNING gRPC cancel error 1960787325227989952 acc=1225953: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.UNAUTHENTIC
+14:11:19 robot_arb WARNING Entry failed: leg_a_timeout
+14:11:26 robot_arb INFO ⚠️ CHECK_ENTRY returned signal: {'action': 'entry', 'side': 'short_basis', 'z': 2.0310111681986207, 'basis': -0.4200000000000017, 'price_a': 78.18, 'price_b': 77.76}
+14:11:26 robot_arb INFO ENTRY SIGNAL short_basis | Z=2.03 basis=-0.42 | A=78.18 B=77.76 | limit buy 1 @ 78.18 | market sell 1 @ 77.68
+14:11:26 orders_arb INFO gRPC sending: limit buy 1 BRQ6@RTSX acc=1225953 @ 78.18
+14:11:26 orders_arb ERROR gRPC order error (BRQ6@RTSX buy 1@78.18): code=StatusCode.INTERNAL details=Jwt token check failed: UNAUTHENTICATED: Token is expired
+14:11:26 orders_arb WARNING gRPC limit failed, falling back to DP server
+14:11:26 orders_arb INFO Limit placed (DP): arb_entry_a buy 1 BRQ6@RTSX @ 78.18 id=1960787325227991534
+14:11:31 orders_arb WARNING gRPC cancel error 1960787325227991534 acc=1225950: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.INTERNAL
+	d
+14:11:31 orders_arb WARNING gRPC cancel error 1960787325227991534 acc=1225953: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.UNAUTHENTIC
+14:11:31 robot_arb WARNING Entry failed: leg_a_timeout
+14:11:32 robot_arb INFO Z=2.33 (threshold=1.7) - no signal (dup_check=LOCKED)
+14:11:33 robot_arb INFO ⚠️ CHECK_ENTRY returned signal: {'action': 'entry', 'side': 'short_basis', 'z': 2.297150313330699, 'basis': -0.3649999999999949, 'price_a': 78.145, 'price_b': 77.78}
+14:11:33 robot_arb INFO ENTRY SIGNAL short_basis | Z=2.30 basis=-0.36 | A=78.14 B=77.78 | limit buy 1 @ 78.14 | market sell 1 @ 77.70
+14:11:33 orders_arb INFO gRPC sending: limit buy 1 BRQ6@RTSX acc=1225953 @ 78.145
+14:11:33 orders_arb ERROR gRPC order error (BRQ6@RTSX buy 1@78.145): code=StatusCode.INTERNAL details=Trading is not available at the moment
+14:11:33 orders_arb WARNING gRPC limit failed, falling back to DP server
+14:11:34 orders_arb INFO Limit placed (DP): arb_entry_a buy 1 BRQ6@RTSX @ 78.145 id=1960787325227993413
+14:11:39 orders_arb WARNING gRPC cancel error 1960787325227993413 acc=1225950: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.UNAUTHENTIC
+14:11:39 orders_arb WARNING gRPC cancel error 1960787325227993413 acc=1225953: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.INTERNAL
+	d
+14:11:39 robot_arb WARNING Entry failed: leg_a_timeout
+14:11:40 robot_arb INFO Z=2.34 (threshold=1.7) - no signal (dup_check=LOCKED)
+14:11:40 robot_arb INFO Z=2.50 (threshold=1.7) - no signal (dup_check=LOCKED)
+14:11:41 robot_arb INFO Z=2.45 (threshold=1.7) - no signal (dup_check=LOCKED)
+14:11:44 robot_arb INFO ⚠️ CHECK_ENTRY returned signal: {'action': 'entry', 'side': 'short_basis', 'z': 2.3430425138761586, 'basis': -0.3299999999999983, 'price_a': 78.11, 'price_b': 77.78}
+14:11:44 robot_arb INFO ENTRY SIGNAL short_basis | Z=2.34 basis=-0.33 | A=78.11 B=77.78 | limit buy 1 @ 78.11 | market sell 1 @ 77.70
+14:11:44 orders_arb INFO gRPC sending: limit buy 1 BRQ6@RTSX acc=1225953 @ 78.11
+14:11:44 orders_arb ERROR gRPC order error (BRQ6@RTSX buy 1@78.11): code=StatusCode.INTERNAL details=Jwt token check failed: UNAUTHENTICATED: Token is expired
+14:11:44 orders_arb WARNING gRPC limit failed, falling back to DP server
+14:11:44 orders_arb INFO Limit placed (DP): arb_entry_a buy 1 BRQ6@RTSX @ 78.11 id=1960787325227995731
+14:11:49 orders_arb WARNING gRPC cancel error 1960787325227995731 acc=1225950: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.UNAUTHENTIC
+14:11:49 orders_arb WARNING gRPC cancel error 1960787325227995731 acc=1225953: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.INTERNAL
+	d
+14:11:49 robot_arb WARNING Entry failed: leg_a_timeout
+14:11:50 robot_arb INFO Z=2.39 (threshold=1.7) - no signal (dup_check=LOCKED)
+14:11:51 robot_arb INFO Z=2.40 (threshold=1.7) - no signal (dup_check=LOCKED)
+14:11:52 robot_arb INFO ⚠️ CHECK_ENTRY returned signal: {'action': 'entry', 'side': 'short_basis', 'z': 2.25705778372412, 'basis': -0.3400000000000034, 'price_a': 78.12, 'price_b': 77.78}
+14:11:52 robot_arb INFO ENTRY SIGNAL short_basis | Z=2.26 basis=-0.34 | A=78.12 B=77.78 | limit buy 1 @ 78.12 | market sell 1 @ 77.70
+14:11:52 orders_arb INFO gRPC sending: limit buy 1 BRQ6@RTSX acc=1225953 @ 78.12
+14:11:52 orders_arb ERROR gRPC order error (BRQ6@RTSX buy 1@78.12): code=StatusCode.INTERNAL details=Trading is not available at the moment
+14:11:52 orders_arb WARNING gRPC limit failed, falling back to DP server
+14:11:53 orders_arb INFO Limit placed (DP): arb_entry_a buy 1 BRQ6@RTSX @ 78.12 id=1960787325227998122
+14:11:58 orders_arb WARNING gRPC cancel error 1960787325227998122 acc=1225950: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.UNAUTHENTIC
+14:11:58 orders_arb WARNING gRPC cancel error 1960787325227998122 acc=1225953: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.INTERNAL
+	d
+14:11:58 robot_arb WARNING Entry failed: leg_a_timeout
+14:11:59 robot_arb INFO Z=2.49 (threshold=1.7) - no signal (dup_check=LOCKED)
+14:12:02 robot_arb INFO Mode → STOPPED
+14:14:17 robot_arb INFO === Arbitrage Robot v1 ===
+14:14:17 robot_arb INFO Pair: BRQ6 / BRU6
+14:14:17 robot_arb INFO Account: 1225953 | Port: 5092 | Paper: False
+14:14:17 robot_arb INFO Params: entry_z=1.7 lookback=200 lots_a=1 lots_b=1 hedge_ratio=1
+14:14:17 robot_arb INFO Min profit: rub=30
+14:14:17 robot_arb INFO Risk: stop_loss_rub=30000
+14:14:17 robot_arb INFO State loaded: pnl=0 trades=0 mode=stopped
+14:14:18 robot_arb INFO FinamPy connected. Accounts: ['1225950', '1225951', '1225952', '1225953']
+14:14:18 robot_arb INFO Orders manager linked to FinamPy gRPC
+14:14:18 robot_arb INFO Subscribed OrderBook: BRQ6@RTSX, BRU6@RTSX
+14:14:18 robot_arb INFO Subscribed Quotes: BRQ6@RTSX, BRU6@RTSX
+14:14:18 robot_arb INFO Warmup: waiting 10 sec for data streams...
+14:14:28 robot_arb INFO Warmup done. OB_A: False OB_B: False
+14:14:28 robot_arb INFO Cancelling leftover orders from previous run...
+14:14:28 robot_arb INFO Cancel leftover: {'detail': 'Not Found'}
+14:14:28 robot_arb INFO MOEX ISS poller started (fallback for stock prices)
+14:14:28 robot_arb INFO Main loop started
+14:14:28 robot_arb INFO API listening on :5092
+14:14:28 robot_arb INFO Endpoints: GET /status /health /params | POST /start /stop /pause /params
+14:45:05 robot_arb INFO Mode → RUNNING
+14:45:06 robot_arb INFO ⚠️ CHECK_ENTRY returned signal: {'action': 'entry', 'side': 'short_basis', 'z': 2.033682689367178, 'basis': 0.2150000000000034, 'price_a': 79.295, 'price_b': 79.51}
+14:45:06 robot_arb INFO ENTRY SIGNAL short_basis | Z=2.03 basis=0.22 | A=79.30 B=79.51 | limit buy 1 @ 79.30 | market sell 1 @ 79.43
+14:45:06 orders_arb INFO gRPC sending: limit buy 1 BRQ6@RTSX acc=1225953 @ 79.295
+14:45:06 orders_arb ERROR gRPC order error (BRQ6@RTSX buy 1@79.295): code=StatusCode.INTERNAL details=Jwt token check failed: UNAUTHENTICATED: Token is expired
+14:45:06 orders_arb WARNING gRPC limit failed, falling back to DP server
+14:45:07 orders_arb INFO Limit placed (DP): arb_entry_a buy 1 BRQ6@RTSX @ 79.295 id=1960787325228521101
+14:45:12 orders_arb WARNING gRPC cancel error 1960787325228521101 acc=1225950: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.INTERNAL
+	d
+14:45:12 orders_arb WARNING gRPC cancel error 1960787325228521101 acc=1225953: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.INTERNAL
+	d
+14:45:12 robot_arb WARNING Entry failed: leg_a_timeout
+14:45:14 robot_arb INFO Z=1.64 (threshold=1.7) - no signal (dup_check=LOCKED)
+14:45:14 robot_arb INFO Z=1.64 (threshold=1.7) - no signal (dup_check=False)
+14:45:15 robot_arb INFO Z=1.62 (threshold=1.7) - no signal (dup_check=False)
+14:45:15 robot_arb INFO Z=1.57 (threshold=1.7) - no signal (dup_check=False)
+14:45:18 robot_arb INFO Z=1.66 (threshold=1.7) - no signal (dup_check=False)
+14:45:18 robot_arb INFO Z=1.63 (threshold=1.7) - no signal (dup_check=False)
+14:45:26 robot_arb INFO ⚠️ CHECK_ENTRY returned signal: {'action': 'entry', 'side': 'short_basis', 'z': 1.917909496921707, 'basis': 0.2049999999999983, 'price_a': 79.285, 'price_b': 79.49}
+14:45:26 robot_arb INFO ENTRY SIGNAL short_basis | Z=1.92 basis=0.20 | A=79.28 B=79.49 | limit buy 1 @ 79.28 | market sell 1 @ 79.41
+14:45:26 orders_arb INFO gRPC sending: limit buy 1 BRQ6@RTSX acc=1225953 @ 79.285
+14:45:26 orders_arb ERROR gRPC order error (BRQ6@RTSX buy 1@79.285): code=StatusCode.INTERNAL details=Jwt token check failed: UNAUTHENTICATED: Token is expired
+14:45:26 orders_arb WARNING gRPC limit failed, falling back to DP server
+14:45:26 orders_arb INFO Limit placed (DP): arb_entry_a buy 1 BRQ6@RTSX @ 79.285 id=1960787325228523982
+14:45:31 orders_arb WARNING gRPC cancel error 1960787325228523982 acc=1225950: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.INTERNAL
+	d
+14:45:31 orders_arb WARNING gRPC cancel error 1960787325228523982 acc=1225953: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.INTERNAL
+	d
+14:45:32 robot_arb WARNING Entry failed: leg_a_timeout
+14:45:34 robot_arb INFO ⚠️ CHECK_ENTRY returned signal: {'action': 'entry', 'side': 'short_basis', 'z': 1.8770007088274212, 'basis': 0.19499999999999318, 'price_a': 79.295, 'price_b': 79.49}
+14:45:34 robot_arb INFO ENTRY SIGNAL short_basis | Z=1.88 basis=0.19 | A=79.30 B=79.49 | limit buy 1 @ 79.30 | market sell 1 @ 79.41
+14:45:34 orders_arb INFO gRPC sending: limit buy 1 BRQ6@RTSX acc=1225953 @ 79.295
+14:45:34 orders_arb ERROR gRPC order error (BRQ6@RTSX buy 1@79.295): code=StatusCode.INTERNAL details=Jwt token check failed: UNAUTHENTICATED: Token is expired
+14:45:34 orders_arb WARNING gRPC limit failed, falling back to DP server
+14:45:34 orders_arb INFO Limit placed (DP): arb_entry_a buy 1 BRQ6@RTSX @ 79.295 id=1960787325228524764
+14:45:39 orders_arb WARNING gRPC cancel error 1960787325228524764 acc=1225950: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.INTERNAL
+	d
+14:45:39 orders_arb WARNING gRPC cancel error 1960787325228524764 acc=1225953: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.INTERNAL
+	d
+14:45:39 robot_arb WARNING Entry failed: leg_a_timeout
+14:45:40 robot_arb INFO Z=1.95 (threshold=1.7) - no signal (dup_check=LOCKED)
+14:45:45 robot_arb INFO ⚠️ CHECK_ENTRY returned signal: {'action': 'entry', 'side': 'short_basis', 'z': 1.937636675274017, 'basis': 0.21000000000000796, 'price_a': 79.33, 'price_b': 79.54}
+14:45:45 robot_arb INFO ENTRY SIGNAL short_basis | Z=1.94 basis=0.21 | A=79.33 B=79.54 | limit buy 1 @ 79.33 | market sell 1 @ 79.46
+14:45:45 orders_arb INFO gRPC sending: limit buy 1 BRQ6@RTSX acc=1225953 @ 79.33
+14:45:45 orders_arb ERROR gRPC order error (BRQ6@RTSX buy 1@79.33): code=StatusCode.INTERNAL details=Jwt token check failed: UNAUTHENTICATED: Token is expired
+14:45:45 orders_arb WARNING gRPC limit failed, falling back to DP server
+14:45:45 orders_arb INFO Limit placed (DP): arb_entry_a buy 1 BRQ6@RTSX @ 79.33 id=1960787325228529414
+14:45:46 robot_arb INFO Mode → STOPPED
+14:45:50 orders_arb WARNING gRPC cancel error 1960787325228529414 acc=1225950: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.INTERNAL
+	d
+14:45:50 orders_arb WARNING gRPC cancel error 1960787325228529414 acc=1225953: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.INTERNAL
+	d
+14:45:50 robot_arb WARNING Entry failed: leg_a_timeout
+14:49:48 robot_arb INFO Mode → RUNNING
+14:58:21 robot_arb INFO ⚠️ CHECK_ENTRY returned signal: {'action': 'entry', 'side': 'short_basis', 'z': 1.8494822279353234, 'basis': -0.13000000000000966, 'price_a': 79.49000000000001, 'price_b': 79.36}
+14:58:21 robot_arb INFO ENTRY SIGNAL short_basis | Z=1.85 basis=-0.13 | A=79.49 B=79.36 | limit buy 1 @ 79.49 | market sell 1 @ 79.28
+14:58:21 orders_arb INFO gRPC sending: limit buy 1 BRQ6@RTSX acc=1225953 @ 79.49000000000001
+14:58:21 orders_arb ERROR gRPC order error (BRQ6@RTSX buy 1@79.49000000000001): code=StatusCode.INTERNAL details=Jwt token check failed: UNAUTHENTICATED: Token is expired
+14:58:21 orders_arb WARNING gRPC limit failed, falling back to DP server
+14:58:21 orders_arb INFO Limit placed (DP): arb_entry_a buy 1 BRQ6@RTSX @ 79.49000000000001 id=1960787325228700504
+14:58:27 orders_arb WARNING gRPC cancel error 1960787325228700504 acc=1225950: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.INTERNAL
+	d
+14:58:27 orders_arb WARNING gRPC cancel error 1960787325228700504 acc=1225953: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.INTERNAL
+	d
+14:58:27 robot_arb WARNING Entry failed: leg_a_timeout
+14:58:28 robot_arb INFO Z=1.90 (threshold=1.7) - no signal (dup_check=LOCKED)
+14:58:28 robot_arb INFO Z=1.84 (threshold=1.7) - no signal (dup_check=LOCKED)
+14:58:31 robot_arb INFO ⚠️ CHECK_ENTRY returned signal: {'action': 'entry', 'side': 'short_basis', 'z': 1.8510085123774211, 'basis': -0.14000000000000057, 'price_a': 79.5, 'price_b': 79.36}
+14:58:31 robot_arb INFO ENTRY SIGNAL short_basis | Z=1.85 basis=-0.14 | A=79.50 B=79.36 | limit buy 1 @ 79.50 | market sell 1 @ 79.28
+14:58:31 orders_arb INFO gRPC sending: limit buy 1 BRQ6@RTSX acc=1225953 @ 79.5
+14:58:31 orders_arb ERROR gRPC order error (BRQ6@RTSX buy 1@79.5): code=StatusCode.INTERNAL details=Jwt token check failed: UNAUTHENTICATED: Token is expired
+14:58:31 orders_arb WARNING gRPC limit failed, falling back to DP server
+14:58:31 orders_arb INFO Limit placed (DP): arb_entry_a buy 1 BRQ6@RTSX @ 79.5 id=1960787325228701219
+14:58:36 orders_arb WARNING gRPC cancel error 1960787325228701219 acc=1225950: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.INTERNAL
+	d
+14:58:36 orders_arb WARNING gRPC cancel error 1960787325228701219 acc=1225953: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.INTERNAL
+	d
+14:58:36 robot_arb WARNING Entry failed: leg_a_timeout
+14:58:39 robot_arb INFO ⚠️ CHECK_ENTRY returned signal: {'action': 'entry', 'side': 'short_basis', 'z': 1.8902196011237495, 'basis': -0.14000000000000057, 'price_a': 79.5, 'price_b': 79.36}
+14:58:39 robot_arb INFO ENTRY SIGNAL short_basis | Z=1.89 basis=-0.14 | A=79.50 B=79.36 | limit buy 1 @ 79.50 | market sell 1 @ 79.28
+14:58:39 orders_arb INFO gRPC sending: limit buy 1 BRQ6@RTSX acc=1225953 @ 79.5
+14:58:39 orders_arb ERROR gRPC order error (BRQ6@RTSX buy 1@79.5): code=StatusCode.INTERNAL details=Jwt token check failed: UNAUTHENTICATED: Token is expired
+14:58:39 orders_arb WARNING gRPC limit failed, falling back to DP server
+14:58:40 orders_arb INFO Limit placed (DP): arb_entry_a buy 1 BRQ6@RTSX @ 79.5 id=1960787325228701820
+14:58:45 orders_arb WARNING gRPC cancel error 1960787325228701820 acc=1225950: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.INTERNAL
+	d
+14:58:45 orders_arb WARNING gRPC cancel error 1960787325228701820 acc=1225953: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.INTERNAL
+	d
+14:58:45 robot_arb WARNING Entry failed: leg_a_timeout
+14:58:47 robot_arb INFO ⚠️ CHECK_ENTRY returned signal: {'action': 'entry', 'side': 'short_basis', 'z': 1.9036188931462625, 'basis': -0.14000000000000057, 'price_a': 79.5, 'price_b': 79.36}
+14:58:47 robot_arb INFO ENTRY SIGNAL short_basis | Z=1.90 basis=-0.14 | A=79.50 B=79.36 | limit buy 1 @ 79.50 | market sell 1 @ 79.28
+14:58:47 orders_arb INFO gRPC sending: limit buy 1 BRQ6@RTSX acc=1225953 @ 79.5
+14:58:47 orders_arb ERROR gRPC order error (BRQ6@RTSX buy 1@79.5): code=StatusCode.INTERNAL details=Jwt token check failed: UNAUTHENTICATED: Token is expired
+14:58:47 orders_arb WARNING gRPC limit failed, falling back to DP server
+14:58:48 orders_arb INFO Limit placed (DP): arb_entry_a buy 1 BRQ6@RTSX @ 79.5 id=1960787325228702537
+14:58:53 orders_arb WARNING gRPC cancel error 1960787325228702537 acc=1225950: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.INTERNAL
+	d
+14:58:53 orders_arb WARNING gRPC cancel error 1960787325228702537 acc=1225953: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.INTERNAL
+	d
+14:58:53 robot_arb WARNING Entry failed: leg_a_timeout
+14:58:55 robot_arb INFO Mode → STOPPED
+15:10:30 robot_arb INFO Param updated: ticker_a = BRQ6 (was BRQ6)
+15:10:30 robot_arb INFO Param updated: symbol_a = BRQ6@RTSX (was BRQ6@RTSX)
+15:10:30 robot_arb INFO Param updated: ticker_b = BRU6 (was BRU6)
+15:10:30 robot_arb INFO Param updated: symbol_b = BRU6@RTSX (was BRU6@RTSX)
+15:10:30 robot_arb INFO Param updated: lots_a = 1 (was 1)
+15:10:30 robot_arb INFO Param updated: lots_b = 1 (was 1)
+15:10:30 robot_arb INFO Param updated: hedge_ratio = 1 (was 1)
+15:10:30 robot_arb INFO Param updated: capital = 100000 (was 100000)
+15:10:30 robot_arb INFO Param updated: entry_z = 1.9 (was 1.7)
+15:10:30 robot_arb INFO Param updated: entry_z_long = -4 (was -3.8)
+15:10:30 robot_arb INFO Param updated: entry_mode = zscore (was zscore)
+15:10:30 robot_arb INFO Param updated: spread_rub_high = 5 (was 5)
+15:10:30 robot_arb INFO Param updated: spread_rub_low = -5 (was -5)
+15:10:30 robot_arb INFO Param updated: risk_free_rate = 0.1425 (was 0.1425)
+15:10:30 robot_arb INFO Param updated: expiration_date = 2026-09-18 (was 2026-09-18)
+15:10:30 robot_arb INFO Param updated: contract_size = 1 (was 1)
+15:10:30 robot_arb INFO Param updated: lookback = 200 (was 200)
+15:10:30 robot_arb INFO Param updated: leg_a_timeout = 5 (was 5)
+15:10:30 robot_arb INFO Param updated: min_fill_ratio = 0.5 (was 0.5)
+15:10:30 robot_arb INFO Param updated: min_profit_type = rub (was rub)
+15:10:30 robot_arb INFO Param updated: min_profit_value = 30 (was 30)
+15:10:30 robot_arb INFO Param updated: risk_type = stop_loss_rub (was stop_loss_rub)
+15:10:30 robot_arb INFO Param updated: risk_value = 30000 (was 30000)
+15:10:30 robot_arb INFO Param updated: allow_long_basis = True (was True)
+15:10:30 robot_arb INFO Param updated: use_commission = True (was True)
+15:10:30 robot_arb INFO Param updated: commission_stock_pct = 7.5 (was 7.5)
+15:10:30 robot_arb INFO Param updated: commission_futures_rt = 7.5 (was 7.5)
+15:10:30 robot_arb INFO Param updated: slippage_bps = 10 (was 10)
+15:10:37 robot_arb INFO Param updated: ticker_a = BRQ6 (was BRQ6)
+15:10:37 robot_arb INFO Param updated: symbol_a = BRQ6@RTSX (was BRQ6@RTSX)
+15:10:37 robot_arb INFO Param updated: ticker_b = BRU6 (was BRU6)
+15:10:37 robot_arb INFO Param updated: symbol_b = BRU6@RTSX (was BRU6@RTSX)
+15:10:37 robot_arb INFO Param updated: lots_a = 1 (was 1)
+15:10:37 robot_arb INFO Param updated: lots_b = 1 (was 1)
+15:10:37 robot_arb INFO Param updated: hedge_ratio = 1 (was 1)
+15:10:37 robot_arb INFO Param updated: capital = 100000 (was 100000)
+15:10:37 robot_arb INFO Param updated: entry_z = 1.7 (was 1.9)
+15:10:37 robot_arb INFO Param updated: entry_z_long = -4 (was -4)
+15:10:37 robot_arb INFO Param updated: entry_mode = zscore (was zscore)
+15:10:37 robot_arb INFO Param updated: spread_rub_high = 5 (was 5)
+15:10:37 robot_arb INFO Param updated: spread_rub_low = -5 (was -5)
+15:10:37 robot_arb INFO Param updated: risk_free_rate = 0.1425 (was 0.1425)
+15:10:37 robot_arb INFO Param updated: expiration_date = 2026-09-18 (was 2026-09-18)
+15:10:37 robot_arb INFO Param updated: contract_size = 1 (was 1)
+15:10:37 robot_arb INFO Param updated: lookback = 200 (was 200)
+15:10:37 robot_arb INFO Param updated: leg_a_timeout = 5 (was 5)
+15:10:37 robot_arb INFO Param updated: min_fill_ratio = 0.5 (was 0.5)
+15:10:37 robot_arb INFO Param updated: min_profit_type = rub (was rub)
+15:10:37 robot_arb INFO Param updated: min_profit_value = 30 (was 30)
+15:10:37 robot_arb INFO Param updated: risk_type = stop_loss_rub (was stop_loss_rub)
+15:10:37 robot_arb INFO Param updated: risk_value = 30000 (was 30000)
+15:10:37 robot_arb INFO Param updated: allow_long_basis = True (was True)
+15:10:37 robot_arb INFO Param updated: use_commission = True (was True)
+15:10:37 robot_arb INFO Param updated: commission_stock_pct = 7.5 (was 7.5)
+15:10:37 robot_arb INFO Param updated: commission_futures_rt = 7.5 (was 7.5)
+15:10:37 robot_arb INFO Param updated: slippage_bps = 10 (was 10)
+18:12:55 robot_arb INFO Mode → STOPPED

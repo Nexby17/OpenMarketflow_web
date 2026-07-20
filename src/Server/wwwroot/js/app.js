@@ -3616,7 +3616,9 @@ function arbPyLog(msg, level='INFO') {
 function arbPyEditPanel() {
     const existing = el('arbPyEditPanel');
     if (existing) { existing.remove(); _arbJournalInstance = null; return; }
-    // Note: _arbJournalInstance may already be set by sberEditPanel — don't reset it here
+    // Set journal instance to GAZP (null=arbPy) only if not already set by sber/brCal caller
+    // Always reset for GAZP panel — sber/brCal panels set their own instance AFTER this call
+    _arbJournalInstance = null;
 
     const p = (arbPyData && arbPyData.params) || {};
     const div = document.createElement('div');
@@ -3635,10 +3637,10 @@ function arbPyEditPanel() {
             <!-- Счёт + Капитал -->
             <div class="metrics-row" style="flex-wrap:wrap">
                 <div class="metric-card" style="min-width:180px"><div class="metric-label">📋 Счёт</div>
-                    <select id="arbAccount" class="input" style="width:160px">
-                        <option value="${(arbPyData&&arbPyData.account)||'1225953'}" selected>${(arbPyData&&arbPyData.account)||'1225953'}</option>
+                    <select id="arbAccount" class="input" style="width:200px">
+                        <option value="2049688" selected>2049688 (EDP)</option>
                     </select>
-                    <input type="hidden" id="arbAccountSaved" value="${(arbPyData&&arbPyData.account)||'1225953'}">
+                    <input type="hidden" id="arbAccountSaved" value="2049688">
                 </div>
                 <div class="metric-card" style="min-width:140px"><div class="metric-label">Капитал (₽)</div><input id="arbCapital" class="input" type="number" value="${p.capital||1000000}" style="width:120px"></div>
             </div>
@@ -3840,25 +3842,30 @@ function arbPyEditPanel() {
                 <input id="arbJournalDateFrom" class="input" type="date" style="width:130px" onchange="arbRenderJournal()">
                 <span style="color:#9CA3AF;font-size:13px">по</span>
                 <input id="arbJournalDateTo" class="input" type="date" style="width:130px" onchange="arbRenderJournal()">
+                <button class="btn btn-secondary btn-sm" onclick="arbJournalSetYesterday()">Вчера</button>
                 <button class="btn btn-secondary btn-sm" onclick="arbLoadJournal()">🔄</button>
             </div>
             <div style="max-height:350px;overflow-y:auto;border:1px solid var(--border-color);border-radius:8px">
                 <table style="width:100%;border-collapse:collapse;font-size:13px">
                     <thead style="position:sticky;top:0;z-index:1">
                         <tr style="background:var(--card);border-bottom:2px solid var(--accent)">
-                            <th style="padding:8px;text-align:left">📅 Дата</th>
-                            <th style="padding:8px;text-align:left">⏰ Вход</th>
-                            <th style="padding:8px;text-align:left">⏰ Выход</th>
-                            <th style="padding:8px;text-align:center">↔️</th>
-                            <th style="padding:8px;text-align:right">Basis вх.</th>
-                            <th style="padding:8px;text-align:right">Basis вых.</th>
-                            <th style="padding:8px;text-align:right">Z</th>
-                            <th style="padding:8px;text-align:right">Лоты A/B</th>
-                            <th style="padding:8px;text-align:right">PnL</th>
-                            <th style="padding:8px;text-align:right">Кумул.</th>
+                            <th style="padding:6px;text-align:left">📅 Дата</th>
+                            <th style="padding:6px;text-align:left">⏰ Вход</th>
+                            <th style="padding:6px;text-align:left">⏰ Выход</th>
+                            <th style="padding:6px;text-align:center">↔️</th>
+                            <th style="padding:6px;text-align:right">Вход A/B</th>
+                            <th style="padding:6px;text-align:right">Выход A/B</th>
+                            <th style="padding:6px;text-align:right">Basis вх.</th>
+                            <th style="padding:6px;text-align:right">Basis вых.</th>
+                            <th style="padding:6px;text-align:right">Z</th>
+                            <th style="padding:6px;text-align:right">Лоты</th>
+                            <th style="padding:6px;text-align:right">Холд</th>
+                            <th style="padding:6px;text-align:right">Комиссия</th>
+                            <th style="padding:6px;text-align:right">PnL</th>
+                            <th style="padding:6px;text-align:right">Кумул.</th>
                         </tr>
                     </thead>
-                    <tbody id="arbJournalBody" style="background:var(--bg)"><tr><td colspan="10" style="text-align:center;padding:24px;color:#9CA3AF">Нет данных</td></tr></tbody>
+                    <tbody id="arbJournalBody" style="background:var(--bg)"><tr><td colspan="14" style="text-align:center;padding:24px;color:#9CA3AF">Нет данных</td></tr></tbody>
                 </table>
             </div>
             <div id="arbJournalInfo" style="font-size:12px;color:#9CA3AF;margin-top:8px"></div>
@@ -3950,11 +3957,12 @@ async function sberSaveFromPanel() {
     }
 }
 
-function brCalEditPanel() {
+async function brCalEditPanel() {
     const existing = el('brCalEditPanel');
     if (existing) { existing.remove(); _arbJournalInstance = null; return; }
     _arbJournalInstance = 'brCal';
     const savedArbPyData = arbPyData;
+    await brCal.refresh();
     arbPyData = brCal.getData();
     const savedInstance = _arbJournalInstance;
     arbPyEditPanel();
@@ -4235,7 +4243,7 @@ async function arbPyLoadAccounts() {
     const data = await arbPyFetch('/accounts');
     if (data && data.accounts && el('arbAccount')) {
         const sel = el('arbAccount');
-        const savedId = el('arbAccountSaved')?.value || (arbPyData && arbPyData.account) || data.active;
+        const savedId = el('arbAccountSaved')?.value || '2049688';
         sel.innerHTML = '';
         data.accounts.forEach(a => {
             const id = typeof a === 'string' ? a : a.id;
@@ -4261,12 +4269,34 @@ function _arbParseTime(s) {
 }
 function _arbDate(s) { return _arbParseTime(s).date; }
 
+function arbJournalSetYesterday() {
+    const d = new Date(Date.now() - 86400000);
+    const s = d.toISOString().slice(0, 10);
+    if (el('arbJournalDateFrom')) el('arbJournalDateFrom').value = s;
+    if (el('arbJournalDateTo')) el('arbJournalDateTo').value = s;
+    arbRenderJournal();
+}
+
 async function arbLoadJournal() {
     const inst = _arbJournalInstance === 'sber' ? sber : _arbJournalInstance === 'brCal' ? brCal : arbPy;
     const data = await inst.fetch('/status');
     if (!data) { _arbJournal = []; arbRenderJournal(); return; }
     _arbJournal = data.tradeHistory || [];
     arbRenderJournal();
+}
+
+async function arbResetStats() {
+    if (!confirm('Сбросить статистику? Realized PnL → 0, история сделок очищена. positions сохраняются.')) return;
+    const inst = _arbJournalInstance === 'sber' ? sber : _arbJournalInstance === 'brCal' ? brCal : arbPy;
+    const r = await inst.fetch('/reset-stats', 'POST');
+    if (r && r.ok) {
+        const name = _arbJournalInstance === 'sber' ? 'SBER/SRU6' : _arbJournalInstance === 'brCal' ? 'BR Calendar' : 'GAZP/GZU6';
+        arbPyLog(`🗑 Статистика ${name} сброшена`);
+        arbLoadJournal();
+        arbPyRefresh();
+    } else {
+        arbPyLog('Ошибка сброса статистики', 'ERROR');
+    }
 }
 
 function arbRenderJournal() {
@@ -4314,12 +4344,14 @@ function arbRenderJournal() {
             <div class="metric-card"><div class="metric-label">Avg Win</div><div style="font-size:18px;font-weight:bold;color:var(--green)">+${avgWin.toFixed(0)}₽</div></div>
             <div class="metric-card"><div class="metric-label">Avg Loss</div><div style="font-size:18px;font-weight:bold;color:var(--red)">−${avgLoss.toFixed(0)}₽</div></div>
             <div class="metric-card"><div class="metric-label">Итого PnL</div><div style="font-size:18px;font-weight:bold;color:${totalPnl>=0?'var(--green)':'var(--red)'}">${totalPnl>=0?'+':''}${totalPnl.toFixed(0)}₽</div></div>
+            <div class="metric-card"><div class="metric-label">Комиссия</div><div style="font-size:18px;font-weight:bold;color:#9CA3AF">${trades.reduce((s,t)=>s+(t.commission||0),0).toFixed(0)}₽</div></div>
+            <div class="metric-card" style="border:1px solid var(--border-color)"><div class="metric-label">&nbsp;</div><button class="btn btn-danger btn-sm" onclick="arbResetStats()" style="font-size:12px">🗑 Сбросить</button></div>
         ` : '';
     }
 
     // Table
     if (trades.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="10" style="text-align:center;padding:24px;color:#9CA3AF">Нет данных</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="14" style="text-align:center;padding:24px;color:#9CA3AF">Нет данных</td></tr>';
         if (el('arbJournalInfo')) el('arbJournalInfo').textContent = '';
         return;
     }
@@ -4336,17 +4368,25 @@ function arbRenderJournal() {
         const sideIcon = t.side === 'LONG' ? '🟢' : '🔴';
         const pnlCls = t.pnl > 0 ? 'color:var(--green)' : t.pnl < 0 ? 'color:var(--red)' : '';
         const cumulCls = cumul >= 0 ? 'color:var(--green)' : 'color:var(--red)';
+        const entryAStr = (t.entryPriceA||0).toFixed(2);
+        const entryBStr = (t.entryPriceB||0).toFixed(0);
+        const exitAStr = (t.exitPriceA||0).toFixed(2);
+        const exitBStr = (t.exitPriceB||0).toFixed(0);
         return `<tr style="border-bottom:1px solid var(--border-color)">
-            <td style="padding:6px 8px">${displayDate}</td>
-            <td style="padding:6px 8px">${entryTime}</td>
-            <td style="padding:6px 8px">${exitTime}</td>
-            <td style="padding:6px 8px;text-align:center">${sideIcon}</td>
-            <td style="padding:6px 8px;text-align:right">${(t.entryBasis||0).toFixed(1)}</td>
-            <td style="padding:6px 8px;text-align:right">${(t.exitBasis||0).toFixed(1)}</td>
-            <td style="padding:6px 8px;text-align:right">${(t.entryZ||0).toFixed(2)}</td>
-            <td style="padding:6px 8px;text-align:right">${t.lotsA||0}/${t.lotsB||0}</td>
-            <td style="padding:6px 8px;text-align:right;${pnlCls}">${t.pnl>=0?'+':''}${(t.pnl||0).toFixed(1)}</td>
-            <td style="padding:6px 8px;text-align:right;${cumulCls}">${cumul>=0?'+':''}${cumul.toFixed(1)}</td>
+            <td style="padding:4px 6px;font-size:11px;color:#9CA3AF">${displayDate}</td>
+            <td style="padding:4px 6px;font-size:11px">${entryTime}</td>
+            <td style="padding:4px 6px;font-size:11px">${exitTime}</td>
+            <td style="padding:4px 6px;text-align:center">${sideIcon}</td>
+            <td style="padding:4px 6px;text-align:right;font-size:11px" title="A: ${entryAStr}  B: ${entryBStr}">${entryAStr}<span style="color:#666">/${entryBStr}</span></td>
+            <td style="padding:4px 6px;text-align:right;font-size:11px" title="A: ${exitAStr}  B: ${exitBStr}">${exitAStr}<span style="color:#666">/${exitBStr}</span></td>
+            <td style="padding:4px 6px;text-align:right;font-size:11px">${(t.entryBasis||0).toFixed(0)}</td>
+            <td style="padding:4px 6px;text-align:right;font-size:11px">${(t.exitBasis||0).toFixed(0)}</td>
+            <td style="padding:4px 6px;text-align:right;font-size:11px">${(t.entryZ||0).toFixed(2)}</td>
+            <td style="padding:4px 6px;text-align:right;font-size:11px">${t.lotsA||0}/${t.lotsB||0}</td>
+            <td style="padding:4px 6px;text-align:right;font-size:11px;color:#9CA3AF">${(t.holdMin||0).toFixed(0)}м</td>
+            <td style="padding:4px 6px;text-align:right;font-size:11px;color:#9CA3AF">${(t.commission||0).toFixed(1)}₽</td>
+            <td style="padding:4px 6px;text-align:right;font-weight:600;${pnlCls}">${t.pnl>=0?'+':''}${(t.pnl||0).toFixed(1)}</td>
+            <td style="padding:4px 6px;text-align:right;${cumulCls}">${cumul>=0?'+':''}${cumul.toFixed(1)}</td>
         </tr>`;
     }).join('');
 

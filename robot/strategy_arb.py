@@ -297,7 +297,12 @@ class ArbitrageStrategy:
         if self.entry_lock or self.entry_active:
             return None
 
-        if not self.basis_calc.has_enough_data:
+        # spread_rub mode uses absolute thresholds — no need for full lookback
+        if self.p.entry_mode != "spread_rub" and not self.basis_calc.has_enough_data:
+            return None
+
+        # For spread_rub: at least need some data for pricing
+        if self.p.entry_mode == "spread_rub" and not self.basis_calc.price_a and not self.basis_calc.price_b:
             return None
 
         # Capital check — stop adding layers if we can't afford another
@@ -373,6 +378,12 @@ class ArbitrageStrategy:
         """Check for exit signal across all layers. Returns first exit or None."""
         if not self.layers:
             return None
+
+        # Don't exit a layer that was just opened (< 5 sec cooldown)
+        for layer in self.layers:
+            if time.time() - layer.entry_time < 5.0:
+                return None
+            break
 
         # Check each layer for min_profit exit
         for layer in self.layers:

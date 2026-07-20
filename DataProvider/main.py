@@ -167,13 +167,31 @@ def place_order(account: str, symbol: str, side: str, quantity: int, price: floa
         client_order_id = str(int(_t.time() * 1000))[:13]
         side_val = 1 if side == "buy" else 2  # SIDE_BUY=1, SIDE_SELL=2
 
+        # MICEX stocks: gRPC requires quantity in SHARES, not lots.
+        # Detect stocks by symbol (no digit in ticker = stock, e.g. GAZP, SBER).
+        _STOCK_LOT_SIZES = {
+            'GAZP': 10, 'SBER': 10, 'LKOH': 10, 'ROSN': 10, 'TATN': 10,
+            'GMKN': 10, 'ALRS': 10, 'VTBR': 10, 'MTSS': 10, 'NVTK': 10,
+            'MOEX': 10, 'SNGS': 10, 'CHMF': 10, 'NLMK': 10, 'MAGN': 10,
+            'POLY': 10, 'YNDX': 1, 'FIVE': 10, 'OZON': 10, 'PLZL': 10,
+            'FLOT': 10, 'PHOR': 10, 'RUAL': 10, 'MGNT': 10, 'SMLT': 10,
+        }
+        base = symbol.split('@')[0]
+        is_stock = not any(c.isdigit() for c in base)
+        if is_stock:
+            lot_size = _STOCK_LOT_SIZES.get(base, 10)
+            grpc_qty = quantity * lot_size
+        else:
+            grpc_qty = quantity
+
+
         if order_type == "market":
             req = ord_pb2.Order(
                 account_id=account,
                 symbol=symbol,
                 side=side_val,
                 type=ord_pb2.ORDER_TYPE_MARKET,
-                quantity=decimal_pb2.Decimal(value=str(quantity)),
+                quantity=decimal_pb2.Decimal(value=str(grpc_qty)),
                 client_order_id=client_order_id,
                 comment=tag,
             )
@@ -183,7 +201,7 @@ def place_order(account: str, symbol: str, side: str, quantity: int, price: floa
                 symbol=symbol,
                 side=side_val,
                 type=ord_pb2.ORDER_TYPE_LIMIT,
-                quantity=decimal_pb2.Decimal(value=str(quantity)),
+                quantity=decimal_pb2.Decimal(value=str(grpc_qty)),
                 limit_price=decimal_pb2.Decimal(value=str(int(price))),
                 client_order_id=client_order_id,
                 comment=tag,

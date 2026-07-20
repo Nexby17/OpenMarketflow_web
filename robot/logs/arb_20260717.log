@@ -1,0 +1,2435 @@
+08:59:14 robot_arb INFO === Arbitrage Robot v1 ===
+08:59:14 robot_arb INFO Pair: GAZP / GZU6
+08:59:14 robot_arb INFO Account: 2049688 | Port: 5090 | Paper: False
+08:59:14 robot_arb INFO Params: entry_z=2 lookback=200 lots_a=10 lots_b=1 hedge_ratio=10
+08:59:14 robot_arb INFO Min profit: rub=50
+08:59:14 robot_arb INFO Risk: stop_loss_rub=50000
+08:59:14 robot_arb INFO State loaded: pnl=-19 trades=3 mode=stopped
+08:59:14 robot_arb INFO FinamPy connected. Accounts: ['1225950', '1225951', '1225952', '2049688', '1225953']
+08:59:14 orders_arb INFO Trade subscription active via FinamPy on_trade (acc=2049688)
+08:59:14 orders_arb INFO Trade subscription started (background thread)
+08:59:15 orders_arb INFO TRADE UNEXPECTED: oid=1892951885900418694 price=79878.0 sym=SiU6@RTSX (no pending)
+08:59:15 orders_arb INFO TRADE UNEXPECTED: oid=1892951885900419183 price=79908.0 sym=SiU6@RTSX (no pending)
+08:59:15 orders_arb INFO TRADE UNEXPECTED: oid=1892951885900419777 price=79969.0 sym=SiU6@RTSX (no pending)
+08:59:15 orders_arb INFO TRADE UNEXPECTED: oid=1892951885900420709 price=79916.0 sym=SiU6@RTSX (no pending)
+08:59:15 orders_arb INFO TRADE UNEXPECTED: oid=1892951885900423158 price=79966.0 sym=SiU6@RTSX (no pending)
+08:59:15 orders_arb INFO TRADE UNEXPECTED: oid=1892951885900425442 price=79997.0 sym=SiU6@RTSX (no pending)
+08:59:15 orders_arb INFO TRADE UNEXPECTED: oid=1892951885900426981 price=80052.0 sym=SiU6@RTSX (no pending)
+08:59:15 orders_arb INFO TRADE UNEXPECTED: oid=1892951885900427892 price=80078.0 sym=SiU6@RTSX (no pending)
+08:59:15 orders_arb INFO TRADE UNEXPECTED: oid=1892951885900438007 price=80058.0 sym=SiU6@RTSX (no pending)
+08:59:15 orders_arb INFO TRADE UNEXPECTED: oid=1892951885900442470 price=80020.0 sym=SiU6@RTSX (no pending)
+08:59:20 robot_arb INFO Orders manager linked to FinamPy gRPC + trade subscription + reconnect
+08:59:20 robot_arb INFO OB poller started: GAZP@RTSX, GZU6@RTSX
+08:59:20 robot_arb INFO Subscribed Quotes: GAZP@RTSX, GZU6@RTSX
+08:59:20 robot_arb INFO Warmup: waiting 10 sec for data streams...
+08:59:25 robot_arb WARNING OB poll B error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_status:4, grpc_message:"Deadline Exceeded"}"
+>
+08:59:30 robot_arb INFO Warmup done. OB_A: True OB_B: True
+08:59:30 robot_arb INFO MOEX ISS poller started (fallback for stock prices)
+08:59:30 robot_arb INFO Main loop started
+08:59:30 robot_arb INFO API listening on :5090
+08:59:30 robot_arb INFO Endpoints: GET /status /health /params | POST /start /stop /pause /params
+08:59:36 robot_arb WARNING OB poll B error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_message:"Deadline Exceeded", grpc_status:4}"
+>
+08:59:42 robot_arb WARNING OB poll B error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_message:"Deadline Exceeded", grpc_status:4}"
+>
+08:59:56 robot_arb WARNING OB poll A error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_message:"Deadline Exceeded", grpc_status:4}"
+>
+08:59:56 robot_arb WARNING OB poll B error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_message:"Deadline Exceeded", grpc_status:4}"
+>
+09:00:02 robot_arb WARNING OB poll A error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_status:4, grpc_message:"Deadline Exceeded"}"
+>
+09:00:10 robot_arb WARNING OB poll B error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_status:4, grpc_message:"Deadline Exceeded"}"
+>
+09:00:17 robot_arb WARNING OB poll B error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_status:4, grpc_message:"Deadline Exceeded"}"
+>
+09:00:26 robot_arb WARNING OB poll A error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_message:"Deadline Exceeded", grpc_status:4}"
+>
+09:00:34 robot_arb WARNING OB poll B error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_message:"Deadline Exceeded", grpc_status:4}"
+>
+09:00:42 robot_arb WARNING OB poll B error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_status:4, grpc_message:"Deadline Exceeded"}"
+>
+09:00:48 robot_arb WARNING OB poll B error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_status:4, grpc_message:"Deadline Exceeded"}"
+>
+09:00:54 robot_arb WARNING OB poll A error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_message:"Deadline Exceeded", grpc_status:4}"
+>
+09:01:06 robot_arb WARNING OB poll B error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_status:4, grpc_message:"Deadline Exceeded"}"
+>
+09:01:14 robot_arb WARNING OB poll B error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_status:4, grpc_message:"Deadline Exceeded"}"
+>
+09:01:22 robot_arb WARNING OB poll A error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_message:"Deadline Exceeded", grpc_status:4}"
+>
+09:01:29 robot_arb WARNING OB poll A error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_status:4, grpc_message:"Deadline Exceeded"}"
+>
+09:01:35 robot_arb WARNING OB poll B error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_status:4, grpc_message:"Deadline Exceeded"}"
+>
+09:01:41 robot_arb WARNING OB poll B error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_message:"Deadline Exceeded", grpc_status:4}"
+>
+09:01:52 robot_arb WARNING OB poll B error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_status:4, grpc_message:"Deadline Exceeded"}"
+>
+09:01:59 robot_arb WARNING OB poll B error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_message:"Deadline Exceeded", grpc_status:4}"
+>
+09:02:05 robot_arb WARNING OB poll A error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_status:4, grpc_message:"Deadline Exceeded"}"
+>
+09:02:11 robot_arb WARNING OB poll A error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_status:4, grpc_message:"Deadline Exceeded"}"
+>
+09:02:17 robot_arb WARNING OB poll B error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_status:4, grpc_message:"Deadline Exceeded"}"
+>
+09:02:23 robot_arb WARNING OB poll A error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_message:"Deadline Exceeded", grpc_status:4}"
+>
+09:02:31 robot_arb WARNING OB poll A error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_status:4, grpc_message:"Deadline Exceeded"}"
+>
+09:02:38 robot_arb WARNING OB poll B error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_status:4, grpc_message:"Deadline Exceeded"}"
+>
+09:02:44 robot_arb WARNING OB poll B error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_status:4, grpc_message:"Deadline Exceeded"}"
+>
+09:02:51 robot_arb WARNING OB poll B error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_status:4, grpc_message:"Deadline Exceeded"}"
+>
+09:02:57 robot_arb WARNING OB poll A error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_message:"Deadline Exceeded", grpc_status:4}"
+>
+09:03:03 robot_arb WARNING OB poll A error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_status:4, grpc_message:"Deadline Exceeded"}"
+>
+09:03:09 robot_arb WARNING OB poll A error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_message:"Deadline Exceeded", grpc_status:4}"
+>
+09:03:22 robot_arb WARNING OB poll B error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_status:4, grpc_message:"Deadline Exceeded"}"
+>
+09:03:28 robot_arb WARNING OB poll A error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_message:"Deadline Exceeded", grpc_status:4}"
+>
+09:03:34 robot_arb WARNING OB poll A error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_status:4, grpc_message:"Deadline Exceeded"}"
+>
+09:03:47 robot_arb WARNING OB poll A error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_message:"Deadline Exceeded", grpc_status:4}"
+>
+09:03:47 robot_arb WARNING OB poll B error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_message:"Deadline Exceeded", grpc_status:4}"
+>
+09:03:53 robot_arb WARNING OB poll A error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_message:"Deadline Exceeded", grpc_status:4}"
+>
+09:03:59 robot_arb WARNING OB poll B error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_message:"Deadline Exceeded", grpc_status:4}"
+>
+09:04:05 robot_arb WARNING OB poll A error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_status:4, grpc_message:"Deadline Exceeded"}"
+>
+09:04:13 robot_arb WARNING OB poll A error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_status:4, grpc_message:"Deadline Exceeded"}"
+>
+09:04:22 robot_arb WARNING OB poll B error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_message:"Deadline Exceeded", grpc_status:4}"
+>
+09:04:28 robot_arb WARNING OB poll B error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_status:4, grpc_message:"Deadline Exceeded"}"
+>
+09:04:34 robot_arb WARNING OB poll A error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_status:4, grpc_message:"Deadline Exceeded"}"
+>
+09:04:41 robot_arb WARNING OB poll A error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_message:"Deadline Exceeded", grpc_status:4}"
+>
+09:04:50 robot_arb WARNING OB poll B error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_status:4, grpc_message:"Deadline Exceeded"}"
+>
+09:04:56 robot_arb WARNING OB poll B error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_status:4, grpc_message:"Deadline Exceeded"}"
+>
+09:05:10 robot_arb WARNING OB poll A error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_status:4, grpc_message:"Deadline Exceeded"}"
+>
+09:05:10 robot_arb WARNING OB poll B error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_status:4, grpc_message:"Deadline Exceeded"}"
+>
+09:05:17 robot_arb WARNING OB poll B error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_status:4, grpc_message:"Deadline Exceeded"}"
+>
+09:05:27 robot_arb WARNING OB poll B error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_message:"Deadline Exceeded", grpc_status:4}"
+>
+09:05:33 robot_arb WARNING OB poll A error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_message:"Deadline Exceeded", grpc_status:4}"
+>
+09:05:39 robot_arb WARNING OB poll A error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_message:"Deadline Exceeded", grpc_status:4}"
+>
+09:05:45 robot_arb WARNING OB poll B error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_status:4, grpc_message:"Deadline Exceeded"}"
+>
+09:05:53 robot_arb WARNING OB poll A error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_message:"Deadline Exceeded", grpc_status:4}"
+>
+09:05:59 robot_arb WARNING OB poll B error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_status:4, grpc_message:"Deadline Exceeded"}"
+>
+09:06:05 robot_arb WARNING OB poll A error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_status:4, grpc_message:"Deadline Exceeded"}"
+>
+09:06:12 robot_arb WARNING OB poll A error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_status:4, grpc_message:"Deadline Exceeded"}"
+>
+09:06:21 robot_arb WARNING OB poll A error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_message:"Deadline Exceeded", grpc_status:4}"
+>
+09:06:28 robot_arb WARNING OB poll A error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_status:4, grpc_message:"Deadline Exceeded"}"
+>
+09:06:39 robot_arb WARNING OB poll A error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_status:4, grpc_message:"Deadline Exceeded"}"
+>
+09:06:39 robot_arb WARNING OB poll B error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_status:4, grpc_message:"Deadline Exceeded"}"
+>
+09:06:47 robot_arb WARNING OB poll A error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_status:4, grpc_message:"Deadline Exceeded"}"
+>
+09:06:53 robot_arb WARNING OB poll A error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_status:4, grpc_message:"Deadline Exceeded"}"
+>
+09:06:59 robot_arb WARNING OB poll A error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_status:4, grpc_message:"Deadline Exceeded"}"
+>
+09:07:08 robot_arb WARNING OB poll B error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_status:4, grpc_message:"Deadline Exceeded"}"
+>
+09:07:20 robot_arb WARNING OB poll A error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_status:4, grpc_message:"Deadline Exceeded"}"
+>
+09:07:28 robot_arb WARNING OB poll B error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_status:4, grpc_message:"Deadline Exceeded"}"
+>
+09:07:37 robot_arb WARNING OB poll B error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_status:4, grpc_message:"Deadline Exceeded"}"
+>
+09:07:44 robot_arb WARNING OB poll A error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_message:"Deadline Exceeded", grpc_status:4}"
+>
+09:07:52 robot_arb WARNING OB poll B error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_status:4, grpc_message:"Deadline Exceeded"}"
+>
+09:07:58 robot_arb WARNING OB poll A error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_status:4, grpc_message:"Deadline Exceeded"}"
+>
+09:08:04 robot_arb WARNING OB poll B error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_status:4, grpc_message:"Deadline Exceeded"}"
+>
+09:08:10 robot_arb WARNING OB poll B error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_status:4, grpc_message:"Deadline Exceeded"}"
+>
+09:08:18 robot_arb WARNING OB poll A error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_status:4, grpc_message:"Deadline Exceeded"}"
+>
+09:08:25 robot_arb WARNING OB poll A error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_status:4, grpc_message:"Deadline Exceeded"}"
+>
+09:08:34 robot_arb WARNING OB poll B error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_message:"Deadline Exceeded", grpc_status:4}"
+>
+09:08:44 robot_arb WARNING OB poll A error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_status:4, grpc_message:"Deadline Exceeded"}"
+>
+09:08:52 robot_arb WARNING OB poll B error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_status:4, grpc_message:"Deadline Exceeded"}"
+>
+09:09:03 robot_arb WARNING OB poll A error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_status:4, grpc_message:"Deadline Exceeded"}"
+>
+09:09:03 robot_arb WARNING OB poll B error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_message:"Deadline Exceeded", grpc_status:4}"
+>
+09:09:16 robot_arb WARNING OB poll A error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_status:4, grpc_message:"Deadline Exceeded"}"
+>
+09:09:22 robot_arb WARNING OB poll A error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_message:"Deadline Exceeded", grpc_status:4}"
+>
+09:09:33 robot_arb WARNING OB poll A error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_message:"Deadline Exceeded", grpc_status:4}"
+>
+09:09:33 robot_arb WARNING OB poll B error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_status:4, grpc_message:"Deadline Exceeded"}"
+>
+09:09:41 robot_arb WARNING OB poll B error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_message:"Deadline Exceeded", grpc_status:4}"
+>
+09:09:47 robot_arb WARNING OB poll B error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_status:4, grpc_message:"Deadline Exceeded"}"
+>
+09:09:53 robot_arb WARNING OB poll B error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_message:"Deadline Exceeded", grpc_status:4}"
+>
+09:10:00 robot_arb WARNING OB poll A error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_status:4, grpc_message:"Deadline Exceeded"}"
+>
+09:10:06 robot_arb WARNING OB poll B error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_status:4, grpc_message:"Deadline Exceeded"}"
+>
+09:10:14 robot_arb WARNING OB poll B error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_message:"Deadline Exceeded", grpc_status:4}"
+>
+09:10:22 robot_arb WARNING OB poll B error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_status:4, grpc_message:"Deadline Exceeded"}"
+>
+09:10:29 robot_arb WARNING OB poll A error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_status:4, grpc_message:"Deadline Exceeded"}"
+>
+09:10:35 robot_arb WARNING OB poll B error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_status:4, grpc_message:"Deadline Exceeded"}"
+>
+09:10:43 robot_arb WARNING OB poll B error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_status:4, grpc_message:"Deadline Exceeded"}"
+>
+09:10:51 robot_arb WARNING OB poll A error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_message:"Deadline Exceeded", grpc_status:4}"
+>
+09:10:58 robot_arb WARNING OB poll B error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_status:4, grpc_message:"Deadline Exceeded"}"
+>
+09:11:10 robot_arb WARNING OB poll A error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_status:4, grpc_message:"Deadline Exceeded"}"
+>
+09:11:17 robot_arb WARNING OB poll A error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_status:4, grpc_message:"Deadline Exceeded"}"
+>
+09:11:23 robot_arb WARNING OB poll B error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_message:"Deadline Exceeded", grpc_status:4}"
+>
+09:11:31 robot_arb WARNING OB poll B error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_message:"Deadline Exceeded", grpc_status:4}"
+>
+09:11:37 robot_arb WARNING OB poll B error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_status:4, grpc_message:"Deadline Exceeded"}"
+>
+09:11:48 robot_arb WARNING OB poll A error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_status:4, grpc_message:"Deadline Exceeded"}"
+>
+09:11:55 robot_arb WARNING OB poll B error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_status:4, grpc_message:"Deadline Exceeded"}"
+>
+09:12:05 robot_arb WARNING OB poll B error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_message:"Deadline Exceeded", grpc_status:4}"
+>
+09:12:16 robot_arb WARNING OB poll A error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_status:4, grpc_message:"Deadline Exceeded"}"
+>
+09:12:24 robot_arb WARNING OB poll A error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_status:4, grpc_message:"Deadline Exceeded"}"
+>
+09:12:30 robot_arb WARNING OB poll B error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_message:"Deadline Exceeded", grpc_status:4}"
+>
+09:12:42 robot_arb WARNING OB poll A error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_status:4, grpc_message:"Deadline Exceeded"}"
+>
+09:12:42 robot_arb WARNING OB poll B error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_message:"Deadline Exceeded", grpc_status:4}"
+>
+09:12:48 robot_arb WARNING OB poll A error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_status:4, grpc_message:"Deadline Exceeded"}"
+>
+09:12:58 robot_arb WARNING OB poll B error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_status:4, grpc_message:"Deadline Exceeded"}"
+>
+09:13:04 robot_arb WARNING OB poll B error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_status:4, grpc_message:"Deadline Exceeded"}"
+>
+09:13:15 robot_arb WARNING OB poll B error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_status:4, grpc_message:"Deadline Exceeded"}"
+>
+09:13:21 robot_arb WARNING OB poll B error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_message:"Deadline Exceeded", grpc_status:4}"
+>
+09:13:27 robot_arb WARNING OB poll A error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_message:"Deadline Exceeded", grpc_status:4}"
+>
+09:13:33 robot_arb WARNING OB poll A error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_status:4, grpc_message:"Deadline Exceeded"}"
+>
+09:13:39 robot_arb WARNING OB poll B error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_message:"Deadline Exceeded", grpc_status:4}"
+>
+09:13:47 robot_arb WARNING OB poll A error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_status:4, grpc_message:"Deadline Exceeded"}"
+>
+09:13:53 robot_arb WARNING OB poll B error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_status:4, grpc_message:"Deadline Exceeded"}"
+>
+09:14:04 robot_arb WARNING OB poll A error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_status:4, grpc_message:"Deadline Exceeded"}"
+>
+09:14:04 robot_arb WARNING OB poll B error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_status:4, grpc_message:"Deadline Exceeded"}"
+>
+09:14:18 robot_arb WARNING OB poll A error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_status:4, grpc_message:"Deadline Exceeded"}"
+>
+09:14:18 robot_arb WARNING OB poll B: token expired, reconnecting...
+09:14:18 robot_arb INFO FinamPy reconnecting (#1)...
+09:27:39 robot_arb INFO Orders manager linked to FinamPy gRPC + trade subscription + reconnect
+09:27:39 robot_arb INFO FinamPy reconnected (#1). Accounts: ['1225950', '1225951', '1225952', '2049688', '1225953']
+09:28:12 robot_arb WARNING OB poll A: rate limited, backing off...
+09:28:42 robot_arb WARNING OB poll B: rate limited, backing off...
+09:29:21 robot_arb WARNING OB poll A: token expired, reconnecting...
+09:29:21 robot_arb INFO FinamPy reconnecting (#2)...
+09:29:21 robot_arb INFO Orders manager linked to FinamPy gRPC + trade subscription + reconnect
+09:29:21 robot_arb INFO FinamPy reconnected (#2). Accounts: ['1225950', '1225951', '1225952', '2049688', '1225953']
+09:29:21 robot_arb WARNING OB poll B: token expired, reconnecting...
+09:29:23 robot_arb WARNING OB poll A: rate limited, backing off...
+09:29:53 robot_arb WARNING OB poll B: rate limited, backing off...
+09:30:27 robot_arb WARNING OB poll B: rate limited, backing off...
+09:31:18 robot_arb WARNING OB poll B: rate limited, backing off...
+09:32:15 robot_arb WARNING OB poll A: rate limited, backing off...
+09:32:45 robot_arb WARNING OB poll B: rate limited, backing off...
+09:33:24 robot_arb WARNING OB poll B: rate limited, backing off...
+09:34:17 robot_arb WARNING OB poll A: rate limited, backing off...
+09:34:47 robot_arb WARNING OB poll B: rate limited, backing off...
+09:35:26 robot_arb WARNING OB poll A: rate limited, backing off...
+09:35:56 robot_arb WARNING OB poll B: rate limited, backing off...
+09:36:30 robot_arb WARNING OB poll A: rate limited, backing off...
+09:37:00 robot_arb WARNING OB poll B: rate limited, backing off...
+09:37:31 robot_arb WARNING OB poll A: rate limited, backing off...
+09:38:01 robot_arb WARNING OB poll B: rate limited, backing off...
+09:38:32 robot_arb WARNING OB poll A: rate limited, backing off...
+09:39:02 robot_arb WARNING OB poll B: rate limited, backing off...
+09:39:33 robot_arb WARNING OB poll A: rate limited, backing off...
+09:40:03 robot_arb WARNING OB poll B: rate limited, backing off...
+09:40:34 robot_arb WARNING OB poll A: rate limited, backing off...
+09:41:04 robot_arb WARNING OB poll B: rate limited, backing off...
+09:41:35 robot_arb WARNING OB poll A: rate limited, backing off...
+09:42:05 robot_arb WARNING OB poll B: rate limited, backing off...
+09:42:36 robot_arb WARNING OB poll A: rate limited, backing off...
+09:43:06 robot_arb WARNING OB poll B: rate limited, backing off...
+09:44:15 robot_arb WARNING OB poll A: rate limited, backing off...
+09:44:45 robot_arb WARNING OB poll B: rate limited, backing off...
+09:45:16 robot_arb WARNING OB poll A: token expired, reconnecting...
+09:45:16 robot_arb INFO FinamPy reconnecting (#3)...
+09:45:17 robot_arb INFO Orders manager linked to FinamPy gRPC + trade subscription + reconnect
+09:45:17 robot_arb INFO FinamPy reconnected (#3). Accounts: ['1225950', '1225951', '1225952', '2049688', '1225953']
+09:45:17 robot_arb WARNING OB poll B: token expired, reconnecting...
+09:45:28 robot_arb WARNING OB poll B: rate limited, backing off...
+09:46:22 robot_arb WARNING OB poll A: rate limited, backing off...
+09:46:52 robot_arb WARNING OB poll B: rate limited, backing off...
+09:47:31 robot_arb WARNING OB poll A: rate limited, backing off...
+09:48:01 robot_arb WARNING OB poll B: rate limited, backing off...
+09:48:33 robot_arb WARNING OB poll B: rate limited, backing off...
+09:49:09 robot_arb WARNING OB poll B error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_status:4, grpc_message:"Deadline Exceeded"}"
+>
+09:49:15 robot_arb WARNING OB poll A error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_message:"Deadline Exceeded", grpc_status:4}"
+>
+09:49:21 robot_arb WARNING OB poll B error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_message:"Deadline Exceeded", grpc_status:4}"
+>
+09:49:27 robot_arb WARNING OB poll A error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_message:"Deadline Exceeded", grpc_status:4}"
+>
+09:49:33 robot_arb WARNING OB poll B error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_message:"Deadline Exceeded", grpc_status:4}"
+>
+09:49:34 robot_arb WARNING OB poll A: rate limited, backing off...
+09:50:04 robot_arb WARNING OB poll B: rate limited, backing off...
+09:50:35 robot_arb WARNING OB poll A: rate limited, backing off...
+09:51:05 robot_arb WARNING OB poll B: rate limited, backing off...
+09:51:37 robot_arb WARNING OB poll A: rate limited, backing off...
+09:52:07 robot_arb WARNING OB poll B: rate limited, backing off...
+09:52:38 robot_arb WARNING OB poll A: rate limited, backing off...
+09:53:08 robot_arb WARNING OB poll B: rate limited, backing off...
+09:53:39 robot_arb WARNING OB poll A: rate limited, backing off...
+09:54:09 robot_arb WARNING OB poll B: rate limited, backing off...
+09:54:40 robot_arb WARNING OB poll A: rate limited, backing off...
+09:55:10 robot_arb WARNING OB poll B: rate limited, backing off...
+09:55:47 robot_arb WARNING OB poll A error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_status:4, grpc_message:"Deadline Exceeded"}"
+>
+09:55:56 robot_arb WARNING OB poll A error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_message:"Deadline Exceeded", grpc_status:4}"
+>
+09:56:04 robot_arb WARNING OB poll B error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_message:"Deadline Exceeded", grpc_status:4}"
+>
+09:56:10 robot_arb WARNING OB poll A error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_status:4, grpc_message:"Deadline Exceeded"}"
+>
+09:56:20 robot_arb WARNING OB poll A error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_message:"Deadline Exceeded", grpc_status:4}"
+>
+09:56:26 robot_arb WARNING OB poll A error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_message:"Deadline Exceeded", grpc_status:4}"
+>
+09:56:32 robot_arb WARNING OB poll B error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_message:"Deadline Exceeded", grpc_status:4}"
+>
+09:56:33 robot_arb WARNING OB poll A: rate limited, backing off...
+09:57:03 robot_arb WARNING OB poll B: rate limited, backing off...
+09:57:39 robot_arb WARNING OB poll A error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_message:"Deadline Exceeded", grpc_status:4}"
+>
+09:57:39 robot_arb WARNING OB poll B: rate limited, backing off...
+09:58:17 robot_arb WARNING OB poll A error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_message:"Deadline Exceeded", grpc_status:4}"
+>
+09:58:23 robot_arb WARNING OB poll B error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_status:4, grpc_message:"Deadline Exceeded"}"
+>
+09:58:31 robot_arb WARNING OB poll A error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_status:4, grpc_message:"Deadline Exceeded"}"
+>
+09:58:33 robot_arb WARNING OB poll A: rate limited, backing off...
+09:59:03 robot_arb WARNING OB poll B: rate limited, backing off...
+09:59:39 robot_arb WARNING OB poll B error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_message:"Deadline Exceeded", grpc_status:4}"
+>
+09:59:40 robot_arb WARNING OB poll A: rate limited, backing off...
+10:00:10 robot_arb WARNING OB poll B: rate limited, backing off...
+10:00:41 robot_arb WARNING OB poll A: token expired, reconnecting...
+10:00:41 robot_arb INFO FinamPy reconnecting (#4)...
+10:00:47 robot_arb INFO Orders manager linked to FinamPy gRPC + trade subscription + reconnect
+10:00:47 robot_arb INFO FinamPy reconnected (#4). Accounts: ['1225950', '1225951', '1225952', '2049688', '1225953']
+10:00:47 robot_arb WARNING OB poll B: token expired, reconnecting...
+10:00:56 robot_arb WARNING OB poll B error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_message:"Deadline Exceeded", grpc_status:4}"
+>
+10:01:02 robot_arb WARNING OB poll B error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_status:4, grpc_message:"Deadline Exceeded"}"
+>
+10:01:08 robot_arb WARNING OB poll B error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_status:4, grpc_message:"Deadline Exceeded"}"
+>
+10:01:14 robot_arb WARNING OB poll A error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_message:"Deadline Exceeded", grpc_status:4}"
+>
+10:01:20 robot_arb WARNING OB poll A error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_message:"Deadline Exceeded", grpc_status:4}"
+>
+10:01:26 robot_arb WARNING OB poll A error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_status:4, grpc_message:"Deadline Exceeded"}"
+>
+10:01:32 robot_arb WARNING OB poll A error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_status:4, grpc_message:"Deadline Exceeded"}"
+>
+10:01:32 robot_arb WARNING OB poll B: rate limited, backing off...
+10:02:09 robot_arb WARNING OB poll A error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_message:"Deadline Exceeded", grpc_status:4}"
+>
+10:02:15 robot_arb WARNING OB poll A error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_message:"Deadline Exceeded", grpc_status:4}"
+>
+10:02:21 robot_arb WARNING OB poll B error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_message:"Deadline Exceeded", grpc_status:4}"
+>
+10:02:27 robot_arb WARNING OB poll B error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_message:"Deadline Exceeded", grpc_status:4}"
+>
+10:02:33 robot_arb WARNING OB poll A error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_message:"Deadline Exceeded", grpc_status:4}"
+>
+10:02:39 robot_arb WARNING OB poll B error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_status:4, grpc_message:"Deadline Exceeded"}"
+>
+10:02:40 robot_arb WARNING OB poll A: rate limited, backing off...
+10:03:10 robot_arb WARNING OB poll B: rate limited, backing off...
+10:03:41 robot_arb WARNING OB poll A: rate limited, backing off...
+10:04:11 robot_arb WARNING OB poll B: rate limited, backing off...
+10:04:42 robot_arb WARNING OB poll A: rate limited, backing off...
+10:05:12 robot_arb WARNING OB poll B: rate limited, backing off...
+10:05:43 robot_arb WARNING OB poll A: rate limited, backing off...
+10:06:13 robot_arb WARNING OB poll B: rate limited, backing off...
+10:06:50 robot_arb WARNING OB poll B error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_message:"Deadline Exceeded", grpc_status:4}"
+>
+10:06:56 robot_arb WARNING OB poll B error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_message:"Deadline Exceeded", grpc_status:4}"
+>
+10:07:04 robot_arb WARNING OB poll B error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_status:4, grpc_message:"Deadline Exceeded"}"
+>
+10:07:15 robot_arb WARNING OB poll B error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_message:"Deadline Exceeded", grpc_status:4}"
+>
+10:07:21 robot_arb WARNING OB poll B error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_message:"Deadline Exceeded", grpc_status:4}"
+>
+10:07:28 robot_arb WARNING OB poll A error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_status:4, grpc_message:"Deadline Exceeded"}"
+>
+10:07:31 robot_arb WARNING OB poll A: rate limited, backing off...
+10:08:01 robot_arb WARNING OB poll B: rate limited, backing off...
+10:08:37 robot_arb WARNING OB poll B error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_status:4, grpc_message:"Deadline Exceeded"}"
+>
+10:08:38 robot_arb WARNING OB poll A: rate limited, backing off...
+10:09:08 robot_arb WARNING OB poll B: rate limited, backing off...
+10:09:40 robot_arb WARNING OB poll B: rate limited, backing off...
+10:10:19 robot_arb WARNING OB poll B error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_status:4, grpc_message:"Deadline Exceeded"}"
+>
+10:10:30 robot_arb WARNING OB poll A error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_message:"Deadline Exceeded", grpc_status:4}"
+>
+10:10:30 robot_arb WARNING OB poll B error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_status:4, grpc_message:"Deadline Exceeded"}"
+>
+10:10:36 robot_arb WARNING OB poll A error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_status:4, grpc_message:"Deadline Exceeded"}"
+>
+10:10:37 robot_arb WARNING OB poll A: rate limited, backing off...
+10:11:07 robot_arb WARNING OB poll B: rate limited, backing off...
+10:11:44 robot_arb WARNING OB poll B error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_message:"Deadline Exceeded", grpc_status:4}"
+>
+10:11:45 robot_arb WARNING OB poll A: rate limited, backing off...
+10:12:15 robot_arb WARNING OB poll B: rate limited, backing off...
+10:12:54 robot_arb WARNING OB poll B error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_status:4, grpc_message:"Deadline Exceeded"}"
+>
+10:13:09 robot_arb WARNING OB poll A error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_message:"Deadline Exceeded", grpc_status:4}"
+>
+10:13:09 robot_arb WARNING OB poll B error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_message:"Deadline Exceeded", grpc_status:4}"
+>
+10:13:17 robot_arb WARNING OB poll A error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_message:"Deadline Exceeded", grpc_status:4}"
+>
+10:13:26 robot_arb WARNING OB poll B error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_status:4, grpc_message:"Deadline Exceeded"}"
+>
+10:13:32 robot_arb WARNING OB poll A error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_message:"Deadline Exceeded", grpc_status:4}"
+>
+10:13:33 robot_arb WARNING OB poll A: rate limited, backing off...
+10:14:03 robot_arb WARNING OB poll B: rate limited, backing off...
+10:14:40 robot_arb WARNING OB poll B error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_status:4, grpc_message:"Deadline Exceeded"}"
+>
+10:14:41 robot_arb WARNING OB poll A: rate limited, backing off...
+10:15:11 robot_arb WARNING OB poll B: rate limited, backing off...
+10:15:42 robot_arb WARNING OB poll A: rate limited, backing off...
+10:16:12 robot_arb WARNING OB poll B: rate limited, backing off...
+10:16:44 robot_arb WARNING OB poll A: token expired, reconnecting...
+10:16:44 robot_arb INFO FinamPy reconnecting (#5)...
+10:16:44 robot_arb INFO Orders manager linked to FinamPy gRPC + trade subscription + reconnect
+10:16:44 robot_arb INFO FinamPy reconnected (#5). Accounts: ['1225950', '1225951', '1225952', '2049688', '1225953']
+10:16:44 robot_arb WARNING OB poll B: token expired, reconnecting...
+10:16:45 robot_arb WARNING OB poll A: rate limited, backing off...
+10:17:15 robot_arb WARNING OB poll B: rate limited, backing off...
+10:17:46 robot_arb WARNING OB poll A: rate limited, backing off...
+10:18:16 robot_arb WARNING OB poll B: rate limited, backing off...
+10:19:01 robot_arb WARNING OB poll A error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_message:"Deadline Exceeded", grpc_status:4}"
+>
+10:19:01 robot_arb WARNING OB poll B error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_message:"Deadline Exceeded", grpc_status:4}"
+>
+10:19:11 robot_arb WARNING OB poll A error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_status:4, grpc_message:"Deadline Exceeded"}"
+>
+10:19:23 robot_arb WARNING OB poll A error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_status:4, grpc_message:"Deadline Exceeded"}"
+>
+10:19:31 robot_arb WARNING OB poll B error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_message:"Deadline Exceeded", grpc_status:4}"
+>
+10:19:33 robot_arb WARNING OB poll A: rate limited, backing off...
+10:20:03 robot_arb WARNING OB poll B: rate limited, backing off...
+10:20:39 robot_arb WARNING OB poll A error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_message:"Deadline Exceeded", grpc_status:4}"
+>
+10:20:46 robot_arb WARNING OB poll A error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_message:"Deadline Exceeded", grpc_status:4}"
+>
+10:20:46 robot_arb WARNING OB poll B: rate limited, backing off...
+10:21:25 robot_arb WARNING OB poll A error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_message:"Deadline Exceeded", grpc_status:4}"
+>
+10:21:31 robot_arb WARNING OB poll A error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_status:4, grpc_message:"Deadline Exceeded"}"
+>
+10:21:37 robot_arb WARNING OB poll A error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_status:4, grpc_message:"Deadline Exceeded"}"
+>
+10:21:40 robot_arb WARNING OB poll A: rate limited, backing off...
+10:22:10 robot_arb WARNING OB poll B: rate limited, backing off...
+10:22:43 robot_arb WARNING OB poll A: rate limited, backing off...
+10:23:13 robot_arb WARNING OB poll B: rate limited, backing off...
+10:23:44 robot_arb WARNING OB poll A: rate limited, backing off...
+10:24:14 robot_arb WARNING OB poll B: rate limited, backing off...
+10:24:46 robot_arb WARNING OB poll A: rate limited, backing off...
+10:25:16 robot_arb WARNING OB poll B: rate limited, backing off...
+10:25:47 robot_arb WARNING OB poll A: rate limited, backing off...
+10:26:17 robot_arb WARNING OB poll B: rate limited, backing off...
+10:26:48 robot_arb WARNING OB poll A: rate limited, backing off...
+10:27:18 robot_arb WARNING OB poll B: rate limited, backing off...
+10:27:49 robot_arb WARNING OB poll A: rate limited, backing off...
+10:28:19 robot_arb WARNING OB poll B: rate limited, backing off...
+10:28:55 robot_arb WARNING OB poll A error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_message:"Deadline Exceeded", grpc_status:4}"
+>
+10:29:04 robot_arb WARNING OB poll B error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_status:4, grpc_message:"Deadline Exceeded"}"
+>
+10:29:20 robot_arb WARNING OB poll A error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_status:4, grpc_message:"Deadline Exceeded"}"
+>
+10:29:20 robot_arb WARNING OB poll B error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_message:"Deadline Exceeded", grpc_status:4}"
+>
+10:29:27 robot_arb WARNING OB poll A error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_message:"Deadline Exceeded", grpc_status:4}"
+>
+10:29:34 robot_arb WARNING OB poll A error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_message:"Deadline Exceeded", grpc_status:4}"
+>
+10:29:40 robot_arb WARNING OB poll A error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_message:"Deadline Exceeded", grpc_status:4}"
+>
+10:29:51 robot_arb WARNING OB poll B error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_status:4, grpc_message:"Deadline Exceeded"}"
+>
+10:29:57 robot_arb WARNING OB poll A error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_message:"Deadline Exceeded", grpc_status:4}"
+>
+10:30:03 robot_arb WARNING OB poll B error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_message:"Deadline Exceeded", grpc_status:4}"
+>
+10:30:10 robot_arb WARNING OB poll B error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_message:"Deadline Exceeded", grpc_status:4}"
+>
+10:30:16 robot_arb WARNING OB poll B error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_status:4, grpc_message:"Deadline Exceeded"}"
+>
+10:30:22 robot_arb WARNING OB poll A error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_status:4, grpc_message:"Deadline Exceeded"}"
+>
+10:30:28 robot_arb WARNING OB poll A error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_status:4, grpc_message:"Deadline Exceeded"}"
+>
+10:30:35 robot_arb WARNING OB poll B error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_status:4, grpc_message:"Deadline Exceeded"}"
+>
+10:30:45 robot_arb WARNING OB poll A error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_status:4, grpc_message:"Deadline Exceeded"}"
+>
+10:30:51 robot_arb WARNING OB poll B error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_message:"Deadline Exceeded", grpc_status:4}"
+>
+10:30:58 robot_arb WARNING OB poll A error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_message:"Deadline Exceeded", grpc_status:4}"
+>
+10:31:07 robot_arb WARNING OB poll B error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_message:"Deadline Exceeded", grpc_status:4}"
+>
+10:31:13 robot_arb WARNING OB poll A error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_status:4, grpc_message:"Deadline Exceeded"}"
+>
+10:31:21 robot_arb WARNING OB poll B error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_status:4, grpc_message:"Deadline Exceeded"}"
+>
+10:31:28 robot_arb WARNING OB poll A error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_status:4, grpc_message:"Deadline Exceeded"}"
+>
+10:31:36 robot_arb WARNING OB poll B error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_message:"Deadline Exceeded", grpc_status:4}"
+>
+10:31:48 robot_arb WARNING OB poll A error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_status:4, grpc_message:"Deadline Exceeded"}"
+>
+10:31:48 robot_arb WARNING OB poll B error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_message:"Deadline Exceeded", grpc_status:4}"
+>
+10:31:49 robot_arb WARNING OB poll A: token expired, reconnecting...
+10:31:49 robot_arb INFO FinamPy reconnecting (#6)...
+10:31:54 robot_arb INFO Orders manager linked to FinamPy gRPC + trade subscription + reconnect
+10:31:54 robot_arb INFO FinamPy reconnected (#6). Accounts: ['1225950', '1225951', '1225952', '2049688', '1225953']
+10:31:54 robot_arb WARNING OB poll B: token expired, reconnecting...
+10:32:10 robot_arb WARNING OB poll A error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_message:"Deadline Exceeded", grpc_status:4}"
+>
+10:32:10 robot_arb WARNING OB poll B error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_message:"Deadline Exceeded", grpc_status:4}"
+>
+10:32:19 robot_arb WARNING OB poll A error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_message:"Deadline Exceeded", grpc_status:4}"
+>
+10:32:25 robot_arb WARNING OB poll A error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_status:4, grpc_message:"Deadline Exceeded"}"
+>
+10:32:31 robot_arb WARNING OB poll B error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_status:4, grpc_message:"Deadline Exceeded"}"
+>
+10:32:41 robot_arb WARNING OB poll A error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_status:4, grpc_message:"Deadline Exceeded"}"
+>
+10:32:47 robot_arb WARNING OB poll A error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_status:4, grpc_message:"Deadline Exceeded"}"
+>
+10:32:55 robot_arb WARNING OB poll B error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_status:4, grpc_message:"Deadline Exceeded"}"
+>
+10:33:01 robot_arb WARNING OB poll A error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_status:4, grpc_message:"Deadline Exceeded"}"
+>
+10:33:08 robot_arb WARNING OB poll B error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_status:4, grpc_message:"Deadline Exceeded"}"
+>
+10:33:14 robot_arb WARNING OB poll B error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_message:"Deadline Exceeded", grpc_status:4}"
+>
+10:33:23 robot_arb WARNING OB poll A error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_status:4, grpc_message:"Deadline Exceeded"}"
+>
+10:33:38 robot_arb WARNING OB poll A error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_status:4, grpc_message:"Deadline Exceeded"}"
+>
+10:33:38 robot_arb WARNING OB poll B error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_message:"Deadline Exceeded", grpc_status:4}"
+>
+10:33:45 robot_arb WARNING OB poll B error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_message:"Deadline Exceeded", grpc_status:4}"
+>
+10:33:55 robot_arb WARNING OB poll B error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_message:"Deadline Exceeded", grpc_status:4}"
+>
+10:34:08 robot_arb WARNING OB poll A error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_message:"Deadline Exceeded", grpc_status:4}"
+>
+10:34:08 robot_arb WARNING OB poll B error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_status:4, grpc_message:"Deadline Exceeded"}"
+>
+10:34:15 robot_arb WARNING OB poll B error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_message:"Deadline Exceeded", grpc_status:4}"
+>
+10:34:28 robot_arb WARNING OB poll A error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_status:4, grpc_message:"Deadline Exceeded"}"
+>
+10:34:28 robot_arb WARNING OB poll B error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_status:4, grpc_message:"Deadline Exceeded"}"
+>
+10:34:34 robot_arb WARNING OB poll B error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_message:"Deadline Exceeded", grpc_status:4}"
+>
+10:34:45 robot_arb WARNING OB poll A error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_status:4, grpc_message:"Deadline Exceeded"}"
+>
+10:34:52 robot_arb WARNING OB poll B error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_status:4, grpc_message:"Deadline Exceeded"}"
+>
+10:35:00 robot_arb WARNING OB poll B error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_message:"Deadline Exceeded", grpc_status:4}"
+>
+10:35:11 robot_arb WARNING OB poll A error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_message:"Deadline Exceeded", grpc_status:4}"
+>
+10:35:11 robot_arb WARNING OB poll B error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_message:"Deadline Exceeded", grpc_status:4}"
+>
+10:35:18 robot_arb WARNING OB poll B error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_message:"Deadline Exceeded", grpc_status:4}"
+>
+10:35:24 robot_arb WARNING OB poll B error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_status:4, grpc_message:"Deadline Exceeded"}"
+>
+10:35:33 robot_arb WARNING OB poll A error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_message:"Deadline Exceeded", grpc_status:4}"
+>
+10:35:44 robot_arb WARNING OB poll A error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_status:4, grpc_message:"Deadline Exceeded"}"
+>
+10:35:44 robot_arb WARNING OB poll B error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_message:"Deadline Exceeded", grpc_status:4}"
+>
+10:35:50 robot_arb WARNING OB poll A error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_status:4, grpc_message:"Deadline Exceeded"}"
+>
+10:35:57 robot_arb WARNING OB poll B error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_message:"Deadline Exceeded", grpc_status:4}"
+>
+10:36:13 robot_arb WARNING OB poll B error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_status:4, grpc_message:"Deadline Exceeded"}"
+>
+10:36:19 robot_arb WARNING OB poll B error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_message:"Deadline Exceeded", grpc_status:4}"
+>
+10:36:26 robot_arb WARNING OB poll A error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_message:"Deadline Exceeded", grpc_status:4}"
+>
+10:36:33 robot_arb WARNING OB poll B error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_message:"Deadline Exceeded", grpc_status:4}"
+>
+10:36:42 robot_arb WARNING OB poll A error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_status:4, grpc_message:"Deadline Exceeded"}"
+>
+10:36:59 robot_arb WARNING OB poll A error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_message:"Deadline Exceeded", grpc_status:4}"
+>
+10:36:59 robot_arb WARNING OB poll B error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_status:4, grpc_message:"Deadline Exceeded"}"
+>
+10:37:11 robot_arb WARNING OB poll A error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_status:4, grpc_message:"Deadline Exceeded"}"
+>
+10:37:11 robot_arb WARNING OB poll B error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_message:"Deadline Exceeded", grpc_status:4}"
+>
+10:37:18 robot_arb WARNING OB poll B error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_message:"Deadline Exceeded", grpc_status:4}"
+>
+10:37:25 robot_arb WARNING OB poll A error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_message:"Deadline Exceeded", grpc_status:4}"
+>
+10:37:32 robot_arb WARNING OB poll B error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_status:4, grpc_message:"Deadline Exceeded"}"
+>
+10:37:41 robot_arb WARNING OB poll B error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_status:4, grpc_message:"Deadline Exceeded"}"
+>
+10:37:52 robot_arb WARNING OB poll A error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_status:4, grpc_message:"Deadline Exceeded"}"
+>
+10:37:52 robot_arb WARNING OB poll B error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_status:4, grpc_message:"Deadline Exceeded"}"
+>
+10:38:00 robot_arb WARNING OB poll A error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_status:4, grpc_message:"Deadline Exceeded"}"
+>
+10:38:14 robot_arb WARNING OB poll A error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_status:4, grpc_message:"Deadline Exceeded"}"
+>
+10:38:14 robot_arb WARNING OB poll B error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_message:"Deadline Exceeded", grpc_status:4}"
+>
+10:38:20 robot_arb WARNING OB poll B error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_status:4, grpc_message:"Deadline Exceeded"}"
+>
+10:38:27 robot_arb WARNING OB poll B error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_message:"Deadline Exceeded", grpc_status:4}"
+>
+10:38:33 robot_arb WARNING OB poll A error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_message:"Deadline Exceeded", grpc_status:4}"
+>
+10:38:41 robot_arb WARNING OB poll B error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_status:4, grpc_message:"Deadline Exceeded"}"
+>
+10:38:47 robot_arb WARNING OB poll A error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_message:"Deadline Exceeded", grpc_status:4}"
+>
+10:38:59 robot_arb WARNING OB poll A error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_status:4, grpc_message:"Deadline Exceeded"}"
+>
+10:38:59 robot_arb WARNING OB poll B error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_status:4, grpc_message:"Deadline Exceeded"}"
+>
+10:39:06 robot_arb WARNING OB poll A error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_message:"Deadline Exceeded", grpc_status:4}"
+>
+10:39:14 robot_arb WARNING OB poll B error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_message:"Deadline Exceeded", grpc_status:4}"
+>
+10:39:27 robot_arb WARNING OB poll A error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_message:"Deadline Exceeded", grpc_status:4}"
+>
+10:39:27 robot_arb WARNING OB poll B error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_status:4, grpc_message:"Deadline Exceeded"}"
+>
+10:39:35 robot_arb WARNING OB poll B error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_message:"Deadline Exceeded", grpc_status:4}"
+>
+10:39:43 robot_arb WARNING OB poll A error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_status:4, grpc_message:"Deadline Exceeded"}"
+>
+10:39:49 robot_arb WARNING OB poll A error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_message:"Deadline Exceeded", grpc_status:4}"
+>
+10:40:01 robot_arb WARNING OB poll B error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_message:"Deadline Exceeded", grpc_status:4}"
+>
+10:40:14 robot_arb WARNING OB poll B error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_message:"Deadline Exceeded", grpc_status:4}"
+>
+10:40:25 robot_arb WARNING OB poll A error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_message:"Deadline Exceeded", grpc_status:4}"
+>
+10:40:25 robot_arb WARNING OB poll B error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_status:4, grpc_message:"Deadline Exceeded"}"
+>
+10:40:31 robot_arb WARNING OB poll A error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_message:"Deadline Exceeded", grpc_status:4}"
+>
+10:40:37 robot_arb WARNING OB poll B error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_status:4, grpc_message:"Deadline Exceeded"}"
+>
+10:40:43 robot_arb WARNING OB poll B error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_message:"Deadline Exceeded", grpc_status:4}"
+>
+10:40:50 robot_arb WARNING OB poll A error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_message:"Deadline Exceeded", grpc_status:4}"
+>
+10:40:58 robot_arb WARNING OB poll B error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_message:"Deadline Exceeded", grpc_status:4}"
+>
+10:41:05 robot_arb WARNING OB poll B error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_message:"Deadline Exceeded", grpc_status:4}"
+>
+10:41:18 robot_arb WARNING OB poll B error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_status:4, grpc_message:"Deadline Exceeded"}"
+>
+10:41:27 robot_arb WARNING OB poll B error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_message:"Deadline Exceeded", grpc_status:4}"
+>
+10:41:34 robot_arb WARNING OB poll B error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_message:"Deadline Exceeded", grpc_status:4}"
+>
+10:41:43 robot_arb WARNING OB poll B error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_message:"Deadline Exceeded", grpc_status:4}"
+>
+10:41:50 robot_arb WARNING OB poll B error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_message:"Deadline Exceeded", grpc_status:4}"
+>
+10:41:56 robot_arb WARNING OB poll A error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_message:"Deadline Exceeded", grpc_status:4}"
+>
+10:42:02 robot_arb WARNING OB poll A error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_message:"Deadline Exceeded", grpc_status:4}"
+>
+10:42:12 robot_arb WARNING OB poll B error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_message:"Deadline Exceeded", grpc_status:4}"
+>
+10:42:20 robot_arb WARNING OB poll A error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_status:4, grpc_message:"Deadline Exceeded"}"
+>
+10:42:26 robot_arb WARNING OB poll B error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_message:"Deadline Exceeded", grpc_status:4}"
+>
+10:42:32 robot_arb WARNING OB poll B error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_message:"Deadline Exceeded", grpc_status:4}"
+>
+10:42:44 robot_arb WARNING OB poll A error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_message:"Deadline Exceeded", grpc_status:4}"
+>
+10:42:50 robot_arb WARNING OB poll B error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_message:"Deadline Exceeded", grpc_status:4}"
+>
+10:42:56 robot_arb WARNING OB poll B error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_status:4, grpc_message:"Deadline Exceeded"}"
+>
+10:43:05 robot_arb WARNING OB poll A error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_message:"Deadline Exceeded", grpc_status:4}"
+>
+10:43:12 robot_arb WARNING OB poll A error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_message:"Deadline Exceeded", grpc_status:4}"
+>
+10:43:22 robot_arb WARNING OB poll B error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_message:"Deadline Exceeded", grpc_status:4}"
+>
+10:43:29 robot_arb WARNING OB poll B error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_message:"Deadline Exceeded", grpc_status:4}"
+>
+10:43:40 robot_arb WARNING OB poll A error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_status:4, grpc_message:"Deadline Exceeded"}"
+>
+10:43:40 robot_arb WARNING OB poll B error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_message:"Deadline Exceeded", grpc_status:4}"
+>
+10:43:47 robot_arb WARNING OB poll B error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_status:4, grpc_message:"Deadline Exceeded"}"
+>
+10:44:00 robot_arb WARNING OB poll A error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_message:"Deadline Exceeded", grpc_status:4}"
+>
+10:44:08 robot_arb WARNING OB poll A error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_message:"Deadline Exceeded", grpc_status:4}"
+>
+10:44:14 robot_arb WARNING OB poll B error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_message:"Deadline Exceeded", grpc_status:4}"
+>
+10:44:22 robot_arb WARNING OB poll B error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_status:4, grpc_message:"Deadline Exceeded"}"
+>
+10:44:28 robot_arb WARNING OB poll B error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_message:"Deadline Exceeded", grpc_status:4}"
+>
+10:44:34 robot_arb WARNING OB poll B error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_status:4, grpc_message:"Deadline Exceeded"}"
+>
+10:44:42 robot_arb WARNING OB poll B error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_message:"Deadline Exceeded", grpc_status:4}"
+>
+10:44:49 robot_arb WARNING OB poll A error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_message:"Deadline Exceeded", grpc_status:4}"
+>
+10:44:56 robot_arb WARNING OB poll B error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_status:4, grpc_message:"Deadline Exceeded"}"
+>
+10:45:15 robot_arb WARNING OB poll B error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_status:4, grpc_message:"Deadline Exceeded"}"
+>
+10:45:30 robot_arb WARNING OB poll A error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_message:"Deadline Exceeded", grpc_status:4}"
+>
+10:45:30 robot_arb WARNING OB poll B error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_message:"Deadline Exceeded", grpc_status:4}"
+>
+10:45:36 robot_arb WARNING OB poll B error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_message:"Deadline Exceeded", grpc_status:4}"
+>
+10:45:42 robot_arb WARNING OB poll B error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_message:"Deadline Exceeded", grpc_status:4}"
+>
+10:45:57 robot_arb WARNING OB poll B error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_status:4, grpc_message:"Deadline Exceeded"}"
+>
+10:46:04 robot_arb WARNING OB poll B error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_message:"Deadline Exceeded", grpc_status:4}"
+>
+10:46:14 robot_arb WARNING OB poll A error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_message:"Deadline Exceeded", grpc_status:4}"
+>
+10:46:22 robot_arb WARNING OB poll A error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_status:4, grpc_message:"Deadline Exceeded"}"
+>
+10:46:30 robot_arb WARNING OB poll B error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_message:"Deadline Exceeded", grpc_status:4}"
+>
+10:46:38 robot_arb WARNING OB poll A error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_message:"Deadline Exceeded", grpc_status:4}"
+>
+10:46:45 robot_arb WARNING OB poll B error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_message:"Deadline Exceeded", grpc_status:4}"
+>
+10:46:54 robot_arb WARNING OB poll B error: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_message:"Deadline Exceeded", grpc_status:4}"
+>
+10:46:55 robot_arb WARNING OB poll A: token expired, reconnecting...
+10:46:55 robot_arb INFO FinamPy reconnecting (#7)...
+11:00:58 robot_arb INFO Orders manager linked to FinamPy gRPC + trade subscription + reconnect
+11:00:58 robot_arb INFO FinamPy reconnected (#7). Accounts: ['1225950', '1225951', '1225952', '2049688', '1225953']
+11:00:58 robot_arb WARNING OB poll B: token expired, reconnecting...
+11:00:58 robot_arb INFO FinamPy reconnecting (#8)...
+11:00:59 robot_arb INFO Orders manager linked to FinamPy gRPC + trade subscription + reconnect
+11:00:59 robot_arb INFO FinamPy reconnected (#8). Accounts: ['1225950', '1225951', '1225952', '2049688', '1225953']
+11:16:01 robot_arb WARNING OB poll A: token expired, reconnecting...
+11:16:01 robot_arb INFO FinamPy reconnecting (#9)...
+11:16:02 robot_arb INFO Orders manager linked to FinamPy gRPC + trade subscription + reconnect
+11:16:02 robot_arb INFO FinamPy reconnected (#9). Accounts: ['1225950', '1225951', '1225952', '2049688', '1225953']
+11:16:02 robot_arb WARNING OB poll B: token expired, reconnecting...
+11:25:36 robot_arb WARNING OB poll A: rate limited, backing off...
+11:26:06 robot_arb WARNING OB poll B: rate limited, backing off...
+11:26:38 robot_arb WARNING OB poll A: rate limited, backing off...
+11:27:08 robot_arb WARNING OB poll B: rate limited, backing off...
+11:28:26 robot_arb WARNING OB poll A: rate limited, backing off...
+11:28:56 robot_arb WARNING OB poll B: rate limited, backing off...
+11:29:38 robot_arb WARNING OB poll A: rate limited, backing off...
+11:30:08 robot_arb WARNING OB poll B: rate limited, backing off...
+11:30:40 robot_arb WARNING OB poll A: rate limited, backing off...
+11:31:10 robot_arb WARNING OB poll B: rate limited, backing off...
+11:31:41 robot_arb WARNING OB poll A: token expired, reconnecting...
+11:31:41 robot_arb INFO FinamPy reconnecting (#10)...
+11:31:42 robot_arb INFO Orders manager linked to FinamPy gRPC + trade subscription + reconnect
+11:31:42 robot_arb INFO FinamPy reconnected (#10). Accounts: ['1225950', '1225951', '1225952', '2049688', '1225953']
+11:31:42 robot_arb WARNING OB poll B: token expired, reconnecting...
+11:32:23 robot_arb WARNING OB poll A: rate limited, backing off...
+11:32:53 robot_arb WARNING OB poll B: rate limited, backing off...
+11:33:35 robot_arb WARNING OB poll A: rate limited, backing off...
+11:34:05 robot_arb WARNING OB poll B: rate limited, backing off...
+11:34:40 robot_arb WARNING OB poll A: rate limited, backing off...
+11:35:10 robot_arb WARNING OB poll B: rate limited, backing off...
+11:35:41 robot_arb WARNING OB poll B: rate limited, backing off...
+11:36:32 robot_arb WARNING OB poll B: rate limited, backing off...
+11:37:29 robot_arb WARNING OB poll A: rate limited, backing off...
+11:37:59 robot_arb WARNING OB poll B: rate limited, backing off...
+11:38:39 robot_arb WARNING OB poll A: rate limited, backing off...
+11:39:09 robot_arb WARNING OB poll B: rate limited, backing off...
+11:39:44 robot_arb WARNING OB poll A: rate limited, backing off...
+11:40:14 robot_arb WARNING OB poll B: rate limited, backing off...
+11:40:46 robot_arb WARNING OB poll A: rate limited, backing off...
+11:41:16 robot_arb WARNING OB poll B: rate limited, backing off...
+11:41:47 robot_arb WARNING OB poll A: rate limited, backing off...
+11:42:17 robot_arb WARNING OB poll B: rate limited, backing off...
+11:42:48 robot_arb WARNING OB poll A: rate limited, backing off...
+11:43:18 robot_arb WARNING OB poll B: rate limited, backing off...
+11:43:49 robot_arb WARNING OB poll A: rate limited, backing off...
+11:44:19 robot_arb WARNING OB poll B: rate limited, backing off...
+11:44:50 robot_arb WARNING OB poll A: rate limited, backing off...
+11:45:20 robot_arb WARNING OB poll B: rate limited, backing off...
+11:45:51 robot_arb WARNING OB poll A: rate limited, backing off...
+11:46:21 robot_arb WARNING OB poll B: rate limited, backing off...
+11:46:52 robot_arb WARNING OB poll A: token expired, reconnecting...
+11:46:52 robot_arb INFO FinamPy reconnecting (#11)...
+11:46:53 robot_arb INFO Orders manager linked to FinamPy gRPC + trade subscription + reconnect
+11:46:53 robot_arb INFO FinamPy reconnected (#11). Accounts: ['1225950', '1225951', '1225952', '2049688', '1225953']
+11:46:53 robot_arb WARNING OB poll B: token expired, reconnecting...
+11:47:30 robot_arb WARNING OB poll A: rate limited, backing off...
+11:48:00 robot_arb WARNING OB poll B: rate limited, backing off...
+11:48:42 robot_arb WARNING OB poll A: rate limited, backing off...
+11:49:12 robot_arb WARNING OB poll B: rate limited, backing off...
+11:49:46 robot_arb WARNING OB poll A: rate limited, backing off...
+11:50:16 robot_arb WARNING OB poll B: rate limited, backing off...
+11:50:49 robot_arb WARNING OB poll A: rate limited, backing off...
+11:51:19 robot_arb WARNING OB poll B: rate limited, backing off...
+11:51:50 robot_arb WARNING OB poll A: rate limited, backing off...
+11:52:20 robot_arb WARNING OB poll B: rate limited, backing off...
+11:52:51 robot_arb WARNING OB poll A: rate limited, backing off...
+11:53:21 robot_arb WARNING OB poll B: rate limited, backing off...
+11:53:52 robot_arb WARNING OB poll A: rate limited, backing off...
+11:54:22 robot_arb WARNING OB poll B: rate limited, backing off...
+11:54:53 robot_arb WARNING OB poll A: rate limited, backing off...
+11:55:23 robot_arb WARNING OB poll B: rate limited, backing off...
+11:55:54 robot_arb WARNING OB poll A: rate limited, backing off...
+11:56:24 robot_arb WARNING OB poll B: rate limited, backing off...
+11:57:32 robot_arb WARNING OB poll B: rate limited, backing off...
+11:58:35 robot_arb WARNING OB poll A: rate limited, backing off...
+11:59:05 robot_arb WARNING OB poll B: rate limited, backing off...
+11:59:46 robot_arb WARNING OB poll A: rate limited, backing off...
+12:00:16 robot_arb WARNING OB poll B: rate limited, backing off...
+12:00:51 robot_arb WARNING OB poll A: rate limited, backing off...
+12:01:21 robot_arb WARNING OB poll B: rate limited, backing off...
+12:01:52 robot_arb WARNING OB poll A: rate limited, backing off...
+12:02:22 robot_arb WARNING OB poll B: rate limited, backing off...
+12:02:53 robot_arb WARNING OB poll A: token expired, reconnecting...
+12:02:53 robot_arb INFO FinamPy reconnecting (#12)...
+12:02:53 robot_arb INFO Orders manager linked to FinamPy gRPC + trade subscription + reconnect
+12:02:53 robot_arb INFO FinamPy reconnected (#12). Accounts: ['1225950', '1225951', '1225952', '2049688', '1225953']
+12:02:53 robot_arb WARNING OB poll B: token expired, reconnecting...
+12:17:55 robot_arb WARNING OB poll B: token expired, reconnecting...
+12:17:55 robot_arb INFO FinamPy reconnecting (#13)...
+12:17:56 robot_arb INFO Orders manager linked to FinamPy gRPC + trade subscription + reconnect
+12:17:56 robot_arb INFO FinamPy reconnected (#13). Accounts: ['1225950', '1225951', '1225952', '2049688', '1225953']
+12:25:48 robot_arb WARNING OB poll B: rate limited, backing off...
+12:26:51 robot_arb WARNING OB poll A: rate limited, backing off...
+12:27:21 robot_arb WARNING OB poll B: rate limited, backing off...
+12:28:02 robot_arb WARNING OB poll A: rate limited, backing off...
+12:28:32 robot_arb WARNING OB poll B: rate limited, backing off...
+12:29:07 robot_arb WARNING OB poll A: rate limited, backing off...
+12:29:37 robot_arb WARNING OB poll B: rate limited, backing off...
+12:30:08 robot_arb WARNING OB poll A: rate limited, backing off...
+12:30:38 robot_arb WARNING OB poll B: rate limited, backing off...
+12:31:09 robot_arb WARNING OB poll A: rate limited, backing off...
+12:31:39 robot_arb WARNING OB poll B: rate limited, backing off...
+12:32:10 robot_arb WARNING OB poll A: rate limited, backing off...
+12:32:40 robot_arb WARNING OB poll B: rate limited, backing off...
+12:33:11 robot_arb WARNING OB poll A: token expired, reconnecting...
+12:33:11 robot_arb INFO FinamPy reconnecting (#14)...
+12:33:12 robot_arb INFO Orders manager linked to FinamPy gRPC + trade subscription + reconnect
+12:33:12 robot_arb INFO FinamPy reconnected (#14). Accounts: ['1225950', '1225951', '1225952', '2049688', '1225953']
+12:33:12 robot_arb WARNING OB poll B: token expired, reconnecting...
+12:33:13 robot_arb WARNING OB poll A: rate limited, backing off...
+12:33:43 robot_arb WARNING OB poll B: rate limited, backing off...
+12:34:14 robot_arb WARNING OB poll A: rate limited, backing off...
+12:34:44 robot_arb WARNING OB poll B: rate limited, backing off...
+12:35:15 robot_arb WARNING OB poll A: rate limited, backing off...
+12:35:45 robot_arb WARNING OB poll B: rate limited, backing off...
+12:36:16 robot_arb WARNING OB poll A: rate limited, backing off...
+12:37:04 robot_arb WARNING OB poll A: rate limited, backing off...
+12:37:34 robot_arb WARNING OB poll B: rate limited, backing off...
+12:38:10 robot_arb WARNING OB poll A: rate limited, backing off...
+12:38:40 robot_arb WARNING OB poll B: rate limited, backing off...
+12:39:12 robot_arb WARNING OB poll B: rate limited, backing off...
+12:40:04 robot_arb WARNING OB poll A: rate limited, backing off...
+12:40:34 robot_arb WARNING OB poll B: rate limited, backing off...
+12:41:11 robot_arb WARNING OB poll A: rate limited, backing off...
+12:41:41 robot_arb WARNING OB poll B: rate limited, backing off...
+12:48:13 robot_arb WARNING OB poll A: token expired, reconnecting...
+12:48:13 robot_arb INFO FinamPy reconnecting (#15)...
+12:48:14 robot_arb INFO Orders manager linked to FinamPy gRPC + trade subscription + reconnect
+12:48:14 robot_arb INFO FinamPy reconnected (#15). Accounts: ['1225950', '1225951', '1225952', '2049688', '1225953']
+12:48:14 robot_arb WARNING OB poll B: token expired, reconnecting...
+13:03:16 robot_arb WARNING OB poll A: token expired, reconnecting...
+13:03:16 robot_arb INFO FinamPy reconnecting (#16)...
+13:03:17 robot_arb INFO Orders manager linked to FinamPy gRPC + trade subscription + reconnect
+13:03:17 robot_arb INFO FinamPy reconnected (#16). Accounts: ['1225950', '1225951', '1225952', '2049688', '1225953']
+13:03:17 robot_arb WARNING OB poll B: token expired, reconnecting...
+13:18:19 robot_arb WARNING OB poll A: token expired, reconnecting...
+13:18:19 robot_arb INFO FinamPy reconnecting (#17)...
+13:18:20 robot_arb INFO Orders manager linked to FinamPy gRPC + trade subscription + reconnect
+13:18:20 robot_arb INFO FinamPy reconnected (#17). Accounts: ['1225950', '1225951', '1225952', '2049688', '1225953']
+13:18:20 robot_arb WARNING OB poll B: token expired, reconnecting...
+13:33:22 robot_arb WARNING OB poll A: token expired, reconnecting...
+13:33:22 robot_arb INFO FinamPy reconnecting (#18)...
+13:33:23 robot_arb INFO Orders manager linked to FinamPy gRPC + trade subscription + reconnect
+13:33:23 robot_arb INFO FinamPy reconnected (#18). Accounts: ['1225950', '1225951', '1225952', '2049688', '1225953']
+13:33:23 robot_arb WARNING OB poll B: token expired, reconnecting...
+13:48:24 robot_arb WARNING OB poll A: token expired, reconnecting...
+13:48:24 robot_arb INFO FinamPy reconnecting (#19)...
+13:48:25 robot_arb INFO Orders manager linked to FinamPy gRPC + trade subscription + reconnect
+13:48:25 robot_arb INFO FinamPy reconnected (#19). Accounts: ['1225950', '1225951', '1225952', '2049688', '1225953']
+13:48:25 robot_arb WARNING OB poll B: token expired, reconnecting...
+14:03:27 robot_arb WARNING OB poll A: token expired, reconnecting...
+14:03:27 robot_arb INFO FinamPy reconnecting (#20)...
+14:03:28 robot_arb INFO Orders manager linked to FinamPy gRPC + trade subscription + reconnect
+14:03:28 robot_arb INFO FinamPy reconnected (#20). Accounts: ['1225950', '1225951', '1225952', '2049688', '1225953']
+14:03:28 robot_arb WARNING OB poll B: token expired, reconnecting...
+14:18:30 robot_arb WARNING OB poll A: token expired, reconnecting...
+14:18:30 robot_arb INFO FinamPy reconnecting (#21)...
+14:18:30 robot_arb INFO Orders manager linked to FinamPy gRPC + trade subscription + reconnect
+14:18:30 robot_arb INFO FinamPy reconnected (#21). Accounts: ['1225950', '1225951', '1225952', '2049688', '1225953']
+14:18:30 robot_arb WARNING OB poll B: token expired, reconnecting...
+14:33:32 robot_arb WARNING OB poll A: token expired, reconnecting...
+14:33:32 robot_arb INFO FinamPy reconnecting (#22)...
+14:33:33 robot_arb INFO Orders manager linked to FinamPy gRPC + trade subscription + reconnect
+14:33:33 robot_arb INFO FinamPy reconnected (#22). Accounts: ['1225950', '1225951', '1225952', '2049688', '1225953']
+14:33:33 robot_arb WARNING OB poll B: token expired, reconnecting...
+14:48:35 robot_arb WARNING OB poll A: token expired, reconnecting...
+14:48:35 robot_arb INFO FinamPy reconnecting (#23)...
+14:48:36 robot_arb INFO Orders manager linked to FinamPy gRPC + trade subscription + reconnect
+14:48:36 robot_arb INFO FinamPy reconnected (#23). Accounts: ['1225950', '1225951', '1225952', '2049688', '1225953']
+14:48:36 robot_arb WARNING OB poll B: token expired, reconnecting...
+15:02:24 robot_arb WARNING POST /account received: {'account': '2049688'}
+15:02:24 robot_arb INFO Account changed → 2049688
+15:02:24 robot_arb INFO Param updated: ticker_a = GAZP (was GAZP)
+15:02:24 robot_arb INFO Param updated: symbol_a = GAZP@RTSX (was GAZP@RTSX)
+15:02:24 robot_arb INFO Param updated: ticker_b = GZU6 (was GZU6)
+15:02:24 robot_arb INFO Param updated: symbol_b = GZU6@RTSX (was GZU6@RTSX)
+15:02:24 robot_arb INFO Param updated: lots_a = 10 (was 10)
+15:02:24 robot_arb INFO Param updated: lots_b = 1 (was 1)
+15:02:24 robot_arb INFO Param updated: hedge_ratio = 10 (was 10)
+15:02:24 robot_arb INFO Param updated: capital = 20000 (was 20000)
+15:02:24 robot_arb INFO Param updated: entry_z = 2 (was 2)
+15:02:24 robot_arb INFO Param updated: entry_z_long = -6.1 (was -6.1)
+15:02:24 robot_arb INFO Param updated: entry_mode = zscore (was spread_rub)
+15:02:24 robot_arb INFO Param updated: spread_rub_high = 232 (was 232)
+15:02:24 robot_arb INFO Param updated: spread_rub_low = 183 (was 200)
+15:02:24 robot_arb INFO Param updated: risk_free_rate = 0.1425 (was 0.1425)
+15:02:24 robot_arb INFO Param updated: expiration_date = 2026-09-18 (was 2026-09-18)
+15:02:24 robot_arb INFO Param updated: contract_size = 100 (was 100)
+15:02:24 robot_arb INFO Param updated: lookback = 200 (was 200)
+15:02:24 robot_arb INFO Param updated: leg_a_timeout = 5 (was 5)
+15:02:24 robot_arb INFO Param updated: min_fill_ratio = 0.5 (was 0.5)
+15:02:24 robot_arb INFO Param updated: min_profit_type = rub (was rub)
+15:02:24 robot_arb INFO Param updated: min_profit_value = 50 (was 50)
+15:02:24 robot_arb INFO Param updated: risk_type = stop_loss_rub (was stop_loss_rub)
+15:02:24 robot_arb INFO Param updated: risk_value = 50000 (was 50000)
+15:02:24 robot_arb INFO Param updated: allow_long_basis = False (was False)
+15:02:24 robot_arb INFO Param updated: use_commission = True (was True)
+15:02:24 robot_arb INFO Param updated: commission_stock_pct = 0.035 (was 0.035)
+15:02:24 robot_arb INFO Param updated: commission_futures_rt = 0.9 (was 0.9)
+15:02:29 robot_arb WARNING POST /account received: {'account': '2049688'}
+15:02:29 robot_arb INFO Account changed → 2049688
+15:02:29 robot_arb INFO Param updated: ticker_a = GAZP (was GAZP)
+15:02:29 robot_arb INFO Param updated: symbol_a = GAZP@RTSX (was GAZP@RTSX)
+15:02:29 robot_arb INFO Param updated: ticker_b = GZU6 (was GZU6)
+15:02:29 robot_arb INFO Param updated: symbol_b = GZU6@RTSX (was GZU6@RTSX)
+15:02:29 robot_arb INFO Param updated: lots_a = 10 (was 10)
+15:02:29 robot_arb INFO Param updated: lots_b = 1 (was 1)
+15:02:29 robot_arb INFO Param updated: hedge_ratio = 10 (was 10)
+15:02:29 robot_arb INFO Param updated: capital = 20000 (was 20000)
+15:02:29 robot_arb INFO Param updated: entry_z = 2.3 (was 2)
+15:02:29 robot_arb INFO Param updated: entry_z_long = -6.1 (was -6.1)
+15:02:29 robot_arb INFO Param updated: entry_mode = zscore (was zscore)
+15:02:29 robot_arb INFO Param updated: spread_rub_high = 232 (was 232)
+15:02:29 robot_arb INFO Param updated: spread_rub_low = 183 (was 183)
+15:02:29 robot_arb INFO Param updated: risk_free_rate = 0.1425 (was 0.1425)
+15:02:29 robot_arb INFO Param updated: expiration_date = 2026-09-18 (was 2026-09-18)
+15:02:29 robot_arb INFO Param updated: contract_size = 100 (was 100)
+15:02:29 robot_arb INFO Param updated: lookback = 200 (was 200)
+15:02:29 robot_arb INFO Param updated: leg_a_timeout = 5 (was 5)
+15:02:29 robot_arb INFO Param updated: min_fill_ratio = 0.5 (was 0.5)
+15:02:29 robot_arb INFO Param updated: min_profit_type = rub (was rub)
+15:02:29 robot_arb INFO Param updated: min_profit_value = 50 (was 50)
+15:02:29 robot_arb INFO Param updated: risk_type = stop_loss_rub (was stop_loss_rub)
+15:02:29 robot_arb INFO Param updated: risk_value = 50000 (was 50000)
+15:02:29 robot_arb INFO Param updated: allow_long_basis = False (was False)
+15:02:29 robot_arb INFO Param updated: use_commission = True (was True)
+15:02:29 robot_arb INFO Param updated: commission_stock_pct = 0.035 (was 0.035)
+15:02:29 robot_arb INFO Param updated: commission_futures_rt = 0.9 (was 0.9)
+15:02:33 robot_arb WARNING POST /account received: {'account': '2049688'}
+15:02:33 robot_arb INFO Account changed → 2049688
+15:02:33 robot_arb INFO Param updated: ticker_a = GAZP (was GAZP)
+15:02:33 robot_arb INFO Param updated: symbol_a = GAZP@RTSX (was GAZP@RTSX)
+15:02:33 robot_arb INFO Param updated: ticker_b = GZU6 (was GZU6)
+15:02:33 robot_arb INFO Param updated: symbol_b = GZU6@RTSX (was GZU6@RTSX)
+15:02:33 robot_arb INFO Param updated: lots_a = 10 (was 10)
+15:02:33 robot_arb INFO Param updated: lots_b = 1 (was 1)
+15:02:33 robot_arb INFO Param updated: hedge_ratio = 10 (was 10)
+15:02:33 robot_arb INFO Param updated: capital = 20000 (was 20000)
+15:02:33 robot_arb INFO Param updated: entry_z = 2.3 (was 2.3)
+15:02:33 robot_arb INFO Param updated: entry_z_long = -6.1 (was -6.1)
+15:02:33 robot_arb INFO Param updated: entry_mode = zscore (was zscore)
+15:02:33 robot_arb INFO Param updated: spread_rub_high = 232 (was 232)
+15:02:33 robot_arb INFO Param updated: spread_rub_low = 183 (was 183)
+15:02:33 robot_arb INFO Param updated: risk_free_rate = 0.1425 (was 0.1425)
+15:02:33 robot_arb INFO Param updated: expiration_date = 2026-09-18 (was 2026-09-18)
+15:02:33 robot_arb INFO Param updated: contract_size = 100 (was 100)
+15:02:33 robot_arb INFO Param updated: lookback = 200 (was 200)
+15:02:33 robot_arb INFO Param updated: leg_a_timeout = 5 (was 5)
+15:02:33 robot_arb INFO Param updated: min_fill_ratio = 0.5 (was 0.5)
+15:02:33 robot_arb INFO Param updated: min_profit_type = rub (was rub)
+15:02:33 robot_arb INFO Param updated: min_profit_value = 50 (was 50)
+15:02:33 robot_arb INFO Param updated: risk_type = stop_loss_rub (was stop_loss_rub)
+15:02:33 robot_arb INFO Param updated: risk_value = 50000 (was 50000)
+15:02:33 robot_arb INFO Param updated: allow_long_basis = False (was False)
+15:02:33 robot_arb INFO Param updated: use_commission = True (was True)
+15:02:33 robot_arb INFO Param updated: commission_stock_pct = 0.035 (was 0.035)
+15:02:33 robot_arb INFO Param updated: commission_futures_rt = 0.9 (was 0.9)
+15:03:38 robot_arb WARNING OB poll A: token expired, reconnecting...
+15:03:38 robot_arb INFO FinamPy reconnecting (#24)...
+15:03:39 robot_arb INFO Orders manager linked to FinamPy gRPC + trade subscription + reconnect
+15:03:39 robot_arb INFO FinamPy reconnected (#24). Accounts: ['1225950', '1225951', '1225952', '2049688', '1225953']
+15:03:39 robot_arb WARNING OB poll B: token expired, reconnecting...
+15:07:50 robot_arb WARNING OB poll A: rate limited, backing off...
+15:08:20 robot_arb WARNING OB poll B: rate limited, backing off...
+15:08:56 robot_arb WARNING OB poll A: rate limited, backing off...
+15:09:26 robot_arb WARNING OB poll B: rate limited, backing off...
+15:09:59 robot_arb WARNING OB poll A: rate limited, backing off...
+15:10:29 robot_arb WARNING OB poll B: rate limited, backing off...
+15:11:00 robot_arb WARNING OB poll A: rate limited, backing off...
+15:11:30 robot_arb WARNING OB poll B: rate limited, backing off...
+15:12:01 robot_arb WARNING OB poll A: rate limited, backing off...
+15:12:31 robot_arb WARNING OB poll B: rate limited, backing off...
+15:13:02 robot_arb WARNING OB poll A: rate limited, backing off...
+15:13:32 robot_arb WARNING OB poll B: rate limited, backing off...
+15:14:03 robot_arb WARNING OB poll A: rate limited, backing off...
+15:14:33 robot_arb WARNING OB poll B: rate limited, backing off...
+15:15:04 robot_arb WARNING OB poll A: rate limited, backing off...
+15:15:34 robot_arb WARNING OB poll B: rate limited, backing off...
+15:16:05 robot_arb WARNING OB poll A: rate limited, backing off...
+15:16:35 robot_arb WARNING OB poll B: rate limited, backing off...
+15:17:44 robot_arb WARNING OB poll A: rate limited, backing off...
+15:18:14 robot_arb WARNING OB poll B: rate limited, backing off...
+15:18:45 robot_arb WARNING OB poll A: token expired, reconnecting...
+15:18:45 robot_arb INFO FinamPy reconnecting (#25)...
+15:18:46 robot_arb INFO Orders manager linked to FinamPy gRPC + trade subscription + reconnect
+15:18:46 robot_arb INFO FinamPy reconnected (#25). Accounts: ['1225950', '1225951', '1225952', '2049688', '1225953']
+15:18:46 robot_arb WARNING OB poll B: token expired, reconnecting...
+15:18:58 robot_arb WARNING OB poll A: rate limited, backing off...
+15:19:28 robot_arb WARNING OB poll B: rate limited, backing off...
+15:20:02 robot_arb WARNING OB poll A: rate limited, backing off...
+15:20:32 robot_arb WARNING OB poll B: rate limited, backing off...
+15:21:03 robot_arb WARNING OB poll A: rate limited, backing off...
+15:21:33 robot_arb WARNING OB poll B: rate limited, backing off...
+15:22:05 robot_arb WARNING OB poll A: rate limited, backing off...
+15:22:35 robot_arb WARNING OB poll B: rate limited, backing off...
+15:23:06 robot_arb WARNING OB poll A: rate limited, backing off...
+15:23:36 robot_arb WARNING OB poll B: rate limited, backing off...
+15:24:07 robot_arb WARNING OB poll A: rate limited, backing off...
+15:24:37 robot_arb WARNING OB poll B: rate limited, backing off...
+15:25:08 robot_arb WARNING OB poll A: rate limited, backing off...
+15:25:38 robot_arb WARNING OB poll B: rate limited, backing off...
+15:26:09 robot_arb WARNING OB poll A: rate limited, backing off...
+15:26:39 robot_arb WARNING OB poll B: rate limited, backing off...
+15:27:10 robot_arb WARNING OB poll A: rate limited, backing off...
+15:27:40 robot_arb WARNING OB poll B: rate limited, backing off...
+15:28:48 robot_arb WARNING OB poll A: rate limited, backing off...
+15:29:18 robot_arb WARNING OB poll B: rate limited, backing off...
+15:30:01 robot_arb WARNING OB poll A: rate limited, backing off...
+15:30:31 robot_arb WARNING OB poll B: rate limited, backing off...
+15:31:05 robot_arb WARNING OB poll A: rate limited, backing off...
+15:31:35 robot_arb WARNING OB poll B: rate limited, backing off...
+15:32:07 robot_arb WARNING OB poll A: rate limited, backing off...
+15:32:37 robot_arb WARNING OB poll B: rate limited, backing off...
+15:33:08 robot_arb WARNING OB poll A: rate limited, backing off...
+15:33:38 robot_arb WARNING OB poll B: rate limited, backing off...
+15:34:09 robot_arb WARNING OB poll A: token expired, reconnecting...
+15:34:09 robot_arb INFO FinamPy reconnecting (#26)...
+15:34:10 robot_arb INFO Orders manager linked to FinamPy gRPC + trade subscription + reconnect
+15:34:10 robot_arb INFO FinamPy reconnected (#26). Accounts: ['1225950', '1225951', '1225952', '2049688', '1225953']
+15:34:10 robot_arb WARNING OB poll B: token expired, reconnecting...
+15:34:11 robot_arb WARNING OB poll A: rate limited, backing off...
+15:34:41 robot_arb WARNING OB poll B: rate limited, backing off...
+15:35:12 robot_arb WARNING OB poll A: rate limited, backing off...
+15:35:42 robot_arb WARNING OB poll B: rate limited, backing off...
+15:36:49 robot_arb WARNING OB poll A: rate limited, backing off...
+15:37:19 robot_arb WARNING OB poll B: rate limited, backing off...
+15:38:03 robot_arb WARNING OB poll B: rate limited, backing off...
+15:38:57 robot_arb WARNING OB poll A: rate limited, backing off...
+15:39:27 robot_arb WARNING OB poll B: rate limited, backing off...
+15:40:06 robot_arb WARNING OB poll A: rate limited, backing off...
+15:40:36 robot_arb WARNING OB poll B: rate limited, backing off...
+15:41:09 robot_arb WARNING OB poll A: rate limited, backing off...
+15:41:39 robot_arb WARNING OB poll B: rate limited, backing off...
+15:42:10 robot_arb WARNING OB poll A: rate limited, backing off...
+15:42:40 robot_arb WARNING OB poll B: rate limited, backing off...
+15:43:11 robot_arb WARNING OB poll A: rate limited, backing off...
+15:43:41 robot_arb WARNING OB poll B: rate limited, backing off...
+15:44:12 robot_arb WARNING OB poll A: rate limited, backing off...
+15:44:42 robot_arb WARNING OB poll B: rate limited, backing off...
+15:45:14 robot_arb WARNING OB poll A: rate limited, backing off...
+15:45:44 robot_arb WARNING OB poll B: rate limited, backing off...
+15:46:15 robot_arb WARNING OB poll A: rate limited, backing off...
+15:46:45 robot_arb WARNING OB poll B: rate limited, backing off...
+15:47:16 robot_arb WARNING OB poll A: rate limited, backing off...
+15:47:46 robot_arb WARNING OB poll B: rate limited, backing off...
+15:48:53 robot_arb WARNING OB poll A: rate limited, backing off...
+15:49:23 robot_arb WARNING OB poll B: rate limited, backing off...
+15:49:54 robot_arb WARNING OB poll A: token expired, reconnecting...
+15:49:54 robot_arb INFO FinamPy reconnecting (#27)...
+15:49:55 robot_arb INFO Orders manager linked to FinamPy gRPC + trade subscription + reconnect
+15:49:55 robot_arb INFO FinamPy reconnected (#27). Accounts: ['1225950', '1225951', '1225952', '2049688', '1225953']
+15:49:55 robot_arb WARNING OB poll B: token expired, reconnecting...
+15:50:06 robot_arb WARNING OB poll B: rate limited, backing off...
+15:51:01 robot_arb WARNING OB poll A: rate limited, backing off...
+15:51:31 robot_arb WARNING OB poll B: rate limited, backing off...
+15:52:10 robot_arb WARNING OB poll A: rate limited, backing off...
+15:52:40 robot_arb WARNING OB poll B: rate limited, backing off...
+15:53:13 robot_arb WARNING OB poll A: rate limited, backing off...
+15:53:43 robot_arb WARNING OB poll B: rate limited, backing off...
+15:54:14 robot_arb WARNING OB poll A: rate limited, backing off...
+15:54:44 robot_arb WARNING OB poll B: rate limited, backing off...
+15:55:15 robot_arb WARNING OB poll A: rate limited, backing off...
+15:55:45 robot_arb WARNING OB poll B: rate limited, backing off...
+15:56:16 robot_arb WARNING OB poll A: rate limited, backing off...
+15:56:46 robot_arb WARNING OB poll B: rate limited, backing off...
+15:57:17 robot_arb WARNING OB poll A: rate limited, backing off...
+15:57:47 robot_arb WARNING OB poll B: rate limited, backing off...
+15:58:55 robot_arb WARNING OB poll B: rate limited, backing off...
+15:59:58 robot_arb WARNING OB poll A: rate limited, backing off...
+16:00:28 robot_arb WARNING OB poll B: rate limited, backing off...
+16:01:09 robot_arb WARNING OB poll A: rate limited, backing off...
+16:01:39 robot_arb WARNING OB poll B: rate limited, backing off...
+16:02:14 robot_arb WARNING OB poll A: rate limited, backing off...
+16:02:44 robot_arb WARNING OB poll B: rate limited, backing off...
+16:03:16 robot_arb WARNING OB poll A: rate limited, backing off...
+16:03:46 robot_arb WARNING OB poll B: rate limited, backing off...
+16:04:17 robot_arb WARNING OB poll A: rate limited, backing off...
+16:04:47 robot_arb WARNING OB poll B: rate limited, backing off...
+16:05:18 robot_arb WARNING OB poll A: token expired, reconnecting...
+16:05:18 robot_arb INFO FinamPy reconnecting (#28)...
+16:05:19 robot_arb INFO Orders manager linked to FinamPy gRPC + trade subscription + reconnect
+16:05:19 robot_arb INFO FinamPy reconnected (#28). Accounts: ['1225950', '1225951', '1225952', '2049688', '1225953']
+16:05:19 robot_arb WARNING OB poll B: token expired, reconnecting...
+16:05:20 robot_arb WARNING OB poll A: rate limited, backing off...
+16:05:50 robot_arb WARNING OB poll B: rate limited, backing off...
+16:06:21 robot_arb WARNING OB poll A: rate limited, backing off...
+16:06:51 robot_arb WARNING OB poll B: rate limited, backing off...
+16:07:22 robot_arb WARNING OB poll A: rate limited, backing off...
+16:07:52 robot_arb WARNING OB poll B: rate limited, backing off...
+16:08:23 robot_arb WARNING OB poll A: rate limited, backing off...
+16:08:53 robot_arb WARNING OB poll B: rate limited, backing off...
+16:10:02 robot_arb WARNING OB poll A: rate limited, backing off...
+16:10:32 robot_arb WARNING OB poll B: rate limited, backing off...
+16:11:14 robot_arb WARNING OB poll A: rate limited, backing off...
+16:11:44 robot_arb WARNING OB poll B: rate limited, backing off...
+16:12:19 robot_arb WARNING OB poll A: rate limited, backing off...
+16:12:49 robot_arb WARNING OB poll B: rate limited, backing off...
+16:13:21 robot_arb WARNING OB poll A: rate limited, backing off...
+16:13:51 robot_arb WARNING OB poll B: rate limited, backing off...
+16:14:22 robot_arb WARNING OB poll A: rate limited, backing off...
+16:14:52 robot_arb WARNING OB poll B: rate limited, backing off...
+16:15:23 robot_arb WARNING OB poll A: rate limited, backing off...
+16:15:53 robot_arb WARNING OB poll B: rate limited, backing off...
+16:16:24 robot_arb WARNING OB poll A: rate limited, backing off...
+16:16:54 robot_arb WARNING OB poll B: rate limited, backing off...
+16:17:25 robot_arb WARNING OB poll A: rate limited, backing off...
+16:17:55 robot_arb WARNING OB poll B: rate limited, backing off...
+16:18:26 robot_arb WARNING OB poll A: rate limited, backing off...
+16:18:56 robot_arb WARNING OB poll B: rate limited, backing off...
+16:19:27 robot_arb WARNING OB poll A: rate limited, backing off...
+16:19:57 robot_arb WARNING OB poll B: rate limited, backing off...
+16:20:28 robot_arb WARNING OB poll A: token expired, reconnecting...
+16:20:28 robot_arb INFO FinamPy reconnecting (#29)...
+16:20:29 robot_arb INFO Orders manager linked to FinamPy gRPC + trade subscription + reconnect
+16:20:29 robot_arb INFO FinamPy reconnected (#29). Accounts: ['1225950', '1225951', '1225952', '2049688', '1225953']
+16:20:29 robot_arb WARNING OB poll B: token expired, reconnecting...
+16:21:06 robot_arb WARNING OB poll A: rate limited, backing off...
+16:21:36 robot_arb WARNING OB poll B: rate limited, backing off...
+16:35:31 robot_arb WARNING OB poll A: token expired, reconnecting...
+16:35:31 robot_arb INFO FinamPy reconnecting (#30)...
+16:35:32 robot_arb INFO Orders manager linked to FinamPy gRPC + trade subscription + reconnect
+16:35:32 robot_arb INFO FinamPy reconnected (#30). Accounts: ['1225950', '1225951', '1225952', '2049688', '1225953']
+16:35:32 robot_arb WARNING OB poll B: token expired, reconnecting...
+16:50:34 robot_arb WARNING OB poll A: token expired, reconnecting...
+16:50:34 robot_arb INFO FinamPy reconnecting (#31)...
+16:50:35 robot_arb INFO Orders manager linked to FinamPy gRPC + trade subscription + reconnect
+16:50:35 robot_arb INFO FinamPy reconnected (#31). Accounts: ['1225950', '1225951', '1225952', '2049688', '1225953']
+16:50:35 robot_arb WARNING OB poll B: token expired, reconnecting...
+16:51:50 robot_arb WARNING OB poll A: rate limited, backing off...
+16:52:20 robot_arb WARNING OB poll B: rate limited, backing off...
+16:52:51 robot_arb WARNING OB poll A: rate limited, backing off...
+16:53:21 robot_arb WARNING OB poll B: rate limited, backing off...
+16:54:29 robot_arb WARNING OB poll A: rate limited, backing off...
+16:54:59 robot_arb WARNING OB poll B: rate limited, backing off...
+16:55:42 robot_arb WARNING OB poll B: rate limited, backing off...
+16:56:36 robot_arb WARNING OB poll A: rate limited, backing off...
+16:57:06 robot_arb WARNING OB poll B: rate limited, backing off...
+16:57:45 robot_arb WARNING OB poll A: rate limited, backing off...
+16:58:15 robot_arb WARNING OB poll B: rate limited, backing off...
+16:58:48 robot_arb WARNING OB poll A: rate limited, backing off...
+16:59:18 robot_arb WARNING OB poll B: rate limited, backing off...
+16:59:49 robot_arb WARNING OB poll A: rate limited, backing off...
+17:00:19 robot_arb WARNING OB poll B: rate limited, backing off...
+17:00:50 robot_arb WARNING OB poll A: rate limited, backing off...
+17:01:20 robot_arb WARNING OB poll B: rate limited, backing off...
+17:01:52 robot_arb WARNING OB poll A: rate limited, backing off...
+17:02:22 robot_arb WARNING OB poll B: rate limited, backing off...
+17:02:53 robot_arb WARNING OB poll A: rate limited, backing off...
+17:03:23 robot_arb WARNING OB poll B: rate limited, backing off...
+17:03:54 robot_arb WARNING OB poll A: rate limited, backing off...
+17:04:24 robot_arb WARNING OB poll B: rate limited, backing off...
+17:04:55 robot_arb WARNING OB poll A: rate limited, backing off...
+17:05:25 robot_arb WARNING OB poll B: rate limited, backing off...
+17:05:56 robot_arb WARNING OB poll A: token expired, reconnecting...
+17:05:56 robot_arb INFO FinamPy reconnecting (#32)...
+17:05:57 robot_arb INFO Orders manager linked to FinamPy gRPC + trade subscription + reconnect
+17:05:57 robot_arb INFO FinamPy reconnected (#32). Accounts: ['1225950', '1225951', '1225952', '2049688', '1225953']
+17:05:57 robot_arb WARNING OB poll B: token expired, reconnecting...
+17:06:34 robot_arb WARNING OB poll A: rate limited, backing off...
+17:07:04 robot_arb WARNING OB poll B: rate limited, backing off...
+17:07:47 robot_arb WARNING OB poll A: rate limited, backing off...
+17:08:17 robot_arb WARNING OB poll B: rate limited, backing off...
+17:08:51 robot_arb WARNING OB poll A: rate limited, backing off...
+17:09:21 robot_arb WARNING OB poll B: rate limited, backing off...
+17:09:53 robot_arb WARNING OB poll A: rate limited, backing off...
+17:10:23 robot_arb WARNING OB poll B: rate limited, backing off...
+17:10:54 robot_arb WARNING OB poll A: rate limited, backing off...
+17:11:24 robot_arb WARNING OB poll B: rate limited, backing off...
+17:11:55 robot_arb WARNING OB poll A: rate limited, backing off...
+17:12:25 robot_arb WARNING OB poll B: rate limited, backing off...
+17:12:56 robot_arb WARNING OB poll A: rate limited, backing off...
+17:13:26 robot_arb WARNING OB poll B: rate limited, backing off...
+17:13:58 robot_arb WARNING OB poll A: rate limited, backing off...
+17:14:28 robot_arb WARNING OB poll B: rate limited, backing off...
+17:14:59 robot_arb WARNING OB poll A: rate limited, backing off...
+17:15:29 robot_arb WARNING OB poll B: rate limited, backing off...
+17:15:48 robot_arb WARNING Account 2049688: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.RESOURCE_EXHAUSTED
+	details = "Too Many Requests"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_status:8, grpc_message:"Too Many Requests"}"
+>
+17:16:36 robot_arb WARNING OB poll A: rate limited, backing off...
+17:17:06 robot_arb WARNING OB poll B: rate limited, backing off...
+17:17:50 robot_arb WARNING OB poll A: rate limited, backing off...
+17:18:20 robot_arb WARNING OB poll B: rate limited, backing off...
+17:18:54 robot_arb WARNING OB poll A: rate limited, backing off...
+17:19:24 robot_arb WARNING OB poll B: rate limited, backing off...
+17:19:55 robot_arb WARNING OB poll B: rate limited, backing off...
+17:20:43 robot_arb WARNING OB poll A: rate limited, backing off...
+17:20:47 robot_arb WARNING Account 2049688: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.RESOURCE_EXHAUSTED
+	details = "Too Many Requests"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_message:"Too Many Requests", grpc_status:8}"
+>
+17:21:13 robot_arb WARNING OB poll B: rate limited, backing off...
+17:21:44 robot_arb WARNING OB poll A: token expired, reconnecting...
+17:21:44 robot_arb INFO FinamPy reconnecting (#33)...
+17:21:45 robot_arb INFO Orders manager linked to FinamPy gRPC + trade subscription + reconnect
+17:21:45 robot_arb INFO FinamPy reconnected (#33). Accounts: ['1225950', '1225951', '1225952', '2049688', '1225953']
+17:21:45 robot_arb WARNING OB poll B: token expired, reconnecting...
+17:21:47 robot_arb WARNING Account 2049688: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.RESOURCE_EXHAUSTED
+	details = "Too Many Requests"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_message:"Too Many Requests", grpc_status:8}"
+>
+17:21:50 robot_arb WARNING OB poll A: rate limited, backing off...
+17:22:20 robot_arb WARNING OB poll B: rate limited, backing off...
+17:22:51 robot_arb WARNING OB poll A: rate limited, backing off...
+17:23:21 robot_arb WARNING OB poll B: rate limited, backing off...
+17:23:47 robot_arb WARNING Account 2049688: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.RESOURCE_EXHAUSTED
+	details = "Too Many Requests"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_message:"Too Many Requests", grpc_status:8}"
+>
+17:23:52 robot_arb WARNING OB poll A: rate limited, backing off...
+17:24:22 robot_arb WARNING OB poll B: rate limited, backing off...
+17:24:47 robot_arb WARNING Account 2049688: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.RESOURCE_EXHAUSTED
+	details = "Too Many Requests"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_message:"Too Many Requests", grpc_status:8}"
+>
+17:24:53 robot_arb WARNING OB poll A: rate limited, backing off...
+17:25:23 robot_arb WARNING OB poll B: rate limited, backing off...
+17:25:55 robot_arb WARNING OB poll A: rate limited, backing off...
+17:26:25 robot_arb WARNING OB poll B: rate limited, backing off...
+17:26:47 robot_arb WARNING Account 2049688: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.RESOURCE_EXHAUSTED
+	details = "Too Many Requests"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_status:8, grpc_message:"Too Many Requests"}"
+>
+17:26:56 robot_arb WARNING OB poll A: rate limited, backing off...
+17:27:26 robot_arb WARNING OB poll B: rate limited, backing off...
+17:27:47 robot_arb WARNING Account 2049688: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.RESOURCE_EXHAUSTED
+	details = "Too Many Requests"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_message:"Too Many Requests", grpc_status:8}"
+>
+17:27:57 robot_arb WARNING OB poll A: rate limited, backing off...
+17:28:27 robot_arb WARNING OB poll B: rate limited, backing off...
+17:28:58 robot_arb WARNING OB poll A: rate limited, backing off...
+17:29:28 robot_arb WARNING OB poll B: rate limited, backing off...
+17:29:47 robot_arb WARNING Account 2049688: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.RESOURCE_EXHAUSTED
+	details = "Too Many Requests"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_message:"Too Many Requests", grpc_status:8}"
+>
+17:29:59 robot_arb WARNING OB poll A: rate limited, backing off...
+17:30:29 robot_arb WARNING OB poll B: rate limited, backing off...
+17:31:00 robot_arb WARNING OB poll A: rate limited, backing off...
+17:31:30 robot_arb WARNING OB poll B: rate limited, backing off...
+17:31:47 robot_arb WARNING Account 2049688: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.RESOURCE_EXHAUSTED
+	details = "Too Many Requests"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_message:"Too Many Requests", grpc_status:8}"
+>
+17:32:01 robot_arb WARNING OB poll A: rate limited, backing off...
+17:32:31 robot_arb WARNING OB poll B: rate limited, backing off...
+17:33:02 robot_arb WARNING OB poll A: rate limited, backing off...
+17:33:32 robot_arb WARNING OB poll B: rate limited, backing off...
+17:33:47 robot_arb WARNING Account 2049688: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.RESOURCE_EXHAUSTED
+	details = "Too Many Requests"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_message:"Too Many Requests", grpc_status:8}"
+>
+17:34:03 robot_arb WARNING OB poll A: rate limited, backing off...
+17:34:33 robot_arb WARNING OB poll B: rate limited, backing off...
+17:34:47 robot_arb WARNING Account 2049688: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.RESOURCE_EXHAUSTED
+	details = "Too Many Requests"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_message:"Too Many Requests", grpc_status:8}"
+>
+17:35:04 robot_arb WARNING OB poll A: rate limited, backing off...
+17:35:34 robot_arb WARNING OB poll B: rate limited, backing off...
+17:35:47 robot_arb WARNING Account 2049688: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.RESOURCE_EXHAUSTED
+	details = "Too Many Requests"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_status:8, grpc_message:"Too Many Requests"}"
+>
+17:36:05 robot_arb WARNING OB poll A: rate limited, backing off...
+17:36:35 robot_arb WARNING OB poll B: rate limited, backing off...
+17:37:07 robot_arb WARNING OB poll A: token expired, reconnecting...
+17:37:07 robot_arb INFO FinamPy reconnecting (#34)...
+17:37:07 robot_arb INFO Orders manager linked to FinamPy gRPC + trade subscription + reconnect
+17:37:07 robot_arb INFO FinamPy reconnected (#34). Accounts: ['1225950', '1225951', '1225952', '2049688', '1225953']
+17:37:07 robot_arb WARNING OB poll B: token expired, reconnecting...
+17:37:42 robot_arb WARNING OB poll B: rate limited, backing off...
+17:37:47 robot_arb WARNING Account 2049688: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.RESOURCE_EXHAUSTED
+	details = "Too Many Requests"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_message:"Too Many Requests", grpc_status:8}"
+>
+17:38:44 robot_arb WARNING OB poll A: rate limited, backing off...
+17:39:14 robot_arb WARNING OB poll B: rate limited, backing off...
+17:39:47 robot_arb WARNING Account 2049688: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.RESOURCE_EXHAUSTED
+	details = "Too Many Requests"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_status:8, grpc_message:"Too Many Requests"}"
+>
+17:39:54 robot_arb WARNING OB poll A: rate limited, backing off...
+17:40:24 robot_arb WARNING OB poll B: rate limited, backing off...
+17:40:48 robot_arb WARNING Account 2049688: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.RESOURCE_EXHAUSTED
+	details = "Too Many Requests"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_message:"Too Many Requests", grpc_status:8}"
+>
+17:40:57 robot_arb WARNING OB poll A: rate limited, backing off...
+17:41:27 robot_arb WARNING OB poll B: rate limited, backing off...
+17:41:59 robot_arb WARNING OB poll A: rate limited, backing off...
+17:42:29 robot_arb WARNING OB poll B: rate limited, backing off...
+17:43:02 robot_arb WARNING OB poll B: rate limited, backing off...
+17:43:54 robot_arb WARNING OB poll A: rate limited, backing off...
+17:44:24 robot_arb WARNING OB poll B: rate limited, backing off...
+17:45:01 robot_arb WARNING OB poll B: rate limited, backing off...
+17:45:54 robot_arb WARNING OB poll A: rate limited, backing off...
+17:46:24 robot_arb WARNING OB poll B: rate limited, backing off...
+17:47:02 robot_arb WARNING OB poll A: rate limited, backing off...
+17:47:32 robot_arb WARNING OB poll B: rate limited, backing off...
+17:48:04 robot_arb WARNING OB poll B: rate limited, backing off...
+17:48:55 robot_arb WARNING OB poll B: rate limited, backing off...
+17:49:53 robot_arb WARNING OB poll A: rate limited, backing off...
+17:50:23 robot_arb WARNING OB poll B: rate limited, backing off...
+17:51:03 robot_arb WARNING OB poll A: rate limited, backing off...
+17:51:33 robot_arb WARNING OB poll B: rate limited, backing off...
+17:52:07 robot_arb WARNING OB poll A: rate limited, backing off...
+17:52:37 robot_arb WARNING OB poll B: rate limited, backing off...
+17:53:08 robot_arb WARNING OB poll A: token expired, reconnecting...
+17:53:08 robot_arb INFO FinamPy reconnecting (#35)...
+17:53:09 robot_arb INFO Orders manager linked to FinamPy gRPC + trade subscription + reconnect
+17:53:09 robot_arb INFO FinamPy reconnected (#35). Accounts: ['1225950', '1225951', '1225952', '2049688', '1225953']
+17:53:09 robot_arb WARNING OB poll B: token expired, reconnecting...
+17:53:10 robot_arb WARNING OB poll A: rate limited, backing off...
+17:53:40 robot_arb WARNING OB poll B: rate limited, backing off...
+17:54:11 robot_arb WARNING OB poll A: rate limited, backing off...
+17:54:41 robot_arb WARNING OB poll B: rate limited, backing off...
+17:55:12 robot_arb WARNING OB poll A: rate limited, backing off...
+17:55:42 robot_arb WARNING OB poll B: rate limited, backing off...
+17:56:50 robot_arb WARNING OB poll B: rate limited, backing off...
+17:57:53 robot_arb WARNING OB poll A: rate limited, backing off...
+17:58:23 robot_arb WARNING OB poll B: rate limited, backing off...
+17:59:04 robot_arb WARNING OB poll B: rate limited, backing off...
+17:59:58 robot_arb WARNING OB poll A: rate limited, backing off...
+18:00:28 robot_arb WARNING OB poll B: rate limited, backing off...
+18:01:07 robot_arb WARNING OB poll A: rate limited, backing off...
+18:01:18 robot_arb INFO Signal 15 — shutting down...

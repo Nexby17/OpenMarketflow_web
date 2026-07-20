@@ -415,4 +415,8 @@ class BasisCalculator:
             "dev_extremes": ext,
             "suggested_high": round(ext["dev_max"], 1),
             "suggested_low": round(ext["dev_min"], 1),
+            "bid_a": round(self.bid_a, 4),
+            "ask_a": round(self.ask_a, 4),
+            "bid_b": round(self.bid_b, 4),
+            "ask_b": round(self.ask_b, 4),
         }
