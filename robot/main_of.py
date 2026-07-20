@@ -568,7 +568,7 @@ def _execute_action(action: dict):
                 action["fill_price"] = fill_price
                 log.info(f"Executed CLOSE_ALL: {side_str} {qty} @ {fill_price:.0f} reason={action.get('reason')}")
             else:
-                log.info(f"Executed CLOSE_ALL: {side_str} {qty} @ {price:.0f} reason={action.get('reason')}")
+                log.info(f"Executed CLOSE_ALL: {side_str} {qty} reason={action.get('reason')}")
 
     elif act in ("entry", "average", "pyramid"):
         side_int = BUY if side_str == "buy" else SELL
@@ -581,7 +581,7 @@ def _execute_action(action: dict):
                 action["fill_price"] = fill_price
                 log.info(f"Executed {act.upper()}: {side_str} {qty} @ {fill_price:.0f}")
             else:
-                log.info(f"Executed {act.upper()}: {side_str} {qty} @ {price:.0f}")
+                log.info(f"Executed {act.upper()}: {side_str} {qty} @ {action.get('price', 0):.0f}")
 
     elif act == "partial_tp":
         side_int = SELL if side_str == "sell" else BUY
@@ -594,7 +594,7 @@ def _execute_action(action: dict):
                 action["fill_price"] = fill_price
                 log.info(f"Executed PARTIAL_TP: {side_str} {qty} @ {fill_price:.0f} realized={action.get('realized', 0):.0f}")
             else:
-                log.info(f"Executed PARTIAL_TP: {side_str} {qty} @ {price:.0f} realized={action.get('realized', 0):.0f}")
+                log.info(f"Executed PARTIAL_TP: {side_str} {qty} @ {action.get('price', 0):.0f} realized={action.get('realized', 0):.0f}")
 
 
 # ========== API ==========
