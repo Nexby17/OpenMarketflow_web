@@ -244,6 +244,15 @@ class OrderFlowStrategy:
         # Stale price detection
         self._last_price_update: float = 0.0
 
+        # Trade stream health (LatestTrades from FinamPy)
+        self._last_trade_ts: float = 0.0
+
+        # Broker ground truth (synced from DataProvider)
+        self._broker_avg_price: float = 0.0
+        self._broker_current_price: float = 0.0
+        self._broker_sync_time: float = 0.0
+        self._last_action_time: float = 0.0
+
         # State lock
         self._lock = threading.Lock()
 
@@ -281,8 +290,8 @@ class OrderFlowStrategy:
     # ---------- Time checks ----------
 
     def _is_night(self, now: datetime) -> bool:
-        msk_hour = now.astimezone(MSK).hour
-        return msk_hour >= 23 or msk_hour < 7
+        msk = now.astimezone(MSK)
+        return (msk.hour >= 23 and msk.minute >= 50) or msk.hour < 7
 
     def _is_clearing(self, now: datetime) -> bool:
         msk = now.astimezone(MSK)
@@ -348,16 +357,18 @@ class OrderFlowStrategy:
     # ---------- PnL ----------
 
     def unrealized_pnl(self, price: float) -> float:
-        """Current unrealized PnL at given price (excludes commission — accounted at close)."""
+        """Current unrealized PnL — uses broker avg_price when available."""
         if self._dir == FLAT or self._total_lots == 0:
             return 0.0
-        return (price - self._avg_price) * self._dir * self._total_lots
+        avg = self._broker_avg_price if self._broker_avg_price > 0 else self._avg_price
+        return (price - avg) * self._dir * self._total_lots
 
     def pnl_per_lot(self, price: float) -> float:
-        """PnL per lot in points."""
+        """PnL per lot in points — uses broker avg_price when available."""
         if self._total_lots == 0:
             return 0.0
-        return (price - self._avg_price) * self._dir
+        avg = self._broker_avg_price if self._broker_avg_price > 0 else self._avg_price
+        return (price - avg) * self._dir
 
     def _stop_loss_hit(self, price: float) -> bool:
         """Check stop-loss condition based on selected mode."""
@@ -434,23 +445,27 @@ class OrderFlowStrategy:
             if self._is_price_stale():
                 return []
 
-            # If in position — check exits first
+            # If in position — partial TP FIRST (scalp priority)
             if self.in_position:
+                # Check partial TP first — scalp by 1 lot (ЗАКОН)
+                tp_actions = self._check_partial_tp(current_price)
+                if tp_actions:
+                    actions.extend(tp_actions)
+                    self._last_action_time = time.time()
+                    return actions
+
+                # Then check exits (SL, reverse signal, tp_full, timeout)
                 exit_action = self._check_exits(current_price, now)
                 if exit_action:
                     actions.append(exit_action)
-                    return actions  # Exit takes priority
-
-                # Check partial TP (before averaging/pyramiding — scalp fast)
-                tp_action = self._check_partial_tp(current_price)
-                if tp_action:
-                    actions.append(tp_action)
-                    return actions
+                    self._last_action_time = time.time()
+                    return actions  # Exit takes priority over averaging
 
                 # Check averaging
-                avg_action = self._check_averaging(current_price)
-                if avg_action:
-                    actions.append(avg_action)
+                # Catch-up: adds ALL missed levels, not just one
+                avg_actions = self._check_averaging(current_price)
+                if avg_actions:
+                    actions.extend(avg_actions)
                     return actions
 
                 # Check pyramiding
@@ -467,7 +482,47 @@ class OrderFlowStrategy:
                         actions.append(entry_action)
                         return actions
 
+            if actions:
+                self._last_action_time = time.time()
             return []
+
+    def sync_from_broker(self, broker_data: dict):
+        """Sync ONLY prices from broker for PnL display.
+
+        NEVER touches lots, dir, lot_queue — position is tracked internally.
+        Updates _avg_price to match broker for accurate PnL.
+        """
+        broker_avg = broker_data.get('avg_price', 0.0)
+        broker_cur = broker_data.get('current_price', 0.0)
+
+        if broker_cur > 0:
+            self._broker_current_price = broker_cur
+        if broker_avg > 0:
+            self._broker_avg_price = broker_avg
+            self._avg_price = broker_avg
+        self._broker_sync_time = time.time()
+
+    def update_fill_price(self, fill_price: float, action: str):
+        """Update entry/exit prices with REAL broker fill price after order execution."""
+        if fill_price <= 0:
+            return
+        if action in ("entry", "average", "pyramid"):
+            # Entry/average: update avg_price based on real fill
+            if action == "entry":
+                self._entry_price = fill_price
+                self._avg_price = fill_price
+                log.info(f"ENTRY price updated from broker: {fill_price:.0f}")
+            else:
+                # Recalculate avg from fill (total_lots already includes new lot)
+                old_cost = self._avg_price * (self._total_lots - self.p.lots)
+                added = fill_price * self.p.lots
+                self._avg_price = (old_cost + added) / self._total_lots if self._total_lots > 0 else fill_price
+                log.info(f"{action.upper()} price updated from broker: {fill_price:.0f} → avg={self._avg_price:.0f}")
+            # Update lot_queue last entry price
+            if self._lot_queue:
+                self._lot_queue[-1] = LotEntry(price=fill_price, side=self._lot_queue[-1].side, lots=self._lot_queue[-1].lots)
+        elif action in ("partial_tp", "close_all"):
+            log.info(f"EXIT price from broker: {fill_price:.0f}")
 
     def _check_entry(self, price: float, now: datetime) -> Optional[dict]:
         """Check for entry signal."""
@@ -571,41 +626,106 @@ class OrderFlowStrategy:
 
         return None
 
-    def _check_averaging(self, price: float) -> Optional[dict]:
-        """Check if we should average (add against position)."""
-        if self.p.enable_max_levels and self._average_levels >= self.p.max_average_levels:
-            return None
+    def _check_averaging(self, price: float) -> list[dict]:
+        """Check if we should average (add against position).
 
-        # Step distance check
+        Catch-up mode: if price has moved multiple steps beyond the last level,
+        immediately average ALL missed levels at current price.
+        Returns a list of actions (empty if nothing to do).
+        """
+        if self.p.enable_max_levels and self._average_levels >= self.p.max_average_levels:
+            return []
+
+        # Use extreme price from queue to prevent re-averaging on same levels
+        if self._lot_queue:
+            if self._dir == SHORT:
+                effective_price = max(e.price for e in self._lot_queue)
+            else:
+                effective_price = min(e.price for e in self._lot_queue)
+        else:
+            return []
+
         step = self._effective_step(average=True)
         if self._dir == LONG:
-            distance = self._last_average_price - price  # how much price fell
+            distance = effective_price - price  # how much price fell
         else:
-            distance = price - self._last_average_price  # how much price rose
+            distance = price - effective_price  # how much price rose
 
         if distance < step:
-            return None
+            return []
 
-        # Execute averaging
+        # Catch-up: calculate how many levels were missed
+        missed = int(distance // step)
+
+        # Cap by max levels
+        if self.p.enable_max_levels:
+            remaining = self.p.max_average_levels - self._average_levels
+            missed = min(missed, remaining)
+
+        # Safety cap: max 10 per tick to avoid runaway
+        missed = min(missed, 10)
+
+        if missed <= 0:
+            return []
+
         side = "buy" if self._dir == LONG else "sell"
-        old_lots = self._total_lots
-        old_cost = self._avg_price * old_lots
+        actions = []
 
-        self._total_lots += self.p.lots
-        self._avg_price = (old_cost + price * self.p.lots) / self._total_lots
-        self._average_levels += 1
-        self._last_average_price = price
-        self._lot_queue.append(LotEntry(price=price, side=self._dir, lots=self.p.lots))
+        for _ in range(missed):
+            old_lots = self._total_lots
+            old_cost = self._avg_price * old_lots
 
-        log.info(f"AVERAGE {side} {self.p.lots} @ {price:.0f} | lvl {self._average_levels}/{self.p.max_average_levels} | avg={self._avg_price:.0f} lots={self._total_lots}")
+            self._total_lots += self.p.lots
+            self._avg_price = (old_cost + price * self.p.lots) / self._total_lots
+            self._average_levels += 1
+            self._last_average_price = price
+            self._lot_queue.append(LotEntry(price=price, side=self._dir, lots=self.p.lots))
 
-        return {
-            'action': 'average',
-            'side': side,
-            'qty': self.p.lots,
-            'price': price,
-            'level': self._average_levels,
-        }
+            actions.append({
+                'action': 'average',
+                'side': side,
+                'qty': self.p.lots,
+                'price': price,
+                'level': self._average_levels,
+            })
+
+        if missed > 1:
+            log.info(f"AVERAGE CATCHUP {side} {missed}×{self.p.lots} @ {price:.0f} | missed={missed} levels | lvl={self._average_levels}/{self.p.max_average_levels} | avg={self._avg_price:.0f} lots={self._total_lots}")
+        else:
+            log.info(f"AVERAGE {side} {self.p.lots} @ {price:.0f} | lvl {self._average_levels}/{self.p.max_average_levels} | avg={self._avg_price:.0f} lots={self._total_lots}")
+
+        return actions
+
+    def sync_lot_count(self, broker_lots: int):
+        """Synchronize lot queue with actual broker position.
+
+        Removes oldest entries (FIFO) if internal count exceeds broker.
+        Handles manual closes by the user.
+        """
+        if broker_lots < 0:
+            broker_lots = 0
+        diff = self._total_lots - broker_lots
+        if diff <= 0:
+            return
+        # Remove oldest entries (FIFO) to match broker
+        while len(self._lot_queue) > 0 and diff > 0:
+            removed = self._lot_queue.popleft()
+            log.info(f"SYNC: removed lot @ {removed.price:.0f} (broker has fewer lots)")
+            diff -= 1
+        # Recalculate avg and total from remaining queue
+        self._total_lots = sum(e.lots for e in self._lot_queue)
+        if self._lot_queue:
+            total_cost = sum(e.price * e.lots for e in self._lot_queue)
+            self._avg_price = total_cost / self._total_lots if self._total_lots > 0 else 0
+            if self._dir == SHORT:
+                self._last_average_price = max(e.price for e in self._lot_queue)
+            else:
+                self._last_average_price = min(e.price for e in self._lot_queue)
+            # Cap average_levels to not exceed remaining queue minus entry lot
+            self._average_levels = min(self._average_levels, max(0, self._total_lots - 1))
+        else:
+            self._reset_position()
+        log.info(f"SYNC complete: broker={broker_lots} internal={self._total_lots} avg={self._avg_price:.0f} levels={self._average_levels}")
 
     def _check_pyramiding(self, price: float) -> Optional[dict]:
         """Check if we should pyramid (add in profit direction)."""
@@ -647,70 +767,81 @@ class OrderFlowStrategy:
             'level': self._pyramid_levels,
         }
 
-    def _check_partial_tp(self, price: float) -> Optional[dict]:
-        """Check partial TP — close last added lot (LIFO — most recent first).
+    def _check_partial_tp(self, price: float) -> list[dict]:
+        """Partial TP — close ALL profitable lots (LIFO — most recent first).
 
-        LIFO is used because the most recently added lot is closest to current
-        price and most likely to hit the profit target. This enables fast scalping.
+        Catch-up mode: if multiple lots are in profit beyond spread (e.g. after
+        restart/gap), closes them all at once instead of one per tick.
+        Returns a list of actions (empty if nothing to close).
         """
         if not self.p.partial_tp or len(self._lot_queue) == 0:
-            return None
+            return []
 
-        last = self._lot_queue[-1]
-        pnl_pts = (price - last.price) * last.side
+        actions = []
 
-        if pnl_pts < self.p.spread:
-            return None
+        while self._lot_queue:
+            last = self._lot_queue[-1]
+            pnl_pts = (price - last.price) * last.side
 
-        # Close last added lot — SELL if LONG, BUY if SHORT
-        side = "sell" if self._dir == LONG else "buy"
-        # Round-trip commission: entry + exit
-        realized = pnl_pts * last.lots - self.p.commission * 2 * last.lots
+            if pnl_pts < self.p.spread:
+                break
 
-        self._realized_pnl += realized
-        self._daily_pnl += realized
-        self._total_lots -= last.lots
-        self._lot_queue.pop()  # LIFO — remove from end
+            # Close this lot — SELL if LONG, BUY if SHORT
+            side = "sell" if self._dir == LONG else "buy"
+            realized = pnl_pts * last.lots - self.p.commission * 2 * last.lots
 
-        # Reset _last_average_price to the new last lot (or avg) so averaging continues correctly
+            self._realized_pnl += realized
+            self._daily_pnl += realized
+            self._total_lots -= last.lots
+            self._lot_queue.pop()  # LIFO — remove from end
+
+            self._trade_history.append({
+                'entryPrice': last.price,
+                'exitPrice': price,
+                'direction': 'LONG' if last.side == LONG else 'SHORT',
+                'lots': last.lots,
+                'pnl': realized,
+                'entryTime': self._entry_time.isoformat() if self._entry_time else None,
+                'exitTime': datetime.now(MSK).isoformat(),
+                'reason': 'partial_tp',
+                'signal': self._signal_type,
+            })
+
+            actions.append({
+                'action': 'partial_tp',
+                'side': side,
+                'qty': last.lots,
+                'price': price,
+                'realized': realized,
+            })
+
+        if not actions:
+            return []
+
+        # Update state after all closes
         if self._lot_queue:
-            self._last_average_price = self._lot_queue[-1].price
-        else:
-            self._last_average_price = self._avg_price
-
-        # Record partial TP in trade history
-        self._trade_history.append({
-            'entryPrice': last.price,
-            'exitPrice': price,
-            'direction': 'LONG' if last.side == LONG else 'SHORT',
-            'lots': last.lots,
-            'pnl': realized,
-            'entryTime': self._entry_time.isoformat() if self._entry_time else None,
-            'exitTime': datetime.now(MSK).isoformat(),
-            'reason': 'partial_tp',
-            'signal': self._signal_type,
-        })
-
-        # Update avg from remaining queue
-        if self._lot_queue:
+            if self._dir == SHORT:
+                self._last_average_price = max(e.price for e in self._lot_queue)
+            else:
+                self._last_average_price = min(e.price for e in self._lot_queue)
             total_cost = sum(e.price * e.lots for e in self._lot_queue)
             total_lots = sum(e.lots for e in self._lot_queue)
             self._avg_price = total_cost / total_lots if total_lots > 0 else 0
         else:
             # All closed via partial TP
+            self._last_average_price = self._avg_price
             self._reset_position()
             self._lock_entry(60.0)
             self._round_trips += 1
 
-        log.info(f"PARTIAL_TP {side} {last.lots} @ {price:.0f} | pnl=+{realized:.0f}₽ | remaining={self._total_lots}")
+        if len(actions) > 1:
+            total_realized = sum(a['realized'] for a in actions)
+            log.info(f"PARTIAL_TP CATCHUP {len(actions)} lots @ {price:.0f} | realized=+{total_realized:.0f}₽ | remaining={self._total_lots}")
+        else:
+            a = actions[0]
+            log.info(f"PARTIAL_TP {a['side']} {a['qty']} @ {price:.0f} | pnl=+{a['realized']:.0f}₽ | remaining={self._total_lots}")
 
-        return {
-            'action': 'partial_tp',
-            'side': side,
-            'qty': last.lots,
-            'price': price,
-            'realized': realized,
-        }
+        return actions
 
     def _close_all(self, price: float, reason: str) -> dict:
         """Close entire position."""
@@ -814,7 +945,13 @@ class OrderFlowStrategy:
         self._daily_pnl = state.get("dailyPnL", 0.0)
         self._daily_pnl_date = state.get("dailyPnLDate")
         et = state.get("entryTime", "")
-        self._entry_time = datetime.fromisoformat(et) if et else None
+        if et:
+            self._entry_time = datetime.fromisoformat(et)
+            # Ensure timezone-aware (MSK)
+            if self._entry_time.tzinfo is None:
+                self._entry_time = self._entry_time.replace(tzinfo=MSK)
+        else:
+            self._entry_time = None
         self._signal_type = state.get("signalType", "")
         self._trade_history = state.get("tradeHistory", [])
 
@@ -878,5 +1015,10 @@ class OrderFlowStrategy:
             "entryLocked": self._is_entry_locked(),
             "priceStale": self._is_price_stale(),
             "lastPriceUpdate": self._last_price_update,
+            "broker": {
+                "avgPrice": self._broker_avg_price,
+                "currentPrice": self._broker_current_price,
+                "syncAgeSec": round(time.time() - self._broker_sync_time, 1) if self._broker_sync_time > 0 else None,
+            },
             "vwema": self.vwema.state if self.vwema else None,
         }
