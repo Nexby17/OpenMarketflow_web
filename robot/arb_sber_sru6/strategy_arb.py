@@ -125,6 +125,13 @@ class ArbitrageStrategy:
         self.entry_lock: bool = False
         self._lock_time: float = 0.0
 
+        # Broker sync (updated from FinamPy every 30s)
+        self.broker_equity: float = 0.0
+        self.broker_pnl_today: float = 0.0
+        self.broker_pnl_total: float = 0.0
+        self.broker_positions: list[dict] = []
+        self.broker_sync_time: float = 0.0
+
     # === GO / Capital ===
 
     def _go_per_contract_b(self) -> float:
@@ -132,8 +139,9 @@ class ArbitrageStrategy:
         return getattr(self.p, 'go_per_contract_b', 2000.0)
 
     def _stock_cost_per_lot_a(self) -> float:
-        """Stock cost per lot A = price × mult_a (shares per lot × price)."""
-        return self.basis_calc.price_a * self.p.mult_a
+        """Stock GO per lot A = price × mult_a × margin_rate (50% for Russian stocks)."""
+        margin_rate = getattr(self.p, 'stock_margin_rate', 0.5)
+        return self.basis_calc.price_a * self.p.mult_a * margin_rate
 
     def _layer_cost(self) -> float:
         """Capital required for one layer."""
@@ -218,6 +226,14 @@ class ArbitrageStrategy:
         state["unrealizedPnl"] = round(unrealized, 2)
         state["totalPnl"] = round(self.realized_pnl + unrealized, 2)
         state["tradeHistory"] = self.trade_history[-200:]
+        # Broker sync data
+        state["broker"] = {
+            "equity": round(self.broker_equity, 2),
+            "pnlToday": round(self.broker_pnl_today, 2),
+            "pnlTotal": round(self.broker_pnl_total, 2),
+            "positions": self.broker_positions,
+            "syncAgeSec": round(time.time() - self.broker_sync_time, 1) if self.broker_sync_time else None,
+        }
         return state
 
     def save_state(self) -> dict:
@@ -298,10 +314,12 @@ class ArbitrageStrategy:
             return None
 
         if not self.basis_calc.has_enough_data:
+            log.warning(f"Entry blocked: insufficient data ({self.basis_calc.data_points}/{self.basis_calc.lookback})")
             return None
 
         # Capital check — stop adding layers if we can't afford another
         if not self._can_open_layer():
+            log.warning(f"Entry blocked: capital (used={self._used_capital():.0f} + layer={self._layer_cost():.0f} > capital={self.p.capital})")
             return None
 
         if self.p.entry_mode == "spread_rub":
@@ -312,7 +330,33 @@ class ArbitrageStrategy:
         if signal and self._is_duplicate_entry(signal["side"], signal["z"]):
             return None
 
+        # Averaging check: only add layer if basis continues to trend
+        # SHORT: basis must be > last layer entry_basis (expanding)
+        # LONG: basis must be < last layer entry_basis (contracting)
+        if self.layers and not self._allows_averaging(signal["side"]):
+            return None
+
         return signal
+
+    def _allows_averaging(self, side: str) -> bool:
+        """Check if current basis allows adding a new layer (averaging).
+        Only allow when basis continues to move in the entry direction.
+        SHORT: current basis > last layer entry_basis (basis expanding)
+        LONG: current basis < last layer entry_basis (basis contracting)"""
+        if not self.layers:
+            return True  # No layers — first entry always allowed
+        last = self.layers[-1]
+        side_int = LONG_BASIS if side == "long_basis" else SHORT_BASIS
+        if last.side != side_int:
+            return False  # Opposite direction — don't average
+        basis_now = self.basis_calc.basis
+        if side_int == SHORT_BASIS:
+            ok = basis_now > last.entry_basis
+        else:
+            ok = basis_now < last.entry_basis
+        if not ok:
+            log.debug(f"Averaging blocked: basis={basis_now:.2f} vs last entry_basis={last.entry_basis:.2f}")
+        return ok
 
     def _check_entry_zscore(self) -> Optional[dict]:
         """Variant 2 (default): Z-score based entry."""
@@ -375,9 +419,11 @@ class ArbitrageStrategy:
             return None
 
         # Check each layer for min_profit exit
+        per_layer_pnls = []
         for layer in self.layers:
             unrealized = self._layer_unrealized_pnl(layer)
             hold_min = (time.time() - layer.entry_time) / 60
+            per_layer_pnls.append((layer, unrealized, hold_min))
 
             if self._meets_min_profit(unrealized, layer):
                 return {
@@ -386,6 +432,20 @@ class ArbitrageStrategy:
                     "pnl": unrealized,
                     "hold_min": hold_min,
                     "layer_id": layer.layer_id,
+                }
+
+        # Also close ALL layers if total unrealized >= min_profit and ALL profitable
+        if len(per_layer_pnls) > 1 and all(pnl > 0 for _, pnl, _ in per_layer_pnls):
+            total = sum(pnl for _, pnl, _ in per_layer_pnls)
+            if total >= self.p.min_profit_value:
+                max_hold = max(hold for _, _, hold in per_layer_pnls)
+                log.info(f"EXIT ALL (total profit target): total={total:.2f} >= {self.p.min_profit_value}, layers={len(per_layer_pnls)}")
+                return {
+                    "action": "exit_all",
+                    "reason": "profit_target_total",
+                    "pnl": total,
+                    "hold_min": max_hold,
+                    "layer_id": None,
                 }
 
         # Check risk on total portfolio PnL
@@ -453,42 +513,78 @@ class ArbitrageStrategy:
             return None
         return None
 
+    def _is_futures(self, ticker: str) -> bool:
+        """Check if instrument is a futures (has digit in ticker like BRQ6, GZM6)."""
+        return any(c.isdigit() for c in (ticker or ''))
+
     def _calc_commission(self, entry_price_a: float, exit_price_a: float,
                             lots_a: int, lots_b: int) -> float:
         """Calculate total round-trip commission.
         Stock: commission_stock_pct% of turnover per side (entry + exit).
         Futures: commission_futures_rt ₽ per contract round-trip.
+        Auto-detects instrument type from ticker.
         Returns 0 if use_commission is False.
         """
         if not self.p.use_commission:
             return 0.0
-        # Stock: 2 sides × % × price × lots × multiplier
-        stock_turnover = (abs(entry_price_a) + abs(exit_price_a)) * lots_a * self.p.mult_a
-        comm_stock = stock_turnover * self.p.commission_stock_pct / 100.0
-        # Futures: fixed ₽ per contract RT
-        comm_futures = self.p.commission_futures_rt * lots_b
-        return comm_stock + comm_futures
+
+        comm = 0.0
+        # Leg A
+        if self._is_futures(self.p.ticker_a):
+            # Futures A: fixed ₽ per contract RT
+            comm += self.p.commission_futures_rt * lots_a
+        else:
+            # Stock A: % of turnover
+            stock_turnover = (abs(entry_price_a) + abs(exit_price_a)) * lots_a * self.p.mult_a
+            comm += stock_turnover * self.p.commission_stock_pct / 100.0
+        # Leg B (always futures in this robot)
+        comm += self.p.commission_futures_rt * lots_b
+        return comm
 
     def _layer_unrealized_pnl(self, layer: ArbLayer) -> float:
-        """Calculate unrealized PnL of a single layer (net of commission)."""
-        pa = self.basis_calc.price_a
-        pb = self.basis_calc.price_b
-        if pa <= 0 or pb <= 0:
-            # No price data — use last known entry prices (no PnL movement, just commission estimate)
-            pa = layer.entry_price_a
-            pb = layer.entry_price_b
-            if pa <= 0 or pb <= 0:
+        """Calculate unrealized PnL using market bid/ask (net of commission).
+        For FORTS leg B: fall back to last price if bid/ask deviates >0.2% from last.
+        To close: pay ask when buying, receive bid when selling."""
+        bid_a = self.basis_calc.bid_a or self.basis_calc.price_a
+        ask_a = self.basis_calc.ask_a or self.basis_calc.price_a
+        bid_b = self.basis_calc.bid_b or self.basis_calc.price_b
+        ask_b = self.basis_calc.ask_b or self.basis_calc.price_b
+
+        # For FORTS (leg B): check if bid/ask are stale — deviate >0.2% from last price
+        price_b = self.basis_calc.price_b
+        if price_b > 0:
+            stale = False
+            for val in (bid_b, ask_b):
+                if val > 0 and abs(val - price_b) / price_b > 0.002:
+                    stale = True
+                    break
+            if stale:
+                bid_b = price_b
+                ask_b = price_b
+                if not getattr(self, '_stale_warned_ts', 0) or time.time() - self._stale_warned_ts > 5:
+                    log.warning(f"OB stale: bid_b={self.basis_calc.bid_b:.2f} ask_b={self.basis_calc.ask_b:.2f} vs price_b={price_b:.2f} — using last")
+                    self._stale_warned_ts = time.time()
+        else:
+            self._stale_warned_ts = 0
+
+        if bid_a <= 0 or ask_a <= 0 or bid_b <= 0 or ask_b <= 0:
+            bid_a = ask_a = layer.entry_price_a
+            bid_b = ask_b = layer.entry_price_b
+            if bid_a <= 0 or bid_b <= 0:
                 return 0.0
 
         if layer.side == LONG_BASIS:
-            pnl_b = (pb - layer.entry_price_b) * layer.lots_b * self.p.mult_b
-            pnl_a = (layer.entry_price_a - pa) * layer.lots_a * self.p.mult_a
+            # LONG: entered sell A / buy B. Close: buy A @ ask, sell B @ bid
+            pnl_a = (layer.entry_price_a - ask_a) * layer.lots_a * self.p.mult_a
+            pnl_b = (bid_b - layer.entry_price_b) * layer.lots_b * self.p.mult_b
         else:
-            pnl_b = (layer.entry_price_b - pb) * layer.lots_b * self.p.mult_b
-            pnl_a = (pa - layer.entry_price_a) * layer.lots_a * self.p.mult_a
+            # SHORT: entered buy A / sell B. Close: sell A @ bid, buy B @ ask
+            pnl_a = (bid_a - layer.entry_price_a) * layer.lots_a * self.p.mult_a
+            pnl_b = (layer.entry_price_b - ask_b) * layer.lots_b * self.p.mult_b
 
-        gross = pnl_b + pnl_a
-        comm = self._calc_commission(layer.entry_price_a, pa, layer.lots_a, layer.lots_b)
+        gross = pnl_a + pnl_b
+        comm = self._calc_commission(layer.entry_price_a, bid_a if layer.side == SHORT_BASIS else ask_a,
+                                      layer.lots_a, layer.lots_b)
         return gross - comm
 
     def _calc_unrealized_pnl(self) -> float:

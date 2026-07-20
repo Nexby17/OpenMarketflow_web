@@ -34,9 +34,9 @@ class FinamProvider:
 
     def connect(self) -> None:
         """Initialize FinamPy connection."""
-        token = os.environ.get("FINAM_TOKEN")
+        token = os.environ.get("FINAM_API_KEY")
         if not token:
-            raise RuntimeError("FINAM_TOKEN env var not set")
+            raise RuntimeError("FINAM_API_KEY env var not set")
 
         logger.info("Connecting to Finam gRPC...")
         self.fp = FinamPy(token)
@@ -204,20 +204,34 @@ class FinamProvider:
                     if sym == ticker_base or pos.symbol == ticker:
                         qty_raw = pos.quantity
                         qty = 0
+                        raw_str = str(qty_raw.value if hasattr(qty_raw, 'value') else qty_raw).strip()
                         try:
-                            qty = int(qty_raw)
+                            qty = int(raw_str)
                         except (TypeError, ValueError):
                             try:
-                                qty = int(float(str(qty_raw)))
+                                qty = int(float(raw_str))
                             except:
                                 qty = 0
+                        is_short = raw_str.startswith('-')
                         qty = abs(qty)
-                        avg_p = (lambda v: float(str(v)) if v and str(v) else 0.0)(pos.average_price)
-                        cur_p = (lambda v: float(str(v)) if v and str(v) else 0.0)(pos.current_price)
+                        def _to_float(v):
+                            if not v:
+                                return 0.0
+                            if hasattr(v, 'value'):
+                                try:
+                                    return float(v.value)
+                                except (ValueError, TypeError):
+                                    return 0.0
+                            try:
+                                return float(v)
+                            except (ValueError, TypeError):
+                                return 0.0
+                        avg_p = _to_float(pos.average_price)
+                        cur_p = _to_float(pos.current_price)
                         result = {
                             "ticker": ticker,
                             "account": account_id,
-                            "dir": 1 if qty > 0 else (-1 if qty < 0 else 0),
+                            "dir": -1 if is_short else (1 if qty > 0 else 0),
                             "lots": qty,
                             "avg_price": avg_p,
                             "current_price": cur_p,

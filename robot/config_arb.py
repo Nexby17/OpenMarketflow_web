@@ -3,7 +3,7 @@ import os
 
 # === Broker ===
 DP_URL = os.environ.get("DP_URL", "http://localhost:5060")
-ACCOUNT_ID = os.environ.get("FINAM_ACCOUNT", "1225953")
+ACCOUNT_ID = os.environ.get("FINAM_ACCOUNT", "2049688")
 
 # === Pair ===
 SYMBOL_A = os.environ.get("ARB_SYMBOL_A", "GAZP@RTSX")   # spot (TQBR)

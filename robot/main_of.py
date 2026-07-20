@@ -55,6 +55,13 @@ SYMBOL = getattr(config, "SYMBOL", "SiU6@RTSX")
 TICKER = getattr(config, "TICKER", "SiU6")
 ACCOUNT = getattr(config, "ACCOUNT_ID", os.environ.get("FINAM_ACCOUNT", "1225953"))
 DP_URL = getattr(config, "DP_URL", "http://localhost:5060")
+
+# === Multi-account support ===
+ACCOUNTS = {
+    "main": "1225953",
+    "edp": "2049688",
+}
+ACTIVE_ACCOUNT_KEY = "main"
 PORT = args.port
 PAPER_MODE = args.paper
 
@@ -90,7 +97,26 @@ strategy = OrderFlowStrategy(params)
 _agg_buy_vol = 0
 _agg_sell_vol = 0
 _last_tick_price = 0.0
-orders = OrderManager(dp_url=DP_URL, account=ACCOUNT, symbol=SYMBOL)
+
+# --- Load active account from state file before OrderManager init ---
+def _load_active_account():
+    """Read activeAccount from of_state.json so it survives restarts."""
+    global ACTIVE_ACCOUNT_KEY
+    state_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "of_state.json")
+    if os.path.exists(state_path):
+        try:
+            with open(state_path) as f:
+                data = json.load(f)
+            saved = data.get("activeAccount")
+            if saved and saved in ACCOUNTS:
+                ACTIVE_ACCOUNT_KEY = saved
+        except Exception:
+            pass
+
+_load_active_account()
+
+orders = OrderManager(dp_url=DP_URL, account=ACCOUNTS[ACTIVE_ACCOUNT_KEY], symbol=SYMBOL)
+log.info(f"Trading account: {ACTIVE_ACCOUNT_KEY} ({ACCOUNTS[ACTIVE_ACCOUNT_KEY]})")
 
 # --- FinamPy connection ---
 fp: FinamPy | None = None
@@ -109,6 +135,7 @@ def save_state():
     try:
         state = strategy.get_state()
         state["mode"] = _mode
+        state["activeAccount"] = ACTIVE_ACCOUNT_KEY
         with open(STATE_FILE, "w") as f:
             json.dump(state, f, indent=2, default=str)
     except Exception as e:
@@ -132,9 +159,9 @@ def load_state_from_disk():
 def connect_finam():
     """Connect FinamPy for Trades + OrderBook + Bars + Quotes."""
     global fp
-    token = os.environ.get("FINAM_TOKEN")
+    token = os.environ.get("FINAM_API_KEY")
     if not token:
-        log.error("FINAM_TOKEN not set!")
+        log.error("FINAM_API_KEY not set!")
         return False
 
     fp = FinamPy(token)
@@ -206,7 +233,59 @@ def connect_finam():
     except AttributeError:
         log.warning("subscribe_quote_thread not available in FinamPy — check API")
 
+    # Subscribe to own trades (order executions) for real fill prices
+    try:
+        fp.on_trade.subscribe(_on_my_trade)
+        for acc_id in fp.account_ids:
+            fp.subscribe_orders_trades(orders=False, trades=True, account_id=acc_id)
+        t_ot = threading.Thread(
+            target=fp.subscribe_orders_trades_thread,
+            daemon=True,
+            name="sub-orders-trades",
+        )
+        t_ot.start()
+        log.info("Subscribed to own trades (OrderTrade stream)")
+    except Exception as e:
+        log.warning(f"subscribe_orders_trades failed: {e}")
+
     return True
+
+
+# ========== Fill tracking (real broker prices) ==========
+_last_fill_price: float = 0.0
+_last_fill_time: float = 0.0
+_last_fill_qty: int = 0
+
+
+def _on_my_trade(trade):
+    """Callback from FinamPy when our order is executed. Captures REAL fill price."""
+    global _last_fill_price, _last_fill_time, _last_fill_qty
+    try:
+        price = float(str(trade.price.value)) if hasattr(trade.price, 'value') else float(str(trade.price))
+        qty = int(float(str(trade.size.value))) if hasattr(trade.size, 'value') else int(float(str(trade.size)))
+        _last_fill_price = price
+        _last_fill_time = time.time()
+        _last_fill_qty = qty
+        log.info(f"FILL {trade.order_id}: price={price} qty={qty} symbol={trade.symbol}")
+    except Exception as e:
+        log.error(f"on_my_trade error: {e}")
+
+
+def _wait_fill_price(timeout: float = 2.0) -> float:
+    """Wait for real fill price from broker. Returns 0 if timeout."""
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        if _last_fill_time > 0 and (time.time() - _last_fill_time) < 1.0:
+            return _last_fill_price
+        time.sleep(0.05)
+    return 0.0
+
+
+def _consume_fill_price() -> float:
+    """Get last fill price and reset. Returns 0 if stale."""
+    if _last_fill_time > 0 and (time.time() - _last_fill_time) < 2.0:
+        return _last_fill_price
+    return 0.0
 
 
 # ========== Callbacks ==========
@@ -231,6 +310,9 @@ def _on_latest_trades(event):
                 side=mapped_side,
                 timestamp=ts,
             ))
+
+            # Update trade stream health
+            strategy._last_trade_ts = time.time()
 
             # Track aggression (ticks at improving prices)
             global _agg_buy_vol, _agg_sell_vol, _last_tick_price
@@ -366,6 +448,7 @@ def main_loop():
 
     log.info("Main loop started")
     last_save = time.time()
+    last_price_sync = 0.0
 
     while _running:
         try:
@@ -402,21 +485,48 @@ def main_loop():
             # Execute actions
             for action in actions:
                 _execute_action(action)
+                # Update strategy prices with REAL broker fill price
+                fill_price = action.get("fill_price", 0)
+                if fill_price > 0:
+                    strategy.update_fill_price(fill_price, action.get("action", ""))
 
             # Periodic state save (every 30 sec)
             if time.time() - last_save > 30:
                 save_state()
                 last_save = time.time()
 
+            # === BROKER PRICE SYNC: avg_price + current_price only ===
+            # Does NOT touch position state (lots, dir, lot_queue)
+            if time.time() - last_price_sync > 30.0:
+                try:
+                    sync_account = ACCOUNTS.get(ACTIVE_ACCOUNT_KEY, ACCOUNT)
+                    import requests
+                    r = requests.get(f"{DP_URL}/position",
+                                     params={"account": sync_account, "ticker": SYMBOL},
+                                     timeout=5)
+                    if r.status_code == 200:
+                        strategy.sync_from_broker(r.json())
+                except Exception as e:
+                    log.debug(f"Price sync: {e}")
+                last_price_sync = time.time()
+
             # === WATCHDOG: reconnect FinamPy if price stale > 60s ===
             if strategy._is_price_stale(max_age_sec=60):
                 _reconnect_finampy()
 
-            # Tick rate: 500ms (2x per second)
-            time.sleep(0.5)
+            # === WATCHDOG: reconnect if CVD/LatestTrades stream dead > 120s ===
+            # Price can survive via Quotes while trade stream dies silently
+            if hasattr(strategy, '_last_trade_ts') and strategy._last_trade_ts > 0:
+                trade_age = time.time() - strategy._last_trade_ts
+                if trade_age > 120:
+                    log.warning(f"[WATCHDOG] LatestTrades stream dead for {trade_age:.0f}s — reconnecting")
+                    _reconnect_finampy()
+
+            # Tick rate: 50ms (20x per second)
+            time.sleep(0.05)
 
         except Exception as e:
-            log.error(f"Main loop error: {e}")
+            log.error(f"Main loop error: {e}", exc_info=True)
             time.sleep(1)
 
     log.info("Main loop stopped")
@@ -448,21 +558,43 @@ def _execute_action(action: dict):
             time.sleep(0.5)  # Wait for cancel
 
         side_int = SELL if side_str == "sell" else BUY
+        global _last_fill_price, _last_fill_time
+        _last_fill_price = 0.0
+        _last_fill_time = 0.0
         result = orders.place_market(side_int, qty, tag=f"of_close_{action.get('reason', '')}")
         if result:
-            log.info(f"Executed CLOSE_ALL: {side_str} {qty} reason={action.get('reason')}")
+            fill_price = _consume_fill_price()
+            if fill_price > 0:
+                action["fill_price"] = fill_price
+                log.info(f"Executed CLOSE_ALL: {side_str} {qty} @ {fill_price:.0f} reason={action.get('reason')}")
+            else:
+                log.info(f"Executed CLOSE_ALL: {side_str} {qty} @ {price:.0f} reason={action.get('reason')}")
 
     elif act in ("entry", "average", "pyramid"):
         side_int = BUY if side_str == "buy" else SELL
+        _last_fill_price = 0.0
+        _last_fill_time = 0.0
         result = orders.place_market(side_int, qty, tag=tag)
         if result:
-            log.info(f"Executed {act.upper()}: {side_str} {qty}")
+            fill_price = _consume_fill_price()
+            if fill_price > 0:
+                action["fill_price"] = fill_price
+                log.info(f"Executed {act.upper()}: {side_str} {qty} @ {fill_price:.0f}")
+            else:
+                log.info(f"Executed {act.upper()}: {side_str} {qty} @ {price:.0f}")
 
     elif act == "partial_tp":
         side_int = SELL if side_str == "sell" else BUY
+        _last_fill_price = 0.0
+        _last_fill_time = 0.0
         result = orders.place_market(side_int, qty, tag="of_partial_tp")
         if result:
-            log.info(f"Executed PARTIAL_TP: {side_str} {qty} realized={action.get('realized', 0):.0f}")
+            fill_price = _consume_fill_price()
+            if fill_price > 0:
+                action["fill_price"] = fill_price
+                log.info(f"Executed PARTIAL_TP: {side_str} {qty} @ {fill_price:.0f} realized={action.get('realized', 0):.0f}")
+            else:
+                log.info(f"Executed PARTIAL_TP: {side_str} {qty} @ {price:.0f} realized={action.get('realized', 0):.0f}")
 
 
 # ========== API ==========
@@ -501,6 +633,9 @@ class APIHandler(BaseHTTPRequestHandler):
             status["currentPrice"] = price
             status["params"] = {k: getattr(params, k) for k in dir(params) if not k.startswith("_") and not callable(getattr(params, k))}
             status["paper"] = PAPER_MODE
+            status["accounts"] = ACCOUNTS
+            status["activeAccount"] = ACTIVE_ACCOUNT_KEY
+            status["activeAccountId"] = ACCOUNTS.get(ACTIVE_ACCOUNT_KEY, ACCOUNT)
             
             # Filter tradeHistory by date period
             start_date = params_url.get('startDate', [None])[0]
@@ -542,6 +677,13 @@ class APIHandler(BaseHTTPRequestHandler):
             
             self._json(200, status)
 
+        elif path == "/account":
+            self._json(200, {
+                "accounts": ACCOUNTS,
+                "active": ACTIVE_ACCOUNT_KEY,
+                "accountId": ACCOUNTS.get(ACTIVE_ACCOUNT_KEY, ACCOUNT)
+            })
+
         elif path == "/health":
             self._json(200, {"ok": True, "symbol": SYMBOL, "mode": _mode})
 
@@ -551,11 +693,35 @@ class APIHandler(BaseHTTPRequestHandler):
             save_state()
             self._json(200, {"ok": True, "mode": _mode})
 
+        elif path == "/sync":
+            # GET /sync?lots=N — sync internal lot count with broker
+            try:
+                qs = self.path.split("?")[1] if "?" in self.path else ""
+                sync_params = {}
+                for pair in qs.split("&"):
+                    if "=" in pair:
+                        k, v = pair.split("=", 1)
+                        sync_params[k] = v
+                broker_lots = int(sync_params.get("lots", "0"))
+            except (ValueError, IndexError):
+                self._json(400, {"error": "lots param required (integer)"})
+                return
+            old_lots = strategy.total_lots
+            strategy.sync_lot_count(broker_lots)
+            save_state()
+            self._json(200, {
+                "ok": True,
+                "old_lots": old_lots,
+                "new_lots": strategy.total_lots,
+                "avg_price": strategy.avg_price,
+                "avg_levels": strategy.get_status()["averageLevels"],
+            })
+
         else:
             self._json(404, {"error": "not found"})
 
     def do_POST(self):
-        global _mode
+        global _mode, orders, ACTIVE_ACCOUNT_KEY
         path = self.path.split("?")[0]
 
         if path == "/start":
@@ -641,6 +807,30 @@ class APIHandler(BaseHTTPRequestHandler):
                     self._json(400, {"error": str(e)})
             else:
                 self._json(400, {"error": "Missing request body"})
+
+        elif path == "/account":
+            # Switch active trading account
+            length = int(self.headers.get("Content-Length", 0))
+            if length > 0:
+                body = self.rfile.read(length)
+                data = json.loads(body)
+                account_key = data.get("account", "main")
+                new_account = ACCOUNTS.get(account_key)
+                if new_account:
+                    ACTIVE_ACCOUNT_KEY = account_key
+                    orders = OrderManager(dp_url=DP_URL, account=new_account, symbol=SYMBOL)
+                    log.info(f"Account switched to {account_key} ({new_account})")
+                    save_state()
+                    self._json(200, {"ok": True, "account": account_key, "id": new_account})
+                else:
+                    self._json(400, {"error": f"Unknown account: {account_key}", "available": list(ACCOUNTS.keys())})
+            else:
+                self._json(400, {"error": "Missing request body"})
+
+        elif path == "/load-state":
+            load_state_from_disk()
+            log.info("State reloaded from disk")
+            self._json(200, {"ok": True, "mode": _mode, "dir": strategy.dir(), "lots": strategy.total_lots()})
 
         elif path == "/params":
             # Update parameters

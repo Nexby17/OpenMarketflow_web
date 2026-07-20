@@ -13,7 +13,7 @@ using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 
 // Load .env file
-var envPath = "/root/.openclaw/workspace/HedgeFund/src/.env";
+var envPath = "/root/.openclaw/workspace/HedgeFund/.env";
 if (File.Exists(envPath))
     foreach (var line in File.ReadLines(envPath))
     {
@@ -275,6 +275,7 @@ object _quikStateLock = new object();
 // === Candle Aggregator from QUIK ticks ===
 var candleBuilderLock = new object();
 GridMmRegimeLauncher? gridMm = null;
+VolumeReversalLauncher? volRev = null;
 // V7 removed 2026-06-23
 var candleBuilderCurrent = (double[]?)null;
 var candleBuilderHistory = new LinkedList<double[]>();
@@ -483,9 +484,9 @@ app.MapPost("/connect-broker", async (TradingService svc, HttpRequest req) =>
         }
     } catch { }
     
-    token ??= Environment.GetEnvironmentVariable("FINAM_TOKEN");
+    token ??= Environment.GetEnvironmentVariable("FINAM_API_KEY") ?? Environment.GetEnvironmentVariable("FINAM_TOKEN");
     if (string.IsNullOrEmpty(token))
-        return Results.BadRequest(new { error = "Токен не передан и FINAM_TOKEN не задан" });
+        return Results.BadRequest(new { error = "FINAM_API_KEY не задан" });
 
     // Сохраняем для арбитража и других сервисов
     Environment.SetEnvironmentVariable("FINAM_TOKEN", token);
@@ -891,18 +892,34 @@ app.MapGet("/quik/price", () =>
 
 // === REST: котировки через Finam API ===
 // === Accounts API (Finam) ===
-app.MapGet("/api/accounts", async (TradingService svc) =>
+app.MapGet("/api/accounts", async () =>
 {
     try
     {
-        if (svc.Connector?.IsConnected != true) return Results.Json(new { error = "not connected" });
-        var info = await svc.Connector.GetAccountInfoAsync();
-        return Results.Json(new {
-            accounts = new[] {
-                new { id = "1225953", name = "Main", balance = info.equity, free = info.equity, margin = 0.0, go = 0.0, pnlToday = 0.0, pnlTotal = 0.0 },
-                new { id = "1225953-EDP", name = "EDP", balance = 0.0, free = 0.0, margin = 0.0, go = 0.0, pnlToday = 0.0, pnlTotal = 0.0 }
+        var jwt = await GetFinamJwt();
+        if (string.IsNullOrEmpty(jwt)) return Results.Json(new { error = "no JWT" });
+
+        var accList = new List<object>();
+        // Account IDs: 1225953 (FORTS/Main), 2049688 (UNION/EDP)
+        var accountIds = new[] { _finamAccountId, "2049688" };
+        foreach (var accId in accountIds)
+        {
+            try
+            {
+                using var req = new HttpRequestMessage(HttpMethod.Get, $"https://api.finam.ru/v1/accounts/{accId}");
+                req.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", jwt);
+                var resp = await finamRest.SendAsync(req);
+                if (!resp.IsSuccessStatusCode) continue;
+                var aDoc = JsonDocument.Parse(await resp.Content.ReadAsStringAsync());
+                var equity = aDoc.RootElement.TryGetProperty("equity", out var eqEl) && eqEl.TryGetProperty("value", out var eqV) ? double.Parse(eqV.GetString() ?? "0") : 0.0;
+                var unrealizedPnl = aDoc.RootElement.TryGetProperty("unrealized_profit", out var upEl) && upEl.TryGetProperty("value", out var upV) ? double.Parse(upV.GetString() ?? "0") : 0.0;
+                var accType = aDoc.RootElement.TryGetProperty("type", out var tEl) ? tEl.GetString() : "";
+                var name = accType == "UNION" ? "EDP" : "Main";
+                accList.Add(new { id = accId, name, balance = equity, free = equity, margin = 0.0, go = 0.0, pnlToday = unrealizedPnl, pnlTotal = unrealizedPnl });
             }
-        });
+            catch { }
+        }
+        return Results.Json(new { accounts = accList });
     }
     catch (Exception ex) { return Results.Json(new { error = ex.Message }); }
 });

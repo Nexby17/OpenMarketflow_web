@@ -581,7 +581,7 @@ class OrderFlowStrategy:
         self._signal_type = signal_types
         self._lot_queue.append(LotEntry(price=price, side=direction, lots=self.p.lots))
 
-        self._lock_entry(60.0)  # 60 sec entry lock
+        self._lock_entry(10.0)  # 10 sec entry lock
 
         log.info(f"ENTRY {side} {self.p.lots} @ {price:.0f} | signals: {signal_types}")
 
@@ -831,7 +831,7 @@ class OrderFlowStrategy:
             # All closed via partial TP
             self._last_average_price = self._avg_price
             self._reset_position()
-            self._lock_entry(60.0)
+            self._lock_entry(10.0)
             self._round_trips += 1
 
         if len(actions) > 1:
@@ -872,7 +872,7 @@ class OrderFlowStrategy:
         log.info(f"CLOSE_ALL {side} {qty} @ {price:.0f} | reason={reason} | gross={gross_pnl:.0f}₽ comm={commission:.0f}₽ net={realized:.0f}₽ | daily={self._daily_pnl:.0f}₽")
 
         self._reset_position()
-        self._lock_entry(60.0)
+        self._lock_entry(10.0)
 
         return {
             'action': 'close_all',

@@ -224,9 +224,9 @@ def _reconnect():
 def connect_finam() -> bool:
     """Connect FinamPy and subscribe to Trades + OrderBook."""
     global fp, _last_trade_ts, _last_ob_ts
-    token = os.environ.get("FINAM_TOKEN")
+    token = os.environ.get("FINAM_API_KEY")
     if not token:
-        log.error("FINAM_TOKEN not set!")
+        log.error("FINAM_API_KEY not set!")
         return False
 
     fp = FinamPy(token)

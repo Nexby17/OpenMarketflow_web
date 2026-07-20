@@ -141,7 +141,7 @@ class Feed:
     def connect(self):
         """Initialize gRPC connection."""
         log.info("Connecting to Finam gRPC...")
-        self._fp = FinamPy(config.FINAM_TOKEN)
+        self._fp = FinamPy(config.FINAM_TOKEN)  # now reads FINAM_API_KEY via config.py
         log.info(f"Connected. Accounts: {self._fp.account_ids}")
 
     def disconnect(self):

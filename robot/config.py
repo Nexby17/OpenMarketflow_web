@@ -2,7 +2,8 @@
 import os
 
 # Finam credentials
-FINAM_TOKEN = os.environ.get("FINAM_TOKEN", "")
+# Finam gRPC access token (FinamPy uses this)
+FINAM_TOKEN = os.environ.get("FINAM_API_KEY", "")
 FINAM_API_KEY = os.environ.get("FINAM_API_KEY", "")
 FINAM_ACCOUNT_ID = os.environ.get("FINAM_ACCOUNT_ID", "1225953")
 
