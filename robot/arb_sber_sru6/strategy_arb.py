@@ -129,6 +129,7 @@ class ArbitrageStrategy:
         self.broker_equity: float = 0.0
         self.broker_pnl_today: float = 0.0
         self.broker_pnl_total: float = 0.0
+        self.broker_pair_pnl: float = 0.0  # unrealized PnL from broker for symbol_a + symbol_b only
         self.broker_positions: list[dict] = []
         self.broker_sync_time: float = 0.0
 
@@ -222,15 +223,18 @@ class ArbitrageStrategy:
     def get_status(self) -> dict:
         """Full status for API."""
         state = self.get_state()
-        unrealized = sum(self._layer_unrealized_pnl(l) for l in self.layers)
-        state["unrealizedPnl"] = round(unrealized, 2)
-        state["totalPnl"] = round(self.realized_pnl + unrealized, 2)
+        unrealized_local = sum(self._layer_unrealized_pnl(l) for l in self.layers)
+        state["localUnrealizedPnl"] = round(unrealized_local, 2)
+        # For UI: use broker pair PnL if available, else local
+        state["unrealizedPnl"] = round(self.broker_pair_pnl, 2) if self.broker_pair_pnl != 0 or self.broker_sync_time else round(unrealized_local, 2)
+        state["totalPnl"] = round(self.realized_pnl + (state["unrealizedPnl"] or 0), 2)
         state["tradeHistory"] = self.trade_history[-200:]
         # Broker sync data
         state["broker"] = {
             "equity": round(self.broker_equity, 2),
             "pnlToday": round(self.broker_pnl_today, 2),
             "pnlTotal": round(self.broker_pnl_total, 2),
+            "pairPnl": round(self.broker_pair_pnl, 2),
             "positions": self.broker_positions,
             "syncAgeSec": round(time.time() - self.broker_sync_time, 1) if self.broker_sync_time else None,
         }
@@ -359,10 +363,16 @@ class ArbitrageStrategy:
         return ok
 
     def _check_entry_zscore(self) -> Optional[dict]:
-        """Variant 2 (default): Z-score based entry."""
+        """Variant 2 (default): Z-score based entry.
+        SHORT only when basis > mean (basis is above fair value).
+        LONG only when basis < mean (basis is below fair value)."""
         z = self.basis_calc.zscore_no_push
+        mean_basis = self.basis_calc.basis_mean
 
         if z > self.p.entry_z:
+            # SHORT basis: only if basis is actually above mean
+            if self.basis_calc.basis <= mean_basis:
+                return None
             return {
                 "action": "entry",
                 "side": "short_basis",
@@ -373,6 +383,9 @@ class ArbitrageStrategy:
             }
         elif z < self.p.entry_z_long:
             if not self.p.allow_long_basis:
+                return None
+            # LONG basis: only if basis is actually below mean
+            if self.basis_calc.basis >= mean_basis:
                 return None
             return {
                 "action": "entry",

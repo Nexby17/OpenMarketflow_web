@@ -496,13 +496,31 @@ def _sync_broker():
             dpnl_raw = p.daily_pnl.value if hasattr(p.daily_pnl, 'value') else 0
             dpnl = float(str(dpnl_raw)) if dpnl_raw else 0.0
             daily_pnl += dpnl
+            avg_raw = p.average_price.value if hasattr(p.average_price, 'value') else 0
+            avg_price = float(str(avg_raw)) if avg_raw else 0.0
+            cur_raw = p.current_price.value if hasattr(p.current_price, 'value') else 0
+            current_price = float(str(cur_raw)) if cur_raw else 0.0
+            upnl_raw = p.unrealized_pnl.value if hasattr(p.unrealized_pnl, 'value') else 0
+            unreal_pnl = float(str(upnl_raw)) if upnl_raw else 0.0
             if qty != 0:
-                positions.append({"symbol": p.symbol, "qty": qty, "dailyPnl": round(dpnl, 2)})
+                positions.append({
+                    "symbol": p.symbol,
+                    "qty": qty,
+                    "avgPrice": round(avg_price, 4),
+                    "currentPrice": round(current_price, 4),
+                    "dailyPnl": round(dpnl, 2),
+                    "unrealizedPnl": round(unreal_pnl, 2),
+                })
 
         strategy.broker_equity = equity
         strategy.broker_pnl_today = daily_pnl
         strategy.broker_pnl_total = unreal
         strategy.broker_positions = positions
+        # Sum unrealized PnL only for symbol_a and symbol_b
+        sym_a = params.symbol_a.split('@')[0] if '@' in params.symbol_a else params.symbol_a
+        sym_b = params.symbol_b.split('@')[0] if '@' in params.symbol_b else params.symbol_b
+        pair_pnl = sum(p["unrealizedPnl"] for p in positions if sym_a in p["symbol"] or sym_b in p["symbol"])
+        strategy.broker_pair_pnl = pair_pnl
         strategy.broker_sync_time = time.time()
     except Exception as e:
         log.warning(f"Broker sync error: {e}")
