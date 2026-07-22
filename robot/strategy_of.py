@@ -845,16 +845,15 @@ class OrderFlowStrategy:
 
     def _close_all(self, price: float, reason: str) -> dict:
         """Close entire position."""
-        gross_pnl = self.unrealized_pnl(price)
-        # Subtract round-trip commission for all lots
-        commission = self.p.commission * 2 * self._total_lots
+        side = "sell" if self._dir == LONG else "buy"
+        qty = self._total_lots
+        # PnL: (exit - avg) * dir * lots - commission. Use _avg_price (internal tracked), not broker avg.
+        gross_pnl = (price - self._avg_price) * self._dir * qty
+        commission = self.p.commission * 2 * qty
         realized = gross_pnl - commission
         self._realized_pnl += realized
         self._daily_pnl += realized
         self._round_trips += 1
-
-        side = "sell" if self._dir == LONG else "buy"
-        qty = self._total_lots
 
         # Record in trade history
         self._trade_history.append({
