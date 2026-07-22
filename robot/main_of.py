@@ -506,8 +506,10 @@ def main_loop():
                         for pos in resp.positions:
                             pos_sym = str(pos.symbol).split('@')[0].upper()
                             if pos_sym == sym_base:
-                                avg = float(str(pos.average_price)) if pos.average_price else 0
-                                cur = float(str(pos.current_price)) if pos.current_price else 0
+                                avg_s = str(pos.average_price)
+                                avg = float(avg_s.split('"')[1]) if '"' in avg_s else float(avg_s) if avg_s else 0
+                                cur_s = str(pos.current_price)
+                                cur = float(cur_s.split('"')[1]) if '"' in cur_s else float(cur_s) if cur_s else 0
                                 if avg > 0:
                                     strategy.sync_from_broker({'avg_price': avg, 'current_price': cur})
                                 break
