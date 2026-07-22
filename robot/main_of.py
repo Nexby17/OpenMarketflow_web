@@ -495,19 +495,24 @@ def main_loop():
                 save_state()
                 last_save = time.time()
 
-            # === BROKER PRICE SYNC: avg_price + current_price only ===
-            # Does NOT touch position state (lots, dir, lot_queue)
+            # === BROKER POSITION SYNC: GetAccount → positions → avg_price ===
             if time.time() - last_price_sync > 30.0:
                 try:
-                    sync_account = ACCOUNTS.get(ACTIVE_ACCOUNT_KEY, ACCOUNT)
-                    import requests
-                    r = requests.get(f"{DP_URL}/position",
-                                     params={"account": sync_account, "ticker": SYMBOL},
-                                     timeout=5)
-                    if r.status_code == 200:
-                        strategy.sync_from_broker(r.json())
+                    if fp:
+                        from FinamPy.grpc import accounts_service_pb2
+                        req = accounts_service_pb2.GetAccountRequest(account_id=ACCOUNTS.get(ACTIVE_ACCOUNT_KEY, ACCOUNT))
+                        resp = fp.call_function(fp.accounts_stub.GetAccount, req)
+                        sym_base = SYMBOL.split('@')[0].upper()
+                        for pos in resp.positions:
+                            pos_sym = str(pos.symbol).split('@')[0].upper()
+                            if pos_sym == sym_base:
+                                avg = float(str(pos.average_price)) if pos.average_price else 0
+                                cur = float(str(pos.current_price)) if pos.current_price else 0
+                                if avg > 0:
+                                    strategy.sync_from_broker({'avg_price': avg, 'current_price': cur})
+                                break
                 except Exception as e:
-                    log.debug(f"Price sync: {e}")
+                    log.debug(f"Broker position sync: {e}")
                 last_price_sync = time.time()
 
             # === WATCHDOG: reconnect FinamPy if price stale > 60s ===
@@ -530,6 +535,56 @@ def main_loop():
             time.sleep(1)
 
     log.info("Main loop stopped")
+
+
+def _record_broker_trade(action: dict, fill_price: float):
+    """Record trade in history and calculate PnL using REAL broker fill price only."""
+    act = action.get("action")
+    dir_val = strategy.dir()
+    comm = strategy.p.commission * 2  # round-trip per lot
+
+    if act == "partial_tp":
+        entry_price = action.get('entryPrice', 0)
+        entry_side = action.get('entrySide', dir_val)
+        direction = 'LONG' if entry_side == 1 else 'SHORT'
+        lots = action.get('qty', 1)
+        pnl = (fill_price - entry_price) * entry_side * lots - comm * lots
+        strategy._trade_history.append({
+            'entryPrice': entry_price,
+            'exitPrice': fill_price,
+            'direction': direction,
+            'lots': lots,
+            'pnl': round(pnl, 2),
+            'entryTime': strategy._entry_time.isoformat() if strategy._entry_time else None,
+            'exitTime': datetime.now(MSK).isoformat(),
+            'reason': 'partial_tp',
+            'signal': action.get('signal', ''),
+        })
+        strategy._realized_pnl += pnl
+        if strategy._daily_pnl_date == datetime.now(MSK).strftime('%Y-%m-%d'):
+            strategy._daily_pnl += pnl
+        log.info(f"TRADE {direction} {lots}L entry={entry_price:.0f} exit={fill_price:.0f} pnl={pnl:+.1f}₽ comm={comm * lots:.1f}₽")
+
+    elif act == "close_all":
+        avg = strategy._avg_price
+        direction = 'LONG' if dir_val == 1 else 'SHORT'
+        lots = action.get('qty', strategy.total_lots)
+        pnl = (fill_price - avg) * dir_val * lots - comm * lots
+        strategy._trade_history.append({
+            'entryPrice': avg,
+            'exitPrice': fill_price,
+            'direction': direction,
+            'lots': lots,
+            'pnl': round(pnl, 2),
+            'entryTime': strategy._entry_time.isoformat() if strategy._entry_time else None,
+            'exitTime': datetime.now(MSK).isoformat(),
+            'reason': action.get('reason', ''),
+            'signal': strategy._signal_type,
+        })
+        strategy._realized_pnl += pnl
+        if strategy._daily_pnl_date == datetime.now(MSK).strftime('%Y-%m-%d'):
+            strategy._daily_pnl += pnl
+        log.info(f"TRADE {direction} {lots}L entry={avg:.0f} exit={fill_price:.0f} pnl={pnl:+.1f}₽ reason={action.get('reason')} comm={comm * lots:.1f}₽")
 
 
 def _execute_action(action: dict):
@@ -567,8 +622,9 @@ def _execute_action(action: dict):
             if fill_price > 0:
                 action["fill_price"] = fill_price
                 log.info(f"Executed CLOSE_ALL: {side_str} {qty} @ {fill_price:.0f} reason={action.get('reason')}")
+                _record_broker_trade(action, fill_price)
             else:
-                log.info(f"Executed CLOSE_ALL: {side_str} {qty} reason={action.get('reason')}")
+                log.warning(f"CLOSE_ALL: no broker fill received for {side_str} {qty}")
 
     elif act in ("entry", "average", "pyramid"):
         side_int = BUY if side_str == "buy" else SELL
@@ -592,9 +648,10 @@ def _execute_action(action: dict):
             fill_price = _consume_fill_price()
             if fill_price > 0:
                 action["fill_price"] = fill_price
-                log.info(f"Executed PARTIAL_TP: {side_str} {qty} @ {fill_price:.0f} realized={action.get('realized', 0):.0f}")
+                log.info(f"Executed PARTIAL_TP: {side_str} {qty} @ {fill_price:.0f}")
+                _record_broker_trade(action, fill_price)
             else:
-                log.info(f"Executed PARTIAL_TP: {side_str} {qty} @ {action.get('price', 0):.0f} realized={action.get('realized', 0):.0f}")
+                log.warning(f"PARTIAL_TP: no broker fill received for {side_str} {qty}")
 
 
 # ========== API ==========

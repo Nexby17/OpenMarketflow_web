@@ -503,53 +503,21 @@ class OrderFlowStrategy:
         self._broker_sync_time = time.time()
 
     def update_fill_price(self, fill_price: float, action: str):
-        """Update entry/exit prices with REAL broker fill price after order execution."""
+        """Update entry/average prices with REAL broker fill price. Exit trades recorded in main_of."""
         if fill_price <= 0:
             return
         if action in ("entry", "average", "pyramid"):
-            # Entry/average: update avg_price based on real fill
             if action == "entry":
                 self._entry_price = fill_price
                 self._avg_price = fill_price
                 log.info(f"ENTRY price updated from broker: {fill_price:.0f}")
             else:
-                # Recalculate avg from fill (total_lots already includes new lot)
                 old_cost = self._avg_price * (self._total_lots - self.p.lots)
                 added = fill_price * self.p.lots
                 self._avg_price = (old_cost + added) / self._total_lots if self._total_lots > 0 else fill_price
                 log.info(f"{action.upper()} price updated from broker: {fill_price:.0f} → avg={self._avg_price:.0f}")
-            # Update lot_queue last entry price
             if self._lot_queue:
                 self._lot_queue[-1] = LotEntry(price=fill_price, side=self._lot_queue[-1].side, lots=self._lot_queue[-1].lots)
-        elif action in ("partial_tp", "close_all"):
-            # FIFO: find first pending trade and correct with broker fill
-            trade = None
-            for t in self._trade_history:
-                if t.get('_pending_fill'):
-                    trade = t
-                    break
-            if trade:
-                old_exit = trade.get('exitPrice', 0)
-                old_pnl = trade.get('pnl', 0)
-                if old_exit > 0 and abs(fill_price - old_exit) > 0.1:
-                    entry = trade.get('entryPrice', 0)
-                    lots = trade.get('lots', 1)
-                    direction = 1 if trade.get('direction') == 'LONG' else -1
-                    new_gross = (fill_price - entry) * direction * lots
-                    comm = self.p.commission * 2 * lots
-                    new_pnl = new_gross - comm
-                    delta = new_pnl - old_pnl
-                    trade['exitPrice'] = fill_price
-                    trade['pnl'] = new_pnl
-                    self._realized_pnl += delta
-                    if self._daily_pnl_date == datetime.now(MSK).strftime('%Y-%m-%d'):
-                        self._daily_pnl += delta
-                    log.info(f"EXIT corrected: {old_exit:.0f}→{fill_price:.0f} pnl {old_pnl:+.1f}→{new_pnl:+.1f} (Δ={delta:+.1f})")
-                else:
-                    log.info(f"EXIT broker fill={fill_price:.0f} (matches estimate)")
-                trade['_pending_fill'] = False
-            else:
-                log.info(f"EXIT broker fill={fill_price:.0f} (no pending trades)")
 
     def _check_entry(self, price: float, now: datetime) -> Optional[dict]:
         """Check for entry signal."""
@@ -815,32 +783,19 @@ class OrderFlowStrategy:
 
             # Close this lot — SELL if LONG, BUY if SHORT
             side = "sell" if self._dir == LONG else "buy"
-            realized = pnl_pts * last.lots - self.p.commission * 2 * last.lots
 
-            self._realized_pnl += realized
-            self._daily_pnl += realized
+            # PnL and trade_history recorded AFTER real broker fill in main_of.py
             self._total_lots -= last.lots
             self._lot_queue.pop()  # LIFO — remove from end
-
-            self._trade_history.append({
-                'entryPrice': last.price,
-                'exitPrice': price,
-                'direction': 'LONG' if last.side == LONG else 'SHORT',
-                'lots': last.lots,
-                'pnl': realized,
-                'entryTime': self._entry_time.isoformat() if self._entry_time else None,
-                'exitTime': datetime.now(MSK).isoformat(),
-                'reason': 'partial_tp',
-                '_pending_fill': True,
-                'signal': self._signal_type,
-            })
 
             actions.append({
                 'action': 'partial_tp',
                 'side': side,
                 'qty': last.lots,
                 'price': price,
-                'realized': realized,
+                'entryPrice': last.price,
+                'entrySide': last.side,
+                'signal': self._signal_type,
             })
 
         if not actions:
@@ -873,32 +828,12 @@ class OrderFlowStrategy:
 
     def _close_all(self, price: float, reason: str) -> dict:
         """Close entire position."""
-        gross_pnl = self.unrealized_pnl(price)
-        # Subtract round-trip commission for all lots
-        commission = self.p.commission * 2 * self._total_lots
-        realized = gross_pnl - commission
-        self._realized_pnl += realized
-        self._daily_pnl += realized
-        self._round_trips += 1
-
         side = "sell" if self._dir == LONG else "buy"
         qty = self._total_lots
+        # PnL and trade_history recorded AFTER real broker fill in main_of.py
+        self._round_trips += 1
 
-        # Record in trade history
-        self._trade_history.append({
-            'entryPrice': self._avg_price,
-            'exitPrice': price,
-            'direction': 'LONG' if self._dir == LONG else 'SHORT',
-            'lots': qty,
-            'pnl': realized,
-            'entryTime': self._entry_time.isoformat() if self._entry_time else None,
-            'exitTime': datetime.now(MSK).isoformat(),
-            'reason': reason,
-            '_pending_fill': True,
-            'signal': self._signal_type,
-        })
-
-        log.info(f"CLOSE_ALL {side} {qty} @ {price:.0f} | reason={reason} | gross={gross_pnl:.0f}₽ comm={commission:.0f}₽ net={realized:.0f}₽ | daily={self._daily_pnl:.0f}₽")
+        log.info(f"CLOSE_ALL {side} {qty} @ {price:.0f} | reason={reason} | lots={self._total_lots}")
 
         self._reset_position()
         self._lock_entry(10.0)
@@ -939,8 +874,15 @@ class OrderFlowStrategy:
 
     # ---------- State persistence ----------
 
+
+    def _recalc_pnl(self):
+        """Recalculate realized PnL from trade history for consistency."""
+        if self._trade_history:
+            self._realized_pnl = round(sum(t.get("pnl", 0) for t in self._trade_history), 2)
+
     def get_state(self) -> dict:
         """Get state dict for persistence."""
+        self._recalc_pnl()
         return {
             "dir": self._dir,
             "entryPrice": self._entry_price,
@@ -1008,6 +950,7 @@ class OrderFlowStrategy:
 
     def get_status(self) -> dict:
         """Get full status for UI/API."""
+        self._recalc_pnl()
         return {
             "dir": self._dir,
             "direction": "LONG" if self._dir == LONG else ("SHORT" if self._dir == SHORT else "FLAT"),
