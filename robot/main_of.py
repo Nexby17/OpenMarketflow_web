@@ -920,8 +920,7 @@ def on_shutdown(signum, frame):
     global _running
     log.info(f"Signal {signum} received — shutting down...")
     _running = False
-    global _mode
-    _mode = "stopped"
+    # Save current mode so robot resumes running after restart
     save_state()
     if fp:
         try:
