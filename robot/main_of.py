@@ -539,13 +539,13 @@ def _record_broker_trade(action: dict, fill_price: float):
 
     if act == "partial_tp":
         entry_price = action.get('entryPrice', 0)
-        entry_side = action.get('entrySide', strategy.dir())
+        entry_side = action.get('entrySide', strategy._dir)
         lots = action.get('qty', 1)
         pnl = (fill_price - entry_price) * entry_side * lots - comm_per_lot * lots
         direction = 'LONG' if entry_side == 1 else 'SHORT'
     elif act == "close_all":
         entry_price = action.get('avgPrice', strategy._avg_price)
-        entry_side = strategy.dir()
+        entry_side = strategy._dir
         lots = action.get('qty', strategy.total_lots)
         pnl = (fill_price - entry_price) * entry_side * lots - comm_per_lot * lots
         direction = 'LONG' if entry_side == 1 else 'SHORT'
@@ -603,6 +603,7 @@ def _execute_action(action: dict):
         _last_fill_time = 0.0
         result = orders.place_market(side_int, qty, tag=f"of_close_{action.get('reason', '')}")
         if result:
+            time.sleep(0.3)  # wait for fill callback
             fill_price = _consume_fill_price()
             if fill_price > 0:
                 action["fill_price"] = fill_price
@@ -630,6 +631,7 @@ def _execute_action(action: dict):
         _last_fill_time = 0.0
         result = orders.place_market(side_int, qty, tag="of_partial_tp")
         if result:
+            time.sleep(0.3)  # wait for fill callback
             fill_price = _consume_fill_price()
             if fill_price > 0:
                 action["fill_price"] = fill_price
