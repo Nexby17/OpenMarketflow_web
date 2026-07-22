@@ -261,6 +261,8 @@ def _on_my_trade(trade):
     """Callback from FinamPy when our order is executed. Captures REAL fill price."""
     global _last_fill_price, _last_fill_time, _last_fill_qty
     try:
+        if str(trade.symbol) != SYMBOL:
+            return
         price = float(str(trade.price.value)) if hasattr(trade.price, 'value') else float(str(trade.price))
         qty = int(float(str(trade.size.value))) if hasattr(trade.size, 'value') else int(float(str(trade.size)))
         _last_fill_price = price
@@ -594,8 +596,8 @@ def _execute_action(action: dict):
                 orders.cancel(oid)
             time.sleep(0.5)
 
-        # Pass avgPrice for trade record
-        action['avgPrice'] = strategy._avg_price
+        # Save avgPrice BEFORE strategy modifies it
+        avg_for_record = strategy._avg_price
 
         side_int = SELL if side_str == "sell" else BUY
         global _last_fill_price, _last_fill_time
@@ -607,10 +609,15 @@ def _execute_action(action: dict):
             fill_price = _consume_fill_price()
             if fill_price > 0:
                 action["fill_price"] = fill_price
+                action['avgPrice'] = avg_for_record
                 log.info(f"Executed CLOSE_ALL: {side_str} {qty} @ {fill_price:.0f} reason={action.get('reason')}")
                 _record_broker_trade(action, fill_price)
+                strategy._reset_position()
             else:
                 log.warning(f"CLOSE_ALL: no broker fill for {side_str} {qty}")
+                strategy._reset_position()
+        else:
+            strategy._reset_position()
 
     elif act in ("entry", "average", "pyramid"):
         side_int = BUY if side_str == "buy" else SELL
