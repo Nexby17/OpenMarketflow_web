@@ -499,7 +499,7 @@ class OrderFlowStrategy:
             self._broker_current_price = broker_cur
         if broker_avg > 0:
             self._broker_avg_price = broker_avg
-            self._avg_price = broker_avg
+            # DO NOT overwrite _avg_price - tracked internally
         self._broker_sync_time = time.time()
 
     def update_fill_price(self, fill_price: float, action: str):
@@ -522,7 +522,34 @@ class OrderFlowStrategy:
             if self._lot_queue:
                 self._lot_queue[-1] = LotEntry(price=fill_price, side=self._lot_queue[-1].side, lots=self._lot_queue[-1].lots)
         elif action in ("partial_tp", "close_all"):
-            log.info(f"EXIT price from broker: {fill_price:.0f}")
+            # FIFO: find first pending trade and correct with broker fill
+            trade = None
+            for t in self._trade_history:
+                if t.get('_pending_fill'):
+                    trade = t
+                    break
+            if trade:
+                old_exit = trade.get('exitPrice', 0)
+                old_pnl = trade.get('pnl', 0)
+                if old_exit > 0 and abs(fill_price - old_exit) > 0.1:
+                    entry = trade.get('entryPrice', 0)
+                    lots = trade.get('lots', 1)
+                    direction = 1 if trade.get('direction') == 'LONG' else -1
+                    new_gross = (fill_price - entry) * direction * lots
+                    comm = self.p.commission * 2 * lots
+                    new_pnl = new_gross - comm
+                    delta = new_pnl - old_pnl
+                    trade['exitPrice'] = fill_price
+                    trade['pnl'] = new_pnl
+                    self._realized_pnl += delta
+                    if self._daily_pnl_date == datetime.now(MSK).strftime('%Y-%m-%d'):
+                        self._daily_pnl += delta
+                    log.info(f"EXIT corrected: {old_exit:.0f}→{fill_price:.0f} pnl {old_pnl:+.1f}→{new_pnl:+.1f} (Δ={delta:+.1f})")
+                else:
+                    log.info(f"EXIT broker fill={fill_price:.0f} (matches estimate)")
+                trade['_pending_fill'] = False
+            else:
+                log.info(f"EXIT broker fill={fill_price:.0f} (no pending trades)")
 
     def _check_entry(self, price: float, now: datetime) -> Optional[dict]:
         """Check for entry signal."""
@@ -804,6 +831,7 @@ class OrderFlowStrategy:
                 'entryTime': self._entry_time.isoformat() if self._entry_time else None,
                 'exitTime': datetime.now(MSK).isoformat(),
                 'reason': 'partial_tp',
+                '_pending_fill': True,
                 'signal': self._signal_type,
             })
 
@@ -866,6 +894,7 @@ class OrderFlowStrategy:
             'entryTime': self._entry_time.isoformat() if self._entry_time else None,
             'exitTime': datetime.now(MSK).isoformat(),
             'reason': reason,
+            '_pending_fill': True,
             'signal': self._signal_type,
         })
 
@@ -880,6 +909,7 @@ class OrderFlowStrategy:
             'qty': qty,
             'price': price,
             'reason': reason,
+            '_pending_fill': True,
             'realized': realized,
         }
 
@@ -927,7 +957,7 @@ class OrderFlowStrategy:
             "dailyPnLDate": self._daily_pnl_date,
             "entryTime": self._entry_time.isoformat() if self._entry_time else "",
             "signalType": self._signal_type,
-            "tradeHistory": self._trade_history[-200:],  # Last 200 trades
+            "tradeHistory": [{k: v for k, v in t.items() if k != "_pending_fill"} for t in self._trade_history[-200:]],  # Last 200 trades
         }
 
     def load_state(self, state: dict):
@@ -996,7 +1026,7 @@ class OrderFlowStrategy:
             "dailyPnL": self._daily_pnl,
             "entryTime": self._entry_time.isoformat() if self._entry_time else "",
             "signalType": self._signal_type,
-            "tradeHistory": self._trade_history[-200:],
+            "tradeHistory": [{k: v for k, v in t.items() if k != "_pending_fill"} for t in self._trade_history[-200:]],
             "lastDelta": self._last_delta,
             "cvd": self.trades.cvd,
             "cvdTrend": {
