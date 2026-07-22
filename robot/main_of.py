@@ -799,6 +799,7 @@ class APIHandler(BaseHTTPRequestHandler):
                         side = SELL if strategy.direction == LONG else BUY
                         orders.place_market(side, strategy.total_lots, tag="of_stop")
                     strategy._close_all(price, "manual_stop")
+                    strategy._reset_position()
             strategy._force_unlock()  # Reset entry lock after manual stop
             save_state()
             self._json(200, {"ok": True, "mode": _mode, "paper": PAPER_MODE})
