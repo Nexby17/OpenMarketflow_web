@@ -129,7 +129,7 @@ _price_lock = threading.Lock()
 _current_price: float = 0.0
 
 # --- State persistence ---
-STATE_FILE = os.path.join(os.getcwd(), "of_state.json")
+STATE_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "of_state.json")
 
 def save_state():
     try:
