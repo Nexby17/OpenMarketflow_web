@@ -512,7 +512,7 @@ def main_loop():
                                     strategy.sync_from_broker({'avg_price': avg, 'current_price': cur})
                                 break
                 except Exception as e:
-                    log.debug(f"Broker position sync: {e}")
+                    log.warning(f"Broker position sync: {e}")
                 last_price_sync = time.time()
 
             # === WATCHDOG: reconnect FinamPy if price stale > 60s ===
