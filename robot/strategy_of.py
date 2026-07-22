@@ -857,6 +857,7 @@ class OrderFlowStrategy:
         self._lot_queue.clear()
         self._entry_time = None
         self._signal_type = ""
+        self._broker_avg_price = 0.0
 
     def _effective_step(self, average: bool = True) -> int:
         """Get effective step (with optional ATR adaptation)."""
