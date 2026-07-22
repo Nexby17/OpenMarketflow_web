@@ -532,6 +532,48 @@ def main_loop():
     log.info("Main loop stopped")
 
 
+def _record_broker_trade(action: dict, fill_price: float):
+    """Record trade using ONLY real broker fill prices. PnL = (exit - entry) * dir * lots - comm."""
+    act = action.get("action")
+    comm_per_lot = strategy.p.commission * 2  # round-trip
+
+    if act == "partial_tp":
+        entry_price = action.get('entryPrice', 0)
+        entry_side = action.get('entrySide', strategy.dir())
+        lots = action.get('qty', 1)
+        pnl = (fill_price - entry_price) * entry_side * lots - comm_per_lot * lots
+        direction = 'LONG' if entry_side == 1 else 'SHORT'
+    elif act == "close_all":
+        entry_price = action.get('avgPrice', strategy._avg_price)
+        entry_side = strategy.dir()
+        lots = action.get('qty', strategy.total_lots)
+        pnl = (fill_price - entry_price) * entry_side * lots - comm_per_lot * lots
+        direction = 'LONG' if entry_side == 1 else 'SHORT'
+    else:
+        return
+
+    pnl = round(pnl, 2)
+    strategy._trade_history.append({
+        'entryPrice': round(entry_price, 2),
+        'exitPrice': round(fill_price, 2),
+        'direction': direction,
+        'lots': lots,
+        'pnl': pnl,
+        'entryTime': strategy._entry_time.isoformat() if strategy._entry_time else None,
+        'exitTime': datetime.now(MSK).isoformat(),
+        'reason': action.get('reason', 'partial_tp'),
+        'signal': action.get('signal', strategy._signal_type),
+    })
+    strategy._realized_pnl += pnl
+    today = datetime.now(MSK).strftime('%Y-%m-%d')
+    if strategy._daily_pnl_date == today:
+        strategy._daily_pnl += pnl
+    else:
+        strategy._daily_pnl = pnl
+        strategy._daily_pnl_date = today
+    log.info(f"TRADE {direction} {lots}L entry={entry_price:.0f} exit={fill_price:.0f} pnl={pnl:+.1f}₽ comm={comm_per_lot * lots:.1f}₽")
+
+
 def _execute_action(action: dict):
     """Execute a strategy action via OrderManager (or log only in paper mode)."""
     act = action.get("action")
@@ -540,12 +582,7 @@ def _execute_action(action: dict):
     tag = f"of_{act}"
 
     if PAPER_MODE:
-        if act == "partial_tp":
-            log.info(f"📄 PAPER {act}: {side_str} {qty} realized={action.get('realized', 0):.0f}₽")
-        elif act == "close_all":
-            log.info(f"📄 PAPER {act}: {side_str} {qty} reason={action.get('reason')} realized={action.get('realized', 0):.0f}₽")
-        else:
-            log.info(f"📄 PAPER {act}: {side_str} {qty} @ {action.get('price', 0):.0f}")
+        log.info(f"📄 PAPER {act}: {side_str} {qty} @ {action.get('price', 0):.0f}")
         return
 
     if act == "close_all":
@@ -555,7 +592,10 @@ def _execute_action(action: dict):
             for o in active:
                 oid = o.get("order_id", "") if isinstance(o, dict) else str(o)
                 orders.cancel(oid)
-            time.sleep(0.5)  # Wait for cancel
+            time.sleep(0.5)
+
+        # Pass avgPrice for trade record
+        action['avgPrice'] = strategy._avg_price
 
         side_int = SELL if side_str == "sell" else BUY
         global _last_fill_price, _last_fill_time
@@ -567,8 +607,9 @@ def _execute_action(action: dict):
             if fill_price > 0:
                 action["fill_price"] = fill_price
                 log.info(f"Executed CLOSE_ALL: {side_str} {qty} @ {fill_price:.0f} reason={action.get('reason')}")
+                _record_broker_trade(action, fill_price)
             else:
-                log.info(f"Executed CLOSE_ALL: {side_str} {qty} reason={action.get('reason')}")
+                log.warning(f"CLOSE_ALL: no broker fill for {side_str} {qty}")
 
     elif act in ("entry", "average", "pyramid"):
         side_int = BUY if side_str == "buy" else SELL
@@ -592,9 +633,10 @@ def _execute_action(action: dict):
             fill_price = _consume_fill_price()
             if fill_price > 0:
                 action["fill_price"] = fill_price
-                log.info(f"Executed PARTIAL_TP: {side_str} {qty} @ {fill_price:.0f} realized={action.get('realized', 0):.0f}")
+                log.info(f"Executed PARTIAL_TP: {side_str} {qty} @ {fill_price:.0f}")
+                _record_broker_trade(action, fill_price)
             else:
-                log.info(f"Executed PARTIAL_TP: {side_str} {qty} @ {action.get('price', 0):.0f} realized={action.get('realized', 0):.0f}")
+                log.warning(f"PARTIAL_TP: no broker fill for {side_str} {qty}")
 
 
 # ========== API ==========
