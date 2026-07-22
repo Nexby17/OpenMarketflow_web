@@ -833,7 +833,7 @@ class OrderFlowStrategy:
 
         log.info(f"CLOSE_ALL {side} {qty} @ {price:.0f} | reason={reason}")
 
-        self._reset_position()
+        # Reset happens in main_of._execute_action AFTER order fill
         self._lock_entry(10.0)
 
         return {
@@ -842,7 +842,6 @@ class OrderFlowStrategy:
             'qty': qty,
             'price': price,
             'reason': reason,
-            'realized': realized,
         }
 
     def _reset_position(self):
