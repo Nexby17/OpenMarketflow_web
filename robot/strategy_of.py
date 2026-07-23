@@ -86,6 +86,7 @@ class LotEntry:
     price: float
     side: int     # LONG or SHORT (buy=1, sell=-1)
     lots: int     # how many lots at this price
+    added_ts: float = 0.0  # time.monotonic() when lot was added (grace period)
 
 
 class VWEMARegime:
@@ -574,7 +575,7 @@ class OrderFlowStrategy:
         self._last_pyramid_price = price
         self._entry_time = now
         self._signal_type = signal_types
-        self._lot_queue.append(LotEntry(price=price, side=direction, lots=self.p.lots))
+        self._lot_queue.append(LotEntry(price=price, side=direction, lots=self.p.lots, added_ts=time.monotonic()))
 
         self._lock_entry(10.0)  # 10 sec entry lock
 
@@ -674,7 +675,7 @@ class OrderFlowStrategy:
             self._avg_price = (old_cost + price * self.p.lots) / self._total_lots
             self._average_levels += 1
             self._last_average_price = price
-            self._lot_queue.append(LotEntry(price=price, side=self._dir, lots=self.p.lots))
+            self._lot_queue.append(LotEntry(price=price, side=self._dir, lots=self.p.lots, added_ts=time.monotonic()))
 
             actions.append({
                 'action': 'average',
@@ -750,7 +751,7 @@ class OrderFlowStrategy:
         self._avg_price = (old_cost + price * self.p.lots) / self._total_lots
         self._pyramid_levels += 1
         self._last_pyramid_price = price
-        self._lot_queue.append(LotEntry(price=price, side=self._dir, lots=self.p.lots))
+        self._lot_queue.append(LotEntry(price=price, side=self._dir, lots=self.p.lots, added_ts=time.monotonic()))
 
         log.info(f"PYRAMID {side} {self.p.lots} @ {price:.0f} | lvl {self._pyramid_levels}/{self.p.max_pyramid_levels} | avg={self._avg_price:.0f} lots={self._total_lots}")
 
@@ -776,6 +777,11 @@ class OrderFlowStrategy:
 
         while self._lot_queue:
             last = self._lot_queue[-1]
+
+            # Grace period: don't TP a lot that was just added (2 sec)
+            if last.added_ts > 0 and (time.monotonic() - last.added_ts) < 2.0:
+                break
+
             pnl_pts = (price - last.price) * last.side
 
             if pnl_pts < self.p.spread:
@@ -925,6 +931,7 @@ class OrderFlowStrategy:
                     price=e.get("price", 0.0),
                     side=e.get("side", LONG),
                     lots=e.get("lots", 0),
+                    added_ts=0.0,  # No grace for restored lots
                 ))
             log.info(f"Restored position: dir={self._dir} lots={self._total_lots} avg={self._avg_price:.0f} lotEntries={len(self._lot_queue)}")
         elif self._total_lots > 0 and self._avg_price > 0:
@@ -933,6 +940,7 @@ class OrderFlowStrategy:
                 price=self._avg_price,
                 side=self._dir if self._dir != 0 else LONG,
                 lots=self._total_lots,
+                added_ts=0.0,  # No grace for restored lots
             ))
             log.warning(f"Restored position without lotQueue — single entry: dir={self._dir} lots={self._total_lots}")
 
