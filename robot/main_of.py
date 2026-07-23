@@ -451,7 +451,7 @@ def _set_current_price(price: float):
 
 def main_loop():
     """Main strategy loop — poll price + process ticks."""
-    global _mode
+    global _mode, _fill_sub_thread
 
     log.info("Main loop started")
     last_save = time.time()
