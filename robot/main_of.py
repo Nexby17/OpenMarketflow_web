@@ -239,7 +239,7 @@ def connect_finam():
     # Subscribe to own trades (order executions) for real fill prices
     try:
         global _ignore_fills_until
-        _ignore_fills_until = time.time() + 15.0  # ignore batch for 15s
+        _ignore_fills_until = time.time() + 120.0  # ignore batch for 2 min
         fp.on_trade.subscribe(_on_my_trade)
         for acc_id in fp.account_ids:
             fp.subscribe_orders_trades(orders=False, trades=True, account_id=acc_id)
@@ -563,7 +563,7 @@ def main_loop():
                     log.warning(f"[WATCHDOG] Fill stream silent (cb_count={_fill_cb_count}, last_fill={_last_fill_time:.0f}) — re-subscribing")
                     try:
                         global _ignore_fills_until
-                        _ignore_fills_until = time.time() + 15.0
+                        _ignore_fills_until = time.time() + 120.0
                         if _fill_sub_thread.is_alive():
                             pass
                         fp.on_trade.subscribe(_on_my_trade)
