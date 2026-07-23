@@ -43,7 +43,7 @@ _log_file = LOG_DIR / f"of_{datetime.now().strftime('%Y%m%d')}.log"
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s %(name)s %(levelname)s %(message)s",
-    datefmt="%H:%M:%S",
+    datefmt="%Y-%m-%d %H:%M:%S",
     handlers=[
         logging.StreamHandler(sys.stdout),
         logging.FileHandler(_log_file, mode='a', encoding='utf-8'),
@@ -117,6 +117,9 @@ _load_active_account()
 
 orders = OrderManager(dp_url=DP_URL, account=ACCOUNTS[ACTIVE_ACCOUNT_KEY], symbol=SYMBOL)
 log.info(f"Trading account: {ACTIVE_ACCOUNT_KEY} ({ACCOUNTS[ACTIVE_ACCOUNT_KEY]})")
+
+# Fill subscription thread tracking (for watchdog)
+_fill_sub_thread: threading.Thread | None = None
 
 # --- FinamPy connection ---
 fp: FinamPy | None = None
@@ -238,11 +241,13 @@ def connect_finam():
         fp.on_trade.subscribe(_on_my_trade)
         for acc_id in fp.account_ids:
             fp.subscribe_orders_trades(orders=False, trades=True, account_id=acc_id)
+        global _fill_sub_thread
         t_ot = threading.Thread(
             target=fp.subscribe_orders_trades_thread,
             daemon=True,
             name="sub-orders-trades",
         )
+        _fill_sub_thread = t_ot
         t_ot.start()
         log.info("Subscribed to own trades (OrderTrade stream)")
     except Exception as e:
@@ -524,6 +529,23 @@ def main_loop():
                     log.warning(f"[WATCHDOG] LatestTrades stream dead for {trade_age:.0f}s — reconnecting")
                     _reconnect_finampy()
 
+            # === WATCHDOG: re-subscribe fill stream if thread died ===
+            if _fill_sub_thread and not _fill_sub_thread.is_alive():
+                log.warning("[WATCHDOG] Fill subscription thread dead — re-subscribing")
+                try:
+                    fp.on_trade.subscribe(_on_my_trade)
+                    for acc_id in fp.account_ids:
+                        fp.subscribe_orders_trades(orders=False, trades=True, account_id=acc_id)
+                    _fill_sub_thread = threading.Thread(
+                        target=fp.subscribe_orders_trades_thread,
+                        daemon=True,
+                        name="sub-orders-trades",
+                    )
+                    _fill_sub_thread.start()
+                    log.info("[WATCHDOG] Fill subscription re-subscribed OK")
+                except Exception as e:
+                    log.error(f"[WATCHDOG] Fill re-subscribe error: {e}")
+
             # Tick rate: 50ms (20x per second)
             time.sleep(0.05)
 
@@ -614,9 +636,12 @@ def _execute_action(action: dict):
                 _record_broker_trade(action, fill_price)
                 strategy._reset_position()
             else:
-                log.warning(f"CLOSE_ALL: no broker fill for {side_str} {qty}")
+                log.warning(f"CLOSE_ALL: no broker fill for {side_str} {qty} — recording with strategy price {action.get('price', 0):.0f}")
+                action['avgPrice'] = avg_for_record
+                _record_broker_trade(action, action.get('price', strategy._current_price))
                 strategy._reset_position()
         else:
+            log.warning(f"CLOSE_ALL: order placement failed for {side_str} {qty}")
             strategy._reset_position()
 
     elif act in ("entry", "average", "pyramid"):
@@ -645,7 +670,8 @@ def _execute_action(action: dict):
                 log.info(f"Executed PARTIAL_TP: {side_str} {qty} @ {fill_price:.0f}")
                 _record_broker_trade(action, fill_price)
             else:
-                log.warning(f"PARTIAL_TP: no broker fill for {side_str} {qty}")
+                log.warning(f"PARTIAL_TP: no broker fill for {side_str} {qty} — recording with strategy price {action.get('price', 0):.0f}")
+                _record_broker_trade(action, action.get('price', strategy._current_price))
 
 
 # ========== API ==========
