@@ -512,7 +512,15 @@ def main_loop():
                                      params={"account": sync_account, "ticker": SYMBOL},
                                      timeout=5)
                     if r.status_code == 200:
-                        strategy.sync_from_broker(r.json())
+                        broker_data = r.json()
+                        strategy.sync_from_broker(broker_data)
+                        # Reconcile lot count with broker
+                        if strategy._total_lots > 0 or broker_data.get('lots', 0) > 0:
+                            broker_lots = broker_data.get('lots', 0)
+                            broker_avg = broker_data.get('avg_price', 0.0)
+                            broker_dir = broker_data.get('dir', 0)
+                            if strategy._total_lots != broker_lots:
+                                strategy.reconcile_with_broker(broker_lots, broker_avg, broker_dir)
                 except Exception as e:
                     log.debug(f"Price sync: {e}")
                 last_price_sync = time.time()
@@ -654,8 +662,12 @@ def _execute_action(action: dict):
             if fill_price > 0:
                 action["fill_price"] = fill_price
                 log.info(f"Executed {act.upper()}: {side_str} {qty} @ {fill_price:.0f}")
+                strategy.update_fill_price(fill_price, act)
             else:
-                log.info(f"Executed {act.upper()}: {side_str} {qty} @ {action.get('price', 0):.0f}")
+                log.warning(f"{act.upper()}: no broker fill for {side_str} {qty} @ {action.get('price', 0):.0f}")
+        else:
+            log.error(f"{act.upper()}: order placement FAILED for {side_str} {qty} — rolling back {qty} lot(s)")
+            strategy.rollback_pending_entry(qty)
 
     elif act == "partial_tp":
         side_int = SELL if side_str == "sell" else BUY
