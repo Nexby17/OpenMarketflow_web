@@ -632,19 +632,32 @@ def _record_broker_trade(action: dict, fill_price: float):
     log.info(f"TRADE {direction} {lots}L entry={entry_price:.0f} exit={fill_price:.0f} pnl={pnl:+.1f}₽ comm={comm_per_lot * lots:.1f}₽")
 
 
+def _get_broker_position():
+    """Fetch actual position from broker. Returns (lots, avg_price) or (0, 0.0)."""
+    try:
+        import requests
+        sync_account = ACCOUNTS.get(ACTIVE_ACCOUNT_KEY, ACCOUNT)
+        r = requests.get(f"{DP_URL}/position", params={"account": sync_account, "ticker": SYMBOL}, timeout=3)
+        if r.status_code == 200:
+            d = r.json()
+            return abs(d.get('lots', 0)), d.get('avg_price', 0.0), d.get('dir', 0)
+    except Exception:
+        pass
+    return 0, 0.0, 0
+
+
 def _execute_action(action: dict):
-    """Execute a strategy action via OrderManager (or log only in paper mode)."""
+    """Execute a strategy action. Broker position is the source of truth."""
     act = action.get("action")
     side_str = action.get("side", "buy")
     qty = action.get("qty", 1)
     tag = f"of_{act}"
 
     if PAPER_MODE:
-        log.info(f"📄 PAPER {act}: {side_str} {qty} @ {action.get('price', 0):.0f}")
+        log.info(f"PAPER {act}: {side_str} {qty} @ {action.get('price', 0):.0f}")
         return
 
     if act == "close_all":
-        # First cancel all orders
         active = orders.get_active_orders(symbol=SYMBOL)
         if active:
             for o in active:
@@ -652,25 +665,23 @@ def _execute_action(action: dict):
                 orders.cancel(oid)
             time.sleep(0.5)
 
-        # Save avgPrice BEFORE strategy modifies it
         avg_for_record = strategy._avg_price
+        lots_before, _, _ = _get_broker_position()
 
         side_int = SELL if side_str == "sell" else BUY
-        global _last_fill_price, _last_fill_time
-        _last_fill_price = 0.0
-        _last_fill_time = 0.0
         result = orders.place_market(side_int, qty, tag=f"of_close_{action.get('reason', '')}")
         if result:
-            time.sleep(0.3)  # wait for fill callback
-            fill_price = _consume_fill_price()
-            if fill_price > 0:
+            time.sleep(0.5)
+            lots_after, broker_avg_after, _ = _get_broker_position()
+            if lots_after < lots_before:
+                fill_price = broker_avg_after if broker_avg_after > 0 else action.get('price', strategy._current_price)
                 action["fill_price"] = fill_price
                 action['avgPrice'] = avg_for_record
-                log.info(f"Executed CLOSE_ALL: {side_str} {qty} @ {fill_price:.0f} reason={action.get('reason')}")
+                log.info(f"Executed CLOSE_ALL: {side_str} {qty} @ {fill_price:.0f} reason={action.get('reason')} (broker {lots_before}→{lots_after})")
                 _record_broker_trade(action, fill_price)
                 strategy._reset_position()
             else:
-                log.warning(f"CLOSE_ALL: no broker fill for {side_str} {qty} — recording with strategy price {action.get('price', 0):.0f}")
+                log.error(f"CLOSE_ALL: order may not have executed (broker lots {lots_before}→{lots_after}) — still resetting")
                 action['avgPrice'] = avg_for_record
                 _record_broker_trade(action, action.get('price', strategy._current_price))
                 strategy._reset_position()
@@ -679,37 +690,44 @@ def _execute_action(action: dict):
             strategy._reset_position()
 
     elif act in ("entry", "average", "pyramid"):
+        lots_before, _, _ = _get_broker_position()
+
         side_int = BUY if side_str == "buy" else SELL
-        _last_fill_price = 0.0
-        _last_fill_time = 0.0
         result = orders.place_market(side_int, qty, tag=tag)
         if result:
-            fill_price = _consume_fill_price()
-            if fill_price > 0:
+            time.sleep(0.5)
+            lots_after, broker_avg_after, broker_dir = _get_broker_position()
+            if lots_after != lots_before:
+                # Broker confirms — order executed
+                fill_price = broker_avg_after if broker_avg_after > 0 else action.get('price', 0)
                 action["fill_price"] = fill_price
-                log.info(f"Executed {act.upper()}: {side_str} {qty} @ {fill_price:.0f}")
+                log.info(f"Executed {act.upper()}: {side_str} {qty} @ {fill_price:.0f} (broker {lots_before}→{lots_after})")
                 strategy.update_fill_price(fill_price, act)
             else:
-                log.warning(f"{act.upper()}: no broker fill for {side_str} {qty} @ {action.get('price', 0):.0f}")
+                # Broker says no change — order didn't execute
+                log.error(f"{act.upper()}: order NOT executed at broker (lots still {lots_before}) — rolling back {qty} lot(s)")
+                strategy.rollback_pending_entry(qty)
         else:
             log.error(f"{act.upper()}: order placement FAILED for {side_str} {qty} — rolling back {qty} lot(s)")
             strategy.rollback_pending_entry(qty)
 
     elif act == "partial_tp":
+        lots_before, _, _ = _get_broker_position()
+
         side_int = SELL if side_str == "sell" else BUY
-        _last_fill_price = 0.0
-        _last_fill_time = 0.0
         result = orders.place_market(side_int, qty, tag="of_partial_tp")
         if result:
-            time.sleep(0.3)  # wait for fill callback
-            fill_price = _consume_fill_price()
-            if fill_price > 0:
+            time.sleep(0.5)
+            lots_after, _, _ = _get_broker_position()
+            if lots_after < lots_before:
+                fill_price = action.get('price', strategy._current_price)
                 action["fill_price"] = fill_price
-                log.info(f"Executed PARTIAL_TP: {side_str} {qty} @ {fill_price:.0f}")
+                log.info(f"Executed PARTIAL_TP: {side_str} {qty} @ {fill_price:.0f} (broker {lots_before}→{lots_after})")
                 _record_broker_trade(action, fill_price)
             else:
-                log.warning(f"PARTIAL_TP: no broker fill for {side_str} {qty} — recording with strategy price {action.get('price', 0):.0f}")
-                _record_broker_trade(action, action.get('price', strategy._current_price))
+                log.error(f"PARTIAL_TP: order NOT executed (broker lots {lots_before}→{lots_after}) — trade NOT recorded")
+        else:
+            log.error(f"PARTIAL_TP: order placement failed for {side_str} {qty}")
 
 
 # ========== API ==========
