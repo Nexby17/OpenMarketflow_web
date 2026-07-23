@@ -238,6 +238,8 @@ def connect_finam():
 
     # Subscribe to own trades (order executions) for real fill prices
     try:
+        global _ignore_fills_until
+        _ignore_fills_until = time.time() + 15.0  # ignore batch for 15s
         fp.on_trade.subscribe(_on_my_trade)
         for acc_id in fp.account_ids:
             fp.subscribe_orders_trades(orders=False, trades=True, account_id=acc_id)
@@ -260,13 +262,17 @@ def connect_finam():
 _last_fill_price: float = 0.0
 _last_fill_time: float = 0.0
 _last_fill_qty: int = 0
-_fill_cb_count: int = 0  # total fill callbacks received in this session
+_fill_cb_count: int = 0
+_ignore_fills_until: float = 0.0  # ignore batch fills until this timestamp
 
 
 def _on_my_trade(trade):
     """Callback from FinamPy when our order is executed. Captures REAL fill price."""
     global _last_fill_price, _last_fill_time, _last_fill_qty, _fill_cb_count
     try:
+        # Ignore batch fills delivered right after subscribe
+        if time.time() < _ignore_fills_until:
+            return
         if str(trade.symbol) != SYMBOL:
             return
         price = float(str(trade.price.value)) if hasattr(trade.price, 'value') else float(str(trade.price))
@@ -556,8 +562,9 @@ def main_loop():
                 if not fill_stream_ok:
                     log.warning(f"[WATCHDOG] Fill stream silent (cb_count={_fill_cb_count}, last_fill={_last_fill_time:.0f}) — re-subscribing")
                     try:
+                        global _ignore_fills_until
+                        _ignore_fills_until = time.time() + 15.0
                         if _fill_sub_thread.is_alive():
-                            # Thread is blocked on dead gRPC — can't join, just start new
                             pass
                         fp.on_trade.subscribe(_on_my_trade)
                         for acc_id in fp.account_ids:
