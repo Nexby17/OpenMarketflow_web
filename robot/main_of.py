@@ -260,11 +260,12 @@ def connect_finam():
 _last_fill_price: float = 0.0
 _last_fill_time: float = 0.0
 _last_fill_qty: int = 0
+_fill_cb_count: int = 0  # total fill callbacks received in this session
 
 
 def _on_my_trade(trade):
     """Callback from FinamPy when our order is executed. Captures REAL fill price."""
-    global _last_fill_price, _last_fill_time, _last_fill_qty
+    global _last_fill_price, _last_fill_time, _last_fill_qty, _fill_cb_count
     try:
         if str(trade.symbol) != SYMBOL:
             return
@@ -273,7 +274,8 @@ def _on_my_trade(trade):
         _last_fill_price = price
         _last_fill_time = time.time()
         _last_fill_qty = qty
-        log.info(f"FILL {trade.order_id}: price={price} qty={qty} symbol={trade.symbol}")
+        _fill_cb_count += 1
+        log.info(f"FILL {_fill_cb_count}: price={price} qty={qty} symbol={trade.symbol}")
     except Exception as e:
         log.error(f"on_my_trade error: {e}")
 
@@ -451,8 +453,9 @@ def _set_current_price(price: float):
 
 def main_loop():
     """Main strategy loop — poll price + process ticks."""
-    global _mode, _fill_sub_thread
+    global _mode, _fill_sub_thread, _main_loop_start_ts
 
+    _main_loop_start_ts = time.time()
     log.info("Main loop started")
     last_save = time.time()
     last_price_sync = 0.0
@@ -537,22 +540,38 @@ def main_loop():
                     log.warning(f"[WATCHDOG] LatestTrades stream dead for {trade_age:.0f}s — reconnecting")
                     _reconnect_finampy()
 
-            # === WATCHDOG: re-subscribe fill stream if thread died ===
-            if _fill_sub_thread and not _fill_sub_thread.is_alive():
-                log.warning("[WATCHDOG] Fill subscription thread dead — re-subscribing")
-                try:
-                    fp.on_trade.subscribe(_on_my_trade)
-                    for acc_id in fp.account_ids:
-                        fp.subscribe_orders_trades(orders=False, trades=True, account_id=acc_id)
-                    _fill_sub_thread = threading.Thread(
-                        target=fp.subscribe_orders_trades_thread,
-                        daemon=True,
-                        name="sub-orders-trades",
-                    )
-                    _fill_sub_thread.start()
-                    log.info("[WATCHDOG] Fill subscription re-subscribed OK")
-                except Exception as e:
-                    log.error(f"[WATCHDOG] Fill re-subscribe error: {e}")
+            # === WATCHDOG: re-subscribe fill stream if no callbacks ===
+            # Thread can be alive but blocked on dead gRPC stream.
+            # If we placed orders but got 0 fill callbacks in 60s — re-subscribe.
+            global _fill_cb_count
+            if _fill_sub_thread is not None:
+                now_wd = time.time()
+                # Check if thread appears dead (no callbacks after startup or after re-sub)
+                fill_stream_ok = True
+                if _fill_cb_count == 0 and (now_wd - _main_loop_start_ts) > 60:
+                    fill_stream_ok = False
+                elif _last_fill_time > 0 and (now_wd - _last_fill_time) > 120:
+                    # Had fills before but stream went silent
+                    fill_stream_ok = False
+                if not fill_stream_ok:
+                    log.warning(f"[WATCHDOG] Fill stream silent (cb_count={_fill_cb_count}, last_fill={_last_fill_time:.0f}) — re-subscribing")
+                    try:
+                        if _fill_sub_thread.is_alive():
+                            # Thread is blocked on dead gRPC — can't join, just start new
+                            pass
+                        fp.on_trade.subscribe(_on_my_trade)
+                        for acc_id in fp.account_ids:
+                            fp.subscribe_orders_trades(orders=False, trades=True, account_id=acc_id)
+                        _fill_sub_thread = threading.Thread(
+                            target=fp.subscribe_orders_trades_thread,
+                            daemon=True,
+                            name=f"sub-orders-trades-{int(now_wd)}",
+                        )
+                        _fill_sub_thread.start()
+                        _fill_cb_count = 0
+                        log.info("[WATCHDOG] Fill stream re-subscribed OK")
+                    except Exception as e:
+                        log.error(f"[WATCHDOG] Fill re-subscribe error: {e}")
 
             # Tick rate: 50ms (20x per second)
             time.sleep(0.05)
