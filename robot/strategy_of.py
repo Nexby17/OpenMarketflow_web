@@ -358,18 +358,16 @@ class OrderFlowStrategy:
     # ---------- PnL ----------
 
     def unrealized_pnl(self, price: float) -> float:
-        """Current unrealized PnL — uses broker avg_price when available."""
+        """Current unrealized PnL — uses strategy avg_price (calculated from lot_queue)."""
         if self._dir == FLAT or self._total_lots == 0:
             return 0.0
-        avg = self._broker_avg_price if self._broker_avg_price > 0 else self._avg_price
-        return (price - avg) * self._dir * self._total_lots
+        return (price - self._avg_price) * self._dir * self._total_lots
 
     def pnl_per_lot(self, price: float) -> float:
-        """PnL per lot in points — uses broker avg_price when available."""
+        """PnL per lot in points — uses strategy avg_price (calculated from lot_queue)."""
         if self._total_lots == 0:
             return 0.0
-        avg = self._broker_avg_price if self._broker_avg_price > 0 else self._avg_price
-        return (price - avg) * self._dir
+        return (price - self._avg_price) * self._dir
 
     def _stop_loss_hit(self, price: float) -> bool:
         """Check stop-loss condition based on selected mode."""
@@ -500,7 +498,6 @@ class OrderFlowStrategy:
             self._broker_current_price = broker_cur
         if broker_avg > 0:
             self._broker_avg_price = broker_avg
-            self._avg_price = broker_avg
         self._broker_sync_time = time.time()
 
     def update_fill_price(self, fill_price: float, action: str):

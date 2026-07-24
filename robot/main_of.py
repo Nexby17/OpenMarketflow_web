@@ -512,7 +512,13 @@ def main_loop():
                                      params={"account": sync_account, "ticker": SYMBOL},
                                      timeout=5)
                     if r.status_code == 200:
-                        strategy.sync_from_broker(r.json())
+                        bd = r.json()
+                        strategy.sync_from_broker(bd)
+                        # Passive desync monitor
+                        bl = bd.get('lots', 0)
+                        rl = strategy._total_lots
+                        if rl != bl:
+                            log.warning(f"DESYNC: robot={rl} broker={bl} avg_robot={strategy._avg_price:.0f} avg_broker={bd.get('avg_price',0):.0f} — manual fix needed")
                 except Exception as e:
                     log.debug(f"Price sync: {e}")
                 last_price_sync = time.time()
@@ -598,6 +604,19 @@ def _record_broker_trade(action: dict, fill_price: float):
     log.info(f"TRADE {direction} {lots}L entry={entry_price:.0f} exit={fill_price:.0f} pnl={pnl:+.1f}₽ comm={comm_per_lot * lots:.1f}₽")
 
 
+def _get_broker_position_fast() -> int:
+    """Quick broker lots check via DP, returns 0 on error."""
+    try:
+        import requests
+        acc = ACCOUNTS.get(ACTIVE_ACCOUNT_KEY, ACCOUNT)
+        r = requests.get(f"{DP_URL}/position", params={"account": acc, "ticker": SYMBOL}, timeout=3)
+        if r.status_code == 200:
+            return r.json().get('lots', 0)
+    except Exception:
+        pass
+    return 0
+
+
 def _execute_action(action: dict):
     """Execute a strategy action via OrderManager (or log only in paper mode)."""
     act = action.get("action")
@@ -646,12 +665,23 @@ def _execute_action(action: dict):
                 _record_broker_trade(action, action.get('price', strategy._current_price))
                 strategy._reset_position()
         else:
-            log.error(f"CLOSE_ALL: order placement failed for {side_str} {qty} — keeping position, will retry next tick")
+            # DP failed — verify with broker before deciding
+            lots_before = strategy._total_lots
+            time.sleep(3)
+            broker_lots = _get_broker_position_fast()
+            if broker_lots < lots_before:
+                log.warning(f"CLOSE_ALL: DP failed but broker lots changed ({lots_before}→{broker_lots}) — order executed, resetting")
+                action['avgPrice'] = avg_for_record
+                _record_broker_trade(action, strategy._current_price)
+                strategy._reset_position()
+            else:
+                log.error(f"CLOSE_ALL: order placement failed for {side_str} {qty} — keeping position, will retry next tick")
 
     elif act in ("entry", "average", "pyramid"):
         side_int = BUY if side_str == "buy" else SELL
         _last_fill_price = 0.0
         _last_fill_time = 0.0
+        lots_before = strategy._total_lots - qty  # lots BEFORE this action added them
         result = orders.place_market(side_int, qty, tag=tag)
         if result:
             fill_price = _consume_fill_price()
@@ -661,8 +691,14 @@ def _execute_action(action: dict):
             else:
                 log.info(f"Executed {act.upper()}: {side_str} {qty} @ {action.get('price', 0):.0f}")
         else:
-            log.error(f"{act.upper()}: order placement FAILED for {side_str} {qty} — rolling back {qty} lot(s)")
-            strategy.rollback_pending_entry(qty)
+            # DP failed — verify with broker before rollback
+            time.sleep(3)
+            broker_lots = _get_broker_position_fast()
+            if broker_lots != lots_before:
+                log.warning(f"{act.upper()}: DP failed but broker lots changed ({lots_before}→{broker_lots}) — order executed, keeping lots")
+            else:
+                log.error(f"{act.upper()}: order placement FAILED for {side_str} {qty} — rolling back {qty} lot(s)")
+                strategy.rollback_pending_entry(qty)
 
     elif act == "partial_tp":
         side_int = SELL if side_str == "sell" else BUY
@@ -680,11 +716,18 @@ def _execute_action(action: dict):
                 log.warning(f"PARTIAL_TP: no broker fill for {side_str} {qty} — recording with strategy price {action.get('price', 0):.0f}")
                 _record_broker_trade(action, action.get('price', strategy._current_price))
         else:
-            log.error(f"PARTIAL_TP: order placement failed for {side_str} {qty} — re-adding lot to queue")
-            strategy._lot_queue.append(strategy.LotEntry(price=action.get('entryPrice', strategy._current_price), side=action.get('entrySide', strategy._dir), lots=qty))
-            strategy._total_lots += qty
-            if strategy._total_lots > 0 and strategy._dir == FLAT:
-                strategy._dir = action.get('entrySide', 0)
+            # DP failed — verify with broker before re-adding lot
+            expected_lots = strategy._total_lots  # already decremented by strategy
+            time.sleep(3)
+            broker_lots = _get_broker_position_fast()
+            if broker_lots < expected_lots + qty:
+                log.warning(f"PARTIAL_TP: DP failed but broker lots changed — order executed, lot stays removed")
+            else:
+                log.error(f"PARTIAL_TP: order placement failed for {side_str} {qty} — re-adding lot to queue")
+                strategy._lot_queue.append(strategy.LotEntry(price=action.get('entryPrice', strategy._current_price), side=action.get('entrySide', strategy._dir), lots=qty))
+                strategy._total_lots += qty
+                if strategy._total_lots > 0 and strategy._dir == FLAT:
+                    strategy._dir = action.get('entrySide', 0)
 
 
 # ========== API ==========
