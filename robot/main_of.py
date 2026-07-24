@@ -238,8 +238,6 @@ def connect_finam():
 
     # Subscribe to own trades (order executions) for real fill prices
     try:
-        global _ignore_fills_until
-        _ignore_fills_until = time.time() + 120.0  # ignore batch for 2 min
         fp.on_trade.subscribe(_on_my_trade)
         for acc_id in fp.account_ids:
             fp.subscribe_orders_trades(orders=False, trades=True, account_id=acc_id)
@@ -262,17 +260,12 @@ def connect_finam():
 _last_fill_price: float = 0.0
 _last_fill_time: float = 0.0
 _last_fill_qty: int = 0
-_fill_cb_count: int = 0
-_ignore_fills_until: float = 0.0  # ignore batch fills until this timestamp
 
 
 def _on_my_trade(trade):
     """Callback from FinamPy when our order is executed. Captures REAL fill price."""
-    global _last_fill_price, _last_fill_time, _last_fill_qty, _fill_cb_count
+    global _last_fill_price, _last_fill_time, _last_fill_qty
     try:
-        # Ignore batch fills delivered right after subscribe
-        if time.time() < _ignore_fills_until:
-            return
         if str(trade.symbol) != SYMBOL:
             return
         price = float(str(trade.price.value)) if hasattr(trade.price, 'value') else float(str(trade.price))
@@ -280,8 +273,7 @@ def _on_my_trade(trade):
         _last_fill_price = price
         _last_fill_time = time.time()
         _last_fill_qty = qty
-        _fill_cb_count += 1
-        log.info(f"FILL {_fill_cb_count}: price={price} qty={qty} symbol={trade.symbol}")
+        log.info(f"FILL {trade.order_id}: price={price} qty={qty} symbol={trade.symbol}")
     except Exception as e:
         log.error(f"on_my_trade error: {e}")
 
@@ -459,9 +451,8 @@ def _set_current_price(price: float):
 
 def main_loop():
     """Main strategy loop — poll price + process ticks."""
-    global _mode, _fill_sub_thread, _main_loop_start_ts
+    global _mode
 
-    _main_loop_start_ts = time.time()
     log.info("Main loop started")
     last_save = time.time()
     last_price_sync = 0.0
@@ -521,15 +512,7 @@ def main_loop():
                                      params={"account": sync_account, "ticker": SYMBOL},
                                      timeout=5)
                     if r.status_code == 200:
-                        broker_data = r.json()
-                        strategy.sync_from_broker(broker_data)
-                        # Reconcile lot count with broker
-                        if strategy._total_lots > 0 or broker_data.get('lots', 0) > 0:
-                            broker_lots = broker_data.get('lots', 0)
-                            broker_avg = broker_data.get('avg_price', 0.0)
-                            broker_dir = broker_data.get('dir', 0)
-                            if strategy._total_lots != broker_lots:
-                                strategy.reconcile_with_broker(broker_lots, broker_avg, broker_dir)
+                        strategy.sync_from_broker(r.json())
                 except Exception as e:
                     log.debug(f"Price sync: {e}")
                 last_price_sync = time.time()
@@ -546,39 +529,22 @@ def main_loop():
                     log.warning(f"[WATCHDOG] LatestTrades stream dead for {trade_age:.0f}s — reconnecting")
                     _reconnect_finampy()
 
-            # === WATCHDOG: re-subscribe fill stream if no callbacks ===
-            # Thread can be alive but blocked on dead gRPC stream.
-            # If we placed orders but got 0 fill callbacks in 60s — re-subscribe.
-            global _fill_cb_count
-            if _fill_sub_thread is not None:
-                now_wd = time.time()
-                # Check if thread appears dead (no callbacks after startup or after re-sub)
-                fill_stream_ok = True
-                if _fill_cb_count == 0 and (now_wd - _main_loop_start_ts) > 60:
-                    fill_stream_ok = False
-                elif _last_fill_time > 0 and (now_wd - _last_fill_time) > 120:
-                    # Had fills before but stream went silent
-                    fill_stream_ok = False
-                if not fill_stream_ok:
-                    log.warning(f"[WATCHDOG] Fill stream silent (cb_count={_fill_cb_count}, last_fill={_last_fill_time:.0f}) — re-subscribing")
-                    try:
-                        global _ignore_fills_until
-                        _ignore_fills_until = time.time() + 120.0
-                        if _fill_sub_thread.is_alive():
-                            pass
-                        fp.on_trade.subscribe(_on_my_trade)
-                        for acc_id in fp.account_ids:
-                            fp.subscribe_orders_trades(orders=False, trades=True, account_id=acc_id)
-                        _fill_sub_thread = threading.Thread(
-                            target=fp.subscribe_orders_trades_thread,
-                            daemon=True,
-                            name=f"sub-orders-trades-{int(now_wd)}",
-                        )
-                        _fill_sub_thread.start()
-                        _fill_cb_count = 0
-                        log.info("[WATCHDOG] Fill stream re-subscribed OK")
-                    except Exception as e:
-                        log.error(f"[WATCHDOG] Fill re-subscribe error: {e}")
+            # === WATCHDOG: re-subscribe fill stream if thread died ===
+            if _fill_sub_thread and not _fill_sub_thread.is_alive():
+                log.warning("[WATCHDOG] Fill subscription thread dead — re-subscribing")
+                try:
+                    fp.on_trade.subscribe(_on_my_trade)
+                    for acc_id in fp.account_ids:
+                        fp.subscribe_orders_trades(orders=False, trades=True, account_id=acc_id)
+                    _fill_sub_thread = threading.Thread(
+                        target=fp.subscribe_orders_trades_thread,
+                        daemon=True,
+                        name="sub-orders-trades",
+                    )
+                    _fill_sub_thread.start()
+                    log.info("[WATCHDOG] Fill subscription re-subscribed OK")
+                except Exception as e:
+                    log.error(f"[WATCHDOG] Fill re-subscribe error: {e}")
 
             # Tick rate: 50ms (20x per second)
             time.sleep(0.05)
@@ -632,32 +598,24 @@ def _record_broker_trade(action: dict, fill_price: float):
     log.info(f"TRADE {direction} {lots}L entry={entry_price:.0f} exit={fill_price:.0f} pnl={pnl:+.1f}₽ comm={comm_per_lot * lots:.1f}₽")
 
 
-def _get_broker_position():
-    """Fetch actual position from broker. Returns (lots, avg_price) or (0, 0.0)."""
-    try:
-        import requests
-        sync_account = ACCOUNTS.get(ACTIVE_ACCOUNT_KEY, ACCOUNT)
-        r = requests.get(f"{DP_URL}/position", params={"account": sync_account, "ticker": SYMBOL}, timeout=3)
-        if r.status_code == 200:
-            d = r.json()
-            return abs(d.get('lots', 0)), d.get('avg_price', 0.0), d.get('dir', 0)
-    except Exception:
-        pass
-    return 0, 0.0, 0
-
-
 def _execute_action(action: dict):
-    """Execute a strategy action. Broker position is the source of truth."""
+    """Execute a strategy action via OrderManager (or log only in paper mode)."""
     act = action.get("action")
     side_str = action.get("side", "buy")
     qty = action.get("qty", 1)
     tag = f"of_{act}"
 
     if PAPER_MODE:
-        log.info(f"PAPER {act}: {side_str} {qty} @ {action.get('price', 0):.0f}")
+        log.info(f"📄 PAPER {act}: {side_str} {qty} @ {action.get('price', 0):.0f}")
         return
 
     if act == "close_all":
+        # Skip if already flat (partial_tp closed last lot in same tick)
+        if strategy._total_lots <= 0:
+            log.info(f"CLOSE_ALL skipped — already flat (partial_tp closed in same tick)")
+            return
+
+        # First cancel all orders
         active = orders.get_active_orders(symbol=SYMBOL)
         if active:
             for o in active:
@@ -665,69 +623,68 @@ def _execute_action(action: dict):
                 orders.cancel(oid)
             time.sleep(0.5)
 
+        # Save avgPrice BEFORE strategy modifies it
         avg_for_record = strategy._avg_price
-        lots_before, _, _ = _get_broker_position()
 
         side_int = SELL if side_str == "sell" else BUY
+        global _last_fill_price, _last_fill_time
+        _last_fill_price = 0.0
+        _last_fill_time = 0.0
         result = orders.place_market(side_int, qty, tag=f"of_close_{action.get('reason', '')}")
         if result:
-            time.sleep(0.5)
-            lots_after, broker_avg_after, _ = _get_broker_position()
-            if lots_after < lots_before:
-                fill_price = broker_avg_after if broker_avg_after > 0 else action.get('price', strategy._current_price)
+            time.sleep(0.3)  # wait for fill callback
+            fill_price = _consume_fill_price()
+            if fill_price > 0:
                 action["fill_price"] = fill_price
                 action['avgPrice'] = avg_for_record
-                log.info(f"Executed CLOSE_ALL: {side_str} {qty} @ {fill_price:.0f} reason={action.get('reason')} (broker {lots_before}→{lots_after})")
+                log.info(f"Executed CLOSE_ALL: {side_str} {qty} @ {fill_price:.0f} reason={action.get('reason')}")
                 _record_broker_trade(action, fill_price)
                 strategy._reset_position()
             else:
-                log.error(f"CLOSE_ALL: order may not have executed (broker lots {lots_before}→{lots_after}) — still resetting")
+                log.warning(f"CLOSE_ALL: no broker fill for {side_str} {qty} — recording with strategy price {action.get('price', 0):.0f}")
                 action['avgPrice'] = avg_for_record
                 _record_broker_trade(action, action.get('price', strategy._current_price))
                 strategy._reset_position()
         else:
-            log.warning(f"CLOSE_ALL: order placement failed for {side_str} {qty}")
-            strategy._reset_position()
+            log.error(f"CLOSE_ALL: order placement failed for {side_str} {qty} — keeping position, will retry next tick")
 
     elif act in ("entry", "average", "pyramid"):
-        lots_before, _, _ = _get_broker_position()
-
         side_int = BUY if side_str == "buy" else SELL
+        _last_fill_price = 0.0
+        _last_fill_time = 0.0
         result = orders.place_market(side_int, qty, tag=tag)
         if result:
-            time.sleep(0.5)
-            lots_after, broker_avg_after, broker_dir = _get_broker_position()
-            if lots_after != lots_before:
-                # Broker confirms — order executed
-                fill_price = broker_avg_after if broker_avg_after > 0 else action.get('price', 0)
+            fill_price = _consume_fill_price()
+            if fill_price > 0:
                 action["fill_price"] = fill_price
-                log.info(f"Executed {act.upper()}: {side_str} {qty} @ {fill_price:.0f} (broker {lots_before}→{lots_after})")
-                strategy.update_fill_price(fill_price, act)
+                log.info(f"Executed {act.upper()}: {side_str} {qty} @ {fill_price:.0f}")
             else:
-                # Broker says no change — order didn't execute
-                log.error(f"{act.upper()}: order NOT executed at broker (lots still {lots_before}) — rolling back {qty} lot(s)")
-                strategy.rollback_pending_entry(qty)
+                log.info(f"Executed {act.upper()}: {side_str} {qty} @ {action.get('price', 0):.0f}")
         else:
             log.error(f"{act.upper()}: order placement FAILED for {side_str} {qty} — rolling back {qty} lot(s)")
             strategy.rollback_pending_entry(qty)
 
     elif act == "partial_tp":
-        lots_before, _, _ = _get_broker_position()
-
         side_int = SELL if side_str == "sell" else BUY
+        _last_fill_price = 0.0
+        _last_fill_time = 0.0
         result = orders.place_market(side_int, qty, tag="of_partial_tp")
         if result:
-            time.sleep(0.5)
-            lots_after, _, _ = _get_broker_position()
-            if lots_after < lots_before:
-                fill_price = action.get('price', strategy._current_price)
+            time.sleep(0.3)  # wait for fill callback
+            fill_price = _consume_fill_price()
+            if fill_price > 0:
                 action["fill_price"] = fill_price
-                log.info(f"Executed PARTIAL_TP: {side_str} {qty} @ {fill_price:.0f} (broker {lots_before}→{lots_after})")
+                log.info(f"Executed PARTIAL_TP: {side_str} {qty} @ {fill_price:.0f}")
                 _record_broker_trade(action, fill_price)
             else:
-                log.error(f"PARTIAL_TP: order NOT executed (broker lots {lots_before}→{lots_after}) — trade NOT recorded")
+                log.warning(f"PARTIAL_TP: no broker fill for {side_str} {qty} — recording with strategy price {action.get('price', 0):.0f}")
+                _record_broker_trade(action, action.get('price', strategy._current_price))
         else:
-            log.error(f"PARTIAL_TP: order placement failed for {side_str} {qty}")
+            log.error(f"PARTIAL_TP: order placement failed for {side_str} {qty} — re-adding lot to queue")
+            strategy._lot_queue.append(strategy.LotEntry(price=action.get('entryPrice', strategy._current_price), side=action.get('entrySide', strategy._dir), lots=qty))
+            strategy._total_lots += qty
+            if strategy._total_lots > 0 and strategy._dir == FLAT:
+                strategy._dir = action.get('entrySide', 0)
 
 
 # ========== API ==========
@@ -1094,6 +1051,21 @@ if __name__ == "__main__":
     log.info("Warmup: waiting 10 sec for data streams...")
     time.sleep(10)
     log.info(f"Warmup done. OB has data: {strategy.ob_tracker.has_data}")
+
+    # === STARTUP RECONCILIATION: check broker position once ===
+    try:
+        import requests as _req
+        _sync_acc = ACCOUNTS.get(ACTIVE_ACCOUNT_KEY, ACCOUNT)
+        _r = _req.get(f"{DP_URL}/position", params={"account": _sync_acc, "ticker": SYMBOL}, timeout=5)
+        if _r.status_code == 200:
+            _bpos = _r.json()
+            _bl = _bpos.get('lots', 0)
+            if _bl != 0:
+                log.warning(f"STARTUP: broker has {_bl} lots (avg={_bpos.get('avg_price', 0):.0f}) but robot is FLAT. NOT entering — investigate manually.")
+                _mode = "stopped"
+                save_state()
+    except Exception as _e:
+        log.warning(f"STARTUP: broker position check failed: {_e}")
 
     # Start main loop
     t_main = threading.Thread(target=main_loop, daemon=True, name="main-loop")
