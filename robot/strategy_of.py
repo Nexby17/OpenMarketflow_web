@@ -503,49 +503,6 @@ class OrderFlowStrategy:
             self._avg_price = broker_avg
         self._broker_sync_time = time.time()
 
-    def rollback_pending_entry(self, qty: int = 1):
-        """Remove the last added lot(s) from queue if order was not placed."""
-        removed = 0
-        while self._lot_queue and removed < qty:
-            lot = self._lot_queue.pop()
-            self._total_lots -= lot.lots
-            removed += lot.lots
-            log.warning(f"ROLLBACK: removed {lot.lots} lot(s) @ {lot.price:.0f} from queue, total_lots={self._total_lots}")
-        if self._total_lots <= 0:
-            self._total_lots = 0
-            self._dir = 0
-            self._lot_queue.clear()
-        self._recalc_avg()
-        self._save_state()
-
-    def _recalc_avg(self):
-        """Recalculate avg_price from lot_queue."""
-        if not self._lot_queue:
-            self._avg_price = 0.0
-            return
-        total_cost = sum(e.price * e.lots for e in self._lot_queue)
-        self._avg_price = total_cost / self._total_lots if self._total_lots > 0 else 0.0
-
-    def reconcile_with_broker(self, broker_lots: int, broker_avg: float, broker_dir: int):
-        """Reconcile robot position with broker. Returns True if adjusted."""
-        if broker_lots == self._total_lots:
-            return False
-        log.warning(f"RECONCILE: robot lots={self._total_lots} dir={self._dir} avg={self._avg_price:.0f} → broker lots={broker_lots} dir={broker_dir} avg={broker_avg:.0f}")
-        # Trust broker lot count
-        while self._lot_queue and self._total_lots > broker_lots:
-            lot = self._lot_queue.pop()
-            self._total_lots -= lot.lots
-            log.warning(f"  RECONCILE: removed {lot.lots} lot(s) @ {lot.price:.0f}")
-        if self._total_lots <= 0:
-            self._total_lots = 0
-            self._dir = 0
-            self._lot_queue.clear()
-        self._broker_avg_price = broker_avg
-        self._recalc_avg()
-        self._save_state()
-        log.info(f"  RECONCILE done: lots={self._total_lots} avg={self._avg_price:.0f}")
-        return True
-
     def update_fill_price(self, fill_price: float, action: str):
         """Update entry prices with REAL broker fill. Exit trades recorded in main_of."""
         if fill_price <= 0:
@@ -892,6 +849,25 @@ class OrderFlowStrategy:
             'price': price,
             'reason': reason,
         }
+
+    def rollback_pending_entry(self, qty: int):
+        """Remove the last qty lots from queue (order was not placed/filled)."""
+        removed = 0
+        while self._lot_queue and removed < qty:
+            lot = self._lot_queue.pop()
+            removed += lot.lots
+            self._total_lots -= lot.lots
+        if self._total_lots <= 0:
+            self._total_lots = 0
+            self._dir = FLAT
+            self._lot_queue.clear()
+            self._entry_time = None
+            self._signal_type = ""
+        elif self._total_lots > 0:
+            # Recalculate avg from remaining lots
+            total_cost = sum(e.price * e.lots for e in self._lot_queue)
+            self._avg_price = total_cost / self._total_lots
+        log.info(f"ROLLBACK: removed {removed} lot(s) | remaining={self._total_lots}")
 
     def _reset_position(self):
         """Reset all position state."""
