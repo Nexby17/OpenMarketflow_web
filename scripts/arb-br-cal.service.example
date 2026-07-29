@@ -1,0 +1,20 @@
+[Unit]
+Description=Arbitrage Robot — BR Calendar Spread (BRQ6/BRU6)
+After=network.target dataprovider.service
+Wants=dataprovider.service
+
+[Service]
+Type=simple
+WorkingDirectory=/path/to/HedgeFund/robot/arb_br_calendar
+EnvironmentFile=/path/to/HedgeFund/.env
+Environment=PYTHONPATH=/path/to/HedgeFund/robot:/path/to/HedgeFund/DataProvider
+Environment=FINAM_ACCOUNT=your_account_id
+Environment=DP_URL=http://localhost:5060
+ExecStart=/usr/bin/python3 main_arb.py --no-paper --port 5092
+Restart=on-failure
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

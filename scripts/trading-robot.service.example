@@ -1,0 +1,18 @@
+[Unit]
+Description=Trading Robot (Order Flow) — Python
+After=network.target dataprovider.service
+Wants=dataprovider.service
+
+[Service]
+Type=simple
+WorkingDirectory=/path/to/HedgeFund/robot
+ExecStart=/usr/bin/python3 /path/to/HedgeFund/robot/main_of.py
+Restart=always
+RestartSec=15
+TimeoutStopSec=10
+EnvironmentFile=/path/to/HedgeFund/.env
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

@@ -6,6 +6,8 @@ obj/
 *.cache
 *.vs/
 *.DotSettings.user
+publish/
+out/
 
 ## IDE
 .idea/
@@ -16,11 +18,9 @@ obj/
 .DS_Store
 Thumbs.db
 
-## Build
-publish/
-out/
-
 ## Secrets
+.env
+*.env.local
 appsettings.*.json
 *.pfx
 *.key
@@ -29,9 +29,34 @@ credentials.json
 ## Python
 __pycache__/
 *.pyc
+.pytest_cache/
 
 ## Archive (deprecated)
 _archive/
 
-## State
-robot-state.json
+## Runtime state & configs with secrets
+robot/of_state.json
+robot/state.json
+robot/of_config.json
+robot/arb_config.json
+robot/arb_config.json
+robot/arb_state.json
+robot/arb_*/arb_config.json
+robot/arb_*/arb_state.json
+robot/arb_*/logs/
+robot/arb_sber_sru6.bak.*/
+robot/.env.bak
+
+## Logs
+*.log
+robot/logs/
+backtest/backtest.log
+
+## Backtest data & results (too large for git)
+backtest/data/
+backtest/results/
+
+## Temp
+*.bak
+*.bak.*
+*.tmp
