@@ -139,6 +139,7 @@ def save_state():
         state = strategy.get_state()
         state["mode"] = _mode
         state["activeAccount"] = ACTIVE_ACCOUNT_KEY
+        state["direction_filter"] = params.direction_filter
         with open(STATE_FILE, "w") as f:
             json.dump(state, f, indent=2, default=str)
     except Exception as e:
@@ -152,7 +153,8 @@ def load_state_from_disk():
                 state = json.load(f)
             strategy.load_state(state)
             _mode = state.get("mode", "stopped")
-            log.info(f"State loaded: dir={state.get('dir', 0)} lots={state.get('totalLots', 0)} mode={_mode}")
+            params.direction_filter = state.get("direction_filter", "both")
+            log.info(f"State loaded: dir={state.get('dir', 0)} lots={state.get('totalLots', 0)} mode={_mode} dirFilter={params.direction_filter}")
         except Exception as e:
             log.error(f"Load state error: {e}")
 
@@ -769,6 +771,7 @@ class APIHandler(BaseHTTPRequestHandler):
             status["accounts"] = ACCOUNTS
             status["activeAccount"] = ACTIVE_ACCOUNT_KEY
             status["activeAccountId"] = ACCOUNTS.get(ACTIVE_ACCOUNT_KEY, ACCOUNT)
+            status["directionFilter"] = params.direction_filter
             
             # Filter tradeHistory by date period
             start_date = params_url.get('startDate', [None])[0]
@@ -943,12 +946,19 @@ class APIHandler(BaseHTTPRequestHandler):
                 self._json(400, {"error": "Missing request body"})
 
         elif path == "/account":
-            # Switch active trading account
+            # Switch active trading account (accepts key or account ID)
             length = int(self.headers.get("Content-Length", 0))
             if length > 0:
                 body = self.rfile.read(length)
                 data = json.loads(body)
-                account_key = data.get("account", "main")
+                account_val = data.get("account", "main")
+                # Resolve: try as key first, then as ID
+                account_key = account_val if account_val in ACCOUNTS else None
+                if not account_key:
+                    for k, v in ACCOUNTS.items():
+                        if v == account_val:
+                            account_key = k
+                            break
                 new_account = ACCOUNTS.get(account_key)
                 if new_account:
                     ACTIVE_ACCOUNT_KEY = account_key
@@ -957,7 +967,7 @@ class APIHandler(BaseHTTPRequestHandler):
                     save_state()
                     self._json(200, {"ok": True, "account": account_key, "id": new_account})
                 else:
-                    self._json(400, {"error": f"Unknown account: {account_key}", "available": list(ACCOUNTS.keys())})
+                    self._json(400, {"error": f"Unknown account: {account_val}", "available": list(ACCOUNTS.keys())})
             else:
                 self._json(400, {"error": "Missing request body"})
 

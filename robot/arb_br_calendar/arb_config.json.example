@@ -1,0 +1,14 @@
+{
+  "entry_z": 6,
+  "entry_z_long": -2,
+  "lookback": 200,
+  "lots_a": 1,
+  "lots_b": 1,
+  "hedge_ratio": 1,
+  "min_profit_type": "rub",
+  "min_profit_value": 50,
+  "risk_type": "stop_loss_rub",
+  "risk_value": 5000,
+  "expiration_date": "2026-09-18",
+  "capital": 100000
+}

@@ -66,12 +66,14 @@ class OFParams:
     timeframe: str = "M5"
     step_atr: bool = False        # adaptive step via ATR
     # Protective filters
+    close_half_pct: int = 0         # 0=OFF, 50/40/30/20/10 — при X% peak + partial TP trigger → close_all
     enable_max_levels: bool = True
     enable_daily_stop: bool = True
     enable_ob_filter: bool = True
     ob_min_lots: int = 20         # min bid+ask lots near price
     ob_scan_radius: int = 50      # pts radius for OB filter
     commission: float = 0.90      # per side (0.90₽ = one-way)
+    direction_filter: str = "both"  # "both" | "long" | "short"
     # VWEMA regime filter
     use_vwema: bool = False       # enable VWEMA trend filter
     vwema_fast: int = 20          # fast VWEMA period
@@ -551,6 +553,14 @@ class OrderFlowStrategy:
 
         direction = sigs[0].direction
 
+        # Direction filter — block disallowed side
+        if self.p.direction_filter == "long" and direction == SHORT:
+            log.info("ENTRY BLOCKED by direction_filter=long (signal=SHORT)")
+            return None
+        if self.p.direction_filter == "short" and direction == LONG:
+            log.info("ENTRY BLOCKED by direction_filter=short (signal=LONG)")
+            return None
+
         # VWEMA regime filter — block counter-trend entries
         if self.vwema and self.vwema.ready and self.p.vwema_block_counter:
             td = self.vwema.direction
@@ -566,6 +576,7 @@ class OrderFlowStrategy:
         self._entry_price = price
         self._avg_price = price
         self._total_lots = self.p.lots
+        self._peak_lots = self.p.lots
         self._average_levels = 0
         self._pyramid_levels = 0
         self._last_average_price = price
@@ -669,6 +680,7 @@ class OrderFlowStrategy:
             old_cost = self._avg_price * old_lots
 
             self._total_lots += self.p.lots
+            self._peak_lots = max(self._peak_lots, self._total_lots)
             self._avg_price = (old_cost + price * self.p.lots) / self._total_lots
             self._average_levels += 1
             self._last_average_price = price
@@ -745,6 +757,7 @@ class OrderFlowStrategy:
         old_cost = self._avg_price * old_lots
 
         self._total_lots += self.p.lots
+        self._peak_lots = max(self._peak_lots, self._total_lots)
         self._avg_price = (old_cost + price * self.p.lots) / self._total_lots
         self._pyramid_levels += 1
         self._last_pyramid_price = price
@@ -765,10 +778,30 @@ class OrderFlowStrategy:
 
         Catch-up mode: if multiple lots are in profit beyond spread (e.g. after
         restart/gap), closes them all at once instead of one per tick.
+
+        close_half_pct mode: when total_lots <= X% of peak_lots and partial TP
+        triggers (pnl >= spread for LIFO lot), close ALL remaining lots at once.
+        If close_half_pct=0 (OFF): stop partial TP at threshold, let tp_full handle rest.
         Returns a list of actions (empty if nothing to close).
         """
         if not self.p.partial_tp or len(self._lot_queue) == 0:
             return []
+
+        # Check X% threshold before any closes
+        pct = self.p.close_half_pct
+        if pct > 0 and self._peak_lots > 0 and self._total_lots <= self._peak_lots * pct / 100.0:
+            # Check if LIFO lot meets spread condition
+            last = self._lot_queue[-1]
+            if last.added_ts > 0 and (time.monotonic() - last.added_ts) < 2.0:
+                return []
+            pnl_pts = (price - last.price) * last.side
+            if pnl_pts >= self.p.spread:
+                side = "sell" if self._dir == LONG else "buy"
+                qty = self._total_lots
+                log.info(f"CLOSE_HALF_PCT({pct}%) {side} {qty} @ {price:.0f} | peak={self._peak_lots}")
+                return [self._close_all(price, f"close_half_{pct}pct")]
+            else:
+                return []
 
         actions = []
 
@@ -872,6 +905,7 @@ class OrderFlowStrategy:
         self._entry_price = 0.0
         self._avg_price = 0.0
         self._total_lots = 0
+        self._peak_lots = 0
         self._average_levels = 0
         self._pyramid_levels = 0
         self._last_average_price = 0.0
@@ -904,6 +938,7 @@ class OrderFlowStrategy:
             "pyramidLevels": self._pyramid_levels,
             "lastAveragePrice": self._last_average_price,
             "lastPyramidPrice": self._last_pyramid_price,
+            "peakLots": self._peak_lots,
             "lotQueue": [{"price": e.price, "side": e.side, "lots": e.lots} for e in self._lot_queue],
             "roundTrips": self._round_trips,
             "realizedPnL": self._realized_pnl,
@@ -924,6 +959,10 @@ class OrderFlowStrategy:
         self._pyramid_levels = state.get("pyramidLevels", 0)
         self._last_average_price = state.get("lastAveragePrice", 0.0)
         self._last_pyramid_price = state.get("lastPyramidPrice", 0.0)
+        self._peak_lots = state.get("peakLots", 0)
+        # Fallback: if peak_lots not saved (old state), recalculate from queue
+        if self._peak_lots == 0 and self._total_lots > 0:
+            self._peak_lots = self._total_lots
         self._round_trips = state.get("roundTrips", 0)
         self._realized_pnl = state.get("realizedPnL", 0.0)
         self._daily_pnl = state.get("dailyPnL", 0.0)
@@ -970,6 +1009,7 @@ class OrderFlowStrategy:
             "entryPrice": self._entry_price,
             "avgPrice": self._avg_price,
             "totalLots": self._total_lots,
+            "peakLots": self._peak_lots,
             "averageLevels": self._average_levels,
             "pyramidLevels": self._pyramid_levels,
             "maxAverageLevels": self.p.max_average_levels,
@@ -1007,4 +1047,5 @@ class OrderFlowStrategy:
                 "syncAgeSec": round(time.time() - self._broker_sync_time, 1) if self._broker_sync_time > 0 else None,
             },
             "vwema": self.vwema.state if self.vwema else None,
+            "directionFilter": self.p.direction_filter,
         }

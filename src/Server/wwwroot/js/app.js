@@ -5332,6 +5332,17 @@ async function ofRobotPoll() {
     }
 }
 
+async function ofSetDirection(value) {
+    try {
+        await fetch(OF_ROBOT_API + '/params', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({direction_filter: value})
+        });
+        await ofRobotPoll();
+    } catch(e) {}
+}
+
 async function ofRobotLoadConfig() {
     const defaults = {
         lots: 1, max_pyramid_levels: 5, max_average_levels: 100,
@@ -5410,6 +5421,23 @@ async function ofRobotSaveConfig() {
 
 async function ofRobotApi(action) {
     try {
+        // Before starting, switch account if needed
+        if (action === 'start' || action === 'stop') {
+            const acctVal = el('cfgOfAccount')?.value;
+            if (acctVal) {
+                const acctResp = await fetch(OF_ROBOT_API + '/account', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({account: acctVal})
+                });
+                const acctData = await acctResp.json();
+                if (acctData.ok) {
+                    addLog(nowTime(), 'INFO', '📊 OF счёт: ' + acctData.account + ' (' + acctData.id + ')');
+                } else {
+                    addLog(nowTime(), 'ERROR', 'OF переключение счёта: ' + (acctData.error || 'unknown'));
+                }
+            }
+        }
         const resp = await fetch(OF_ROBOT_API + '/' + action, {method: 'POST'});
         const data = await resp.json();
         addLog(nowTime(), 'INFO', 'OF ' + action + ': ' + JSON.stringify(data));
@@ -5473,6 +5501,9 @@ function ofRobotEditPanel() {
                 <div class="metric-card" style="background:#1a2332;border:1px solid #9C27B0;display:flex;flex-direction:column;align-items:center;gap:2px"><div style="display:flex;align-items:center;gap:4px"><input id="toggleCvd" type="checkbox" checked style="width:14px;height:14px;cursor:pointer" onchange="toggleOfSignal('use_cvd', this.checked)"><div class="metric-label" style="color:#CE93D8">CVD Trend</div></div><div id="ofCvd" style="font-size:18px;font-weight:bold;color:#CE93D8">—</div></div>
                 <div class="metric-card" style="background:#1a2332;border:1px solid #9C27B0;display:flex;flex-direction:column;align-items:center;gap:2px"><div style="display:flex;align-items:center;gap:4px"><input id="toggleDmWall" type="checkbox" style="width:14px;height:14px;cursor:pointer" onchange="toggleOfSignal('use_dm_wall', this.checked)"><div class="metric-label" style="color:#FF7043">dm_wall</div></div><div id="ofDelta" style="font-size:18px;font-weight:bold;color:#FF7043">—</div></div>
                 <div class="metric-card" style="background:#1a2332;border:1px solid #9C27B0;display:flex;flex-direction:column;align-items:center;gap:2px"><div style="display:flex;align-items:center;gap:4px"><input id="toggleCvdAccel" type="checkbox" checked style="width:14px;height:14px;cursor:pointer" onchange="toggleOfSignal('use_cvd_accel', this.checked)"><div class="metric-label" style="color:#66BB6A">CVD Accel</div></div><div id="ofCvdAccel" style="font-size:18px;font-weight:bold;color:#66BB6A">—</div></div>
+
+                <div class="metric-card" style="background:#1a2332;border:1px solid #607D8B;display:flex;flex-direction:column;align-items:center;gap:2px"><div class="metric-label" style="color:#B0BEC5">Фильтр</div><select id="ofDirFilter" class="input" style="width:80px;font-size:13px;font-weight:bold;background:transparent;color:#fff;border:1px solid #607D8B;text-align:center;cursor:pointer" onchange="ofSetDirection(this.value)"><option value="both" style="color:#000">ОБА</option><option value="long" style="color:#000">LONG</option><option value="short" style="color:#000">SHORT</option></select></div>
+
                 <div class="metric-card"><div class="metric-label">Цена</div><div id="ofPrice" style="font-size:18px;font-weight:bold">—</div></div>
                 <div class="metric-card"><div class="metric-label">Позиция</div><div id="ofDir" style="font-size:18px;font-weight:bold">—</div></div>
                 <div class="metric-card"><div class="metric-label">Лоты</div><div id="ofLots" style="font-size:18px;font-weight:bold">0</div></div>
@@ -5498,6 +5529,7 @@ function ofRobotEditPanel() {
                 <div class="metric-card"><div class="metric-label">SL Mode</div><select id="editOfSlMode" class="input" style="width:70px"><option value="rub" ${(p.stop_loss_mode||'rub')==='rub'?'selected':''}>₽</option><option value="pct" ${p.stop_loss_mode==='pct'?'selected':''}>%</option><option value="pts" ${p.stop_loss_mode==='pts'?'selected':''}>пт</option></select></div>
                 <div class="metric-card"><div class="metric-label">SL Value</div><input id="editOfSlValue" class="input" type="number" value="${p.stop_loss_value||7000}" style="width:80px"></div>
                 <div class="metric-card"><div class="metric-label">Min Profit/Lot</div><input id="editOfMinProfit" class="input" type="number" value="${p.min_profit_per_lot||30}" style="width:60px"></div>
+                <div class="metric-card"><div class="metric-label">Close % All</div><select id="editOfCloseHalfPct" class="input" style="width:70px"><option value="0" ${(!p.close_half_pct)?'selected':''}>OFF</option><option value="50" ${p.close_half_pct===50?'selected':''}>50%</option><option value="40" ${p.close_half_pct===40?'selected':''}>40%</option><option value="30" ${p.close_half_pct===30?'selected':''}>30%</option><option value="20" ${p.close_half_pct===20?'selected':''}>20%</option><option value="10" ${p.close_half_pct===10?'selected':''}>10%</option></select></div>
                 <div class="metric-card"><div class="metric-label">Max Hold (мин)</div><input id="editOfMaxHold" class="input" type="number" value="${p.max_hold_minutes||999}" style="width:80px"></div>
                 <div class="metric-card"><div class="metric-label">CVD EMA Fast</div><input id="editOfCvdEmaF" class="input" type="number" value="${p.cvd_ema_fast||5}" style="width:60px"></div>
                 <div class="metric-card"><div class="metric-label">CVD EMA Slow</div><input id="editOfCvdEmaS" class="input" type="number" value="${p.cvd_ema_slow||15}" style="width:60px"></div>
@@ -5599,6 +5631,7 @@ function ofUpdatePanel() {
     }
     if (el('ofDelta')) el('ofDelta').textContent = s.dmWallAgree || '—';
     if (el('ofCvdAccel') && s.cvdAccel) el('ofCvdAccel').textContent = s.cvdAccel.value !== null && s.cvdAccel.value !== undefined ? (s.cvdAccel.value > 0 ? '\u25B2' : '\u25BC') + Math.abs(s.cvdAccel.value).toFixed(0) + ' (R:' + s.cvdAccel.aggRatio.toFixed(2) + ')' : '\u2014';
+
     if (el('ofPrice')) el('ofPrice').textContent = s.currentPrice > 0 ? s.currentPrice.toFixed(0) : '—';
 
     // Sync signal toggles from params
@@ -5606,6 +5639,7 @@ function ofUpdatePanel() {
     if (el('toggleCvd')) el('toggleCvd').checked = p.use_cvd !== false;
     if (el('toggleDmWall')) el('toggleDmWall').checked = p.use_dm_wall !== false;
     if (el('toggleCvdAccel')) el('toggleCvdAccel').checked = p.use_cvd_accel !== false;
+    if (el('ofDirFilter')) el('ofDirFilter').value = s.directionFilter || p.direction_filter || 'both';
 
     const dirText = s.direction === 'LONG' ? 'Лонг' : s.direction === 'SHORT' ? 'Шорт' : 'Флэт';
     const dirCls = s.direction === 'LONG' ? 'var(--green)' : s.direction === 'SHORT' ? 'var(--red)' : '';
@@ -5670,6 +5704,7 @@ async function ofRobotSaveFromPanel() {
         stop_loss_mode: el('editOfSlMode')?.value || 'rub',
         stop_loss_value: parseFloat(el('editOfSlValue')?.value) || 7000,
         min_profit_per_lot: parseInt(el('editOfMinProfit')?.value) || 30,
+        close_half_pct: parseInt(el('editOfCloseHalfPct')?.value) || 0,
         max_hold_minutes: parseInt(el('editOfMaxHold')?.value) || 999,
         cvd_lookback: parseInt(el('editOfCvdLb')?.value) || 10,
         cvd_ema_fast: parseInt(el('editOfCvdEmaF')?.value) || 5,
@@ -5684,6 +5719,7 @@ async function ofRobotSaveFromPanel() {
         use_dm_wall: el('toggleDmWall')?.checked !== false,
         use_cvd: el('toggleCvd')?.checked !== false,
         use_cvd_accel: el('toggleCvdAccel')?.checked !== false,
+
         use_vwema: el('editOfUseVwema')?.checked || false,
         vwema_fast: parseInt(el('editOfVwemaFast')?.value) || 20,
         vwema_slow: parseInt(el('editOfVwemaSlow')?.value) || 40,
@@ -5705,6 +5741,14 @@ async function ofRobotSaveFromPanel() {
 
 // === Order Flow Trade Journal ===
 let _ofJournalTrades = [];
+
+async function ofResetStats() {
+    if (!confirm('Сбросить статистику? Realized PnL → 0, история сделок очищена.')) return;
+    const r = await fetch(OF_ROBOT_API + '/reset-stats', {method:'POST'});
+    if (r && r.ok) {
+        ofLoadJournal();
+    }
+}
 
 async function ofLoadJournal() {
     const info = el('ofJournalInfo');
@@ -5812,5 +5856,6 @@ function ofRenderJournalSummary(total, wins, losses, totalPnl) {
         <div class="metric-card"><div class="metric-label">Avg Win</div><div style="font-size:16px;font-weight:bold" class="green">${avgWin !== '—' ? '+' + avgWin + '₽' : '—'}</div></div>
         <div class="metric-card"><div class="metric-label">Avg Loss</div><div style="font-size:16px;font-weight:bold" class="red">${avgLoss !== '—' ? avgLoss + '₽' : '—'}</div></div>
         <div class="metric-card"><div class="metric-label">Итог PnL</div><div style="font-size:16px;font-weight:bold" class="${cls}">${totalPnl >= 0 ? '+' : ''}${totalPnl.toFixed(0)}₽</div></div>
+        <div class="metric-card" style="border:1px solid var(--border-color)"><div class="metric-label">&nbsp;</div><button class="btn btn-danger btn-sm" onclick="ofResetStats()" style="font-size:12px">🗑 Сбросить</button></div>
     `;
 }
