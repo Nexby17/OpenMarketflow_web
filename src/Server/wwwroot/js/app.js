@@ -2363,7 +2363,66 @@ async function renderRobots() {
         </tr>`;
     }
 
-    const allRows = [...serverStrategies, ...localRows, pythonRobotRow, ofRobotRow];
+    // Order Flow MX Robot row
+    let ofMxRobotRow = '';
+    let _ofMxInstrument = localStorage.getItem('ofMxRobotInstrument') || 'MXU6';
+    let _ofMxAccount = localStorage.getItem('ofMxRobotAccount') || '1225953';
+    if (ofMxRobot) {
+        const s = ofMxRobot;
+        const mode = s.mode || 'stopped';
+        const modeText = mode === 'running' ? '🟢 Работает' : mode === 'paused' ? '🟡 Пауза' : '🔴 Остановлен';
+        const modeCls = mode === 'running' ? 'green' : mode === 'paused' ? 'yellow' : 'red';
+        const dirText = s.direction === 'LONG' ? 'Лонг' : s.direction === 'SHORT' ? 'Шорт' : 'Флат';
+        const dirCls = s.direction === 'LONG' ? 'green' : s.direction === 'SHORT' ? 'red' : '';
+        const pnlCls = v => v >= 0 ? 'green' : 'red';
+        const pnl = s.realizedPnL || 0;
+        const paper = s.paper ? ' <span class="badge" style="background:#ff9800">PAPER</span>' : '';
+        ofMxRobotRow = `<tr ondblclick="ofMxRobotEditPanel()" style="cursor:pointer" title="Двойной клик — настройки робота">
+            <td><select class="input" style="width:80px;font-size:11px" onchange="onOfMxRobotInstrumentChange(this.value)">
+              <option value="MXM6" ${_ofMxInstrument==='MXM6'?'selected':''}>MXM6</option>
+              <option value="MXU6" ${_ofMxInstrument==='MXU6'?'selected':''}>MXU6</option>
+              <option value="MXZ6" ${_ofMxInstrument==='MXZ6'?'selected':''}>MXZ6</option>
+              <option value="MXH7" ${_ofMxInstrument==='MXH7'?'selected':''}>MXH7</option>
+              <option value="MXM7" ${_ofMxInstrument==='MXM7'?'selected':''}>MXM7</option>
+            </select></td>
+            <td><strong>Order Flow</strong> <span class="badge" style="background:#007ACC">MX</span>${paper}</td>
+            <td>${accountDropdownHtml(_ofMxAccount, 'onOfMxRobotAccountChange(this.value)')}</td>
+            <td class="${dirCls}">${dirText}${s.avgPrice > 0 ? ' @ ' + s.avgPrice.toFixed(0) : ''}</td>
+            <td>—</td>
+            <td class="${pnlCls(pnl)}">${pnl >= 0 ? '+' : ''}${pnl.toFixed(0)} ₽</td>
+            <td>${s.totalLots || 0}</td>
+            <td>—</td>
+            <td>
+                <button class="btn btn-success btn-sm" onclick="ofMxRobotApi('start')" ${mode==='running'?'disabled':''}>▶</button>
+                <button class="btn btn-warning btn-sm" onclick="ofMxRobotApi('pause')" ${mode!=='running'?'disabled':''}>⏸</button>
+                <button class="btn btn-danger btn-sm" onclick="ofMxRobotApi('stop')" ${mode==='stopped'?'disabled':''}>⏹</button>
+            </td>
+            <td class="${modeCls}">${modeText}</td>
+        </tr>`;
+    } else {
+        ofMxRobotRow = `<tr ondblclick="ofMxRobotEditPanel()" style="cursor:pointer" title="Двойной клик — настройки робота">
+            <td><select class="input" style="width:80px;font-size:11px" onchange="onOfMxRobotInstrumentChange(this.value)">
+              <option value="MXM6" ${_ofMxInstrument==='MXM6'?'selected':''}>MXM6</option>
+              <option value="MXU6" ${_ofMxInstrument==='MXU6'?'selected':''}>MXU6</option>
+              <option value="MXZ6" ${_ofMxInstrument==='MXZ6'?'selected':''}>MXZ6</option>
+              <option value="MXH7" ${_ofMxInstrument==='MXH7'?'selected':''}>MXH7</option>
+              <option value="MXM7" ${_ofMxInstrument==='MXM7'?'selected':''}>MXM7</option>
+            </select></td>
+            <td><strong>Order Flow</strong> <span class="badge" style="background:#007ACC">MX</span></td>
+            <td>${accountDropdownHtml(_ofMxAccount, 'onOfMxRobotAccountChange(this.value)')}</td>
+            <td>—</td>
+            <td>—</td>
+            <td>—</td>
+            <td>0</td>
+            <td>—</td>
+            <td>
+                <button class="btn btn-success btn-sm" onclick="ofMxRobotApi('start')">▶</button>
+            </td>
+            <td class="red">🔴 Не запущен</td>
+        </tr>`;
+    }
+
+    const allRows = [...serverStrategies, ...localRows, pythonRobotRow, ofRobotRow, ofMxRobotRow];
     if (!allRows.filter(r=>r).length) { tbody.innerHTML = ''; if (noMsg) noMsg.style.display = 'block'; return; }
     if (noMsg) noMsg.style.display = 'none';
     tbody.innerHTML = allRows.join('');
@@ -5403,6 +5462,20 @@ async function ofRobotSaveConfig() {
         signal_confirm_count: parseInt(el('cfgOfConfirm')?.value) || 1,
         signal_confirm_exit: parseInt(el('cfgOfConfirmOut')?.value) || 1,
         timeframe: el('cfgOfTf')?.value || 'M5',
+        close_half_pct: parseInt(el('cfgOfCloseHalfPct')?.value) || 0,
+        close_price_all: parseFloat(el('cfgOfClosePriceAll')?.value) || 0,
+        use_dm_wall: el('cfgOfUseDmWall')?.checked !== false,
+        use_cvd: el('cfgOfUseCvd')?.checked !== false,
+        use_cvd_accel: el('cfgOfUseCvdAccel')?.checked !== false,
+        dm_lookback: parseInt(el('cfgOfDmLb')?.value) || 5,
+        wall_window: parseFloat(el('cfgOfWallWin')?.value) || 120,
+        wall_multiplier: parseFloat(el('cfgOfWallMult')?.value) || 3.0,
+        use_vwema: el('cfgOfUseVwema')?.checked !== false,
+        vwema_fast: parseInt(el('cfgOfVwemaFast')?.value) || 30,
+        vwema_slow: parseInt(el('cfgOfVwemaSlow')?.value) || 50,
+        vwema_flat_th: parseFloat(el('cfgOfVwemaFlat')?.value) || 0.25,
+        vwema_block_counter: el('cfgOfVwemaBlock')?.checked !== false,
+        direction_filter: el('cfgOfDirFilter')?.value || 'both',
         ticker: el('cfgOfTicker')?.value || 'SiU6',
         account: el('cfgOfAccount')?.value || '1225953',
     };
@@ -5530,6 +5603,7 @@ function ofRobotEditPanel() {
                 <div class="metric-card"><div class="metric-label">SL Value</div><input id="editOfSlValue" class="input" type="number" value="${p.stop_loss_value||7000}" style="width:80px"></div>
                 <div class="metric-card"><div class="metric-label">Min Profit/Lot</div><input id="editOfMinProfit" class="input" type="number" value="${p.min_profit_per_lot||30}" style="width:60px"></div>
                 <div class="metric-card"><div class="metric-label">Close % All</div><select id="editOfCloseHalfPct" class="input" style="width:70px"><option value="0" ${(!p.close_half_pct)?'selected':''}>OFF</option><option value="50" ${p.close_half_pct===50?'selected':''}>50%</option><option value="40" ${p.close_half_pct===40?'selected':''}>40%</option><option value="30" ${p.close_half_pct===30?'selected':''}>30%</option><option value="20" ${p.close_half_pct===20?'selected':''}>20%</option><option value="10" ${p.close_half_pct===10?'selected':''}>10%</option></select></div>
+                <div class="metric-card"><div class="metric-label">Close price All</div><input id="editOfClosePriceAll" class="input" type="number" placeholder="None" value="${p.close_price_all||''}" style="width:90px"></div>
                 <div class="metric-card"><div class="metric-label">Max Hold (мин)</div><input id="editOfMaxHold" class="input" type="number" value="${p.max_hold_minutes||999}" style="width:80px"></div>
                 <div class="metric-card"><div class="metric-label">CVD EMA Fast</div><input id="editOfCvdEmaF" class="input" type="number" value="${p.cvd_ema_fast||5}" style="width:60px"></div>
                 <div class="metric-card"><div class="metric-label">CVD EMA Slow</div><input id="editOfCvdEmaS" class="input" type="number" value="${p.cvd_ema_slow||15}" style="width:60px"></div>
@@ -5705,6 +5779,7 @@ async function ofRobotSaveFromPanel() {
         stop_loss_value: parseFloat(el('editOfSlValue')?.value) || 7000,
         min_profit_per_lot: parseInt(el('editOfMinProfit')?.value) || 30,
         close_half_pct: parseInt(el('editOfCloseHalfPct')?.value) || 0,
+        close_price_all: parseFloat(el('editOfClosePriceAll')?.value) || 0,
         max_hold_minutes: parseInt(el('editOfMaxHold')?.value) || 999,
         cvd_lookback: parseInt(el('editOfCvdLb')?.value) || 10,
         cvd_ema_fast: parseInt(el('editOfCvdEmaF')?.value) || 5,
@@ -5858,4 +5933,465 @@ function ofRenderJournalSummary(total, wins, losses, totalPnl) {
         <div class="metric-card"><div class="metric-label">Итог PnL</div><div style="font-size:16px;font-weight:bold" class="${cls}">${totalPnl >= 0 ? '+' : ''}${totalPnl.toFixed(0)}₽</div></div>
         <div class="metric-card" style="border:1px solid var(--border-color)"><div class="metric-label">&nbsp;</div><button class="btn btn-danger btn-sm" onclick="ofResetStats()" style="font-size:12px">🗑 Сбросить</button></div>
     `;
+}
+// === ORDER FLOW MX ROBOT (порт 5081) ===
+const OF_MX_ROBOT_API = 'http://' + window.location.hostname + ':5081';
+let ofMxRobot = null;
+let _ofMxJournalTrades = [];
+
+let _ofMxPendingParams = null;
+let _ofMxWasOnline = false;
+
+async function ofMxRobotPoll() {
+    try {
+        const resp = await fetch(OF_MX_ROBOT_API + '/status', {signal: AbortSignal.timeout(2000)});
+        ofMxRobot = await resp.json();
+        // Robot just came online → sync pending params
+        if (!_ofMxWasOnline) {
+            _ofMxWasOnline = true;
+            const saved = localStorage.getItem('ofMxSavedParams');
+            if (saved) {
+                try {
+                    const params = JSON.parse(saved);
+                    await fetch(OF_MX_ROBOT_API + '/params', {
+                        method: 'POST',
+                        headers: {'Content-Type':'application/json'},
+                        body: JSON.stringify(params)
+                    });
+                    addLog(nowTime(), 'INFO', '📊 OF-MX: параметры синхронизированы из localStorage');
+                    localStorage.removeItem('ofMxSavedParams');
+                } catch(e) {}
+            }
+        }
+    } catch(e) {
+        ofMxRobot = null;
+        _ofMxWasOnline = false;
+    }
+}
+
+async function ofMxSetDirection(value) {
+    try {
+        await fetch(OF_MX_ROBOT_API + '/params', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({direction_filter: value})
+        });
+        await ofMxRobotPoll();
+    } catch(e) {}
+}
+
+async function onOfMxRobotAccountChange(val) {
+    localStorage.setItem('ofMxRobotAccount', val);
+}
+
+function onOfMxRobotInstrumentChange(val) {
+    localStorage.setItem('ofMxRobotInstrument', val);
+    renderRobots();
+}
+
+async function ofMxRobotApi(action) {
+    try {
+        if (action === 'start' || action === 'stop') {
+            const acctVal = localStorage.getItem('ofMxRobotAccount') || '1225953';
+            if (acctVal) {
+                const acctResp = await fetch(OF_MX_ROBOT_API + '/account', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({account: acctVal})
+                });
+                const acctData = await acctResp.json();
+                if (acctData.ok) {
+                    addLog(nowTime(), 'INFO', '📊 OF-MX счёт: ' + acctData.account + ' (' + acctData.id + ')');
+                }
+            }
+        }
+        const resp = await fetch(OF_MX_ROBOT_API + '/' + action, {method: 'POST'});
+        const data = await resp.json();
+        addLog(nowTime(), 'INFO', 'OF-MX ' + action + ': ' + JSON.stringify(data));
+        setTimeout(async () => { await ofMxRobotPoll(); renderRobots(); }, 500);
+    } catch(e) {
+        addLog(nowTime(), 'ERROR', 'OF-MX ' + action + ' failed: ' + e.message);
+    }
+}
+
+async function toggleOfMxSignal(param, value) {
+    try {
+        const resp = await fetch(OF_MX_ROBOT_API + '/params', {
+            method: 'POST',
+            headers: {'Content-Type':'application/json'},
+            body: JSON.stringify({[param]: value})
+        });
+        const data = await resp.json();
+        addLog(nowTime(), 'INFO', `OF-MX signal ${param}=${value}`);
+    } catch(e) {
+        addLog(nowTime(), 'ERROR', 'OF-MX toggle failed: ' + e.message);
+    }
+}
+
+// Auto-poll MX
+(function() {
+    setInterval(ofMxRobotPoll, 2000);
+})();
+
+// === ORDER FLOW MX EDIT PANEL ===
+function ofMxRobotEditPanel() {
+    const existing = el('ofMxRobotEditPanel');
+    if (existing) { existing.remove(); return; }
+
+    const s = ofMxRobot || {};
+    const p = s.params || JSON.parse(localStorage.getItem('ofMxSavedParams') || '{}');
+    // Fallback defaults for MXU6 if no params anywhere
+    if (!p.step_average) p.step_average = 150;
+    if (!p.step_pyramid) p.step_pyramid = 80;
+    if (!p.spread) p.spread = 120;
+    if (!p.stop_loss_value) p.stop_loss_value = 10000;
+    if (!p.min_profit_per_lot) p.min_profit_per_lot = 100;
+    if (!p.max_pyramid_levels) p.max_pyramid_levels = 3;
+    if (!p.max_average_levels) p.max_average_levels = 50;
+
+    const div = document.createElement('div');
+    div.id = 'ofMxRobotEditPanel';
+    div.className = 'card';
+    div.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);z-index:1000;width:900px;max-height:90vh;overflow-y:auto;box-shadow:0 8px 32px rgba(0,0,0,.5)';
+    div.innerHTML = `
+        <div class="card-header row gap-8">
+            📊 MXU6 Order Flow (PYTHON)
+            <button class="btn btn-primary btn-sm" onclick="ofMxRobotSaveFromPanel()">💾 Сохранить</button>
+            <button class="btn btn-secondary btn-sm" onclick="if(window._ofMxVpTimer){clearInterval(window._ofMxVpTimer);window._ofMxVpTimer=null;}el('ofMxRobotEditPanel')?.remove()">✕</button>
+        </div>
+        <div style="padding:12px">
+            <!-- OF индикаторы -->
+            <div class="metrics-row" style="flex-wrap:wrap;margin-bottom:12px">
+                <div class="metric-card" style="background:#1a2332;border:1px solid #007ACC;display:flex;flex-direction:column;align-items:center;gap:2px"><div style="display:flex;align-items:center;gap:4px"><input id="toggleMxCvd" type="checkbox" checked style="width:14px;height:14px;cursor:pointer" onchange="toggleOfMxSignal('use_cvd', this.checked)"><div class="metric-label" style="color:#CE93D8">CVD Trend</div></div><div id="ofMxCvd" style="font-size:18px;font-weight:bold;color:#CE93D8">—</div></div>
+                <div class="metric-card" style="background:#1a2332;border:1px solid #007ACC;display:flex;flex-direction:column;align-items:center;gap:2px"><div style="display:flex;align-items:center;gap:4px"><input id="toggleMxDmWall" type="checkbox" style="width:14px;height:14px;cursor:pointer" onchange="toggleOfMxSignal('use_dm_wall', this.checked)"><div class="metric-label" style="color:#FF7043">dm_wall</div></div><div id="ofMxDelta" style="font-size:18px;font-weight:bold;color:#FF7043">—</div></div>
+                <div class="metric-card" style="background:#1a2332;border:1px solid #007ACC;display:flex;flex-direction:column;align-items:center;gap:2px"><div style="display:flex;align-items:center;gap:4px"><input id="toggleMxCvdAccel" type="checkbox" checked style="width:14px;height:14px;cursor:pointer" onchange="toggleOfMxSignal('use_cvd_accel', this.checked)"><div class="metric-label" style="color:#66BB6A">CVD Accel</div></div><div id="ofMxCvdAccel" style="font-size:18px;font-weight:bold;color:#66BB6A">—</div></div>
+
+                <div class="metric-card" style="display:flex;flex-direction:column;align-items:center;gap:2px"><div style="display:flex;align-items:center;gap:4px"><input id="toggleMxVp" type="checkbox" style="width:14px;height:14px;cursor:pointer" onchange="toggleOfMxSignal('vp_filter', this.checked)"><div class="metric-label" style="color:#42A5F5">VAH</div></div><div id="ofMxVah" style="font-size:18px;font-weight:bold;color:#42A5F5">—</div></div>
+                <div class="metric-card" style="display:flex;flex-direction:column;align-items:center;gap:2px"><div style="display:flex;align-items:center;gap:4px"><div class="metric-label" style="color:#FFB74D">POC</div></div><div id="ofMxPoc" style="font-size:18px;font-weight:bold;color:#FFB74D">—</div></div>
+                <div class="metric-card" style="display:flex;flex-direction:column;align-items:center;gap:2px"><div style="display:flex;align-items:center;gap:4px"><div class="metric-label" style="color:#42A5F5">VAL</div></div><div id="ofMxVal" style="font-size:18px;font-weight:bold;color:#42A5F5">—</div></div>
+
+                <div class="metric-card" style="background:#1a2332;border:1px solid #607D8B;display:flex;flex-direction:column;align-items:center;gap:2px"><div class="metric-label" style="color:#B0BEC5">Фильтр</div><select id="ofMxDirFilter" class="input" style="width:80px;font-size:13px;font-weight:bold;background:transparent;color:#fff;border:1px solid #607D8B;text-align:center;cursor:pointer" onchange="ofMxSetDirection(this.value)"><option value="both" style="color:#000">ОБА</option><option value="long" style="color:#000">LONG</option><option value="short" style="color:#000">SHORT</option></select></div>
+
+                <div class="metric-card"><div class="metric-label">Цена</div><div id="ofMxPrice" style="font-size:18px;font-weight:bold">—</div></div>
+                <div class="metric-card"><div class="metric-label">Позиция</div><div id="ofMxDir" style="font-size:18px;font-weight:bold">—</div></div>
+                <div class="metric-card"><div class="metric-label">Лоты</div><div id="ofMxLots" style="font-size:18px;font-weight:bold">0</div></div>
+                <div class="metric-card"><div class="metric-label">Ср. цена</div><div id="ofMxAvgPrice" style="font-size:18px;font-weight:bold">—</div></div>
+                <div class="metric-card"><div class="metric-label">PnL/лот</div><div id="ofMxPnlPerLot" style="font-size:18px;font-weight:bold">—</div></div>
+                <div class="metric-card"><div class="metric-label">PnL нереал.</div><div id="ofMxPnlUnreal" style="font-size:18px;font-weight:bold">—</div></div>
+                <div class="metric-card"><div class="metric-label">Realized</div><div id="ofMxRealized" style="font-size:18px;font-weight:bold">0₽</div></div>
+                <div class="metric-card"><div class="metric-label">Сигнал</div><div id="ofMxSignal" style="font-size:16px;font-weight:bold">—</div></div>
+                <div class="metric-card"><div class="metric-label">Hold</div><div id="ofMxHold" style="font-size:18px;font-weight:bold">0 мин</div></div>
+                <div class="metric-card"><div class="metric-label">Avg Levels</div><div id="ofMxAvgLvl" style="font-size:18px;font-weight:bold">0</div></div>
+                <div class="metric-card"><div class="metric-label">Pyr Levels</div><div id="ofMxPyrLvl" style="font-size:18px;font-weight:bold">0</div></div>
+                <div class="metric-card"><div class="metric-label">RT</div><div id="ofMxRt" style="font-size:18px;font-weight:bold">0</div></div>
+            </div>
+            <hr style="border-color:#2D2D44;margin:12px 0">
+            <!-- Параметры -->
+            <div class="metrics-row" style="flex-wrap:wrap;margin-bottom:16px">
+                <div class="metric-card"><div class="metric-label">Lots</div><input id="editOfMxLots" class="input" type="number" value="${p.lots||1}" style="width:60px"></div>
+                <div class="metric-card"><div class="metric-label">Max Pyramid</div><input id="editOfMxMaxPyr" class="input" type="number" value="${p.max_pyramid_levels||5}" style="width:60px"></div>
+                <div class="metric-card"><div class="metric-label">Max Average</div><input id="editOfMxMaxAvg" class="input" type="number" value="${p.max_average_levels||100}" style="width:60px"></div>
+                <div class="metric-card"><div class="metric-label">Step Avg (пт)</div><input id="editOfMxStepAvg" class="input" type="number" value="${p.step_average||50}" style="width:70px"></div>
+                <div class="metric-card"><div class="metric-label">Step Pyr (пт)</div><input id="editOfMxStepPyr" class="input" type="number" value="${p.step_pyramid||35}" style="width:70px"></div>
+                <div class="metric-card"><div class="metric-label">Spread (пт)</div><input id="editOfMxSpread" class="input" type="number" value="${p.spread||50}" style="width:60px"></div>
+                <div class="metric-card"><div class="metric-label">SL Mode</div><select id="editOfMxSlMode" class="input" style="width:70px"><option value="rub" ${(p.stop_loss_mode||'rub')==='rub'?'selected':''}>₽</option><option value="pct" ${p.stop_loss_mode==='pct'?'selected':''}>%</option><option value="pts" ${p.stop_loss_mode==='pts'?'selected':''}>пт</option></select></div>
+                <div class="metric-card"><div class="metric-label">SL Value</div><input id="editOfMxSlValue" class="input" type="number" value="${p.stop_loss_value||7000}" style="width:80px"></div>
+                <div class="metric-card"><div class="metric-label">Min Profit/Lot</div><input id="editOfMxMinProfit" class="input" type="number" value="${p.min_profit_per_lot||30}" style="width:60px"></div>
+                <div class="metric-card"><div class="metric-label">Close % All</div><select id="editOfMxCloseHalfPct" class="input" style="width:70px"><option value="0" ${(!p.close_half_pct)?'selected':''}>OFF</option><option value="50" ${p.close_half_pct===50?'selected':''}>50%</option><option value="40" ${p.close_half_pct===40?'selected':''}>40%</option><option value="30" ${p.close_half_pct===30?'selected':''}>30%</option><option value="20" ${p.close_half_pct===20?'selected':''}>20%</option><option value="10" ${p.close_half_pct===10?'selected':''}>10%</option></select></div>
+                <div class="metric-card"><div class="metric-label">Close price All</div><input id="editOfMxClosePriceAll" class="input" type="number" placeholder="None" value="${p.close_price_all||''}" style="width:90px"></div>
+                <div class="metric-card"><div class="metric-label">Max Hold (мин)</div><input id="editOfMxMaxHold" class="input" type="number" value="${p.max_hold_minutes||999}" style="width:80px"></div>
+                <div class="metric-card"><div class="metric-label">CVD EMA Fast</div><input id="editOfMxCvdEmaF" class="input" type="number" value="${p.cvd_ema_fast||5}" style="width:60px"></div>
+                <div class="metric-card"><div class="metric-label">CVD EMA Slow</div><input id="editOfMxCvdEmaS" class="input" type="number" value="${p.cvd_ema_slow||15}" style="width:60px"></div>
+                <div class="metric-card"><div class="metric-label">DM Lookback</div><input id="editOfMxDmLb" class="input" type="number" value="${p.dm_lookback||5}" style="width:60px"></div>
+                <div class="metric-card"><div class="metric-label">Wall Window (с)</div><input id="editOfMxWallWin" class="input" type="number" value="${p.wall_window||120}" style="width:60px"></div>
+                <div class="metric-card"><div class="metric-label">Wall Mult</div><input id="editOfMxWallMult" class="input" type="number" step="0.5" value="${p.wall_multiplier||3.0}" style="width:60px"></div>
+                <div class="metric-card"><div class="metric-label">CVD Accel Thresh</div><input id="editOfMxCvdAccelThresh" class="input" type="number" step="100" value="${p.cvd_accel_threshold||1000}" style="width:80px"></div>
+                <div class="metric-card"><div class="metric-label">Confirm In</div><input id="editOfMxConfirm" class="input" type="number" min="1" max="3" value="${p.signal_confirm_count||1}" style="width:50px"></div>
+                <div class="metric-card"><div class="metric-label">Confirm Out</div><input id="editOfMxConfirmOut" class="input" type="number" min="1" max="3" value="${p.signal_confirm_exit||1}" style="width:50px"></div>
+                <div class="metric-card"><div class="metric-label">Timeframe</div><select id="editOfMxTf" class="input" style="width:70px"><option value="M1" ${p.timeframe==='M1'?'selected':''}>1 мин</option><option value="M5" ${(p.timeframe||'M5')==='M5'?'selected':''}>5 мин</option><option value="M15" ${p.timeframe==='M15'?'selected':''}>15 мин</option><option value="M30" ${p.timeframe==='M30'?'selected':''}>30 мин</option><option value="H1" ${p.timeframe==='H1'?'selected':''}>1 час</option></select></div>
+            </div>
+            <hr style="border-color:#2D2D44;margin:12px 0">
+            <!-- VWEMA Filter -->
+            <div class="metrics-row" style="flex-wrap:wrap;margin-bottom:16px;align-items:center">
+                <div class="metric-card" style="display:flex;align-items:center;gap:8px">
+                    <label style="display:flex;align-items:center;gap:6px;cursor:pointer">
+                        <input id="editOfMxUseVwema" type="checkbox" ${(p.use_vwema)?'checked':''} style="width:18px;height:18px;cursor:pointer">
+                        <span style="font-weight:bold;color:#FF9800">VWEMA Filter</span>
+                    </label>
+                </div>
+                <div class="metric-card"><div class="metric-label">VWEMA Fast</div><input id="editOfMxVwemaFast" class="input" type="number" value="${p.vwema_fast||20}" style="width:60px"></div>
+                <div class="metric-card"><div class="metric-label">VWEMA Slow</div><input id="editOfMxVwemaSlow" class="input" type="number" value="${p.vwema_slow||40}" style="width:60px"></div>
+                <div class="metric-card"><div class="metric-label">Flat Threshold</div><input id="editOfMxVwemaFlat" class="input" type="number" step="0.1" value="${p.vwema_flat_th||1.0}" style="width:60px"></div>
+                <div class="metric-card" style="display:flex;align-items:center;gap:8px">
+                    <label style="display:flex;align-items:center;gap:6px;cursor:pointer">
+                        <input id="editOfMxVwemaBlock" type="checkbox" ${(p.vwema_block_counter!==false)?'checked':''} style="width:18px;height:18px;cursor:pointer">
+                        <span style="font-size:13px">Block counter-trend</span>
+                    </label>
+                </div>
+                <div class="metric-card" style="min-width:120px"><div class="metric-label">VWEMA Trend</div><div id="ofMxVwemaTrend" style="font-size:16px;font-weight:bold;color:#9CA3AF">—</div></div>
+            </div>
+            <hr style="border-color:#2D2D44;margin:12px 0">
+            <!-- VAH/VAL Volume Profile Filter -->
+            <div class="metrics-row" style="flex-wrap:wrap;margin-bottom:16px;align-items:center">
+                <div class="metric-card" style="display:flex;align-items:center;gap:8px">
+                    <label style="display:flex;align-items:center;gap:6px;cursor:pointer">
+                        <input id="editOfMxUseVahVal" type="checkbox" ${(p.use_vah_val)?'checked':''} style="width:18px;height:18px;cursor:pointer">
+                        <span style="font-weight:bold;color:#42A5F5">VAH/VAL Filter</span>
+                    </label>
+                </div>
+                <div class="metric-card"><div class="metric-label">Value Area %</div><input id="editOfMxVahValPct" class="input" type="number" min="50" max="90" value="${p.vah_val_pct||70}" style="width:60px"></div>
+                <div class="metric-card" style="min-width:80px"><div class="metric-label">VAH</div><div id="ofMxVpVah" style="font-size:16px;font-weight:bold;color:#42A5F5">—</div></div>
+                <div class="metric-card" style="min-width:80px"><div class="metric-label">POC</div><div id="ofMxVpPoc" style="font-size:16px;font-weight:bold;color:#FFB74D">—</div></div>
+                <div class="metric-card" style="min-width:80px"><div class="metric-label">VAL</div><div id="ofMxVpVal" style="font-size:16px;font-weight:bold;color:#42A5F5">—</div></div>
+            </div>
+            <hr style="border-color:#2D2D44;margin:12px 0">
+            <!-- Торговый журнал -->
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+                <strong>📋 Торговый журнал</strong>
+            </div>
+            <div id="ofMxJournalSummary" class="metrics-row" style="flex-wrap:wrap;margin-bottom:12px"></div>
+            <div style="display:flex;gap:8px;margin-bottom:12px;align-items:center">
+                <select id="ofMxJournalFilter" class="input" style="width:120px" onchange="ofMxRenderJournal()">
+                    <option value="all">Все позиции</option>
+                    <option value="LONG">Лонги</option>
+                    <option value="SHORT">Шорты</option>
+                    <option value="win">Прибыльные</option>
+                    <option value="loss">Убыточные</option>
+                </select>
+                <span style="color:#9CA3AF;font-size:13px">с</span>
+                <input id="ofMxJournalDateFrom" class="input" type="date" style="width:130px" onchange="ofMxRenderJournal()">
+                <span style="color:#9CA3AF;font-size:13px">по</span>
+                <input id="ofMxJournalDateTo" class="input" type="date" style="width:130px" onchange="ofMxRenderJournal()">
+                <button class="btn btn-secondary btn-sm" onclick="ofMxLoadJournal()">🔄 Обновить</button>
+            </div>
+            <table class="data-table" style="font-size:13px">
+                <thead><tr><th>Дата</th><th>Вход</th><th>Выход</th><th>Напр.</th><th>Цена вх.</th><th>Цена вых.</th><th>Лоты</th><th>PnL</th><th>Σ</th></tr></thead>
+                <tbody id="ofMxJournalBody"></tbody>
+            </table>
+        </div>
+    `;
+    document.body.appendChild(div);
+
+    // Initialize direction filter dropdown
+    if (p.direction_filter) {
+        const sel = el('ofMxDirFilter');
+        if (sel) sel.value = p.direction_filter;
+    }
+    // Initialize signal toggles from params
+    const tCvd = el('toggleMxCvd'); if (tCvd) tCvd.checked = p.use_cvd !== false;
+    const tDm = el('toggleMxDmWall'); if (tDm) tDm.checked = p.use_dm_wall === true;
+    const tAcc = el('toggleMxCvdAccel'); if (tAcc) tAcc.checked = p.use_cvd_accel !== false;
+
+    ofMxLoadJournal();
+    ofMxUpdateLive();
+    if (window._ofMxVpTimer) clearInterval(window._ofMxVpTimer);
+    window._ofMxVpTimer = setInterval(ofMxUpdateLive, 1000);
+}
+
+function ofMxUpdateLive() {
+    const s = ofMxRobot;
+    if (!s) return;
+    const setText = (id, val) => { const e = el(id); if (e) e.textContent = val; };
+    const setColor = (id, val) => {
+        const e = el(id); if (!e) return;
+        e.textContent = val >= 0 ? '+' + val.toFixed(0) : val.toFixed(0);
+        e.className = val >= 0 ? 'green' : 'red';
+    };
+    const price = s.currentPrice || 0;
+    setText('ofMxPrice', price > 0 ? price.toFixed(0) : '—');
+    const dirText = s.direction === 'LONG' ? '🟢 LONG' : s.direction === 'SHORT' ? '🔴 SHORT' : 'FLAT';
+    setText('ofMxDir', dirText);
+    setText('ofMxLots', s.totalLots || 0);
+    setText('ofMxAvgPrice', s.avgPrice > 0 ? s.avgPrice.toFixed(0) : '—');
+    const pnlPerLot = price > 0 && s.avgPrice > 0 ? (price - s.avgPrice) * (s.dir || 0) : 0;
+    setText('ofMxPnlPerLot', pnlPerLot !== 0 ? (pnlPerLot > 0 ? '+' : '') + pnlPerLot.toFixed(0) + ' пт' : '—');
+    setColor('ofMxPnlUnreal', s.unrealizedPnL || 0);
+    setText('ofMxRealized', (s.realizedPnL || 0).toFixed(0) + '₽');
+    setText('ofMxSignal', s.signalType || '—');
+    setText('ofMxHold', s.holdMinutes ? s.holdMinutes + ' мин' : '0 мин');
+    setText('ofMxAvgLvl', s.averageLevels || 0);
+    setText('ofMxPyrLvl', s.pyramidLevels || 0);
+    setText('ofMxRt', s.roundTrips || 0);
+    // VAH/POC/VAL (Volume Profile)
+    if (s.vp) {
+        setText('ofMxVah', s.vp.vah ? s.vp.vah.toFixed(0) : '—');
+        setText('ofMxPoc', s.vp.poc ? s.vp.poc.toFixed(0) : '—');
+        setText('ofMxVal', s.vp.val ? s.vp.val.toFixed(0) : '—');
+        setText('ofMxVpVah', s.vp.vah ? s.vp.vah.toFixed(0) : '—');
+        setText('ofMxVpPoc', s.vp.poc ? s.vp.poc.toFixed(0) : '—');
+        setText('ofMxVpVal', s.vp.val ? s.vp.val.toFixed(0) : '—');
+    } else {
+        setText('ofMxVah', '—');
+        setText('ofMxPoc', '—');
+        setText('ofMxVal', '—');
+        setText('ofMxVpVah', '—');
+        setText('ofMxVpPoc', '—');
+        setText('ofMxVpVal', '—');
+    }
+    const vpToggle = el('toggleMxVp');
+    if (vpToggle) vpToggle.checked = (p.vp_filter === true);
+    if (s.cvdTrend) {
+        const cvdDir = s.cvdTrend.direction > 0 ? '↑' : s.cvdTrend.direction < 0 ? '↓' : '→';
+        const cvdVal = s.cvdTrend.emaFast !== null ? cvdDir + ' ' + s.cvdTrend.emaFast.toFixed(0) : '—';
+        setText('ofMxCvd', cvdVal);
+    }
+    if (s.cvdAccel) {
+        const accelVal = s.cvdAccel.value !== null ? s.cvdAccel.value.toFixed(0) + ' (' + (s.cvdAccel.aggRatio || '—') + ')' : '—';
+        setText('ofMxCvdAccel', accelVal);
+    }
+    if (s.vwema) {
+        const vwDir = s.vwema.direction > 0 ? '↑ UP' : s.vwema.direction < 0 ? '↓ DOWN' : '→ FLAT';
+        setText('ofMxVwemaTrend', vwDir + ' (f=' + (s.vwema.ema_f ? s.vwema.ema_f.toFixed(0) : '—') + ' s=' + (s.vwema.ema_s ? s.vwema.ema_s.toFixed(0) : '—') + ')');
+    }
+}
+
+async function ofMxRobotSaveFromPanel() {
+    const body = {
+        lots: parseInt(el('editOfMxLots')?.value) || 1,
+        max_pyramid_levels: parseInt(el('editOfMxMaxPyr')?.value) || 5,
+        max_average_levels: parseInt(el('editOfMxMaxAvg')?.value) || 100,
+        step_average: parseInt(el('editOfMxStepAvg')?.value) || 50,
+        step_pyramid: parseInt(el('editOfMxStepPyr')?.value) || 35,
+        spread: parseInt(el('editOfMxSpread')?.value) || 50,
+        stop_loss_mode: el('editOfMxSlMode')?.value || 'rub',
+        stop_loss_value: parseFloat(el('editOfMxSlValue')?.value) || 7000,
+        min_profit_per_lot: parseInt(el('editOfMxMinProfit')?.value) || 30,
+        close_half_pct: parseInt(el('editOfMxCloseHalfPct')?.value) || 0,
+        close_price_all: parseFloat(el('editOfMxClosePriceAll')?.value) || 0,
+        max_hold_minutes: parseInt(el('editOfMxMaxHold')?.value) || 999,
+        cvd_lookback: parseInt(el('editOfMxCvdLb')?.value) || 10,
+        cvd_ema_fast: parseInt(el('editOfMxCvdEmaF')?.value) || 5,
+        cvd_ema_slow: parseInt(el('editOfMxCvdEmaS')?.value) || 15,
+        dm_lookback: parseInt(el('editOfMxDmLb')?.value) || 5,
+        wall_window: parseFloat(el('editOfMxWallWin')?.value) || 120,
+        wall_multiplier: parseFloat(el('editOfMxWallMult')?.value) || 3.0,
+        cvd_accel_threshold: parseFloat(el('editOfMxCvdAccelThresh')?.value) || 1000,
+        signal_confirm_count: parseInt(el('editOfMxConfirm')?.value) || 1,
+        signal_confirm_exit: parseInt(el('editOfMxConfirmOut')?.value) || 1,
+        timeframe: el('editOfMxTf')?.value || 'M5',
+        use_dm_wall: el('toggleMxDmWall')?.checked !== false,
+        use_cvd: el('toggleMxCvd')?.checked !== false,
+        use_cvd_accel: el('toggleMxCvdAccel')?.checked !== false,
+        use_vwema: el('editOfMxUseVwema')?.checked || false,
+        vwema_fast: parseInt(el('editOfMxVwemaFast')?.value) || 20,
+        vwema_slow: parseInt(el('editOfMxVwemaSlow')?.value) || 40,
+        vwema_flat_th: parseFloat(el('editOfMxVwemaFlat')?.value) || 1.0,
+        vwema_block_counter: el('editOfMxVwemaBlock')?.checked !== false,
+        use_vah_val: el('editOfMxUseVahVal')?.checked || false,
+        vah_val_pct: parseInt(el('editOfMxVahValPct')?.value) || 70,
+        vp_filter: el('toggleMxVp')?.checked || false,
+    };
+    // Always save to localStorage first
+    localStorage.setItem('ofMxSavedParams', JSON.stringify(body));
+    try {
+        const resp = await fetch(OF_MX_ROBOT_API + '/params', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(body)
+        });
+        const data = await resp.json();
+        localStorage.removeItem('ofMxSavedParams');
+        addLog(nowTime(), 'INFO', '💾 OF-MX конфиг сохранён');
+    } catch(e) {
+        addLog(nowTime(), 'INFO', '💾 OF-MX конфиг сохранён локально (робот offline — применится при старте)');
+    }
+}
+
+// === Order Flow MX Trade Journal ===
+async function ofMxResetStats() {
+    if (!confirm('Сбросить статистику MX? Realized PnL → 0, история сделок очищена.')) return;
+    const r = await fetch(OF_MX_ROBOT_API + '/reset-stats', {method:'POST'});
+    if (r && r.ok) {
+        ofMxLoadJournal();
+    }
+}
+
+async function ofMxLoadJournal() {
+    const body = el('ofMxJournalBody');
+    if (!body) return;
+    try {
+        const resp = await fetch(OF_MX_ROBOT_API + '/status', {signal: AbortSignal.timeout(2000)});
+        const data = await resp.json();
+        _ofMxJournalTrades = data.tradeHistory || data.trades || [];
+        if (!_ofMxJournalTrades.length) {
+            body.innerHTML = '<tr><td colspan="9" style="text-align:center;padding:24px;color:#9CA3AF">Нет закрытых сделок</td></tr>';
+            ofMxRenderJournalSummary(0, 0, 0, 0);
+            return;
+        }
+        ofMxRenderJournal();
+    } catch(e) {
+        body.innerHTML = '<tr><td colspan="9" style="text-align:center;padding:24px;color:#9CA3AF">Робот недоступен</td></tr>';
+    }
+}
+
+function ofMxRenderJournal() {
+    const body = el('ofMxJournalBody');
+    if (!body) return;
+    const filter = el('ofMxJournalFilter')?.value || 'all';
+    const dateFrom = el('ofMxJournalDateFrom')?.value;
+    const dateTo = el('ofMxJournalDateTo')?.value;
+    let trades = [..._ofMxJournalTrades];
+    if (dateFrom || dateTo) {
+        trades = trades.filter(t => {
+            const dEntry = t.entryTime ? t.entryTime.slice(0,10) : null;
+            const dExit = t.exitTime ? t.exitTime.slice(0,10) : null;
+            const afterStart = !dateFrom || (dEntry && dEntry >= dateFrom) || (dExit && dExit >= dateFrom);
+            const beforeEnd = !dateTo || (dEntry && dEntry <= dateTo) || (dExit && dExit <= dateTo);
+            return afterStart && beforeEnd;
+        });
+    }
+    if (filter === 'LONG') trades = trades.filter(t => t.direction === 'LONG' || t.direction > 0);
+    else if (filter === 'SHORT') trades = trades.filter(t => t.direction === 'SHORT' || t.direction < 0);
+    else if (filter === 'win') trades = trades.filter(t => t.pnl > 0);
+    else if (filter === 'loss') trades = trades.filter(t => t.pnl < 0);
+    if (!trades.length) {
+        body.innerHTML = '<tr><td colspan="9" style="text-align:center;padding:16px;color:#9CA3AF">Нет сделок по фильтру</td></tr>';
+        return;
+    }
+    let cumulative = 0;
+    const rows = trades.map(t => {
+        cumulative += (t.pnl || 0);
+        const dtOut = t.exitTime ? new Date(t.exitTime) : null;
+        const dateStr = dtOut ? dtOut.toLocaleDateString('ru-RU') : '—';
+        const timeIn = t.entryTime ? new Date(t.entryTime).toLocaleTimeString('ru-RU', {hour:'2-digit',minute:'2-digit'}) : '—';
+        const timeOut = dtOut ? dtOut.toLocaleTimeString('ru-RU', {hour:'2-digit',minute:'2-digit'}) : '—';
+        const dir = t.direction === 'LONG' || t.direction > 0 ? '🟢 L' : '🔴 S';
+        const pnlCls = (t.pnl || 0) >= 0 ? 'green' : 'red';
+        const cumCls = cumulative >= 0 ? 'green' : 'red';
+        return '<tr style="border-bottom:1px solid var(--border-color)">' +
+            '<td style="padding:6px">' + dateStr + '</td>' +
+            '<td style="padding:6px">' + timeIn + '</td>' +
+            '<td style="padding:6px">' + timeOut + '</td>' +
+            '<td style="padding:6px;text-align:center">' + dir + '</td>' +
+            '<td style="padding:6px;text-align:right">' + (t.entryPrice||0).toFixed(0) + '</td>' +
+            '<td style="padding:6px;text-align:right">' + (t.exitPrice||0).toFixed(0) + '</td>' +
+            '<td style="padding:6px;text-align:right">' + (t.lots||1) + '</td>' +
+            '<td style="padding:6px;text-align:right" class="' + pnlCls + '">' + ((t.pnl||0) >= 0 ? '+' : '') + (t.pnl||0).toFixed(0) + '₽</td>' +
+            '<td style="padding:6px;text-align:right" class="' + cumCls + '">' + (cumulative >= 0 ? '+' : '') + cumulative.toFixed(0) + '₽</td>' +
+        '</tr>';
+    });
+    body.innerHTML = rows.join('');
+    const totalPnl = trades.reduce((s, t) => s + (t.pnl || 0), 0);
+    const wins = trades.filter(t => (t.pnl || 0) > 0).length;
+    const losses = trades.filter(t => (t.pnl || 0) < 0).length;
+    ofMxRenderJournalSummary(trades.length, wins, losses, totalPnl);
+}
+
+function ofMxRenderJournalSummary(total, wins, losses, totalPnl) {
+    const el2 = el('ofMxJournalSummary');
+    if (!el2) return;
+    const wr = total > 0 ? ((wins / total) * 100).toFixed(0) + '%' : '—';
+    const winPnl = _ofMxJournalTrades.filter(t => (t.pnl||0) > 0).reduce((s,t) => s+(t.pnl||0), 0);
+    const lossPnl = _ofMxJournalTrades.filter(t => (t.pnl||0) < 0).reduce((s,t) => s+(t.pnl||0), 0);
+    const avgWin = wins > 0 ? (winPnl / wins).toFixed(0) : '—';
+    const avgLoss = losses > 0 ? (lossPnl / losses).toFixed(0) : '—';
+    const cls = totalPnl >= 0 ? 'green' : 'red';
+    el2.innerHTML = '' +
+        '<div class="metric-card"><div class="metric-label">Всего сделок</div><div style="font-size:16px;font-weight:bold">' + total + '</div></div>' +
+        '<div class="metric-card"><div class="metric-label">Win Rate</div><div style="font-size:16px;font-weight:bold">' + wr + '</div></div>' +
+        '<div class="metric-card"><div class="metric-label">Wins / Loss</div><div style="font-size:16px;font-weight:bold"><span class="green">' + wins + '</span> / <span class="red">' + losses + '</span></div></div>' +
+        '<div class="metric-card"><div class="metric-label">Avg Win</div><div style="font-size:16px;font-weight:bold" class="green">' + (avgWin !== '—' ? '+' + avgWin + '₽' : '—') + '</div></div>' +
+        '<div class="metric-card"><div class="metric-label">Avg Loss</div><div style="font-size:16px;font-weight:bold" class="red">' + (avgLoss !== '—' ? avgLoss + '₽' : '—') + '</div></div>' +
+        '<div class="metric-card"><div class="metric-label">Итог PnL</div><div style="font-size:16px;font-weight:bold" class="' + cls + '">' + (totalPnl >= 0 ? '+' : '') + totalPnl.toFixed(0) + '₽</div></div>' +
+        '<div class="metric-card" style="border:1px solid var(--border-color)"><div class="metric-label">&nbsp;</div><button class="btn btn-danger btn-sm" onclick="ofMxResetStats()" style="font-size:12px">🗑 Сбросить</button></div>';
 }

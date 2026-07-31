@@ -67,6 +67,7 @@ class OFParams:
     step_atr: bool = False        # adaptive step via ATR
     # Protective filters
     close_half_pct: int = 0         # 0=OFF, 50/40/30/20/10 — при X% peak + partial TP trigger → close_all
+    close_price_all: float = 0.0    # 0=OFF, иначе цена для принудительного закрытия всей позиции (LONG ≥, SHORT ≤)
     enable_max_levels: bool = True
     enable_daily_stop: bool = True
     enable_ob_filter: bool = True
@@ -74,6 +75,9 @@ class OFParams:
     ob_scan_radius: int = 50      # pts radius for OB filter
     commission: float = 0.90      # per side (0.90₽ = one-way)
     direction_filter: str = "both"  # "both" | "long" | "short"
+    # VAH/VAL Volume Profile filter
+    use_vah_val: bool = False      # enable VAH/VAL entry filter
+    vah_val_pct: int = 70          # value area percentage (70%)
     # VWEMA regime filter
     use_vwema: bool = False       # enable VWEMA trend filter
     vwema_fast: int = 20          # fast VWEMA period
@@ -175,6 +179,107 @@ class VWEMARegime:
         }
 
 
+class VolumeProfileCalculator:
+    """Volume Profile — accumulates volume at price levels from tick trades.
+
+    Calculates VAH (Value Area High), VAL (Value Area Low), POC (Point of Control)
+    for the current trading session. Resets at midnight MSK.
+    """
+    def __init__(self, bin_size: int = 5, value_area_pct: int = 70):
+        self.bin_size = bin_size
+        self.value_area_pct = value_area_pct
+        self._profile: dict[int, int] = {}  # bin → total volume
+        self._total_volume: int = 0
+        self._session_date: Optional[str] = None
+        self._vah: float = 0.0
+        self._val: float = 0.0
+        self._poc: float = 0.0
+
+    def _check_session_reset(self, now: datetime):
+        """Reset profile at midnight MSK."""
+        msk_date = now.astimezone(MSK).strftime("%Y-%m-%d")
+        if self._session_date != msk_date:
+            self._session_date = msk_date
+            self._profile.clear()
+            self._total_volume = 0
+            self._vah = 0.0
+            self._val = 0.0
+            self._poc = 0.0
+
+    def add_trade(self, price: float, volume: int, now: datetime):
+        """Add a tick trade to the volume profile."""
+        self._check_session_reset(now)
+        if price <= 0 or volume <= 0:
+            return
+        bin_key = int(price // self.bin_size * self.bin_size)
+        self._profile[bin_key] = self._profile.get(bin_key, 0) + volume
+        self._total_volume += volume
+
+    def calculate(self) -> bool:
+        """Recalculate VAH/VAL/POC. Returns True if values are ready."""
+        if not self._profile or self._total_volume <= 0:
+            return False
+
+        # POC = bin with highest volume
+        poc_bin = max(self._profile, key=self._profile.get)
+        self._poc = float(poc_bin + self.bin_size / 2)
+
+        # Value Area: expand from POC until value_area_pct of total volume is captured
+        target_volume = self._total_volume * self.value_area_pct / 100.0
+        sorted_bins = sorted(self._profile.keys())
+        poc_idx = sorted_bins.index(poc_bin)
+
+        captured = self._profile[poc_bin]
+        va_low_idx = poc_idx
+        va_high_idx = poc_idx
+
+        while captured < target_volume:
+            # Try expand down
+            down_vol = self._profile.get(sorted_bins[va_low_idx - 1], 0) if va_low_idx > 0 else -1
+            # Try expand up
+            up_vol = self._profile.get(sorted_bins[va_high_idx + 1], 0) if va_high_idx < len(sorted_bins) - 1 else -1
+
+            if down_vol < 0 and up_vol < 0:
+                break
+            if down_vol >= up_vol:
+                va_low_idx -= 1
+                captured += self._profile[sorted_bins[va_low_idx]]
+            else:
+                va_high_idx += 1
+                captured += self._profile[sorted_bins[va_high_idx]]
+
+        self._val = float(sorted_bins[va_low_idx])
+        self._vah = float(sorted_bins[va_high_idx] + self.bin_size)
+        return True
+
+    @property
+    def vah(self) -> float:
+        return self._vah
+
+    @property
+    def val(self) -> float:
+        return self._val
+
+    @property
+    def poc(self) -> float:
+        return self._poc
+
+    @property
+    def ready(self) -> bool:
+        return self._vah > 0 and self._val > 0
+
+    @property
+    def state(self) -> dict:
+        return {
+            "vah": round(self._vah, 1) if self._vah > 0 else 0,
+            "val": round(self._val, 1) if self._val > 0 else 0,
+            "poc": round(self._poc, 1) if self._poc > 0 else 0,
+            "ready": self.ready,
+            "bins": len(self._profile),
+            "totalVolume": self._total_volume,
+        }
+
+
 class OrderFlowStrategy:
     """Main Order Flow strategy — entry, averaging, pyramiding, partial TP, exits."""
 
@@ -209,6 +314,10 @@ class OrderFlowStrategy:
         # VWEMA regime filter
         self.vwema: Optional[VWEMARegime] = None
         self._init_vwema()
+
+        # Volume Profile (VAH/VAL/POC)
+        self.vp: Optional[VolumeProfileCalculator] = None
+        self._init_vp()
         self._entry_price: float = 0.0
         self._avg_price: float = 0.0
         self._total_lots: int = 0
@@ -330,6 +439,17 @@ class OrderFlowStrategy:
         else:
             self.vwema = None
 
+    def _init_vp(self):
+        """Create or recreate Volume Profile calculator from current params."""
+        if self.p.use_vah_val:
+            self.vp = VolumeProfileCalculator(
+                bin_size=5,
+                value_area_pct=self.p.vah_val_pct,
+            )
+            log.info(f"Volume Profile (VAH/VAL) enabled: pct={self.p.vah_val_pct}%")
+        else:
+            self.vp = None
+
     def update_price(self, price: float):
         """Update current price and mark freshness."""
         self._current_price = price
@@ -446,6 +566,21 @@ class OrderFlowStrategy:
             if self._is_price_stale():
                 return []
 
+            # If in position — check close_price_all FIRST (manual price target)
+            if self.in_position and self.p.close_price_all > 0:
+                hit = False
+                if self._dir == LONG and current_price >= self.p.close_price_all:
+                    hit = True
+                elif self._dir == SHORT and current_price <= self.p.close_price_all:
+                    hit = True
+                if hit:
+                    self.p.close_price_all = 0.0  # reset after trigger
+                    log.info(f"CLOSE_PRICE_ALL triggered: price={current_price:.0f} dir={self._dir}")
+                    action = self._close_all(current_price, "close_price_all")
+                    actions.append(action)
+                    self._last_action_time = time.time()
+                    return actions
+
             # If in position — partial TP FIRST (scalp priority)
             if self.in_position:
                 # Check partial TP first — scalp by 1 lot (ЗАКОН)
@@ -552,6 +687,29 @@ class OrderFlowStrategy:
             return None  # Conflicting signals, skip
 
         direction = sigs[0].direction
+
+        # VAH/VAL Volume Profile filter
+        if self.p.use_vah_val and self.vp and self.vp.ready:
+            vah = self.vp.vah
+            val = self.vp.val
+            if vah > 0 and val > 0:
+                if price >= vah:
+                    # Price at VAH zone — BUYERS territory
+                    if direction == LONG:
+                        pass  # Confirmation: signals agree with VAH (breakout long)
+                    elif direction == SHORT:
+                        pass  # FADE: signals say SELL but price at VAH (failed breakout) — allow SHORT
+                    # Both directions allowed at VAH — act on signal
+                elif price <= val:
+                    # Price at VAL zone — SELLERS territory
+                    if direction == SHORT:
+                        pass  # Confirmation: signals agree with VAL (breakdown short)
+                    elif direction == LONG:
+                        pass  # FADE: signals say BUY but price at VAL (failed breakdown) — allow LONG
+                    # Both directions allowed at VAL — act on signal
+                else:
+                    # Price between VAL and VAH — no VAH/VAL context, use normal logic
+                    pass
 
         # Direction filter — block disallowed side
         if self.p.direction_filter == "long" and direction == SHORT:
@@ -779,29 +937,32 @@ class OrderFlowStrategy:
         Catch-up mode: if multiple lots are in profit beyond spread (e.g. after
         restart/gap), closes them all at once instead of one per tick.
 
-        close_half_pct mode: when total_lots <= X% of peak_lots and partial TP
-        triggers (pnl >= spread for LIFO lot), close ALL remaining lots at once.
-        If close_half_pct=0 (OFF): stop partial TP at threshold, let tp_full handle rest.
+        close_half_pct mode: partial_tp closes lots one by one (LIFO) until
+        total_lots <= max(2, floor(peak * pct/100)), then closes ALL remaining
+        at once via close_all. Minimum threshold = 2 lots.
+        If close_half_pct=0 (OFF): normal partial_tp for all lots.
         Returns a list of actions (empty if nothing to close).
         """
         if not self.p.partial_tp or len(self._lot_queue) == 0:
             return []
 
-        # Check X% threshold before any closes
+        # Check X% threshold — close remaining batch when lots <= threshold
         pct = self.p.close_half_pct
-        if pct > 0 and self._peak_lots > 0 and self._total_lots <= self._peak_lots * pct / 100.0:
-            # Check if LIFO lot meets spread condition
-            last = self._lot_queue[-1]
-            if last.added_ts > 0 and (time.monotonic() - last.added_ts) < 2.0:
-                return []
-            pnl_pts = (price - last.price) * last.side
-            if pnl_pts >= self.p.spread:
-                side = "sell" if self._dir == LONG else "buy"
-                qty = self._total_lots
-                log.info(f"CLOSE_HALF_PCT({pct}%) {side} {qty} @ {price:.0f} | peak={self._peak_lots}")
-                return [self._close_all(price, f"close_half_{pct}pct")]
-            else:
-                return []
+        if pct > 0 and self._peak_lots > 0:
+            threshold = max(2, int(self._peak_lots * pct / 100.0))
+            if self._total_lots <= threshold:
+                # Check if LIFO lot meets spread condition
+                last = self._lot_queue[-1]
+                if last.added_ts > 0 and (time.monotonic() - last.added_ts) < 2.0:
+                    return []
+                pnl_pts = (price - last.price) * last.side
+                if pnl_pts >= self.p.spread:
+                    side = "sell" if self._dir == LONG else "buy"
+                    qty = self._total_lots
+                    log.info(f"CLOSE_HALF_PCT({pct}%) {side} {qty} @ {price:.0f} | peak={self._peak_lots} threshold={threshold}")
+                    return [self._close_all(price, f"close_half_{pct}pct")]
+                else:
+                    return []
 
         actions = []
 
@@ -1047,5 +1208,6 @@ class OrderFlowStrategy:
                 "syncAgeSec": round(time.time() - self._broker_sync_time, 1) if self._broker_sync_time > 0 else None,
             },
             "vwema": self.vwema.state if self.vwema else None,
+            "vp": self.vp.state if self.vp else None,
             "directionFilter": self.p.direction_filter,
         }
