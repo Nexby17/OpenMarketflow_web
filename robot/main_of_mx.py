@@ -3,7 +3,9 @@
 Subscribes to Trades + OrderBook + Bars via FinamPy gRPC,
 runs OrderFlowStrategy, sends orders via DataProvider REST.
 
-Usage: python3 main_of.py [--paper] [--port 5080]
+Usage: python3 main_of_mx.py [--paper] [--port 5081]
+
+MXU6 (Индекс Мосбиржи) — точная копия OF робота.
 
 v2 — fixed: bar callback signature, dynamic bar_start_ts, stale price check,
       entry lock reset on manual stop, config consolidation.
@@ -21,24 +23,24 @@ from http.server import HTTPServer, BaseHTTPRequestHandler
 
 from FinamPy import FinamPy
 
-import config_of as config
+import config_of_mx as config
 from strategy_of import OrderFlowStrategy, OFParams, LONG, SHORT, FLAT
 from orders_dp import OrderManager, BUY, SELL
 
-log = logging.getLogger("robot_of")
+log = logging.getLogger("robot_of_mx")
 
 MSK = timezone(timedelta(hours=3))
 
 # --- Parse args ---
 parser = argparse.ArgumentParser()
 parser.add_argument("--paper", action="store_true")
-parser.add_argument("--port", type=int, default=5080)
+parser.add_argument("--port", type=int, default=5081)
 args, _ = parser.parse_known_args()
 
 # --- Logging ---
 LOG_DIR = Path(__file__).parent / "logs"
 LOG_DIR.mkdir(exist_ok=True)
-_log_file = LOG_DIR / f"of_{datetime.now().strftime('%Y%m%d')}.log"
+_log_file = LOG_DIR / f"of_mx_{datetime.now().strftime('%Y%m%d')}.log"
 
 logging.basicConfig(
     level=logging.INFO,
@@ -72,7 +74,7 @@ TF_SECONDS = {
     "D": 86400,
 }
 
-# --- Strategy params (from config or of_config.json) ---
+# --- Strategy params (from config or of_config_mx.json) ---
 def load_params() -> OFParams:
     p = OFParams()
     # Load from config_of.py constants first
@@ -80,8 +82,8 @@ def load_params() -> OFParams:
         val = getattr(config, attr)
         if attr.isupper() and hasattr(p, attr.lower()):
             setattr(p, attr.lower(), val)
-    # Then override from of_config.json if exists
-    cfg_path = os.path.join(os.getcwd(), "of_config.json")
+    # Then override from of_config_mx.json if exists
+    cfg_path = os.path.join(os.getcwd(), "of_config_mx.json")
     if os.path.exists(cfg_path):
         with open(cfg_path) as f:
             data = json.load(f)
@@ -100,9 +102,9 @@ _last_tick_price = 0.0
 
 # --- Load active account from state file before OrderManager init ---
 def _load_active_account():
-    """Read activeAccount from of_state.json so it survives restarts."""
+    """Read activeAccount from of_state_mx.json so it survives restarts."""
     global ACTIVE_ACCOUNT_KEY
-    state_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "of_state.json")
+    state_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "of_state_mx.json")
     if os.path.exists(state_path):
         try:
             with open(state_path) as f:
@@ -132,7 +134,7 @@ _price_lock = threading.Lock()
 _current_price: float = 0.0
 
 # --- State persistence ---
-STATE_FILE = os.path.join(os.getcwd(), "of_state.json")
+STATE_FILE = os.path.join(os.getcwd(), "of_state_mx.json")
 
 def save_state():
     try:
@@ -320,6 +322,10 @@ def _on_latest_trades(event):
                 timestamp=ts,
             ))
 
+            # Feed Volume Profile calculator (VAH/VAL/POC)
+            if strategy.vp:
+                strategy.vp.add_trade(price, size, datetime.now(MSK))
+
             # Update trade stream health
             strategy._last_trade_ts = time.time()
 
@@ -502,6 +508,9 @@ def main_loop():
             # Periodic state save (every 30 sec)
             if time.time() - last_save > 30:
                 save_state()
+                # Recalculate Volume Profile if enabled
+                if strategy.vp:
+                    strategy.vp.calculate()
                 last_save = time.time()
 
             # === BROKER PRICE SYNC: avg_price + current_price only ===
@@ -989,8 +998,11 @@ class APIHandler(BaseHTTPRequestHandler):
                 # Reconstruct VWEMA if toggle changed
                 if "use_vwema" in data or any(k.startswith("vwema_") for k in data):
                     strategy._init_vwema()
+                # Reconstruct Volume Profile if toggle changed
+                if "use_vah_val" in data or "vah_val_pct" in data:
+                    strategy._init_vp()
                 # Save to config
-                cfg_path = os.path.join(os.getcwd(), "of_config.json")
+                cfg_path = os.path.join(os.getcwd(), "of_config_mx.json")
                 with open(cfg_path, "w") as f:
                     json.dump({k: getattr(params, k) for k in dir(params) if not k.startswith("_") and not callable(getattr(params, k))}, f, indent=2)
             self._json(200, {"ok": True})
@@ -1082,7 +1094,7 @@ sig_module.signal(sig_module.SIGINT, on_shutdown)
 # ========== Start ==========
 
 if __name__ == "__main__":
-    log.info(f"=== Order Flow Robot v2 ===")
+    log.info(f"=== Order Flow Robot MX v2 ===")
     log.info(f"Symbol: {SYMBOL} | Account: {ACCOUNT} | Port: {PORT}")
     log.info(f"Params: lots={params.lots} stepAvg={params.step_average} stepPyr={params.step_pyramid}")
     log.info(f"  maxAvg={params.max_average_levels} maxPyr={params.max_pyramid_levels} spread={params.spread}")
