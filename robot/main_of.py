@@ -1113,10 +1113,21 @@ if __name__ == "__main__":
         if _r.status_code == 200:
             _bpos = _r.json()
             _bl = _bpos.get('lots', 0)
-            if _bl != 0:
+            _rl = strategy._total_lots
+            if _bl != 0 and _rl == 0:
                 log.warning(f"STARTUP: broker has {_bl} lots (avg={_bpos.get('avg_price', 0):.0f}) but robot is FLAT. NOT entering — investigate manually.")
                 _mode = "stopped"
                 save_state()
+            elif _bl != 0 and _rl != 0 and _bl != _rl:
+                log.warning(f"STARTUP: DESYNC broker={_bl} robot={_rl}. NOT fixing — investigate manually.")
+                _mode = "stopped"
+                save_state()
+            elif _bl == 0 and _rl != 0:
+                log.warning(f"STARTUP: broker is FLAT but robot has {_rl} lots — manual close detected, resetting robot.")
+                strategy._reset_position()
+                save_state()
+            else:
+                log.info(f"STARTUP: broker={_bl} robot={_rl} — synced.")
     except Exception as _e:
         log.warning(f"STARTUP: broker position check failed: {_e}")
 

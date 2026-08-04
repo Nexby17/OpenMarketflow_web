@@ -78,6 +78,8 @@ class OFParams:
     # VAH/VAL Volume Profile filter
     use_vah_val: bool = False      # enable VAH/VAL entry filter
     vah_val_pct: int = 70          # value area percentage (70%)
+    vah_val_bin_size: int = 5      # VP bin size in points
+    vah_val_mode: str = "fade"     # "fade" = counter-trend at VAH/VAL, "breakout" = trend with VAH/VAL
     # VWEMA regime filter
     use_vwema: bool = False       # enable VWEMA trend filter
     vwema_fast: int = 20          # fast VWEMA period
@@ -321,6 +323,7 @@ class OrderFlowStrategy:
         self._entry_price: float = 0.0
         self._avg_price: float = 0.0
         self._total_lots: int = 0
+        self._peak_lots: int = 0
         self._average_levels: int = 0
         self._pyramid_levels: int = 0
         self._last_average_price: float = 0.0
@@ -443,7 +446,7 @@ class OrderFlowStrategy:
         """Create or recreate Volume Profile calculator from current params."""
         if self.p.use_vah_val:
             self.vp = VolumeProfileCalculator(
-                bin_size=5,
+                bin_size=self.p.vah_val_bin_size,
                 value_area_pct=self.p.vah_val_pct,
             )
             log.info(f"Volume Profile (VAH/VAL) enabled: pct={self.p.vah_val_pct}%")
@@ -671,7 +674,30 @@ class OrderFlowStrategy:
         if not self._ob_filter_passes(ob):
             return None
 
-        # Generate signals
+        # === VAH/VAL GATE — price MUST be at VAH/VAL edge before signals are checked ===
+        # Entry trigger: price touches VAH (price >= VAH) or VAL (price <= VAL).
+        # Inside the Value Area → no entry. Exactly like backtest.
+        entry_zone = None  # None | "VAH" | "VAL"
+        if self.p.use_vah_val and self.vp and self.vp.ready:
+            vah = self.vp.vah
+            val = self.vp.val
+            if vah > 0 and val > 0:
+                if price >= vah:
+                    entry_zone = "VAH"  # price at or above VAH (upper edge)
+                elif price <= val:
+                    entry_zone = "VAL"  # price at or below VAL (lower edge)
+                else:
+                    return None  # inside Value Area → no entry
+                if self.p.vah_val_mode == "breakout":
+                    # Breakout: already past edge (price >= vah or price <= val) — always pass
+                    pass
+                # fade mode: touch of edge is enough — already pass
+            else:
+                return None  # VP not ready → no entry when filter is on
+        elif self.p.use_vah_val:
+            return None  # VP enabled but not ready → no entry
+
+        # === Generate OF signals ONLY AFTER VAH/VAL gate passes ===
         sigs = self.signals.generate_signals(ob, price, ob_tracker=self.ob_tracker,
                                               use_dm_wall=self.p.use_dm_wall,
                                               use_cvd=self.p.use_cvd,
@@ -688,29 +714,6 @@ class OrderFlowStrategy:
 
         direction = sigs[0].direction
 
-        # VAH/VAL Volume Profile filter
-        if self.p.use_vah_val and self.vp and self.vp.ready:
-            vah = self.vp.vah
-            val = self.vp.val
-            if vah > 0 and val > 0:
-                if price >= vah:
-                    # Price at VAH zone — BUYERS territory
-                    if direction == LONG:
-                        pass  # Confirmation: signals agree with VAH (breakout long)
-                    elif direction == SHORT:
-                        pass  # FADE: signals say SELL but price at VAH (failed breakout) — allow SHORT
-                    # Both directions allowed at VAH — act on signal
-                elif price <= val:
-                    # Price at VAL zone — SELLERS territory
-                    if direction == SHORT:
-                        pass  # Confirmation: signals agree with VAL (breakdown short)
-                    elif direction == LONG:
-                        pass  # FADE: signals say BUY but price at VAL (failed breakdown) — allow LONG
-                    # Both directions allowed at VAL — act on signal
-                else:
-                    # Price between VAL and VAH — no VAH/VAL context, use normal logic
-                    pass
-
         # Direction filter — block disallowed side
         if self.p.direction_filter == "long" and direction == SHORT:
             log.info("ENTRY BLOCKED by direction_filter=long (signal=SHORT)")
@@ -726,6 +729,11 @@ class OrderFlowStrategy:
                 log.info(f"ENTRY BLOCKED by VWEMA: signal={direction} trend={td} | {self.vwema.state}")
                 return None
 
+        # Determine entry type for journal
+        if entry_zone:
+            entry_type = f"{entry_zone}-Confirm" if direction == (1 if entry_zone == "VAH" else -1) else f"{entry_zone}-Fade"
+        else:
+            entry_type = "signal"
         side = "buy" if direction == LONG else "sell"
         signal_types = ", ".join(s.signal_type for s in sigs)
 
