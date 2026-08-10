@@ -5434,6 +5434,9 @@ async function ofRobotLoadConfig() {
     if (el('cfgOfCvdEmaF')) el('cfgOfCvdEmaF').value = cfg.cvd_ema_fast || 5;
     if (el('cfgOfCvdEmaS')) el('cfgOfCvdEmaS').value = cfg.cvd_ema_slow || 15;
     if (el('cfgOfCvdAccelThresh')) el('cfgOfCvdAccelThresh').value = cfg.cvd_accel_threshold || 1000;
+    if (el('cfgOfAggWindow')) el('cfgOfAggWindow').value = cfg.agg_window || 3;
+    if (el('cfgOfAggRatioThresh')) el('cfgOfAggRatioThresh').value = cfg.agg_ratio_threshold || 1.0;
+    if (el('cfgOfUseAggRatio')) el('cfgOfUseAggRatio').checked = cfg.use_agg_ratio !== false;
     if (el('cfgOfConfirm')) el('cfgOfConfirm').value = cfg.signal_confirm_count;
     if (el('cfgOfConfirmOut')) el('cfgOfConfirmOut').value = cfg.signal_confirm_exit || 1;
     if (el('cfgOfTf')) el('cfgOfTf').value = cfg.timeframe;
@@ -5611,6 +5614,9 @@ function ofRobotEditPanel() {
                 <div class="metric-card"><div class="metric-label">Wall Window (с)</div><input id="editOfWallWin" class="input" type="number" value="${p.wall_window||120}" style="width:60px"></div>
                 <div class="metric-card"><div class="metric-label">Wall Mult</div><input id="editOfWallMult" class="input" type="number" step="0.5" value="${p.wall_multiplier||3.0}" style="width:60px"></div>
                 <div class="metric-card"><div class="metric-label">CVD Accel Thresh</div><input id="editOfCvdAccelThresh" class="input" type="number" step="100" value="${p.cvd_accel_threshold||1000}" style="width:80px"></div>
+                <div class="metric-card"><div class="metric-label">Agg Window</div><input id="editOfAggWindow" class="input" type="number" value="${p.agg_window||3}" style="width:60px"></div>
+                <div class="metric-card"><div class="metric-label">Agg Ratio Thr</div><input id="editOfAggRatioThresh" class="input" type="number" step="0.1" value="${p.agg_ratio_threshold||1.0}" style="width:60px"></div>
+                <div class="metric-card" style="display:flex;align-items:center;gap:8px"><label style="display:flex;align-items:center;gap:6px;cursor:pointer"><input id="editOfUseAggRatio" type="checkbox" ${(p.use_agg_ratio!==false)?'checked':''} style="width:18px;height:18px;cursor:pointer"><span style="font-size:13px;color:#66BB6A">Agg Ratio Filter</span></label></div>
                 <div class="metric-card"><div class="metric-label">Confirm In</div><input id="editOfConfirm" class="input" type="number" min="1" max="3" value="${p.signal_confirm_count||1}" style="width:50px"></div>
                 <div class="metric-card"><div class="metric-label">Confirm Out</div><input id="editOfConfirmOut" class="input" type="number" min="1" max="3" value="${p.signal_confirm_exit||1}" style="width:50px"></div>
                 <div class="metric-card"><div class="metric-label">Timeframe</div><select id="editOfTf" class="input" style="width:70px"><option value="M1" ${p.timeframe==='M1'?'selected':''}>1 мин</option><option value="M5" ${(p.timeframe||'M5')==='M5'?'selected':''}>5 мин</option><option value="M15" ${p.timeframe==='M15'?'selected':''}>15 мин</option><option value="M30" ${p.timeframe==='M30'?'selected':''}>30 мин</option><option value="H1" ${p.timeframe==='H1'?'selected':''}>1 час</option></select></div>
@@ -5788,6 +5794,9 @@ async function ofRobotSaveFromPanel() {
         wall_window: parseFloat(el('editOfWallWin')?.value) || 120,
         wall_multiplier: parseFloat(el('editOfWallMult')?.value) || 3.0,
         cvd_accel_threshold: parseFloat(el('editOfCvdAccelThresh')?.value) || 1000,
+        agg_window: parseInt(el('editOfAggWindow')?.value) || 3,
+        agg_ratio_threshold: parseFloat(el('editOfAggRatioThresh')?.value) || 1.0,
+        use_agg_ratio: el('editOfUseAggRatio')?.checked !== false,
         signal_confirm_count: parseInt(el('editOfConfirm')?.value) || 1,
         signal_confirm_exit: parseInt(el('editOfConfirmOut')?.value) || 1,
         timeframe: el('editOfTf')?.value || 'M5',
@@ -6030,7 +6039,7 @@ async function toggleOfMxSignal(param, value) {
 
 // Auto-poll MX
 (function() {
-    setInterval(ofMxRobotPoll, 2000);
+    setInterval(async () => { await ofMxRobotPoll(); renderRobots(); }, 2000);
 })();
 
 // === ORDER FLOW MX EDIT PANEL ===
@@ -6066,7 +6075,7 @@ function ofMxRobotEditPanel() {
                 <div class="metric-card" style="background:#1a2332;border:1px solid #007ACC;display:flex;flex-direction:column;align-items:center;gap:2px"><div style="display:flex;align-items:center;gap:4px"><input id="toggleMxDmWall" type="checkbox" style="width:14px;height:14px;cursor:pointer" onchange="toggleOfMxSignal('use_dm_wall', this.checked)"><div class="metric-label" style="color:#FF7043">dm_wall</div></div><div id="ofMxDelta" style="font-size:18px;font-weight:bold;color:#FF7043">—</div></div>
                 <div class="metric-card" style="background:#1a2332;border:1px solid #007ACC;display:flex;flex-direction:column;align-items:center;gap:2px"><div style="display:flex;align-items:center;gap:4px"><input id="toggleMxCvdAccel" type="checkbox" checked style="width:14px;height:14px;cursor:pointer" onchange="toggleOfMxSignal('use_cvd_accel', this.checked)"><div class="metric-label" style="color:#66BB6A">CVD Accel</div></div><div id="ofMxCvdAccel" style="font-size:18px;font-weight:bold;color:#66BB6A">—</div></div>
 
-                <div class="metric-card" style="display:flex;flex-direction:column;align-items:center;gap:2px"><div style="display:flex;align-items:center;gap:4px"><input id="toggleMxVp" type="checkbox" style="width:14px;height:14px;cursor:pointer" onchange="toggleOfMxSignal('vp_filter', this.checked)"><div class="metric-label" style="color:#42A5F5">VAH</div></div><div id="ofMxVah" style="font-size:18px;font-weight:bold;color:#42A5F5">—</div></div>
+                <div class="metric-card" style="display:flex;flex-direction:column;align-items:center;gap:2px"><div style="display:flex;align-items:center;gap:4px"><input id="toggleMxVp" type="checkbox" style="width:14px;height:14px;cursor:pointer" onchange="toggleOfMxSignal('use_vah_val', this.checked)"><div class="metric-label" style="color:#42A5F5">VAH</div></div><div id="ofMxVah" style="font-size:18px;font-weight:bold;color:#42A5F5">—</div></div>
                 <div class="metric-card" style="display:flex;flex-direction:column;align-items:center;gap:2px"><div style="display:flex;align-items:center;gap:4px"><div class="metric-label" style="color:#FFB74D">POC</div></div><div id="ofMxPoc" style="font-size:18px;font-weight:bold;color:#FFB74D">—</div></div>
                 <div class="metric-card" style="display:flex;flex-direction:column;align-items:center;gap:2px"><div style="display:flex;align-items:center;gap:4px"><div class="metric-label" style="color:#42A5F5">VAL</div></div><div id="ofMxVal" style="font-size:18px;font-weight:bold;color:#42A5F5">—</div></div>
 
@@ -6106,6 +6115,9 @@ function ofMxRobotEditPanel() {
                 <div class="metric-card"><div class="metric-label">Wall Window (с)</div><input id="editOfMxWallWin" class="input" type="number" value="${p.wall_window||120}" style="width:60px"></div>
                 <div class="metric-card"><div class="metric-label">Wall Mult</div><input id="editOfMxWallMult" class="input" type="number" step="0.5" value="${p.wall_multiplier||3.0}" style="width:60px"></div>
                 <div class="metric-card"><div class="metric-label">CVD Accel Thresh</div><input id="editOfMxCvdAccelThresh" class="input" type="number" step="100" value="${p.cvd_accel_threshold||1000}" style="width:80px"></div>
+                <div class="metric-card"><div class="metric-label">Agg Window</div><input id="editOfMxAggWindow" class="input" type="number" value="${p.agg_window||3}" style="width:60px"></div>
+                <div class="metric-card"><div class="metric-label">Agg Ratio Thr</div><input id="editOfMxAggRatioThresh" class="input" type="number" step="0.1" value="${p.agg_ratio_threshold||1.0}" style="width:60px"></div>
+                <div class="metric-card" style="display:flex;align-items:center;gap:8px"><label style="display:flex;align-items:center;gap:6px;cursor:pointer"><input id="editOfMxUseAggRatio" type="checkbox" ${(p.use_agg_ratio!==false)?'checked':''} style="width:18px;height:18px;cursor:pointer"><span style="font-size:13px;color:#66BB6A">Agg Ratio Filter</span></label></div>
                 <div class="metric-card"><div class="metric-label">Confirm In</div><input id="editOfMxConfirm" class="input" type="number" min="1" max="3" value="${p.signal_confirm_count||1}" style="width:50px"></div>
                 <div class="metric-card"><div class="metric-label">Confirm Out</div><input id="editOfMxConfirmOut" class="input" type="number" min="1" max="3" value="${p.signal_confirm_exit||1}" style="width:50px"></div>
                 <div class="metric-card"><div class="metric-label">Timeframe</div><select id="editOfMxTf" class="input" style="width:70px"><option value="M1" ${p.timeframe==='M1'?'selected':''}>1 мин</option><option value="M5" ${(p.timeframe||'M5')==='M5'?'selected':''}>5 мин</option><option value="M15" ${p.timeframe==='M15'?'selected':''}>15 мин</option><option value="M30" ${p.timeframe==='M30'?'selected':''}>30 мин</option><option value="H1" ${p.timeframe==='H1'?'selected':''}>1 час</option></select></div>
@@ -6140,6 +6152,8 @@ function ofMxRobotEditPanel() {
                     </label>
                 </div>
                 <div class="metric-card"><div class="metric-label">Value Area %</div><input id="editOfMxVahValPct" class="input" type="number" min="50" max="90" value="${p.vah_val_pct||70}" style="width:60px"></div>
+                <div class="metric-card"><div class="metric-label">VP Bin Size</div><input id="editOfMxVahValBin" class="input" type="number" min="1" max="500" value="${p.vah_val_bin_size||5}" style="width:60px"></div>
+                <div class="metric-card"><div class="metric-label">VP Mode</div><select id="editOfMxVahValMode" class="input" style="width:90px;font-size:12px;background:transparent;color:#fff;border:1px solid #2D4A6D"><option value="fade" ${(p.vah_val_mode||'fade')==='fade'?'selected':''}>Fade</option><option value="breakout" ${(p.vah_val_mode||'fade')==='breakout'?'selected':''}>Breakout</option></select></div>
                 <div class="metric-card" style="min-width:80px"><div class="metric-label">VAH</div><div id="ofMxVpVah" style="font-size:16px;font-weight:bold;color:#42A5F5">—</div></div>
                 <div class="metric-card" style="min-width:80px"><div class="metric-label">POC</div><div id="ofMxVpPoc" style="font-size:16px;font-weight:bold;color:#FFB74D">—</div></div>
                 <div class="metric-card" style="min-width:80px"><div class="metric-label">VAL</div><div id="ofMxVpVal" style="font-size:16px;font-weight:bold;color:#42A5F5">—</div></div>
@@ -6228,8 +6242,9 @@ function ofMxUpdateLive() {
         setText('ofMxVpPoc', '—');
         setText('ofMxVpVal', '—');
     }
+    const p = s.params || {};
     const vpToggle = el('toggleMxVp');
-    if (vpToggle) vpToggle.checked = (p.vp_filter === true);
+    if (vpToggle) vpToggle.checked = (p.use_vah_val === true);
     if (s.cvdTrend) {
         const cvdDir = s.cvdTrend.direction > 0 ? '↑' : s.cvdTrend.direction < 0 ? '↓' : '→';
         const cvdVal = s.cvdTrend.emaFast !== null ? cvdDir + ' ' + s.cvdTrend.emaFast.toFixed(0) : '—';
@@ -6266,6 +6281,9 @@ async function ofMxRobotSaveFromPanel() {
         wall_window: parseFloat(el('editOfMxWallWin')?.value) || 120,
         wall_multiplier: parseFloat(el('editOfMxWallMult')?.value) || 3.0,
         cvd_accel_threshold: parseFloat(el('editOfMxCvdAccelThresh')?.value) || 1000,
+        agg_window: parseInt(el('editOfMxAggWindow')?.value) || 3,
+        agg_ratio_threshold: parseFloat(el('editOfMxAggRatioThresh')?.value) || 1.0,
+        use_agg_ratio: el('editOfMxUseAggRatio')?.checked !== false,
         signal_confirm_count: parseInt(el('editOfMxConfirm')?.value) || 1,
         signal_confirm_exit: parseInt(el('editOfMxConfirmOut')?.value) || 1,
         timeframe: el('editOfMxTf')?.value || 'M5',
@@ -6277,9 +6295,10 @@ async function ofMxRobotSaveFromPanel() {
         vwema_slow: parseInt(el('editOfMxVwemaSlow')?.value) || 40,
         vwema_flat_th: parseFloat(el('editOfMxVwemaFlat')?.value) || 1.0,
         vwema_block_counter: el('editOfMxVwemaBlock')?.checked !== false,
-        use_vah_val: el('editOfMxUseVahVal')?.checked || false,
         vah_val_pct: parseInt(el('editOfMxVahValPct')?.value) || 70,
-        vp_filter: el('toggleMxVp')?.checked || false,
+        vah_val_bin_size: parseInt(el('editOfMxVahValBin')?.value) || 5,
+        vah_val_mode: el('editOfMxVahValMode')?.value || 'fade',
+        use_vah_val: el('editOfMxUseVahVal')?.checked || el('toggleMxVp')?.checked || false,
     };
     // Always save to localStorage first
     localStorage.setItem('ofMxSavedParams', JSON.stringify(body));
