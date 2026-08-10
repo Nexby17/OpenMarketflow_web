@@ -989,6 +989,13 @@ class APIHandler(BaseHTTPRequestHandler):
                 # Reconstruct VWEMA if toggle changed
                 if "use_vwema" in data or any(k.startswith("vwema_") for k in data):
                     strategy._init_vwema()
+                # Sync agg_window to signal engine
+                if "agg_window" in data:
+                    strategy.signals.set_agg_window(data["agg_window"])
+                if "agg_ratio_threshold" in data:
+                    strategy.signals._agg_ratio_threshold = data["agg_ratio_threshold"]
+                if "use_agg_ratio" in data:
+                    strategy.signals._use_agg_ratio = data["use_agg_ratio"]
                 # Save to config
                 cfg_path = os.path.join(os.getcwd(), "of_config.json")
                 with open(cfg_path, "w") as f:

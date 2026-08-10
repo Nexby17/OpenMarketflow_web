@@ -338,6 +338,7 @@ class SignalEngine:
         self._close_history: deque[float] = deque(maxlen=max(cvd_lookback * 2, 30))
         self._high_history: deque[float] = deque(maxlen=max(cvd_lookback * 2, 30))
         self._low_history: deque[float] = deque(maxlen=max(cvd_lookback * 2, 30))
+        self._bars_added: int = 0  # total bars added (unlike len(deque) which is capped)
 
         # CVD Trend EMA state
         self._cvd_ema_fast: float = 0.0
@@ -348,6 +349,7 @@ class SignalEngine:
         self._cvd_trend_alpha_s: float = 2.0 / (15 + 1)
         self._cvd_trend_reverse_count: int = 0
         self._cvd_trend_prev_cvd: float = 0.0
+        self._cvd_trend_last_bar: int = -1  # guard: process EMA once per bar (total bars added)
 
     def add_bar(self, metrics: BarMetrics, bar_high: float, bar_low: float, bar_close: float):
         """Feed completed bar metrics into the signal engine."""
@@ -355,6 +357,7 @@ class SignalEngine:
         self._close_history.append(bar_close)
         self._high_history.append(bar_high)
         self._low_history.append(bar_low)
+        self._bars_added += 1
 
     def _get_atr(self) -> float:
         """Simple ATR from high-low ranges."""
@@ -444,6 +447,12 @@ class SignalEngine:
         """
         if len(self._bar_history) < 15:
             return None
+
+        # Guard: update EMAs only once per new bar, not on every tick
+        bar_count = self._bars_added
+        if bar_count == self._cvd_trend_last_bar:
+            return None
+        self._cvd_trend_last_bar = bar_count
 
         current_cvd = self._bar_history[-1].cvd
 

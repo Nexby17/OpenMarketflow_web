@@ -684,17 +684,23 @@ class OrderFlowStrategy:
             if vah > 0 and val > 0:
                 if price >= vah:
                     entry_zone = "VAH"  # price at or above VAH (upper edge)
+                    log.info(f"VAH/VAL GATE: price={price:.0f} >= VAH={vah:.0f} (VAL={val:.0f}) → zone=VAH → PASS")
                 elif price <= val:
                     entry_zone = "VAL"  # price at or below VAL (lower edge)
+                    log.info(f"VAH/VAL GATE: price={price:.0f} <= VAL={val:.0f} (VAH={vah:.0f}) → zone=VAL → PASS")
                 else:
+                    log.info(f"VAH/VAL GATE: price={price:.0f} inside VA (VAL={val:.0f}..VAH={vah:.0f}) → BLOCK")
                     return None  # inside Value Area → no entry
                 if self.p.vah_val_mode == "breakout":
                     # Breakout: already past edge (price >= vah or price <= val) — always pass
                     pass
                 # fade mode: touch of edge is enough — already pass
             else:
+                log.info(f"VAH/VAL GATE: VP vah={vah:.0f} val={val:.0f} — zero values → BLOCK")
                 return None  # VP not ready → no entry when filter is on
         elif self.p.use_vah_val:
+            vp_ready = self.vp.ready if self.vp else False
+            log.info(f"VAH/VAL GATE: use_vah_val=True but vp.ready={vp_ready} → BLOCK")
             return None  # VP enabled but not ready → no entry
 
         # === Generate OF signals ONLY AFTER VAH/VAL gate passes ===
@@ -1218,4 +1224,5 @@ class OrderFlowStrategy:
             "vwema": self.vwema.state if self.vwema else None,
             "vp": self.vp.state if self.vp else None,
             "directionFilter": self.p.direction_filter,
+            "dmWallAgree": self._last_dm_wall,
         }

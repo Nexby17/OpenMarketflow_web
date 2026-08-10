@@ -76,7 +76,19 @@ app.UseCors();
 app.UseAuthentication();
 app.UseAuthorization();
 app.UseDefaultFiles();
-app.UseStaticFiles();
+app.UseStaticFiles(new StaticFileOptions
+{
+    OnPrepareResponse = ctx =>
+    {
+        // No-cache for HTML files so version bumps in <script> tags are always seen
+        if (ctx.File.Name.EndsWith(".html", StringComparison.OrdinalIgnoreCase))
+        {
+            ctx.Context.Response.Headers["Cache-Control"] = "no-cache, no-store, must-revalidate";
+            ctx.Context.Response.Headers["Pragma"] = "no-cache";
+            ctx.Context.Response.Headers["Expires"] = "0";
+        }
+    }
+});
 
 // === Login API ===
 app.MapPost("/api/login", async (HttpRequest req, HttpResponse res) =>

@@ -399,16 +399,16 @@ def _on_new_bar(event, finam_timeframe=None):
 
 
 def _on_quote(event):
-    """Callback from SubscribeQuote — update current price."""
+    """Callback from SubscribeQuote — update current price from bid/ask."""
     try:
         for q in event.quote:
             bid = _to_float(q.bid)
             ask = _to_float(q.ask)
-            last = (bid + ask) / 2 if bid > 0 and ask > 0 else (bid or ask)
-
-            if last > 0:
-                _set_current_price(last)
-                strategy.update_price(last)
+            # Use bid as price reference (real стакан value, not midpoint)
+            price = bid if bid > 0 else ask
+            if price > 0:
+                _set_current_price(price)
+                strategy.update_price(price)
     except Exception as e:
         log.error(f"Quote callback error: {e}")
 
@@ -999,7 +999,7 @@ class APIHandler(BaseHTTPRequestHandler):
                 if "use_vwema" in data or any(k.startswith("vwema_") for k in data):
                     strategy._init_vwema()
                 # Reconstruct Volume Profile if toggle changed
-                if "use_vah_val" in data or "vah_val_pct" in data:
+                if "use_vah_val" in data or "vah_val_pct" in data or "vah_val_bin_size" in data or "vah_val_mode" in data:
                     strategy._init_vp()
                 # Save to config
                 cfg_path = os.path.join(os.getcwd(), "of_config_mx.json")

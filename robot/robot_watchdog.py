@@ -96,51 +96,46 @@ def main():
     last_price = None
     last_price_change_ts = time.time()
 
+    stall_count = 0  # consecutive API failures
+
     while True:
         status = get_status()
 
         if status is None:
-            log.warning("API unreachable — restarting")
-            restart_and_recover()
-            last_price = None
-            last_price_change_ts = time.time()
+            stall_count += 1
+            if stall_count >= 3:  # 3 consecutive failures (~90s)
+                # Skip restart if night
+                if _is_night():
+                    log.info("NIGHT: API unreachable but market closed — skip")
+                    stall_count = 0
+                    time.sleep(CHECK_INTERVAL)
+                    continue
+                if _restart_cooldown_active():
+                    remaining = int(RESTART_COOLDOWN - (time.time() - _last_restart_ts))
+                    log.warning(f"API DOWN: cooldown active ({remaining}s remaining)")
+                    time.sleep(CHECK_INTERVAL)
+                    continue
+                log.warning(f"API DOWN: {stall_count} consecutive failures → RESTART")
+                restart_and_recover()
+                _mark_restarted()
+                stall_count = 0
+            else:
+                log.warning(f"API unreachable ({stall_count}/3)")
             time.sleep(CHECK_INTERVAL)
             continue
 
+        stall_count = 0  # reset on success
         price = status.get("currentPrice", 0)
+        mode = status.get("mode", "unknown")
         now = time.time()
 
-        # Track when price actually CHANGED
+        # Track when price actually CHANGED (log only, no restart)
         if price != last_price:
             last_price = price
             last_price_change_ts = now
 
         age = now - last_price_change_ts
-
-        if age > STALL_TIMEOUT:
-            # Skip restart if night (market closed — price won't change)
-            if _is_night():
-                log.info(f"NIGHT: price stall ignored (market closed)")
-                time.sleep(CHECK_INTERVAL)
-                continue
-            # Skip restart if robot was stopped intentionally
-            if status.get("mode") == "stopped":
-                log.info(f"STOPPED: robot is stopped — skip restart")
-                time.sleep(CHECK_INTERVAL)
-                continue
-            # Skip restart if cooldown active (prevent infinite loops)
-            if _restart_cooldown_active():
-                remaining = int(RESTART_COOLDOWN - (time.time() - _last_restart_ts))
-                log.warning(f"STALL: cooldown active ({remaining}s remaining)")
-                time.sleep(CHECK_INTERVAL)
-                continue
-            log.warning(f"STALL: price={price} unchanged for {age:.0f}s → RESTART")
-            restart_and_recover()
-            _mark_restarted()
-            last_price = None
-            last_price_change_ts = time.time()
-        else:
-            log.info(f"OK: price={price} age={age:.0f}s")
+        log.info(f"OK: price={price} mode={mode} price_age={age:.0f}s")
 
         time.sleep(CHECK_INTERVAL)
 
