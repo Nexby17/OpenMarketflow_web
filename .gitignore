@@ -52,9 +52,8 @@ robot/.env.bak
 robot/logs/
 backtest/backtest.log
 
-## Backtest data & results (too large for git)
-backtest/data/
-backtest/results/
+## Backtest (all)
+backtest/
 
 ## Temp
 *.bak
