@@ -1,46 +1,20 @@
 {
-  "dir": 1,
-  "entryPrice": 232850.0,
-  "avgPrice": 231990.0,
-  "totalLots": 5,
-  "averageLevels": 5,
+  "dir": 0,
+  "entryPrice": 0.0,
+  "avgPrice": 0.0,
+  "totalLots": 0,
+  "averageLevels": 0,
   "pyramidLevels": 0,
-  "lastAveragePrice": 231150.0,
-  "lastPyramidPrice": 232825.0,
-  "peakLots": 5,
-  "lotQueue": [
-    {
-      "price": 232850.0,
-      "side": 1,
-      "lots": 1
-    },
-    {
-      "price": 232400.0,
-      "side": 1,
-      "lots": 1
-    },
-    {
-      "price": 231950.0,
-      "side": 1,
-      "lots": 1
-    },
-    {
-      "price": 231600.0,
-      "side": 1,
-      "lots": 1
-    },
-    {
-      "price": 231150.0,
-      "side": 1,
-      "lots": 1
-    }
-  ],
-  "roundTrips": 52,
-  "realizedPnL": 12123.25,
-  "dailyPnL": 1592.3200000000002,
-  "dailyPnLDate": "2026-08-10",
-  "entryTime": "2026-08-10T12:00:00.857208+03:00",
-  "signalType": "cvd_trend",
+  "lastAveragePrice": 0.0,
+  "lastPyramidPrice": 0.0,
+  "peakLots": 0,
+  "lotQueue": [],
+  "roundTrips": 59,
+  "realizedPnL": 16204.049999999994,
+  "dailyPnL": 1266.04,
+  "dailyPnLDate": "2026-08-11",
+  "entryTime": "",
+  "signalType": "",
   "tradeHistory": [
     {
       "entryPrice": 229406.25,
@@ -701,9 +675,152 @@
       "exitTime": "2026-08-10T14:37:12.777534+03:00",
       "reason": "partial_tp",
       "signal": "cvd_trend"
+    },
+    {
+      "entryPrice": 231150.0,
+      "exitPrice": 231575.0,
+      "direction": "LONG",
+      "lots": 1,
+      "pnl": 423.72,
+      "entryTime": "2026-08-10T12:00:00.857208+03:00",
+      "exitTime": "2026-08-10T15:02:14.732272+03:00",
+      "reason": "partial_tp",
+      "signal": "cvd_trend"
+    },
+    {
+      "entryPrice": 231600.0,
+      "exitPrice": 232000.0,
+      "direction": "LONG",
+      "lots": 1,
+      "pnl": 398.72,
+      "entryTime": "2026-08-10T12:00:00.857208+03:00",
+      "exitTime": "2026-08-10T15:08:36.039130+03:00",
+      "reason": "partial_tp",
+      "signal": "cvd_trend"
+    },
+    {
+      "entryPrice": 231500.0,
+      "exitPrice": 231875.0,
+      "direction": "LONG",
+      "lots": 1,
+      "pnl": 373.72,
+      "entryTime": "2026-08-10T12:00:00.857208+03:00",
+      "exitTime": "2026-08-10T15:32:13.689305+03:00",
+      "reason": "partial_tp",
+      "signal": "cvd_trend"
+    },
+    {
+      "entryPrice": 231550.0,
+      "exitPrice": 231975.0,
+      "direction": "LONG",
+      "lots": 1,
+      "pnl": 423.72,
+      "entryTime": "2026-08-10T12:00:00.857208+03:00",
+      "exitTime": "2026-08-10T15:43:56.829972+03:00",
+      "reason": "partial_tp",
+      "signal": "cvd_trend"
+    },
+    {
+      "entryPrice": 231950.0,
+      "exitPrice": 232350.0,
+      "direction": "LONG",
+      "lots": 1,
+      "pnl": 398.72,
+      "entryTime": "2026-08-10T12:00:00.857208+03:00",
+      "exitTime": "2026-08-10T16:48:07.553692+03:00",
+      "reason": "partial_tp",
+      "signal": "cvd_trend"
+    },
+    {
+      "entryPrice": 231950.0,
+      "exitPrice": 232350.0,
+      "direction": "LONG",
+      "lots": 1,
+      "pnl": 398.72,
+      "entryTime": "2026-08-10T12:00:00.857208+03:00",
+      "exitTime": "2026-08-10T17:23:06.932505+03:00",
+      "reason": "partial_tp",
+      "signal": "cvd_trend"
+    },
+    {
+      "entryPrice": 232625.0,
+      "exitPrice": 232825.0,
+      "direction": "LONG",
+      "lots": 2,
+      "pnl": 397.44,
+      "entryTime": "2026-08-10T12:00:00.857208+03:00",
+      "exitTime": "2026-08-10T19:42:47.873030+03:00",
+      "reason": "close_half_50pct",
+      "signal": "cvd_trend"
+    },
+    {
+      "entryPrice": 235450.0,
+      "exitPrice": 235650.0,
+      "direction": "LONG",
+      "lots": 1,
+      "pnl": 198.72,
+      "entryTime": "2026-08-11T10:15:31.433827+03:00",
+      "exitTime": "2026-08-11T10:15:39.081594+03:00",
+      "reason": "tp_full",
+      "signal": "cvd_trend"
+    },
+    {
+      "entryPrice": 235500.0,
+      "exitPrice": 235325.0,
+      "direction": "SHORT",
+      "lots": 1,
+      "pnl": 173.72,
+      "entryTime": "2026-08-11T10:30:16.055631+03:00",
+      "exitTime": "2026-08-11T10:37:34.249846+03:00",
+      "reason": "tp_full",
+      "signal": "cvd_trend"
+    },
+    {
+      "entryPrice": 234975.0,
+      "exitPrice": 235150.0,
+      "direction": "LONG",
+      "lots": 2,
+      "pnl": 347.44,
+      "entryTime": "2026-08-11T10:45:06.990299+03:00",
+      "exitTime": "2026-08-11T11:07:42.101211+03:00",
+      "reason": "close_half_50pct",
+      "signal": "cvd_trend"
+    },
+    {
+      "entryPrice": 235100.0,
+      "exitPrice": 234925.0,
+      "direction": "SHORT",
+      "lots": 1,
+      "pnl": 173.72,
+      "entryTime": "2026-08-11T11:07:51.567667+03:00",
+      "exitTime": "2026-08-11T11:17:51.259191+03:00",
+      "reason": "tp_full",
+      "signal": "cvd_trend"
+    },
+    {
+      "entryPrice": 234900.0,
+      "exitPrice": 235075.0,
+      "direction": "LONG",
+      "lots": 1,
+      "pnl": 173.72,
+      "entryTime": "2026-08-11T11:28:06.347004+03:00",
+      "exitTime": "2026-08-11T11:28:24.949834+03:00",
+      "reason": "tp_full",
+      "signal": "cvd_trend"
+    },
+    {
+      "entryPrice": 234900.0,
+      "exitPrice": 234700.0,
+      "direction": "SHORT",
+      "lots": 1,
+      "pnl": 198.72,
+      "entryTime": "2026-08-11T11:50:03.848999+03:00",
+      "exitTime": "2026-08-11T12:06:19.843250+03:00",
+      "reason": "tp_full",
+      "signal": "cvd_trend"
     }
   ],
-  "mode": "running",
+  "mode": "stopped",
   "activeAccount": "main",
   "direction_filter": "both"
 }

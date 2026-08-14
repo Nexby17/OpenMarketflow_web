@@ -5639,6 +5639,12 @@ function ofRobotEditPanel() {
                         <span style="font-size:13px">Block counter-trend</span>
                     </label>
                 </div>
+                <div class="metric-card" style="display:flex;align-items:center;gap:8px">
+                    <label style="display:flex;align-items:center;gap:6px;cursor:pointer" title="Не усреднять против VWEMA + закрыть усреднённую позицию при развороте VWEMA">
+                        <input id="editOfVwemaAvgExit" type="checkbox" ${(p.vwema_avg_exit)?'checked':''} style="width:18px;height:18px;cursor:pointer">
+                        <span style="font-size:13px">VWEMA Avg Exit</span>
+                    </label>
+                </div>
                 <div class="metric-card" style="min-width:120px"><div class="metric-label">VWEMA Trend</div><div id="ofVwemaTrend" style="font-size:16px;font-weight:bold;color:#9CA3AF">—</div></div>
             </div>
             <hr style="border-color:#2D2D44;margin:12px 0">
@@ -5838,6 +5844,7 @@ async function ofRobotSaveFromPanel() {
         vwema_slow: parseInt(el('editOfVwemaSlow')?.value) || 40,
         vwema_flat_th: parseFloat(el('editOfVwemaFlat')?.value) || 1.0,
         vwema_block_counter: el('editOfVwemaBlock')?.checked !== false,
+        vwema_avg_exit: el('editOfVwemaAvgExit')?.checked || false,
 
         use_vah_val: el('editOfUseVahVal')?.checked || false,
         vah_val_pct: parseInt(el('editOfVaPct')?.value) || 70,
@@ -6174,6 +6181,12 @@ function ofMxRobotEditPanel() {
                         <span style="font-size:13px">Block counter-trend</span>
                     </label>
                 </div>
+                <div class="metric-card" style="display:flex;align-items:center;gap:8px">
+                    <label style="display:flex;align-items:center;gap:6px;cursor:pointer" title="Не усреднять против VWEMA + закрыть усреднённую позицию при развороте VWEMA">
+                        <input id="editOfMxVwemaAvgExit" type="checkbox" ${(p.vwema_avg_exit)?'checked':''} style="width:18px;height:18px;cursor:pointer">
+                        <span style="font-size:13px">VWEMA Avg Exit</span>
+                    </label>
+                </div>
                 <div class="metric-card" style="min-width:120px"><div class="metric-label">VWEMA Trend</div><div id="ofMxVwemaTrend" style="font-size:16px;font-weight:bold;color:#9CA3AF">—</div></div>
             </div>
             <hr style="border-color:#2D2D44;margin:12px 0">
@@ -6329,6 +6342,7 @@ async function ofMxRobotSaveFromPanel() {
         vwema_slow: parseInt(el('editOfMxVwemaSlow')?.value) || 40,
         vwema_flat_th: parseFloat(el('editOfMxVwemaFlat')?.value) || 1.0,
         vwema_block_counter: el('editOfMxVwemaBlock')?.checked !== false,
+        vwema_avg_exit: el('editOfMxVwemaAvgExit')?.checked || false,
         vah_val_pct: parseInt(el('editOfMxVahValPct')?.value) || 70,
         vah_val_bin_size: parseInt(el('editOfMxVahValBin')?.value) || 5,
         vah_val_mode: el('editOfMxVahValMode')?.value || 'fade',
