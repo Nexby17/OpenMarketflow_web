@@ -5642,9 +5642,26 @@ function ofRobotEditPanel() {
                 <div class="metric-card" style="min-width:120px"><div class="metric-label">VWEMA Trend</div><div id="ofVwemaTrend" style="font-size:16px;font-weight:bold;color:#9CA3AF">—</div></div>
             </div>
             <hr style="border-color:#2D2D44;margin:12px 0">
+            <!-- VAH/VAL Volume Profile Filter -->
+            <div class="metrics-row" style="flex-wrap:wrap;margin-bottom:16px;align-items:center">
+                <div class="metric-card" style="display:flex;align-items:center;gap:8px">
+                    <label style="display:flex;align-items:center;gap:6px;cursor:pointer">
+                        <input id="editOfUseVahVal" type="checkbox" ${(p.use_vah_val)?'checked':''} style="width:18px;height:18px;cursor:pointer">
+                        <span style="font-weight:bold;color:#26C6DA">VAH/VAL Filter</span>
+                    </label>
+                </div>
+                <div class="metric-card"><div class="metric-label">Value Area %</div><input id="editOfVaPct" class="input" type="number" value="${p.vah_val_pct||70}" style="width:60px"></div>
+                <div class="metric-card"><div class="metric-label">VP Bin Size</div><input id="editOfVpBin" class="input" type="number" value="${p.vah_val_bin_size||50}" style="width:60px"></div>
+                <div class="metric-card"><div class="metric-label">VP Mode</div><select id="editOfVpMode" class="input" style="width:100px"><option value="range" ${(p.vah_val_mode||'range')==='range'?'selected':''}>Range</option><option value="fade" ${p.vah_val_mode==='fade'?'selected':''}>Fade</option><option value="breakout" ${p.vah_val_mode==='breakout'?'selected':''}>Breakout</option></select></div>
+                <div class="metric-card" style="min-width:60px"><div class="metric-label">VAH</div><div id="ofVpVah" style="font-size:16px;font-weight:bold;color:#F44336">—</div></div>
+                <div class="metric-card" style="min-width:60px"><div class="metric-label">POC</div><div id="ofVpPoc" style="font-size:16px;font-weight:bold;color:#FF9800">—</div></div>
+                <div class="metric-card" style="min-width:60px"><div class="metric-label">VAL</div><div id="ofVpVal" style="font-size:16px;font-weight:bold;color:#4CAF50">—</div></div>
+            </div>
+            <hr style="border-color:#2D2D44;margin:12px 0">
             <!-- Торговый журнал -->
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
                 <strong>📋 Торговый журнал</strong>
+                <button class="btn btn-danger btn-sm" onclick="ofResetStats()" style="font-size:12px">🗑 Сбросить</button>
             </div>
             <div id="ofJournalSummary" class="metrics-row" style="flex-wrap:wrap;margin-bottom:12px"></div>
             <div style="display:flex;gap:8px;margin-bottom:12px;align-items:center">
@@ -5757,6 +5774,18 @@ function ofUpdatePanel() {
     if (el('ofAvgLvl')) el('ofAvgLvl').textContent = s.averageLevels || 0;
     if (el('ofPyrLvl')) el('ofPyrLvl').textContent = s.pyramidLevels || 0;
     if (el('ofRt')) el('ofRt').textContent = s.roundTrips || 0;
+
+    // VAH/VAL state
+    if (s.vp) {
+        if (el('ofVpVah')) el('ofVpVah').textContent = s.vp.vah ? s.vp.vah.toFixed(0) : '—';
+        if (el('ofVpPoc')) el('ofVpPoc').textContent = s.vp.poc ? s.vp.poc.toFixed(0) : '—';
+        if (el('ofVpVal')) el('ofVpVal').textContent = s.vp.val ? s.vp.val.toFixed(0) : '—';
+    } else {
+        if (el('ofVpVah')) el('ofVpVah').textContent = '—';
+        if (el('ofVpPoc')) el('ofVpPoc').textContent = '—';
+        if (el('ofVpVal')) el('ofVpVal').textContent = '—';
+    }
+
     // VWEMA state
     if (el('ofVwemaTrend')) {
         const vw = s.vwema;
@@ -5809,6 +5838,11 @@ async function ofRobotSaveFromPanel() {
         vwema_slow: parseInt(el('editOfVwemaSlow')?.value) || 40,
         vwema_flat_th: parseFloat(el('editOfVwemaFlat')?.value) || 1.0,
         vwema_block_counter: el('editOfVwemaBlock')?.checked !== false,
+
+        use_vah_val: el('editOfUseVahVal')?.checked || false,
+        vah_val_pct: parseInt(el('editOfVaPct')?.value) || 70,
+        vah_val_bin_size: parseInt(el('editOfVpBin')?.value) || 50,
+        vah_val_mode: el('editOfVpMode')?.value || 'range',
     };
     try {
         const resp = await fetch(OF_ROBOT_API + '/params', {
