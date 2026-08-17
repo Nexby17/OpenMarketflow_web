@@ -9,10 +9,10 @@
   "lastPyramidPrice": 0.0,
   "peakLots": 0,
   "lotQueue": [],
-  "roundTrips": 59,
-  "realizedPnL": 16204.049999999994,
-  "dailyPnL": 1266.04,
-  "dailyPnLDate": "2026-08-11",
+  "roundTrips": 66,
+  "realizedPnL": 17939.969999999994,
+  "dailyPnL": 1735.9200000000003,
+  "dailyPnLDate": "2026-08-17",
   "entryTime": "",
   "signalType": "",
   "tradeHistory": [
@@ -818,9 +818,97 @@
       "exitTime": "2026-08-11T12:06:19.843250+03:00",
       "reason": "tp_full",
       "signal": "cvd_trend"
+    },
+    {
+      "entryPrice": 213000.0,
+      "exitPrice": 213200.0,
+      "direction": "LONG",
+      "lots": 1,
+      "pnl": 198.72,
+      "entryTime": "2026-08-17T12:48:14.647073+03:00",
+      "exitTime": "2026-08-17T12:48:29.418953+03:00",
+      "reason": "tp_full",
+      "signal": "cvd_trend"
+    },
+    {
+      "entryPrice": 214450.0,
+      "exitPrice": 214125.0,
+      "direction": "SHORT",
+      "lots": 1,
+      "pnl": 323.72,
+      "entryTime": "2026-08-17T12:51:17.092396+03:00",
+      "exitTime": "2026-08-17T12:54:03.145963+03:00",
+      "reason": "partial_tp",
+      "signal": "cvd_trend"
+    },
+    {
+      "entryPrice": 213925.0,
+      "exitPrice": 213825.0,
+      "direction": "SHORT",
+      "lots": 2,
+      "pnl": 197.44,
+      "entryTime": "2026-08-17T12:51:17.092396+03:00",
+      "exitTime": "2026-08-17T13:00:32.526621+03:00",
+      "reason": "tp_full",
+      "signal": "cvd_trend"
+    },
+    {
+      "entryPrice": 214300.0,
+      "exitPrice": 214475.0,
+      "direction": "LONG",
+      "lots": 1,
+      "pnl": 173.72,
+      "entryTime": "2026-08-17T13:06:16.657362+03:00",
+      "exitTime": "2026-08-17T13:06:28.933212+03:00",
+      "reason": "tp_full",
+      "signal": "cvd_trend"
+    },
+    {
+      "entryPrice": 214162.5,
+      "exitPrice": 214075.0,
+      "direction": "SHORT",
+      "lots": 2,
+      "pnl": 172.44,
+      "entryTime": "2026-08-17T13:15:01.051715+03:00",
+      "exitTime": "2026-08-17T13:18:15.566425+03:00",
+      "reason": "tp_full",
+      "signal": "cvd_trend"
+    },
+    {
+      "entryPrice": 213675.0,
+      "exitPrice": 213850.0,
+      "direction": "LONG",
+      "lots": 1,
+      "pnl": 173.72,
+      "entryTime": "2026-08-17T13:30:31.784809+03:00",
+      "exitTime": "2026-08-17T13:31:10.474046+03:00",
+      "reason": "tp_full",
+      "signal": "cvd_trend"
+    },
+    {
+      "entryPrice": 213375.0,
+      "exitPrice": 213275.0,
+      "direction": "SHORT",
+      "lots": 1,
+      "pnl": 98.72,
+      "entryTime": "2026-08-17T13:35:00.592330+03:00",
+      "exitTime": "2026-08-17T13:35:59.773132+03:00",
+      "reason": "tp_full",
+      "signal": "cvd_trend"
+    },
+    {
+      "entryPrice": 212200.0,
+      "exitPrice": 212400.0,
+      "direction": "LONG",
+      "lots": 2,
+      "pnl": 397.44,
+      "entryTime": "2026-08-17T14:05:00.183084+03:00",
+      "exitTime": "2026-08-17T14:07:21.346158+03:00",
+      "reason": "tp_full",
+      "signal": "cvd_trend"
     }
   ],
-  "mode": "stopped",
+  "mode": "running",
   "activeAccount": "main",
   "direction_filter": "both"
 }
