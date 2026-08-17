@@ -1961,7 +1961,8 @@ if (!string.IsNullOrEmpty(finamToken))
         Console.WriteLine("🔌 Автоподключение к Финам...");
         await hub.Clients.All.SendAsync("OnLogMessage", DateTime.UtcNow.ToString("HH:mm:ss"), "INFO", "🔌 Подключаюсь к Финам...");
         
-        var success = await tradingService.ConnectBrokerAsync(finamToken);
+        var finamAccountId = Environment.GetEnvironmentVariable("FINAM_ACCOUNT_ID") ?? "";
+        var success = await tradingService.ConnectBrokerAsync(finamToken, finamAccountId);
         if (success)
         {
             Console.WriteLine("✅ Подключено к Финам!");
