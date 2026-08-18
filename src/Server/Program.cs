@@ -84,7 +84,19 @@ httpClient.Timeout = TimeSpan.FromSeconds(3);
 
 app.UseCors();
 app.UseDefaultFiles();
-app.UseStaticFiles();
+app.UseStaticFiles(new StaticFileOptions
+{
+    OnPrepareResponse = ctx =>
+    {
+        // No-cache для HTML — чтобы бампы версий <script> всегда подхватывались
+        if (ctx.File.Name.EndsWith(".html", StringComparison.OrdinalIgnoreCase))
+        {
+            ctx.Context.Response.Headers["Cache-Control"] = "no-cache, no-store, must-revalidate";
+            ctx.Context.Response.Headers["Pragma"] = "no-cache";
+            ctx.Context.Response.Headers["Expires"] = "0";
+        }
+    }
+});
 app.UseAuthentication();
 app.UseAuthorization();
 
@@ -1728,7 +1740,8 @@ if (!string.IsNullOrEmpty(finamToken))
         Console.WriteLine("рџ”Њ РђРІС‚РѕРїРѕРґРєР»СЋС‡РµРЅРёРµ Рє Р¤РёРЅР°Рј...");
         await hub.Clients.All.SendAsync("OnLogMessage", DateTime.UtcNow.ToString("HH:mm:ss"), "INFO", "рџ”Њ РџРѕРґРєР»СЋС‡Р°СЋСЃСЊ Рє Р¤РёРЅР°Рј...");
         
-        var success = await tradingService.ConnectBrokerAsync(finamToken);
+        var finamAccountId = Environment.GetEnvironmentVariable("FINAM_ACCOUNT_ID") ?? "";
+        var success = await tradingService.ConnectBrokerAsync(finamToken, finamAccountId);
         if (success)
         {
             Console.WriteLine("вњ… РџРѕРґРєР»СЋС‡РµРЅРѕ Рє Р¤РёРЅР°Рј!");

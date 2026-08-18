@@ -86,6 +86,7 @@ class OFParams:
     vwema_slow: int = 40          # slow VWEMA period
     vwema_flat_th: float = 1.0    # flat zone threshold (ATR multiples)
     vwema_block_counter: bool = True  # block counter-trend entries
+    vwema_avg_exit: bool = False    # B2: не усреднять против VWEMA + закрыть усреднённую позицию при развороте VWEMA
 
 
 @dataclass
@@ -463,6 +464,19 @@ class OrderFlowStrategy:
         self._current_price = price
         self._last_price_update = time.time()
 
+    def is_outside_va(self, price: float) -> bool:
+        """Check if price is outside Value Area. Only for 'range' mode.
+        Returns False if VAH/VAL not ready or not enabled."""
+        if not self.p.use_vah_val or self.p.vah_val_mode != "range":
+            return False
+        if not self.vp or not self.vp.ready:
+            return False
+        vah = self.vp.vah
+        val = self.vp.val
+        if vah <= 0 or val <= 0:
+            return False
+        return price < val or price > vah
+
     # ---------- Daily PnL ----------
 
     def _check_daily_reset(self, now: datetime):
@@ -681,30 +695,36 @@ class OrderFlowStrategy:
         if not self._ob_filter_passes(ob):
             return None
 
-        # === VAH/VAL GATE — price MUST be at VAH/VAL edge before signals are checked ===
-        # Entry trigger: price touches VAH (price >= VAH) or VAL (price <= VAL).
-        # Inside the Value Area → no entry. Exactly like backtest.
+        # === VAH/VAL GATE ===
         entry_zone = None  # None | "VAH" | "VAL"
         if self.p.use_vah_val and self.vp and self.vp.ready:
             vah = self.vp.vah
             val = self.vp.val
             if vah > 0 and val > 0:
-                if price >= vah:
-                    entry_zone = "VAH"  # price at or above VAH (upper edge)
-                    log.info(f"VAH/VAL GATE: price={price:.0f} >= VAH={vah:.0f} (VAL={val:.0f}) → zone=VAH → PASS")
-                elif price <= val:
-                    entry_zone = "VAL"  # price at or below VAL (lower edge)
-                    log.info(f"VAH/VAL GATE: price={price:.0f} <= VAL={val:.0f} (VAH={vah:.0f}) → zone=VAL → PASS")
+                if self.p.vah_val_mode == "range":
+                    # RANGE mode: trade ONLY inside VA, block outside
+                    if val <= price <= vah:
+                        log.info(f"VAH/VAL RANGE: price={price:.0f} inside VA (VAL={val:.0f}..VAH={vah:.0f}) → PASS")
+                    else:
+                        log.info(f"VAH/VAL RANGE: price={price:.0f} OUTSIDE VA (VAL={val:.0f}..VAH={vah:.0f}) → BLOCK")
+                        return None
                 else:
-                    log.info(f"VAH/VAL GATE: price={price:.0f} inside VA (VAL={val:.0f}..VAH={vah:.0f}) → BLOCK")
-                    return None  # inside Value Area → no entry
-                if self.p.vah_val_mode == "breakout":
-                    # Breakout: already past edge (price >= vah or price <= val) — always pass
-                    pass
-                # fade mode: touch of edge is enough — already pass
+                    # FADE / BREAKOUT mode (original logic): entry at VAH/VAL edges
+                    if price >= vah:
+                        entry_zone = "VAH"
+                        log.info(f"VAH/VAL GATE: price={price:.0f} >= VAH={vah:.0f} (VAL={val:.0f}) → zone=VAH → PASS")
+                    elif price <= val:
+                        entry_zone = "VAL"
+                        log.info(f"VAH/VAL GATE: price={price:.0f} <= VAL={val:.0f} (VAH={vah:.0f}) → zone=VAL → PASS")
+                    else:
+                        log.info(f"VAH/VAL GATE: price={price:.0f} inside VA (VAL={val:.0f}..VAH={vah:.0f}) → BLOCK")
+                        return None  # inside Value Area → no entry
+                    if self.p.vah_val_mode == "breakout":
+                        pass  # Breakout: already past edge — always pass
+                    # fade mode: touch of edge is enough — already pass
             else:
                 log.info(f"VAH/VAL GATE: VP vah={vah:.0f} val={val:.0f} — zero values → BLOCK")
-                return None  # VP not ready → no entry when filter is on
+                return None
         elif self.p.use_vah_val:
             vp_ready = self.vp.ready if self.vp else False
             log.info(f"VAH/VAL GATE: use_vah_val=True but vp.ready={vp_ready} → BLOCK")
@@ -783,6 +803,14 @@ class OrderFlowStrategy:
         if self._stop_loss_hit(price):
             return self._close_all(price, f"stop_loss_{self.p.stop_loss_mode}")
 
+        # a2) VWEMA avg-exit: усреднённая позиция против тренда VWEMA → закрыть немедленно (B2)
+        if (self.p.vwema_avg_exit and self._average_levels > 0
+                and self.vwema and self.vwema.ready):
+            td = self.vwema.direction
+            if td != 0 and td != self._dir:
+                log.info(f"VWEMA AVG EXIT: trend={td} vs pos={self._dir} | avg_lvl={self._average_levels} | {self.vwema.state}")
+                return self._close_all(price, "vwema_avg_exit")
+
         # b) Reverse signal
         ob = self.ob_tracker.get_metrics(price)
         if self.signals.check_reverse_signal(ob, self._dir, price, ob_tracker=self.ob_tracker,
@@ -818,6 +846,12 @@ class OrderFlowStrategy:
         """
         if self.p.enable_max_levels and self._average_levels >= self.p.max_average_levels:
             return []
+
+        # B2: не усреднять против тренда VWEMA
+        if self.p.vwema_avg_exit and self.vwema and self.vwema.ready:
+            td = self.vwema.direction
+            if td != 0 and td != self._dir:
+                return []
 
         # Use extreme price from queue to prevent re-averaging on same levels
         if self._lot_queue:

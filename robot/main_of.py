@@ -267,7 +267,7 @@ _last_fill_qty: int = 0
 
 def _on_my_trade(trade):
     """Callback from FinamPy when our order is executed. Captures REAL fill price."""
-    global _last_fill, _last_fill_qty
+    global _last_fill_price, _last_fill_time, _last_fill_qty
     try:
         if str(trade.symbol) != SYMBOL:
             return
@@ -320,6 +320,11 @@ def _on_latest_trades(event):
                 side=mapped_side,
                 timestamp=ts,
             ))
+
+            # Feed Volume Profile
+            if strategy.vp:
+                strategy.vp.add_trade(price, size, datetime.now())
+                strategy.vp.calculate()
 
             # Update trade stream health
             strategy._last_trade_ts = time.time()
@@ -500,6 +505,23 @@ def main_loop():
                 if fill_price > 0:
                     strategy.update_fill_price(fill_price, action.get("action", ""))
 
+            # === VAH/VAL RANGE BREAKOUT STOP ===
+            # If price exits VA and we have a position → hard close all
+            if strategy.in_position and strategy.is_outside_va(price):
+                vah = strategy.vp.vah if strategy.vp else 0
+                val = strategy.vp.val if strategy.vp else 0
+                log.warning(f"VA BREAKOUT STOP: price={price:.0f} outside VA (VAL={val:.0f}..VAH={vah:.0f}) — closing all")
+                if not PAPER_MODE:
+                    side = SELL if strategy.direction == LONG else BUY
+                    try:
+                        orders.place_market(side, strategy.total_lots, tag="va_stop")
+                        time.sleep(0.3)
+                    except Exception as e:
+                        log.error(f"VA BREAKOUT STOP: order failed: {e}")
+                strategy._close_all(price, "va_breakout_stop")
+                strategy._reset_position()
+                save_state()
+
             # Periodic state save (every 30 sec)
             if time.time() - last_save > 30:
                 save_state()
@@ -649,9 +671,9 @@ def _execute_action(action: dict):
         avg_for_record = strategy._avg_price
 
         side_int = SELL if side_str == "sell" else BUY
-        global _last_fill
-        _last_fill = (0, 0.0, 0.0)
-        # _last_fill reset above (Story 5.4)
+        global _last_fill_price, _last_fill_time
+        _last_fill_price = 0.0
+        _last_fill_time = 0.0
         result = orders.place_market(side_int, qty, tag=f"of_close_{action.get('reason', '')}")
         if result:
             time.sleep(0.3)  # wait for fill callback
@@ -682,8 +704,8 @@ def _execute_action(action: dict):
 
     elif act in ("entry", "average", "pyramid"):
         side_int = BUY if side_str == "buy" else SELL
-        _last_fill = (0, 0.0, 0.0)
-        # _last_fill reset above (Story 5.4)
+        _last_fill_price = 0.0
+        _last_fill_time = 0.0
         lots_before = strategy._total_lots - qty  # lots BEFORE this action added them
         result = orders.place_market(side_int, qty, tag=tag)
         if result:
@@ -705,8 +727,8 @@ def _execute_action(action: dict):
 
     elif act == "partial_tp":
         side_int = SELL if side_str == "sell" else BUY
-        _last_fill = (0, 0.0, 0.0)
-        # _last_fill reset above (Story 5.4)
+        _last_fill_price = 0.0
+        _last_fill_time = 0.0
         result = orders.place_market(side_int, qty, tag="of_partial_tp")
         if result:
             time.sleep(0.3)  # wait for fill callback
@@ -990,6 +1012,9 @@ class APIHandler(BaseHTTPRequestHandler):
                 # Reconstruct VWEMA if toggle changed
                 if "use_vwema" in data or any(k.startswith("vwema_") for k in data):
                     strategy._init_vwema()
+                # Reconstruct VP if VAH/VAL params changed
+                if "use_vah_val" in data or any(k.startswith("vah_val_") for k in data):
+                    strategy._init_vp()
                 # Sync agg_window to signal engine
                 if "agg_window" in data:
                     strategy.signals.set_agg_window(data["agg_window"])
@@ -1001,6 +1026,16 @@ class APIHandler(BaseHTTPRequestHandler):
                 cfg_path = os.path.join(os.getcwd(), "of_config.json")
                 with open(cfg_path, "w") as f:
                     json.dump({k: getattr(params, k) for k in dir(params) if not k.startswith("_") and not callable(getattr(params, k))}, f, indent=2)
+            self._json(200, {"ok": True})
+
+        elif path == "/reset-stats":
+            strategy._realized_pnl = 0.0
+            strategy._trade_history = []
+            strategy._round_trips = 0
+            strategy._daily_pnl = 0.0
+            strategy._daily_pnl_date = None
+            save_state()
+            log.info("Statistics reset: realizedPnl=0, trades=0, roundTrips=0")
             self._json(200, {"ok": True})
 
         else:
