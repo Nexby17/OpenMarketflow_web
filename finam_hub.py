@@ -82,6 +82,9 @@ class FinamHub:
         self._running = False
         self._ws = None
         self._loop = None  # asyncio-loop hub-потока (для потокобезопасной отправки)
+        self._ready = threading.Event()  # WS подключен и handshake прошёл
+        self._outbox = []           # исходящие, если loop ещё не запущен
+        self._outbox_lock = threading.Lock()
 
         # JWT
         self._api_key = ""
@@ -175,15 +178,18 @@ class FinamHub:
                 delay = RECONNECT_BASE
                 self.stats["connected"] = True
                 self.stats["last_connect_ts"] = time.time()
+                self._ready.set()
                 log.info("WS connected (handshake ok=%s)", ok)
 
-                # resend подписок после (re)connect
-                self._resubscribe_all()
-
-                # receive loop
-                loop.run_until_complete(self._recv_loop())
+                # receive loop: resubscribe (после реконнекта) + flush outbox
+                async def _serve():
+                    self._resubscribe_all()
+                    await self._flush_outbox()
+                    await self._recv_loop()
+                loop.run_until_complete(_serve())
             except Exception as e:
                 self.stats["connected"] = False
+                self._ready.clear()
                 if not self._running:
                     log.info("hub stopped, exit reconnect loop")
                     break
@@ -193,6 +199,7 @@ class FinamHub:
                 delay = min(delay * 2, RECONNECT_MAX)
             finally:
                 self.stats["connected"] = False
+                self._ready.clear()
 
     async def _recv_loop(self):
         import asyncio
@@ -240,6 +247,9 @@ class FinamHub:
             self._subs.setdefault((sub_type, key), set()).add(callback)
 
     def _send_sub(self, sub_type: str, data: dict):
+        if not self._ready.wait(timeout=15):
+            log.warning("hub not ready in 15s, sub %s dropped (will resend on connect)", sub_type)
+            return
         payload = {
             "action": "SUBSCRIBE",
             "type": sub_type,
@@ -249,13 +259,26 @@ class FinamHub:
         self._send_raw(payload)
 
     def _send_raw(self, payload: dict):
-        """Потокобезопасная отправка: планируем coroutine в loop hub-потока."""
+        """Потокобезопасная отправка: планируем coroutine в loop hub-потока.
+        Если loop ещё не активен — буферизуем; flush при старте recv-цикла."""
         import asyncio
-        loop = self._loop
-        if loop and loop.is_running() and self._ws:
-            asyncio.run_coroutine_threadsafe(self._ws.send(json.dumps(payload)), loop)
-        else:
-            log.warning("hub not connected, drop: %s", str(payload)[:80])
+        with self._outbox_lock:
+            loop = self._loop
+            if loop is None or not loop.is_running() or self._ws is None:
+                self._outbox.append(payload)
+                if len(self._outbox) > 100:
+                    self._outbox.pop(0)
+                return
+        asyncio.run_coroutine_threadsafe(self._ws.send(json.dumps(payload)), loop)
+
+    async def _flush_outbox(self):
+        with self._outbox_lock:
+            pending, self._outbox = self._outbox, []
+        for payload in pending:
+            try:
+                await self._ws.send(json.dumps(payload))
+            except Exception as e:
+                log.warning("flush send failed: %s", str(e)[:80])
 
     def _resubscribe_all(self):
         with self._lock:

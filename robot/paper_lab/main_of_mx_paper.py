@@ -40,7 +40,8 @@ def _load_lab_env():
                     _os.environ.setdefault(k.strip(), v.strip())
 _load_lab_env()
 
-from finam_compat import FinamPyCompat as FinamPy
+from finam_compat import FinamPyCompat as FinamPy  # (оставлен для ордеров/аккаунтов; данные идут через hub)
+from hub_adapter import FinamHubAdapter  # PC-003: данные из WS-хаба
 
 import config_of_mx as config
 from strategy_of import OrderFlowStrategy, OFParams, LONG, SHORT, FLAT
@@ -182,108 +183,35 @@ def load_state_from_disk():
 
 # ========== FinamPy subscriptions ==========
 
+_hub_adapter = None  # PC-003: WS-хаб адаптер
+
 def connect_finam():
-    """Connect FinamPy for Trades + OrderBook + Bars + Quotes."""
-    global fp
+    """PC-003: подключение данных через WS-хаб (замена gRPC-подписок)."""
+    global fp, _hub_adapter
     token = os.environ.get("FINAM_API_KEY")
     if not token:
         log.error("FINAM_API_KEY not set!")
         return False
 
-    fp = FinamPy(token)
-    fp.connect()
-    log.info(f"FinamPy connected. Accounts: {fp.account_ids}")
-
-    # Subscribe to latest trades (обезличенные сделки)
+    # Аккаунты берём через REST (легковесно, раз при старте)
     try:
-        fp.on_latest_trades.subscribe(_on_latest_trades)
-        t_trades = threading.Thread(
-            target=fp.subscribe_latest_trades_thread,
-            args=(SYMBOL,),
-            daemon=True,
-            name="sub-trades",
-        )
-        t_trades.start()
-        log.info(f"Subscribed to LatestTrades: {SYMBOL}")
-    except AttributeError:
-        log.warning("subscribe_latest_trades_thread not available in FinamPy — check API")
-
-    # Subscribe to order book
-    try:
-        fp.on_order_book.subscribe(_on_order_book)
-        t_ob = threading.Thread(
-            target=fp.subscribe_order_book_thread,
-            args=(SYMBOL,),
-            daemon=True,
-            name="sub-orderbook",
-        )
-        t_ob.start()
-        log.info(f"Subscribed to OrderBook: {SYMBOL}")
-    except AttributeError:
-        log.warning("subscribe_order_book_thread not available in FinamPy — check API")
-
-    # Subscribe to bars
-    try:
-        from finam_trade_api.proto.grpc.tradeapi.v1.marketdata import marketdata_service_pb2 as md
-        tf_map = {
-            "M1": md.TimeFrame.TIME_FRAME_M1,
-            "M5": md.TimeFrame.TIME_FRAME_M5,
-            "M15": md.TimeFrame.TIME_FRAME_M15,
-            "M30": md.TimeFrame.TIME_FRAME_M30,
-        }
-        finam_tf = tf_map.get(params.timeframe, md.TimeFrame.TIME_FRAME_M5)
-        fp.on_new_bar.subscribe(_on_new_bar)
-        t_bars = threading.Thread(
-            target=fp.subscribe_bars_thread,
-            args=(SYMBOL, finam_tf),
-            daemon=True,
-            name="sub-bars",
-        )
-        t_bars.start()
-        log.info(f"Subscribed to Bars: {SYMBOL} {params.timeframe}")
-    except AttributeError:
-        log.warning("subscribe_bars_thread not available in FinamPy — check API")
+        fp = FinamPy(token)
+        fp.connect()
+        log.info(f"FinamPy(REST-аккаунты) connected. Accounts: {fp.account_ids}")
     except Exception as e:
-        log.error(f"Bars subscription error: {e}")
+        log.warning(f"FinamPy account probe failed (не критично для данных): {e}")
 
-    # Subscribe to quotes for current price
-    try:
-        fp.on_quote.subscribe(_on_quote)
-        t_quote = threading.Thread(
-            target=fp.subscribe_quote_thread,
-            args=((SYMBOL,),),
-            daemon=True,
-            name="sub-quote",
-        )
-        t_quote.start()
-        log.info(f"Subscribed to Quotes: {SYMBOL}")
-    except AttributeError:
-        log.warning("subscribe_quote_thread not available in FinamPy — check API")
-
-    # Subscribe to own trades (order executions) for real fill prices
-    try:
-        fp.on_trade.subscribe(_on_my_trade)
-        for acc_id in fp.account_ids:
-            fp.subscribe_orders_trades(orders=False, trades=True, account_id=acc_id)
-        global _fill_sub_thread
-        t_ot = threading.Thread(
-            target=fp.subscribe_orders_trades_thread,
-            daemon=True,
-            name="sub-orders-trades",
-        )
-        _fill_sub_thread = t_ot
-        t_ot.start()
-        log.info("Subscribed to own trades (OrderTrade stream)")
-    except Exception as e:
-        log.warning(f"subscribe_orders_trades failed: {e}")
-
+    # Данные: единый WS-хаб
+    _hub_adapter = FinamHubAdapter(SYMBOL)
+    _hub_adapter.start(
+        on_trades=_on_latest_trades,
+        on_order_book=_on_order_book,
+        on_quote=_on_quote,
+        on_bar=_on_new_bar,
+        timeframe=params.timeframe,
+    )
+    log.info(f"HubAdapter: данные подключены ({SYMBOL}, TF={params.timeframe})")
     return True
-
-
-# ========== Fill tracking (real broker prices) ==========
-_last_fill_price: float = 0.0
-_last_fill_time: float = 0.0
-_last_fill_qty: int = 0
 
 
 def _on_my_trade(trade):
