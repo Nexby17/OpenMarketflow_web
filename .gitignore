@@ -59,3 +59,7 @@ backtest/
 *.bak
 *.bak.*
 *.tmp
+
+robot/paper_lab/logs/
+
+robot/paper_lab/.env

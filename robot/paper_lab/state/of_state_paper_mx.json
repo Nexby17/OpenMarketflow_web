@@ -1,0 +1,22 @@
+{
+  "dir": 0,
+  "entryPrice": 0.0,
+  "avgPrice": 0.0,
+  "totalLots": 0,
+  "averageLevels": 0,
+  "pyramidLevels": 0,
+  "lastAveragePrice": 0.0,
+  "lastPyramidPrice": 0.0,
+  "peakLots": 0,
+  "lotQueue": [],
+  "roundTrips": 0,
+  "realizedPnL": 0.0,
+  "dailyPnL": 0.0,
+  "dailyPnLDate": "2026-08-18",
+  "entryTime": "",
+  "signalType": "",
+  "tradeHistory": [],
+  "mode": "running",
+  "activeAccount": "main",
+  "direction_filter": "both"
+}
