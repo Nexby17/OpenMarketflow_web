@@ -63,3 +63,5 @@ backtest/
 robot/paper_lab/logs/
 
 robot/paper_lab/.env
+
+robot/paper_lab/py4/

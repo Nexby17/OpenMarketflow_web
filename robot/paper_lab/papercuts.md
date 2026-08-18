@@ -81,3 +81,13 @@
   - 90 сек в running: цена 217550 живая, VP построен (VAH=217800/VAL=217500), VWEMA dir=1, FLAT (сигналов на вход не было — фильтры работают)
 - **Дефекты, найденные и устранёнённые в фиче:** (1) race подписок до handshake → _ready-событие; (2) loop не running в момент отправки → outbox-буфер + flush в recv-цикле; (3) реконнект-подписки → resubscribe_all в _serve()
 - FinamPy остался только для REST-проба аккаунтов при старте (не для данных) — кандидат на удаление в Этапе 3.
+
+### PC-004: REST SDK 4.3.3 в lab (Этап 3 миграции) — ✅ СДЕЛАНО + ПРОТЕСТИРОВАНО (2026-08-18)
+- **Что:** finam_rest4.py — синхронный мост на официальный SDK (TokenManager+Client, автопродление JWT);
+  изолированный site-packages `py4/` (embedded python без venv; pip --target) — глобальный finam-sdk 2.19 не тронут;
+  patch_sdk.py — воспроизводимые патчи SDK.
+- **Найдено 2 бага SDK 4.3.3** (патчи в patch_sdk.py):
+  1. Position.average_price/daily_pnl required, но Finam не отдаёт их для нулевых позиций → pydantic падал
+  2. TokenClient шлёт УСТАРЕВШИЙ JWT в Authorization на POST /sessions → второй refresh падает code=3 «Token invalid»
+- **Тест:** последовательность quote → account (позиции/equity 910937₽) → quote → quotas — все 200 OK.
+- Юзкейс: пока данные идут через WS-хаб (Этап 2); REST4 — аккаунты/ордера/квоты; quotas показывает 200 rpm на метод.

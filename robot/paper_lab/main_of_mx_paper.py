@@ -25,8 +25,9 @@ import sys as _sys, os as _os
 _HERE = _os.path.dirname(_os.path.abspath(__file__))
 _ROBOT = _os.path.dirname(_HERE)
 _PROJ = _os.path.dirname(_ROBOT)  # finam_compat.py живёт в корне проекта
-for _p in (_HERE, _ROBOT, _PROJ):
-    if _p not in _sys.path:
+_PY4 = _os.path.join(_HERE, "py4")
+for _p in (_PY4, _HERE, _ROBOT, _PROJ):
+    if _os.path.isdir(_p) and _p not in _sys.path:
         _sys.path.insert(0, _p)
 # PAPER LAB: загрузка .env из lab-папки
 def _load_lab_env():
