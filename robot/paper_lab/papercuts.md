@@ -91,3 +91,14 @@
   2. TokenClient шлёт УСТАРЕВШИЙ JWT в Authorization на POST /sessions → второй refresh падает code=3 «Token invalid»
 - **Тест:** последовательность quote → account (позиции/equity 910937₽) → quote → quotas — все 200 OK.
 - Юзкейс: пока данные идут через WS-хаб (Этап 2); REST4 — аккаунты/ордера/квоты; quotas показывает 200 rpm на метод.
+
+### PC-005: paper-робот без DataProvider и gRPC (Этап 4) — ✅ СДЕЛАНО + ПРОТЕСТИРОВАНО (2026-08-18)
+- **Что:** orders_rest4.py (drop-in OrderManager: paper-эмуляция ордеров по цене хаба / real через REST);
+  get_broker_position (замена DP /position); VWEMA warmup → REST get_bars; startup-check + price-sync → REST;
+  finam_compat/orders_dp/DP_URL полностью удалены из paper-робота.
+- **Дефекты фичи, найдены-устранены:** (1) BarsRequest ждёт start_time/end_time (не start/end); (2) SDK без httpx-timeout висел минутами → патч 10 сек (patch_sdk №3).
+- **Тест живой:** робот на новом стеке: WS-hub данные + REST 4.3.3 аккаунты/бары/warmup + paper-ордера.
+  VWEMA warmup 60 баров (REST), OB data True (WS), startup-check 200 OK, DESYNC-монитор корректно видит реальную
+  позицию счёта (LONG 1 MXU6 — позиция Дмитрия), 60 сек в running: цена/VP/VWEMA живые.
+- **Стек lab итог:** данные=WS-hub, ордера/аккаунты/история=REST 4.3.3, gRPC=0, DP=0.
+- **Дальше:** обкатка ≥1 торгового дня (PC-005 soak) → вердикт PORT/DROP → Этап 5 (боевые роботы).

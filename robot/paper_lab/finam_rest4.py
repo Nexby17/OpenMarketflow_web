@@ -99,7 +99,7 @@ def get_bars(symbol: str, timeframe: str, start: str, end: str) -> dict:
     """Бары истории. timeframe: TIME_FRAME_M1/M5/M15/H1/D; start/end: ISO8601."""
     r4 = _get_module()
     from finam_trade_api.instruments.model import BarsRequest
-    req = BarsRequest(symbol=symbol, timeframe=timeframe, start=start, end=end)
+    req = BarsRequest(symbol=symbol, timeframe=timeframe, start_time=start, end_time=end)
     resp = r4.call(r4.client.instruments.get_bars(req))
     return resp.model_dump(mode="json") if hasattr(resp, "model_dump") else dict(resp)
 

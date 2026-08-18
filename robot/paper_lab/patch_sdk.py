@@ -54,3 +54,12 @@ patch_file(
 )
 
 print("patch_sdk: done")
+
+
+# 3) SDK не ставит timeout на httpx → зависания; ставим 10 сек read
+patch_file(
+    r"finam_trade_api\base_client\base.py",
+    "        uri = f\"{self._base_url}{url}\"\n\n        async with httpx.AsyncClient(headers=self._auth_headers, http2=True) as client:",
+    "        uri = f\"{self._base_url}{url}\"\n\n        # PATCH lab: read timeout (SDK без таймаута висит минутами)\n        async with httpx.AsyncClient(headers=self._auth_headers, http2=True, timeout=httpx.Timeout(10.0)) as client:",
+    "BaseClient.read_timeout",
+)

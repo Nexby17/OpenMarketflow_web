@@ -1,6 +1,6 @@
 """Order Flow Robot — main entry point.
 
-Subscribes to Trades + OrderBook + Bars via FinamPy gRPC,
+Subscribes to Trades + OrderBook + Bars via Finam WS-hub (PC-003/005),
 runs OrderFlowStrategy, sends orders via DataProvider REST.
 
 Usage: python3 main_of_mx.py [--paper] [--port 5081]
@@ -41,12 +41,13 @@ def _load_lab_env():
                     _os.environ.setdefault(k.strip(), v.strip())
 _load_lab_env()
 
-from finam_compat import FinamPyCompat as FinamPy  # (оставлен для ордеров/аккаунтов; данные идут через hub)
 from hub_adapter import FinamHubAdapter  # PC-003: данные из WS-хаба
+from orders_rest4 import OrderManagerRest4, get_broker_position  # PC-005: ордера/позиции без DP и gRPC
+import finam_rest4 as _rest4mod  # PC-005: REST 4.3.3
 
 import config_of_mx as config
 from strategy_of import OrderFlowStrategy, OFParams, LONG, SHORT, FLAT
-from orders_dp import OrderManager, BUY, SELL
+from orders_rest4 import BUY, SELL  # PC-005: константы стороны от нового менеджера
 
 log = logging.getLogger("robot_of_mx")
 
@@ -138,14 +139,16 @@ def _load_active_account():
 
 _load_active_account()
 
-orders = OrderManager(dp_url=DP_URL, account=ACCOUNTS[ACTIVE_ACCOUNT_KEY], symbol=SYMBOL)
+orders = OrderManagerRest4(account=ACCOUNTS[ACTIVE_ACCOUNT_KEY], symbol=SYMBOL,
+                            paper=PAPER_MODE, rest4=_rest4mod,
+                            quote_provider=lambda: getattr(strategy, '_current_price', 0) or 0)  # PC-005
 log.info(f"Trading account: {ACTIVE_ACCOUNT_KEY} ({ACCOUNTS[ACTIVE_ACCOUNT_KEY]})")
 
 # Fill subscription thread tracking (for watchdog)
 _fill_sub_thread: threading.Thread | None = None
 
-# --- FinamPy connection ---
-fp: FinamPy | None = None
+# --- PC-005: gRPC-соединение удалено; fp-заглушка для совместимости shutdown-кода ---
+fp = None
 _running = True
 _mode = "stopped"  # stopped, running, paused
 _last_fp_reconnect: float = 0.0  # guard against reconnect loop
@@ -182,7 +185,7 @@ def load_state_from_disk():
             log.error(f"Load state error: {e}")
 
 
-# ========== FinamPy subscriptions ==========
+# ========== Hub subscriptions (PC-005) ==========
 
 _hub_adapter = None  # PC-003: WS-хаб адаптер
 
@@ -194,13 +197,12 @@ def connect_finam():
         log.error("FINAM_API_KEY not set!")
         return False
 
-    # Аккаунты берём через REST (легковесно, раз при старте)
+    # PC-005: аккаунты через REST 4.3.3 (лёгкая проверка токена)
     try:
-        fp = FinamPy(token)
-        fp.connect()
-        log.info(f"FinamPy(REST-аккаунты) connected. Accounts: {fp.account_ids}")
+        _acc = _rest4mod.get_account_info(ACCOUNTS[ACTIVE_ACCOUNT_KEY])
+        log.info(f"REST4 OK: account {_acc.get('account_id')}, equity={_acc.get('equity')}")
     except Exception as e:
-        log.warning(f"FinamPy account probe failed (не критично для данных): {e}")
+        log.warning(f"REST4 account probe failed (не критично): {str(e)[:100]}")
 
     # Данные: единый WS-хаб
     _hub_adapter = FinamHubAdapter(SYMBOL)
@@ -216,7 +218,7 @@ def connect_finam():
 
 
 def _on_my_trade(trade):
-    """Callback from FinamPy when our order is executed. Captures REAL fill price."""
+    """Fill callback (real-режим будет через WS ORDERS; paper — эмуляция). Captures REAL fill price."""
     global _last_fill_price, _last_fill_time, _last_fill_qty
     try:
         if str(trade.symbol) != SYMBOL:
@@ -310,7 +312,7 @@ def _on_order_book(event):
 
 def _on_new_bar(event, finam_timeframe=None):
     """Callback from SubscribeBars — bar closed.
-    Note: FinamPy passes (event, finam_timeframe) — accept both.
+    Note: hub-adapter passes (event, timeframe) — accept both.
     """
     try:
         # Calculate bar duration from timeframe
@@ -375,26 +377,20 @@ def _to_float(val) -> float:
 
 
 def _reconnect_finampy():
-    """Shutdown old FinamPy and reconnect all subscriptions."""
+    """Watchdog: reconnect hub subscriptions."""
     global fp, _last_fp_reconnect
     now = time.time()
     if now - _last_fp_reconnect < 30:
         return  # don't reconnect more than once per 30s
     _last_fp_reconnect = now
-    log.warning("[WATCHDOG] Price stale — reconnecting FinamPy...")
+    log.warning("[WATCHDOG] Price stale — reconnecting hub...")
     try:
-        if fp is not None:
-            try:
-                fp.close()
-            except Exception:
-                pass
         time.sleep(1)
-        fp = None
         ok = connect_finam()
         if ok:
-            log.info("[WATCHDOG] FinamPy reconnected OK")
+            log.info("[WATCHDOG] Hub resubscribed OK")
         else:
-            log.error("[WATCHDOG] FinamPy reconnect failed")
+            log.error("[WATCHDOG] Hub reconnect failed")
     except Exception as e:
         log.error(f"[WATCHDOG] Reconnect error: {e}")
 
@@ -428,7 +424,7 @@ def main_loop():
                 # Try fallback: get from DP
                 try:
                     import requests
-                    r = requests.get(f"{DP_URL}/quote", params={"symbol": SYMBOL}, timeout=2)
+                    # PC-005: цена из стратегии (хаб), DP не используется
                     data = r.json()
                     price = float(data.get("last", 0))
                     if price > 0:
@@ -467,12 +463,8 @@ def main_loop():
             if time.time() - last_price_sync > 30.0:
                 try:
                     sync_account = ACCOUNTS.get(ACTIVE_ACCOUNT_KEY, ACCOUNT)
-                    import requests
-                    r = requests.get(f"{DP_URL}/position",
-                                     params={"account": sync_account, "ticker": SYMBOL},
-                                     timeout=5)
-                    if r.status_code == 200:
-                        bd = r.json()
+                    bd = get_broker_position(_rest4mod, sync_account, SYMBOL)  # PC-005: rest4
+                    if bd:
                         strategy.sync_from_broker(bd)
                         # Passive desync monitor
                         bl = bd.get('lots', 0)
@@ -483,7 +475,7 @@ def main_loop():
                     log.debug(f"Price sync: {e}")
                 last_price_sync = time.time()
 
-            # === WATCHDOG: reconnect FinamPy if price stale > 60s ===
+            # === WATCHDOG: reconnect hub if price stale > 60s ===
             if strategy._is_price_stale(max_age_sec=60):
                 _reconnect_finampy()
 
@@ -496,22 +488,8 @@ def main_loop():
                     _reconnect_finampy()
 
             # === WATCHDOG: re-subscribe fill stream if thread died ===
-            if _fill_sub_thread and not _fill_sub_thread.is_alive():
-                log.warning("[WATCHDOG] Fill subscription thread dead — re-subscribing")
-                try:
-                    fp.on_trade.subscribe(_on_my_trade)
-                    for acc_id in fp.account_ids:
-                        fp.subscribe_orders_trades(orders=False, trades=True, account_id=acc_id)
-                    _fill_sub_thread = threading.Thread(
-                        target=fp.subscribe_orders_trades_thread,
-                        daemon=True,
-                        name="sub-orders-trades",
-                    )
-                    _fill_sub_thread.start()
-                    log.info("[WATCHDOG] Fill subscription re-subscribed OK")
-                except Exception as e:
-                    log.error(f"[WATCHDOG] Fill re-subscribe error: {e}")
-
+            # PC-005: fill-стрим — WS ORDERS (real-режим); paper эмулирует OrderManagerRest4
+            pass
             # Tick rate: 50ms (20x per second)
             time.sleep(0.05)
 
@@ -565,13 +543,10 @@ def _record_broker_trade(action: dict, fill_price: float):
 
 
 def _get_broker_position_fast() -> int:
-    """Quick broker lots check via DP, returns 0 on error."""
+    """PC-005: quick broker lots via rest4, 0 on error."""
     try:
-        import requests
         acc = ACCOUNTS.get(ACTIVE_ACCOUNT_KEY, ACCOUNT)
-        r = requests.get(f"{DP_URL}/position", params={"account": acc, "ticker": SYMBOL}, timeout=3)
-        if r.status_code == 200:
-            return r.json().get('lots', 0)
+        return get_broker_position(_rest4mod, acc, SYMBOL).get('lots', 0)
     except Exception:
         pass
     return 0
@@ -920,7 +895,8 @@ class APIHandler(BaseHTTPRequestHandler):
                 new_account = ACCOUNTS.get(account_key)
                 if new_account:
                     ACTIVE_ACCOUNT_KEY = account_key
-                    orders = OrderManager(dp_url=DP_URL, account=new_account, symbol=SYMBOL)
+                    orders = OrderManagerRest4(account=new_account, symbol=SYMBOL, paper=PAPER_MODE,
+                                rest4=_rest4mod, quote_provider=lambda: getattr(strategy, '_current_price', 0) or 0)  # PC-005
                     log.info(f"Account switched to {account_key} ({new_account})")
                     save_state()
                     self._json(200, {"ok": True, "account": account_key, "id": new_account})
@@ -968,19 +944,12 @@ def _warmup_vwema():
         return
 
     try:
-        from google.protobuf.timestamp_pb2 import Timestamp
-        from google.type.interval_pb2 import Interval
-        from finam_trade_api.proto.grpc.tradeapi.v1.marketdata import marketdata_service_pb2 as md_pb2
+        from datetime import timedelta
+        # PC-005: история через REST 4.3.3
+        tf_map = {"M1": "TIME_FRAME_M1", "M5": "TIME_FRAME_M5",
+                  "M15": "TIME_FRAME_M15", "M30": "TIME_FRAME_M30"}
+        ws_tf = tf_map.get(params.timeframe, "TIME_FRAME_M1")
 
-        tf_map = {
-            "M1": md_pb2.TimeFrame.TIME_FRAME_M1,
-            "M5": md_pb2.TimeFrame.TIME_FRAME_M5,
-            "M15": md_pb2.TimeFrame.TIME_FRAME_M15,
-            "M30": md_pb2.TimeFrame.TIME_FRAME_M30,
-        }
-        finam_tf = tf_map.get(params.timeframe, md_pb2.TimeFrame.TIME_FRAME_M1)
-
-        # Need enough bars for slow period (default 40) + buffer
         bar_seconds = TF_SECONDS.get(params.timeframe, 60)
         bars_needed = params.vwema_slow + 20
         lookback_seconds = bars_needed * bar_seconds
@@ -988,26 +957,17 @@ def _warmup_vwema():
         now = datetime.now(timezone.utc)
         start = now - timedelta(seconds=lookback_seconds)
 
-        resp = fp.call_function(
-            fp.marketdata_stub.Bars,
-            md_pb2.BarsRequest(
-                symbol=SYMBOL,
-                timeframe=finam_tf,
-                interval=Interval(
-                    start_time=Timestamp(seconds=int(start.timestamp())),
-                    end_time=Timestamp(seconds=int(now.timestamp())),
-                ),
-            ),
-        )
+        resp = _rest4mod.get_bars(SYMBOL, ws_tf,
+                                  start.isoformat().replace("+00:00", "Z"),
+                                  now.isoformat().replace("+00:00", "Z"))
 
-        if resp and resp.bars:
-            bars = list(resp.bars)
+        bars = resp.get("bars", []) if isinstance(resp, dict) else []
+        if bars:
             fed = 0
             for bar in bars:
-                h = _to_float(bar.high)
-                l = _to_float(bar.low)
-                c = _to_float(bar.close)
-                v = _to_float(bar.volume)
+                def _dv(x):
+                    return float(x.get("value", 0)) if isinstance(x, dict) else float(x or 0)
+                h, l, c, v = _dv(bar.get("high")), _dv(bar.get("low")), _dv(bar.get("close")), _dv(bar.get("volume"))
                 if c > 0:
                     strategy.vwema.update(c, h, l, volume=v)
                     fed += 1
@@ -1030,7 +990,7 @@ def on_shutdown(signum, frame):
     save_state()
     if fp:
         try:
-            fp.close_channel()
+            pass  # PC-005: gRPC удалён
         except Exception:
             pass
     sys.exit(0)
@@ -1053,9 +1013,9 @@ if __name__ == "__main__":
     # Load state
     load_state_from_disk()
 
-    # Connect FinamPy
+    # Connect data hub + REST
     if not connect_finam():
-        log.error("Failed to connect FinamPy — exiting")
+        log.error("Failed to connect hub — exiting")
         sys.exit(1)
 
     # VWEMA warmup: load historical bars so filter is ready immediately
@@ -1068,11 +1028,9 @@ if __name__ == "__main__":
 
     # === STARTUP RECONCILIATION: check broker position once ===
     try:
-        import requests as _req
         _sync_acc = ACCOUNTS.get(ACTIVE_ACCOUNT_KEY, ACCOUNT)
-        _r = _req.get(f"{DP_URL}/position", params={"account": _sync_acc, "ticker": SYMBOL}, timeout=5)
-        if _r.status_code == 200:
-            _bpos = _r.json()
+        _bpos = get_broker_position(_rest4mod, _sync_acc, SYMBOL)  # PC-005
+        if True:
             _bl = _bpos.get('lots', 0)
             if _bl != 0:
                 log.warning(f"STARTUP: broker has {_bl} lots (avg={_bpos.get('avg_price', 0):.0f}) but robot is FLAT. NOT entering — investigate manually.")
