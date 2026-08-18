@@ -1,4 +1,4 @@
-namespace HedgeFund.Core.Averaging;
+﻿namespace HedgeFund.Core.Averaging;
 
 public enum AveragingMode
 {
@@ -35,6 +35,9 @@ public class AveragingSettings
     /// <summary>Использовать проценты вместо пунктов для стоп-лосса</summary>
     public bool UsePercentStopLoss { get; set; } = false;
     
+    /// <summary>Максимальная позиция в рублях для усреднения (0 = нет лимита). При мартингейле + MaxAveragingCount=0 используется как лимит.</summary>
+    public double MaxPositionRub { get; set; } = 0;
+
     /// <summary>Минимальный PnL для закрытия (0 = любой положительный)</summary>
     public double MinProfitToClose { get; set; } = 0;
 
@@ -57,3 +60,4 @@ public class AveragingSettings
         return currentAveragingCount < MaxAveragingCount;
     }
 }
+

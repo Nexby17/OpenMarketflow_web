@@ -1,6 +1,7 @@
 using HedgeFund.Core.Models;
 using HedgeFund.Core.Strategies;
 using HedgeFund.Brokers.Finam;
+using HedgeFund.Core.Risk;
 
 namespace HedgeFund.Server.Services;
 
@@ -12,6 +13,9 @@ namespace HedgeFund.Server.Services;
 /// </summary>
 public class VolumeReversalLauncher : IDisposable
 {
+    private RiskGate? _riskGate;
+    public void SetRiskGate(RiskGate gate) => _riskGate = gate;
+
     private readonly FinamConnector _broker;
     private readonly VolumeReversalStrategy _strategy;
     private readonly string _ticker;
@@ -121,6 +125,7 @@ public class VolumeReversalLauncher : IDisposable
                 Volume = signal.Volume,
                 Comment = signal.Comment
             };
+            if (RiskIntegrationHelper.IsTradingBlocked(_riskGate)) { Console.WriteLine("[VR] Order blocked by circuit breaker"); return; }
             await _broker.PlaceOrderAsync(order);
             Console.WriteLine($"[VR EXEC] ✅ {signal.Direction} {signal.Volume}x {_ticker}");
         }

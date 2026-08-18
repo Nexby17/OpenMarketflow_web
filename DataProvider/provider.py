@@ -5,8 +5,8 @@ import threading
 import time
 from typing import Optional
 
-from FinamPy import FinamPy
-from FinamPy.grpc import marketdata_service_pb2 as md
+from finam_compat import FinamPyCompat as FinamPy
+from finam_trade_api.proto.grpc.tradeapi.v1.marketdata import marketdata_service_pb2 as md
 
 from cache import DataCache
 
@@ -40,6 +40,7 @@ class FinamProvider:
 
         logger.info("Connecting to Finam gRPC...")
         self.fp = FinamPy(token)
+        self.fp.connect()
         logger.info("Connected. Accounts: %s", self.fp.account_ids)
 
         # Wire up event handlers
@@ -192,7 +193,7 @@ class FinamProvider:
         """Raw fetch — gRPC first, REST fallback."""
         # Variant 1: gRPC GetAccount
         try:
-            from FinamPy.grpc import accounts_service_pb2 as accts
+            from finam_trade_api.proto.grpc.tradeapi.v1.accounts import accounts_service_pb2 as accts
             resp = self.fp.call_function(
                 self.fp.accounts_stub.GetAccount,
                 accts.GetAccountRequest(account_id=account_id),

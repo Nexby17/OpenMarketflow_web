@@ -1,9 +1,8 @@
 using Microsoft.AspNetCore.SignalR;
 using HedgeFund.Server.Hubs;
-using HedgeFund.Server.Services;
 using HedgeFund.Server.Connectors;
+using HedgeFund.Server.Services;
 using HedgeFund.Core.Strategies;
-using HedgeFund.Core.Connectors;
 using HedgeFund.Brokers.Finam;
 using System.Text.Json;
 using Microsoft.AspNetCore.Http.Extensions;
@@ -13,7 +12,10 @@ using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 
 // Load .env file
-var envPath = "/root/.openclaw/workspace/HedgeFund/.env";
+var envPath = Path.Combine(AppContext.BaseDirectory, ".env");
+if (!File.Exists(envPath)) envPath = Path.Combine(Directory.GetCurrentDirectory(), ".env");
+if (!File.Exists(envPath)) envPath = Path.Combine(Directory.GetCurrentDirectory(), "..", ".env");
+if (!File.Exists(envPath)) envPath = Path.Combine(Directory.GetCurrentDirectory(), "..", "..", "..", ".env");
 if (File.Exists(envPath))
     foreach (var line in File.ReadLines(envPath))
     {
@@ -28,10 +30,10 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddSignalR(options =>
 {
     options.EnableDetailedErrors = true;
-    options.MaximumReceiveMessageSize = 1024 * 1024; // 1 МБ
+    options.MaximumReceiveMessageSize = 1024 * 1024; // 1 РњР‘
 });
 
-// === CORS — разрешить подключения с любого клиента ===
+// === CORS вЂ” СЂР°Р·СЂРµС€РёС‚СЊ РїРѕРґРєР»СЋС‡РµРЅРёСЏ СЃ Р»СЋР±РѕРіРѕ РєР»РёРµРЅС‚Р° ===
 builder.Services.AddCors(options =>
 {
     options.AddDefaultPolicy(policy =>
@@ -39,11 +41,11 @@ builder.Services.AddCors(options =>
         policy.AllowAnyHeader()
               .AllowAnyMethod()
               .AllowCredentials()
-              .SetIsOriginAllowed(_ => true);
+              .WithOrigins("http://localhost:5050", "http://127.0.0.1:5050", "http://216.57.106.32:5050");
     });
 });
 
-// === Аутентификация (Cookie) ===
+// === РђСѓС‚РµРЅС‚РёС„РёРєР°С†РёСЏ (Cookie) ===
 var loginUser = Environment.GetEnvironmentVariable("APP_LOGIN") ?? "admin";
 var loginPassHash = Environment.GetEnvironmentVariable("APP_PASS_HASH") ?? Convert.ToBase64String(SHA256.HashData("admin"u8.ToArray()));
 
@@ -60,35 +62,83 @@ builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationSc
     });
 builder.Services.AddAuthorization();
 
-// === Сервисы ===
+// === РЎРµСЂРІРёСЃС‹ ===
 builder.Services.AddSingleton<TradingService>();
 builder.Services.AddSingleton<StrategyRunner>();
 
-// === Порт (по умолчанию 5050, настраиваемый через --urls или ASPNETCORE_URLS) ===
+// === РџРѕСЂС‚ (РїРѕ СѓРјРѕР»С‡Р°РЅРёСЋ 5050, РЅР°СЃС‚СЂР°РёРІР°РµРјС‹Р№ С‡РµСЂРµР· --urls РёР»Рё ASPNETCORE_URLS) ===
 var port = builder.Configuration.GetValue<int>("Port", 5050);
 builder.WebHost.UseUrls($"http://0.0.0.0:{port}");
 
 var app = builder.Build();
 var httpClient = new HttpClient();
+
+// === RISK GATE (declared early, used by all launchers) ===
+var riskGate = new HedgeFund.Core.Risk.RiskGate(
+    goPerLot: 12000.0,
+    safetyMarginFactor: 1.2,
+    maxLots: 10,
+    dailyLossLimit: 5000.0,
+    maxDrawdownPct: 0.05);
 httpClient.Timeout = TimeSpan.FromSeconds(3);
 
 app.UseCors();
+app.UseDefaultFiles();
+app.UseStaticFiles();
 app.UseAuthentication();
 app.UseAuthorization();
-app.UseDefaultFiles();
-app.UseStaticFiles(new StaticFileOptions
+
+// === Rate Limiter for /api/login (5 attempts/min per IP) ===
+var _loginRateLimit = new System.Collections.Concurrent.ConcurrentDictionary<string, (int count, long windowStart)>();
+var _rateLimitCleanupLock = new object();
+DateTime _lastRateLimitCleanup = DateTime.UtcNow;
+
+app.Use(async (HttpContext ctx, Func<Task> next) =>
 {
-    OnPrepareResponse = ctx =>
+    if (ctx.Request.Path.Value == "/api/login" && ctx.Request.Method == "POST")
     {
-        // No-cache for HTML files so version bumps in <script> tags are always seen
-        if (ctx.File.Name.EndsWith(".html", StringComparison.OrdinalIgnoreCase))
+        var ip = ctx.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+        var now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+        var entry = _loginRateLimit.GetOrAdd(ip, _ => (0, now));
+        
+        if (now - entry.windowStart > 60)
         {
-            ctx.Context.Response.Headers["Cache-Control"] = "no-cache, no-store, must-revalidate";
-            ctx.Context.Response.Headers["Pragma"] = "no-cache";
-            ctx.Context.Response.Headers["Expires"] = "0";
+            _loginRateLimit.TryUpdate(ip, (1, now), entry);
+        }
+        else
+        {
+            var newCount = entry.count + 1;
+            if (newCount > 5)
+            {
+                ctx.Response.StatusCode = 429;
+                ctx.Response.ContentType = "application/json";
+                await ctx.Response.WriteAsync("{\"error\":\"Too many login attempts. Try again in 1 minute.\"}");
+                return;
+            }
+            _loginRateLimit.TryUpdate(ip, (newCount, entry.windowStart), entry);
+        }
+        
+        // Periodic cleanup every 2 minutes
+        if ((DateTime.UtcNow - _lastRateLimitCleanup).TotalMinutes >= 2)
+        {
+            lock (_rateLimitCleanupLock)
+            {
+                if ((DateTime.UtcNow - _lastRateLimitCleanup).TotalMinutes >= 2)
+                {
+                    var cutoff = DateTimeOffset.UtcNow.ToUnixTimeSeconds() - 120;
+                    foreach (var kv in _loginRateLimit)
+                    {
+                        if (kv.Value.windowStart < cutoff)
+                            _loginRateLimit.TryRemove(kv.Key, out _);
+                    }
+                    _lastRateLimitCleanup = DateTime.UtcNow;
+                }
+            }
         }
     }
+    await next();
 });
+
 
 // === Login API ===
 app.MapPost("/api/login", async (HttpRequest req, HttpResponse res) =>
@@ -154,6 +204,8 @@ app.Use(async (HttpContext ctx, Func<Task> next) =>
         path == "/test" ||
         path == "/heartbeat" ||
         path == "/login.html" ||
+        path == "/" ||
+        path == "/index.html" ||
         path.StartsWith("/css/") || 
         path.StartsWith("/js/") || 
         path.StartsWith("/favicon") ||
@@ -182,18 +234,20 @@ app.Use(async (HttpContext ctx, Func<Task> next) =>
 // === Connector Manager ===
 var connectorMgr = new HedgeFund.Core.Connectors.ConnectorManager();
 
-// Текущий коннектор по умолчанию: Finam
+// РўРµРєСѓС‰РёР№ РєРѕРЅРЅРµРєС‚РѕСЂ РїРѕ СѓРјРѕР»С‡Р°РЅРёСЋ: Finam
 var _activeConnectorName = "Finam";
 
-// === Маппинг тикеров для Finam REST API ===
+// === РњР°РїРїРёРЅРі С‚РёРєРµСЂРѕРІ РґР»СЏ Finam REST API ===
 var _tickerToFinam = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
 {
-    ["SiM6"] = "SiM6@RTSX", ["SiU6"] = "SiU6@RTSX", ["SiH6"] = "SiH6@RTSX", ["SiZ5"] = "SiZ5@RTSX",
+    ["SiU6"] = "SiU6@RTSX", ["SiZ6"] = "SiZ6@RTSX",
+    ["MXU6"] = "MXU6@RTSX", ["MXZ6"] = "MXZ6@RTSX",
+    ["GDU6"] = "GDU6@RTSX", ["RIZ6"] = "RIZ6@RTSX",
+    ["BRU6"] = "BRU6@RTSX", ["BRV6"] = "BRV6@RTSX", ["NGQ6"] = "NGQ6@RTSX",
     ["BRM6"] = "BRM6@RTSX", ["BRK6"] = "BRK6@RTSX",
     ["GDM6"] = "GDM6@RTSX", ["GDH6"] = "GDH6@RTSX",
     ["MXM6"] = "MXM6@RTSX",
     ["RIU6"] = "RIU6@RTSX",
-    ["SBER"] = "SBER@MISX", ["GAZP"] = "GAZP@MISX",
     ["LKOH"] = "LKOH@MISX", ["GMKN"] = "GMKN@MISX", ["NVTK"] = "NVTK@MISX",
     ["ROSN"] = "ROSN@MISX", ["SNGS"] = "SNGS@MISX", ["YNDX"] = "YNDX@MISX",
 };
@@ -258,7 +312,6 @@ app.MapPost("/api/connectors/switch", async (HttpRequest req) =>
     IConnector connector = name switch
     {
         "Finam" => new HedgeFund.Server.Connectors.FinamConnectorAdapter(),
-        "QUIK" => new HedgeFund.Server.Connectors.QuikConnectorAdapter(),
         "Transaq" => new HedgeFund.Server.Connectors.TransaqConnectorAdapter(),
         _ => throw new InvalidOperationException()
     };
@@ -275,16 +328,11 @@ app.MapPost("/api/connectors/switch", async (HttpRequest req) =>
     catch (Exception ex) { connector.Dispose(); return Results.Json(new { error = ex.Message }, statusCode: 500); }
 });
 
-// === Маппинг SignalR Hub ===
+// === РњР°РїРїРёРЅРі SignalR Hub ===
 app.MapHub<TradingHub>("/trading");
 
-// === QUIK Bridge State ===
-var quikData = new Dictionary<string, object>();
-var quikConnected = false;
-DateTime quikLastHeartbeat = DateTime.MinValue;
-object _quikStateLock = new object();
 
-// === Candle Aggregator from QUIK ticks ===
+// === Candle Aggregator ===
 var candleBuilderLock = new object();
 GridMmRegimeLauncher? gridMm = null;
 VolumeReversalLauncher? volRev = null;
@@ -293,12 +341,6 @@ var candleBuilderCurrent = (double[]?)null;
 var candleBuilderHistory = new LinkedList<double[]>();
 const int CANDLE_TF_MINUTES = 5;
 const int MAX_CANDLES = 500;
-
-bool IsQuikAlive()
-{
-    lock (_quikStateLock)
-        return quikConnected && (DateTime.UtcNow - quikLastHeartbeat).TotalSeconds < 10;
-}
 
 void AggregateCandleTick(double price, double volume, long ts)
 {
@@ -450,7 +492,7 @@ app.MapPost("/api/robot/ticker", async (HttpRequest req) =>
         using var reader = new StreamReader(req.Body);
         var body = await reader.ReadToEndAsync();
         var json = System.Text.Json.JsonDocument.Parse(body);
-        var ticker = json.RootElement.GetProperty("ticker").GetString() ?? "SiM6";
+        var ticker = json.RootElement.GetProperty("ticker").GetString() ?? "SiU6";
         // Map ticker to Finam symbol
         var symbolMap = new Dictionary<string,string> {
             {"SiM6", "SiM6@RTSX"}, {"SiU6", "SiU6@RTSX"}, {"SiH7", "SiH7@RTSX"},
@@ -477,12 +519,12 @@ app.MapPost("/api/robot/ticker", async (HttpRequest req) =>
 // === Test endpoint (no auth) ===
 app.MapGet("/test", () => Results.Ok(new { message = "test endpoint works" })).AllowAnonymous();
 
-// === REST API для управления ===
+// === REST API РґР»СЏ СѓРїСЂР°РІР»РµРЅРёСЏ ===
 app.MapGet("/status", (TradingService svc) => Results.Ok(svc.GetStatus()));
 
 app.MapPost("/connect-broker", async (TradingService svc, HttpRequest req) =>
 {
-    // Токен: из тела запроса (JSON {token:"..."}) или из переменной окружения
+    // РўРѕРєРµРЅ: РёР· С‚РµР»Р° Р·Р°РїСЂРѕСЃР° (JSON {token:"..."}) РёР»Рё РёР· РїРµСЂРµРјРµРЅРЅРѕР№ РѕРєСЂСѓР¶РµРЅРёСЏ
     string? token = null;
     try
     {
@@ -498,14 +540,14 @@ app.MapPost("/connect-broker", async (TradingService svc, HttpRequest req) =>
     
     token ??= Environment.GetEnvironmentVariable("FINAM_API_KEY") ?? Environment.GetEnvironmentVariable("FINAM_TOKEN");
     if (string.IsNullOrEmpty(token))
-        return Results.BadRequest(new { error = "FINAM_API_KEY не задан" });
+        return Results.BadRequest(new { error = "FINAM_API_KEY РЅРµ Р·Р°РґР°РЅ" });
 
-    // Сохраняем для арбитража и других сервисов
+    // РЎРѕС…СЂР°РЅСЏРµРј РґР»СЏ Р°СЂР±РёС‚СЂР°Р¶Р° Рё РґСЂСѓРіРёС… СЃРµСЂРІРёСЃРѕРІ
     Environment.SetEnvironmentVariable("FINAM_TOKEN", token);
 
-    // Подключаем с таймаутом 30 сек
+    // РџРѕРґРєР»СЋС‡Р°РµРј СЃ С‚Р°Р№РјР°СѓС‚РѕРј 30 СЃРµРє
     var hub = app.Services.GetRequiredService<IHubContext<TradingHub>>();
-    await hub.Clients.All.SendAsync("OnLogMessage", DateTime.UtcNow.ToString("HH:mm:ss"), "INFO", "🔌 Подключаюсь к Финам...");
+    await hub.Clients.All.SendAsync("OnLogMessage", DateTime.UtcNow.ToString("HH:mm:ss"), "INFO", "рџ”Њ РџРѕРґРєР»СЋС‡Р°СЋСЃСЊ Рє Р¤РёРЅР°Рј...");
     
     try
     {
@@ -518,24 +560,24 @@ app.MapPost("/connect-broker", async (TradingService svc, HttpRequest req) =>
             var success = await connectTask;
             if (success)
             {
-                await hub.Clients.All.SendAsync("OnLogMessage", DateTime.UtcNow.ToString("HH:mm:ss"), "INFO", "✅ Подключено к Финам!");
+                await hub.Clients.All.SendAsync("OnLogMessage", DateTime.UtcNow.ToString("HH:mm:ss"), "INFO", "вњ… РџРѕРґРєР»СЋС‡РµРЅРѕ Рє Р¤РёРЅР°Рј!");
                 return Results.Ok(new { status = "connected", broker = "Finam" });
             }
             else
             {
-                await hub.Clients.All.SendAsync("OnLogMessage", DateTime.UtcNow.ToString("HH:mm:ss"), "ERROR", "❌ Не удалось подключиться");
-                return Results.BadRequest(new { error = "Подключение не удалось. Проверьте токен." });
+                await hub.Clients.All.SendAsync("OnLogMessage", DateTime.UtcNow.ToString("HH:mm:ss"), "ERROR", "вќЊ РќРµ СѓРґР°Р»РѕСЃСЊ РїРѕРґРєР»СЋС‡РёС‚СЊСЃСЏ");
+                return Results.BadRequest(new { error = "РџРѕРґРєР»СЋС‡РµРЅРёРµ РЅРµ СѓРґР°Р»РѕСЃСЊ. РџСЂРѕРІРµСЂСЊС‚Рµ С‚РѕРєРµРЅ." });
             }
         }
         else
         {
-            await hub.Clients.All.SendAsync("OnLogMessage", DateTime.UtcNow.ToString("HH:mm:ss"), "ERROR", "❌ Таймаут подключения (30 сек). Проверьте токен.");
-            return Results.BadRequest(new { error = "Таймаут подключения 30сек. Проверьте токен и доступность Finam API." });
+            await hub.Clients.All.SendAsync("OnLogMessage", DateTime.UtcNow.ToString("HH:mm:ss"), "ERROR", "вќЊ РўР°Р№РјР°СѓС‚ РїРѕРґРєР»СЋС‡РµРЅРёСЏ (30 СЃРµРє). РџСЂРѕРІРµСЂСЊС‚Рµ С‚РѕРєРµРЅ.");
+            return Results.BadRequest(new { error = "РўР°Р№РјР°СѓС‚ РїРѕРґРєР»СЋС‡РµРЅРёСЏ 30СЃРµРє. РџСЂРѕРІРµСЂСЊС‚Рµ С‚РѕРєРµРЅ Рё РґРѕСЃС‚СѓРїРЅРѕСЃС‚СЊ Finam API." });
         }
     }
     catch (Exception ex)
     {
-        await hub.Clients.All.SendAsync("OnLogMessage", DateTime.UtcNow.ToString("HH:mm:ss"), "ERROR", $"❌ Ошибка: {ex.Message}");
+        await hub.Clients.All.SendAsync("OnLogMessage", DateTime.UtcNow.ToString("HH:mm:ss"), "ERROR", $"вќЊ РћС€РёР±РєР°: {ex.Message}");
         return Results.BadRequest(new { error = ex.Message });
     }
 });
@@ -548,33 +590,21 @@ app.MapPost("/send-log", async (IHubContext<TradingHub> hub, HttpRequest req) =>
     return Results.Ok(new { sent = true });
 });
 
-// === REST: свечи через Finam API ===
+// === REST: СЃРІРµС‡Рё С‡РµСЂРµР· Finam API ===
 app.MapGet("/api/candles", async (TradingService svc, string ticker, int tf, int days) =>
 {
     try
     {
-        if (_activeConnectorName == "QUIK")
-        {
-            // QUIK: свечи из candleBuilderHistory (из тиков)
-            lock (candleBuilderHistory)
-            {
-                if (candleBuilderHistory.Count > 0)
-                {
-                    var candles = candleBuilderHistory.ToList();
-                    if (days > 0) candles = candles.TakeLast(days * 288).ToList(); // ~288 пятиминуток в день
-                    return Results.Ok(candles.Select(c => new { t = (long)c[0], o = c[1], h = c[2], l = c[3], c = c[4], v = c[5] }));
-                }
-            }
-            return Results.Ok(Array.Empty<object>());
-        }
         
         // Finam REST
         var jwt = await GetFinamJwt();
         if (string.IsNullOrEmpty(jwt)) return Results.Ok(Array.Empty<object>());
         var sym = ToFinamSymbol(ticker);
         var timeframe = tf switch { 1 => "TIME_FRAME_M1", 5 => "TIME_FRAME_M5", 15 => "TIME_FRAME_M15", 30 => "TIME_FRAME_M30", 60 => "TIME_FRAME_H1", 240 => "TIME_FRAME_H4", 1440 => "TIME_FRAME_D", _ => "TIME_FRAME_M5" };
+        // Finam limits M1 history depth (~1-2 days). Cap days by TF so request never returns empty.
+        var effDays = tf switch { 1 => Math.Min(Math.Max(days, 1), 2), 5 => Math.Min(Math.Max(days, 1), 10), _ => Math.Min(Math.Max(days, 1), 30) };
         var to = DateTime.UtcNow;
-        var from = to.AddDays(-Math.Max(1, Math.Min(days, 30)));
+        var from = to.AddDays(-effDays);
         using var req = new HttpRequestMessage(HttpMethod.Get, $"https://api.finam.ru/v1/instruments/{sym}/bars?timeframe={timeframe}&interval.start_time={from:yyyy-MM-ddTHH:mm:ssZ}&interval.end_time={to:yyyy-MM-ddTHH:mm:ssZ}");
         req.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", jwt);
         var resp = await finamRest.SendAsync(req);
@@ -587,11 +617,11 @@ app.MapGet("/api/candles", async (TradingService svc, string ticker, int tf, int
                 foreach (var b in bars.EnumerateArray())
                 {
                     var ts = b.TryGetProperty("timestamp", out var tsEl) ? DateTimeOffset.Parse(tsEl.GetString() ?? "").ToUnixTimeSeconds() : 0;
-                    var o = b.TryGetProperty("open", out var oEl) && oEl.TryGetProperty("value", out var ov) ? double.Parse(ov.GetString() ?? "0") : 0;
-                    var h = b.TryGetProperty("high", out var hEl) && hEl.TryGetProperty("value", out var hv) ? double.Parse(hv.GetString() ?? "0") : 0;
-                    var l = b.TryGetProperty("low", out var lEl) && lEl.TryGetProperty("value", out var lv) ? double.Parse(lv.GetString() ?? "0") : 0;
-                    var c = b.TryGetProperty("close", out var cEl) && cEl.TryGetProperty("value", out var cv) ? double.Parse(cv.GetString() ?? "0") : 0;
-                    var v = b.TryGetProperty("volume", out var vEl) && vEl.TryGetProperty("value", out var vv) ? double.Parse(vv.GetString() ?? "0") : 0;
+                    var o = b.TryGetProperty("open", out var oEl) && oEl.TryGetProperty("value", out var ov) ? double.Parse(ov.GetString() ?? "0", System.Globalization.CultureInfo.InvariantCulture) : 0;
+                    var h = b.TryGetProperty("high", out var hEl) && hEl.TryGetProperty("value", out var hv) ? double.Parse(hv.GetString() ?? "0", System.Globalization.CultureInfo.InvariantCulture) : 0;
+                    var l = b.TryGetProperty("low", out var lEl) && lEl.TryGetProperty("value", out var lv) ? double.Parse(lv.GetString() ?? "0", System.Globalization.CultureInfo.InvariantCulture) : 0;
+                    var c = b.TryGetProperty("close", out var cEl) && cEl.TryGetProperty("value", out var cv) ? double.Parse(cv.GetString() ?? "0", System.Globalization.CultureInfo.InvariantCulture) : 0;
+                    var v = b.TryGetProperty("volume", out var vEl) && vEl.TryGetProperty("value", out var vv) ? double.Parse(vv.GetString() ?? "0", System.Globalization.CultureInfo.InvariantCulture) : 0;
                     if (ts > 0) result.Add(new { t = ts, o, h, l, c, v });
                 }
                 return Results.Ok(result);
@@ -602,101 +632,8 @@ app.MapGet("/api/candles", async (TradingService svc, string ticker, int tf, int
     catch (Exception ex) { return Results.BadRequest(new { error = ex.Message }); }
 });
 
-// === QUIK Bridge Endpoints ===
-app.MapPost("/quik/data", async (HttpRequest req) =>
-{
-    lock (_quikStateLock)
-    {
-        quikLastHeartbeat = DateTime.UtcNow;
-        quikConnected = true;
-    }
-    try
-    {
-        using var sr = new StreamReader(req.Body);
-        var body = await sr.ReadToEndAsync();
-        
-        // Логирование для отладки (только первые 200 символов)
-        if (body.Length > 0 && !body.Contains("\"quotes\":[]"))
-            Console.WriteLine($"[QUIK] Data: {body.Substring(0, Math.Min(200, body.Length))}...");
-        
-        using var doc = System.Text.Json.JsonDocument.Parse(body);
-        
-        // Store in quikData as plain string JSON for easy serialization
-        var rawJson = body;
-        lock (quikData)
-        {
-            quikData["raw"] = rawJson;
-            quikData["quotes"] = doc.RootElement.TryGetProperty("quotes", out var q) ? q.ToString() : "[]";
-            quikData["pos"] = doc.RootElement.TryGetProperty("pos", out var p) ? p.ToString() : "[]";
-            quikData["orders"] = doc.RootElement.TryGetProperty("orders", out var o) ? o.ToString() : "[]";
-            quikData["bal"] = doc.RootElement.TryGetProperty("bal", out var b) ? b.GetDouble() : 0.0;
-            quikData["free"] = doc.RootElement.TryGetProperty("free", out var f) ? f.GetDouble() : 0.0;
-            quikData["acc"] = doc.RootElement.TryGetProperty("acc", out var a) ? a.GetString() : "";
-            quikData["ob"] = doc.RootElement.TryGetProperty("ob", out var ob) ? ob.ToString() : "[]";
-            // Также сохраняем orderbook из QUIK bridge (формат: {ticker, bids, asks})
-            if (doc.RootElement.TryGetProperty("orderbook", out var orderbook))
-                quikData["ob"] = orderbook.ToString();
-            quikData["ts"] = doc.RootElement.TryGetProperty("ts", out var t) ? t.GetInt64() : 0;
-        }
-        
-        // Aggregate candles from quotes
-        if (doc.RootElement.TryGetProperty("quotes", out var quotesArr))
-        {
-            foreach (var qEl in quotesArr.EnumerateArray())
-            {
-                var last = qEl.TryGetProperty("l", out var lp) ? lp.GetDouble() : 0;
-                var vol = qEl.TryGetProperty("v", out var vp) ? vp.GetDouble() : 0;
-                var ts = doc.RootElement.TryGetProperty("ts", out var tsEl) ? tsEl.GetInt64() : DateTimeOffset.UtcNow.ToUnixTimeSeconds();
-                if (last > 0) AggregateCandleTick(last, vol, ts);
-            }
-        }
-        
-        // Broadcast via SignalR
-        var hub = app.Services.GetRequiredService<IHubContext<TradingHub>>();
-        if (doc.RootElement.TryGetProperty("quotes", out var quotes))
-            _ = hub.Clients.All.SendAsync("OnQuoteUpdate", quotes.ToString());
-        if (doc.RootElement.TryGetProperty("pos", out var pos) && pos.GetArrayLength() > 0)
-            _ = hub.Clients.All.SendAsync("OnPositionUpdate", pos.ToString());
-        if (doc.RootElement.TryGetProperty("orders", out var orders) && orders.GetArrayLength() > 0)
-            _ = hub.Clients.All.SendAsync("OnOrderUpdate", orders.ToString());
-        if (doc.RootElement.TryGetProperty("bal", out var bal))
-            _ = hub.Clients.All.SendAsync("OnBalanceUpdate", new { balance = bal.GetDouble(), free = doc.RootElement.TryGetProperty("free", out var fr) ? fr.GetDouble() : bal.GetDouble(), account = doc.RootElement.TryGetProperty("acc", out var ac) ? ac.GetString() : "", ts = doc.RootElement.TryGetProperty("ts", out var t2) ? t2.GetInt64() : 0 });
-    }
-    catch (Exception ex)
-    {
-        Console.WriteLine($"[QUIK] Error processing data: {ex.Message}");
-    }
-    return Results.Json(new { status = "ok" });
-});
 
-app.MapGet("/quik/status", () =>
-{
-    DateTime lastHeartbeat;
-    bool connected;
-    lock (_quikStateLock)
-    {
-        lastHeartbeat = quikLastHeartbeat;
-        connected = quikConnected;
-    }
-    var age = DateTime.UtcNow - lastHeartbeat;
-    var alive = connected && age.TotalSeconds < 10;
-    return Results.Json(new
-    {
-        connected = alive,
-        lastHeartbeat = lastHeartbeat.ToString("o"),
-        age = (int)age.TotalSeconds
-    });
-});
 
-app.MapGet("/quik/latest", () =>
-{
-    lock (quikData)
-    {
-        if (quikData.ContainsKey("raw"))
-            return Results.Json(new { source = "QUIK", data = quikData["raw"], quotes = quikData["quotes"], pos = quikData["pos"], orders = quikData["orders"], ob = quikData.ContainsKey("ob") ? quikData["ob"] : "[]", bal = quikData["bal"], free = quikData["free"], acc = quikData["acc"] });
-        return Results.Json(new { error = "no data" });
-    }
-});
 
 // === Backtest API (Python) ===
 app.MapPost("/api/backtest", async (HttpRequest req) =>
@@ -759,43 +696,23 @@ app.MapPost("/api/vp-backtest", async (HttpRequest req) =>
 // === Unified Data Provider API ===
 app.MapGet("/transaq/health", (TradingService svc) =>
 {
-    DateTime lastHeartbeat;
-    bool connected;
-    lock (_quikStateLock)
-    {
-        lastHeartbeat = quikLastHeartbeat;
-        connected = quikConnected;
-    }
-    var quikAge = DateTime.UtcNow - lastHeartbeat;
-    var quikAlive = connected && quikAge.TotalSeconds < 10;
     var finamOk = svc.Connector?.IsConnected == true;
     return Results.Json(new
     {
         finam = new { status = finamOk ? "connected" : "not_connected", broker = "Finam Trade API (gRPC)" },
         transaq = new { status = "not_connected", broker = "Transaq (not configured)" },
-        quik = new { status = quikAlive ? "connected" : "not_connected", broker = "QUIK Bridge (Lua)", lastHeartbeat = lastHeartbeat.ToString("o"), age = (int)quikAge.TotalSeconds },
-        dataSource = quikAlive ? "QUIK" : (finamOk ? "Finam" : "none"),
         timestamp = DateTime.UtcNow.ToString("o")
     });
 });
 
 app.MapGet("/api/quotes", async () =>
 {
-    if (_activeConnectorName == "QUIK")
-    {
-        lock (quikData)
-        {
-            if (quikData.ContainsKey("quotes"))
-                return Results.Json(new { source = "QUIK", data = quikData["quotes"] });
-        }
-        return Results.Json(new { source = "QUIK", data = "[]", note = "no data" });
-    }
     // Finam: batch all tickers
     try
     {
         var jwt = await GetFinamJwt();
         if (string.IsNullOrEmpty(jwt)) return Results.Json(new { source = "Finam", data = "[]" });
-        var tickers = new[] { "SiM6", "SiU6", "MXM6", "GDM6", "BRK6", "RIU6" };
+        var tickers = new[] { "SiU6", "SiZ6", "MXU6", "GDU6", "BRU6", "RIU6" };
         var result = new List<object>();
         foreach (var t in tickers)
         {
@@ -810,10 +727,10 @@ app.MapGet("/api/quotes", async () =>
                     var qDoc = JsonDocument.Parse(await resp.Content.ReadAsStringAsync());
                     if (qDoc.RootElement.TryGetProperty("quote", out var q))
                     {
-                        var bid = q.TryGetProperty("bid", out var bEl) && bEl.TryGetProperty("value", out var bv) ? double.Parse(bv.GetString() ?? "0") : 0.0;
-                        var ask = q.TryGetProperty("ask", out var aEl) && aEl.TryGetProperty("value", out var av) ? double.Parse(av.GetString() ?? "0") : 0.0;
-                        var last = q.TryGetProperty("last", out var lEl) && lEl.TryGetProperty("value", out var lv) ? double.Parse(lv.GetString() ?? "0") : 0.0;
-                        var volume = q.TryGetProperty("volume", out var vEl) && vEl.TryGetProperty("value", out var vv) ? double.Parse(vv.GetString() ?? "0") : 0.0;
+                        var bid = q.TryGetProperty("bid", out var bEl) && bEl.TryGetProperty("value", out var bv) ? double.Parse(bv.GetString() ?? "0", System.Globalization.CultureInfo.InvariantCulture) : 0.0;
+                        var ask = q.TryGetProperty("ask", out var aEl) && aEl.TryGetProperty("value", out var av) ? double.Parse(av.GetString() ?? "0", System.Globalization.CultureInfo.InvariantCulture) : 0.0;
+                        var last = q.TryGetProperty("last", out var lEl) && lEl.TryGetProperty("value", out var lv) ? double.Parse(lv.GetString() ?? "0", System.Globalization.CultureInfo.InvariantCulture) : 0.0;
+                        var volume = q.TryGetProperty("volume", out var vEl) && vEl.TryGetProperty("value", out var vv) ? double.Parse(vv.GetString() ?? "0", System.Globalization.CultureInfo.InvariantCulture) : 0.0;
                         result.Add(new { ticker = t, bid, ask, last, volume });
                     }
                 }
@@ -828,30 +745,49 @@ app.MapGet("/api/quotes", async () =>
 
 app.MapGet("/api/balance", () =>
 {
-    if (IsQuikAlive())
-    {
-        lock (quikData)
-        {
-            if (quikData.ContainsKey("bal"))
-            {
-                return Results.Json(new { source = "QUIK", balance = quikData["bal"], free = quikData["free"], account = quikData["acc"] });
-            }
-        }
-    }
-    return Results.Json(new { source = "Finam", note = "QUIK offline, use /api/accounts" });
+    return Results.Json(new { source = "Finam", note = "Finam REST via /api/accounts" });
 });
 
-app.MapGet("/api/orderbook/{ticker}", (string ticker) =>
+app.MapGet("/api/orderbook", async (string ticker) =>
 {
-    if (IsQuikAlive())
+    try
     {
-        lock (quikData)
+        var jwt = await GetFinamJwt();
+        if (string.IsNullOrEmpty(jwt)) return Results.Json(new { rows = Array.Empty<object>() });
+        var sym = ToFinamSymbol(ticker);
+        using var req = new HttpRequestMessage(HttpMethod.Get, $"https://api.finam.ru/v1/instruments/{sym}/orderbook");
+        req.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", jwt);
+        var resp = await finamRest.SendAsync(req);
+        if (!resp.IsSuccessStatusCode)
         {
-            if (quikData.ContainsKey("ob"))
-                return Results.Json(new { source = "QUIK", ticker, data = quikData["ob"] });
+            Console.WriteLine($"[OB] Finam {(int)resp.StatusCode} for {sym}");
+            return Results.Json(new { rows = Array.Empty<object>() });
         }
+        var doc = JsonDocument.Parse(await resp.Content.ReadAsStringAsync());
+        var rows = new List<object>();
+        if (doc.RootElement.TryGetProperty("orderbook", out var ob) && ob.TryGetProperty("rows", out var rb))
+        {
+            foreach (var row in rb.EnumerateArray())
+            {
+                var price = row.TryGetProperty("price", out var pEl) && pEl.TryGetProperty("value", out var pv) ? double.Parse(pv.GetString() ?? "0", System.Globalization.CultureInfo.InvariantCulture) : 0;
+                var bid = row.TryGetProperty("buy_size", out var bEl) && bEl.TryGetProperty("value", out var bv) ? double.Parse(bv.GetString() ?? "0", System.Globalization.CultureInfo.InvariantCulture) : 0;
+                var ask = row.TryGetProperty("sell_size", out var sEl) && sEl.TryGetProperty("value", out var sv) ? double.Parse(sv.GetString() ?? "0", System.Globalization.CultureInfo.InvariantCulture) : 0;
+                rows.Add(new { price, bid, ask });
+            }
+        }
+        return Results.Json(new { rows });
     }
-    return Results.Json(new { source = "Finam", note = "QUIK offline, use /api/orderbook?ticker=..." });
+    catch (Exception ex)
+    {
+        Console.WriteLine($"[OB] error: {ex.Message}");
+        return Results.Json(new { rows = Array.Empty<object>() });
+    }
+});
+
+app.MapGet("/api/orderbook/{ticker}", async (string ticker) =>
+{
+    // Redirect legacy route to query handler
+    return Results.Json(new { rows = Array.Empty<object>(), note = "use /api/orderbook?ticker=" });
 });
 
 app.MapGet("/api/ohlcv", (string? ticker) =>
@@ -864,45 +800,9 @@ app.MapGet("/api/ohlcv", (string? ticker) =>
     }
 });
 
-// === QUIK candles for Grid MM (ISO format) ===
-app.MapGet("/quik/candles", () =>
-{
-    lock (candleBuilderLock)
-    {
-        var candles = candleBuilderHistory.ToList();
-        if (candleBuilderCurrent != null) candles.Add(candleBuilderCurrent);
-        return Results.Json(candles.Select(c => new 
-        {
-            Timestamp = DateTimeOffset.FromUnixTimeSeconds((long)c[0]).ToString("o"),
-            Open = c[1],
-            High = c[2],
-            Low = c[3],
-            Close = c[4],
-            Volume = c[5]
-        }));
-    }
-});
 
-// === QUIK current price (for Grid MM signals) ===
-app.MapGet("/quik/price", () =>
-{
-    lock (quikData)
-    {
-        if (quikData.TryGetValue("quotes", out var quotesJson))
-        {
-            var doc = JsonDocument.Parse(quotesJson.ToString());
-            if (doc.RootElement.GetArrayLength() > 0)
-            {
-                var first = doc.RootElement[0];
-                if (first.TryGetProperty("l", out var last))
-                    return Results.Json(new { price = last.GetDouble(), timestamp = DateTime.UtcNow.ToString("o") });
-            }
-        }
-        return Results.Json(new { price = 0.0, timestamp = DateTime.UtcNow.ToString("o") });
-    }
-});
 
-// === REST: котировки через Finam API ===
+// === REST: РєРѕС‚РёСЂРѕРІРєРё С‡РµСЂРµР· Finam API ===
 // === Accounts API (Finam) ===
 app.MapGet("/api/accounts", async () =>
 {
@@ -923,8 +823,8 @@ app.MapGet("/api/accounts", async () =>
                 var resp = await finamRest.SendAsync(req);
                 if (!resp.IsSuccessStatusCode) continue;
                 var aDoc = JsonDocument.Parse(await resp.Content.ReadAsStringAsync());
-                var equity = aDoc.RootElement.TryGetProperty("equity", out var eqEl) && eqEl.TryGetProperty("value", out var eqV) ? double.Parse(eqV.GetString() ?? "0") : 0.0;
-                var unrealizedPnl = aDoc.RootElement.TryGetProperty("unrealized_profit", out var upEl) && upEl.TryGetProperty("value", out var upV) ? double.Parse(upV.GetString() ?? "0") : 0.0;
+                var equity = aDoc.RootElement.TryGetProperty("equity", out var eqEl) && eqEl.TryGetProperty("value", out var eqV) ? double.Parse(eqV.GetString() ?? "0", System.Globalization.CultureInfo.InvariantCulture) : 0.0;
+                var unrealizedPnl = aDoc.RootElement.TryGetProperty("unrealized_profit", out var upEl) && upEl.TryGetProperty("value", out var upV) ? double.Parse(upV.GetString() ?? "0", System.Globalization.CultureInfo.InvariantCulture) : 0.0;
                 var accType = aDoc.RootElement.TryGetProperty("type", out var tEl) ? tEl.GetString() : "";
                 var name = accType == "UNION" ? "EDP" : "Main";
                 accList.Add(new { id = accId, name, balance = equity, free = equity, margin = 0.0, go = 0.0, pnlToday = unrealizedPnl, pnlTotal = unrealizedPnl });
@@ -939,28 +839,6 @@ app.MapGet("/api/accounts", async () =>
 // === Positions API (unified) ===
 app.MapGet("/api/positions", async (TradingService svc) =>
 {
-    if (_activeConnectorName == "QUIK")
-    {
-        lock (quikData)
-        {
-            if (quikData.ContainsKey("pos"))
-            {
-                try {
-                    var posJson = quikData["pos"].ToString();
-                    var doc = System.Text.Json.JsonDocument.Parse(posJson);
-                    var arr = doc.RootElement.EnumerateArray().Select(p => new {
-                        ticker = p.TryGetProperty("t", out var t) ? t.GetString() : "",
-                        dir = p.TryGetProperty("l", out var l) ? (l.GetInt32() > 0 ? "Buy" : "Sell") : "",
-                        qty = p.TryGetProperty("l", out var l2) ? Math.Abs(l2.GetInt32()) : 0,
-                        avgPrice = p.TryGetProperty("p", out var p2) ? p2.GetDouble() : 0,
-                        pnlToday = p.TryGetProperty("tb", out var tb) ? tb.GetDouble() : 0
-                    }).ToList();
-                    if (arr.Count > 0) return Results.Json(arr);
-                } catch {}
-            }
-        }
-        return Results.Json(new object[] {});
-    }
     
     // Finam REST
     try
@@ -984,8 +862,8 @@ app.MapGet("/api/positions", async (TradingService svc) =>
                         ticker = p.TryGetProperty("symbol", out var sym) ? sym.GetString()?.Split('@')[0] : "",
                         dir = qty > 0 ? "Buy" : "Sell",
                         qty = Math.Abs(qty),
-                        avgPrice = p.TryGetProperty("current_price", out var cpEl) && cpEl.TryGetProperty("value", out var cpv) ? double.Parse(cpv.GetString() ?? "0") : 0,
-                        pnlToday = p.TryGetProperty("unrealized_profit", out var upEl) && upEl.TryGetProperty("value", out var upv) ? double.Parse(upv.GetString() ?? "0") : 0
+                        avgPrice = p.TryGetProperty("current_price", out var cpEl) && cpEl.TryGetProperty("value", out var cpv) ? double.Parse(cpv.GetString() ?? "0", System.Globalization.CultureInfo.InvariantCulture) : 0,
+                        pnlToday = p.TryGetProperty("unrealized_profit", out var upEl) && upEl.TryGetProperty("value", out var upv) ? double.Parse(upv.GetString() ?? "0", System.Globalization.CultureInfo.InvariantCulture) : 0
                     });
                 }
                 return Results.Json(arr);
@@ -999,24 +877,8 @@ app.MapGet("/api/positions", async (TradingService svc) =>
 // === Orders API (unified) ===
 app.MapGet("/api/orders", async (TradingService svc) =>
 {
-    if (_activeConnectorName == "QUIK")
-    {
-        lock (quikData)
-        {
-            if (quikData.ContainsKey("orders"))
-            {
-                try {
-                    var ordJson = quikData["orders"].ToString();
-                    var doc = System.Text.Json.JsonDocument.Parse(ordJson);
-                    if (doc.RootElement.GetArrayLength() > 0)
-                        return Results.Text(ordJson, "application/json");
-                } catch {}
-            }
-        }
-        return Results.Json(new object[] {});
-    }
     
-    // Finam REST — orders via account
+    // Finam REST вЂ” orders via account
     try
     {
         var jwt = await GetFinamJwt();
@@ -1073,33 +935,6 @@ app.MapGet("/api/trades", async (string? date, string? dateFrom, string? dateTo)
 app.MapGet("/api/quote", async (string ticker) =>
 {
     // === Connector isolation ===
-    if (_activeConnectorName == "QUIK")
-    {
-        lock (quikData)
-        {
-            if (quikData.TryGetValue("quotes", out var quotesJson))
-            {
-                try
-                {
-                    var doc = JsonDocument.Parse(quotesJson.ToString());
-                    foreach (var q in doc.RootElement.EnumerateArray())
-                    {
-                        var sym = q.TryGetProperty("t", out var s) ? s.GetString() : null;
-                        if (sym == ticker || (string.IsNullOrEmpty(sym) && doc.RootElement.GetArrayLength() == 1))
-                        {
-                            var bid = q.TryGetProperty("b", out var b) ? b.GetDouble() : 0.0;
-                            var ask = q.TryGetProperty("a", out var a) ? a.GetDouble() : 0.0;
-                            var last = q.TryGetProperty("l", out var l) ? l.GetDouble() : 0.0;
-                            if (bid > 0 || ask > 0 || last > 0)
-                                return Results.Ok(new { bid, ask, last, spread = ask > 0 && bid > 0 ? ask - bid : 0.0, source = "QUIK" });
-                        }
-                    }
-                }
-                catch { }
-            }
-        }
-        return Results.Ok(new { bid = 0.0, ask = 0.0, last = 0.0, source = "QUIK (no data)" });
-    }
     
     // Finam REST
     try
@@ -1117,89 +952,17 @@ app.MapGet("/api/quote", async (string ticker) =>
             var qDoc = JsonDocument.Parse(await qResp.Content.ReadAsStringAsync());
             if (qDoc.RootElement.TryGetProperty("quote", out var q))
             {
-                var bid = q.TryGetProperty("bid", out var bEl) && bEl.TryGetProperty("value", out var bv) ? double.Parse(bv.GetString() ?? "0") : 0.0;
-                var ask = q.TryGetProperty("ask", out var aEl) && aEl.TryGetProperty("value", out var av) ? double.Parse(av.GetString() ?? "0") : 0.0;
-                var last = q.TryGetProperty("last", out var lEl) && lEl.TryGetProperty("value", out var lv) ? double.Parse(lv.GetString() ?? "0") : 0.0;
-                var volume = q.TryGetProperty("volume", out var vEl) && vEl.TryGetProperty("value", out var vv) ? double.Parse(vv.GetString() ?? "0") : 0.0;
-                var change = q.TryGetProperty("change", out var cEl) && cEl.TryGetProperty("value", out var cv2) ? double.Parse(cv2.GetString() ?? "0") : 0.0;
+                var bid = q.TryGetProperty("bid", out var bEl) && bEl.TryGetProperty("value", out var bv) ? double.Parse(bv.GetString() ?? "0", System.Globalization.CultureInfo.InvariantCulture) : 0.0;
+                var ask = q.TryGetProperty("ask", out var aEl) && aEl.TryGetProperty("value", out var av) ? double.Parse(av.GetString() ?? "0", System.Globalization.CultureInfo.InvariantCulture) : 0.0;
+                var last = q.TryGetProperty("last", out var lEl) && lEl.TryGetProperty("value", out var lv) ? double.Parse(lv.GetString() ?? "0", System.Globalization.CultureInfo.InvariantCulture) : 0.0;
+                var volume = q.TryGetProperty("volume", out var vEl) && vEl.TryGetProperty("value", out var vv) ? double.Parse(vv.GetString() ?? "0", System.Globalization.CultureInfo.InvariantCulture) : 0.0;
+                var change = q.TryGetProperty("change", out var cEl) && cEl.TryGetProperty("value", out var cv2) ? double.Parse(cv2.GetString() ?? "0", System.Globalization.CultureInfo.InvariantCulture) : 0.0;
                 return Results.Ok(new { bid, ask, last, volume, change, spread = ask > 0 && bid > 0 ? ask - bid : 0.0, source = "Finam" });
             }
         }
     }
     catch { }
     return Results.Ok(new { bid = 0.0, ask = 0.0, last = 0.0, source = "Finam (error)" });
-});
-// === QUICK ORDERBOOK (из QUIK данных) ===
-app.MapGet("/api/orderbook", async (string ticker) =>
-{
-    if (_activeConnectorName == "QUIK")
-    {
-        lock (quikData)
-        {
-            if (quikData.TryGetValue("ob", out var obJson) && obJson.ToString() != "[]")
-            {
-                try
-                {
-                    var doc = JsonDocument.Parse(obJson.ToString());
-                    var rows = new List<object>();
-                    var bids = doc.RootElement.TryGetProperty("bids", out var bArr) ? bArr : default;
-                    var asks = doc.RootElement.TryGetProperty("asks", out var aArr) ? aArr : default;
-                    if (bids.ValueKind == JsonValueKind.Array || asks.ValueKind == JsonValueKind.Array)
-                    {
-                        var priceMap = new Dictionary<double, double[]>();
-                        if (bids.ValueKind == JsonValueKind.Array)
-                            foreach (var b in bids.EnumerateArray())
-                            {
-                                var price = b.TryGetProperty("price", out var p) ? p.GetDouble() : 0;
-                                var qty = b.TryGetProperty("qty", out var q) ? q.GetDouble() : 0;
-                                if (price > 0) { if (!priceMap.ContainsKey(price)) priceMap[price] = new double[2]; priceMap[price][0] = qty; }
-                            }
-                        if (asks.ValueKind == JsonValueKind.Array)
-                            foreach (var a in asks.EnumerateArray())
-                            {
-                                var price = a.TryGetProperty("price", out var p) ? p.GetDouble() : 0;
-                                var qty = a.TryGetProperty("qty", out var q) ? q.GetDouble() : 0;
-                                if (price > 0) { if (!priceMap.ContainsKey(price)) priceMap[price] = new double[2]; priceMap[price][1] = qty; }
-                            }
-                        foreach (var kv in priceMap.OrderByDescending(x => x.Key))
-                            rows.Add(new { price = kv.Key, bid = kv.Value[0], ask = kv.Value[1] });
-                    }
-                    if (rows.Count > 0) return Results.Ok(new { rows, source = "QUIK" });
-                }
-                catch { }
-            }
-        }
-        return Results.Ok(new { rows = Array.Empty<object>(), source = "QUIK (no data)" });
-    }
-    
-    // Finam REST
-    try
-    {
-        var jwt = await GetFinamJwt();
-        if (string.IsNullOrEmpty(jwt)) return Results.Ok(new { rows = Array.Empty<object>(), source = "Finam (no JWT)" });
-        var sym = ToFinamSymbol(ticker);
-        using var req = new HttpRequestMessage(HttpMethod.Get, $"https://api.finam.ru/v1/instruments/{sym}/orderbook");
-        req.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", jwt);
-        var resp = await finamRest.SendAsync(req);
-        if (resp.IsSuccessStatusCode)
-        {
-            var obDoc = JsonDocument.Parse(await resp.Content.ReadAsStringAsync());
-            if (obDoc.RootElement.TryGetProperty("orderbook", out var ob) && ob.TryGetProperty("rows", out var obRows))
-            {
-                var rows = new List<object>();
-                foreach (var r in obRows.EnumerateArray())
-                {
-                    var price = r.TryGetProperty("price", out var pEl) && pEl.TryGetProperty("value", out var pv) ? double.Parse(pv.GetString() ?? "0") : 0;
-                    var bidVol = r.TryGetProperty("buy_size", out var bsEl) && bsEl.TryGetProperty("value", out var bsv) ? double.Parse(bsv.GetString() ?? "0") : 0;
-                    var askVol = r.TryGetProperty("sell_size", out var ssEl) && ssEl.TryGetProperty("value", out var ssv) ? double.Parse(ssv.GetString() ?? "0") : 0;
-                    if (price > 0) rows.Add(new { price, bid = bidVol, ask = askVol });
-                }
-                if (rows.Count > 0) return Results.Ok(new { rows, source = "Finam" });
-            }
-        }
-    }
-    catch { }
-    return Results.Ok(new { rows = Array.Empty<object>(), source = "Finam (error)" });
 });
 
 app.MapPost("/strategy/grid-mm/start", async (TradingService tradingSvc, HttpRequest req) =>
@@ -1224,7 +987,7 @@ app.MapPost("/strategy/grid-mm/start", async (TradingService tradingSvc, HttpReq
             }
         } catch {}
         
-        gridMm = new GridMmRegimeLauncher(tradingSvc.FinamBroker ?? throw new InvalidOperationException("Broker not connected. POST /connect-broker first"), "SiM6", accountId: "1225953", useQuikData: true, forceEntryOnStart: forceEntry);
+        gridMm = new GridMmRegimeLauncher(tradingSvc.FinamBroker ?? throw new InvalidOperationException("Broker not connected. POST /connect-broker first"), "SiU6", accountId: _finamAccountId, forceEntryOnStart: forceEntry);
         return Results.Json(new { status = "initialized", detail = gridMm.GetStatus() });
     }
     catch (Exception ex)
@@ -1344,7 +1107,7 @@ app.MapGet("/strategy/grid-mm/chart-data", () =>
     });
 });
 
-// NOTE: NoSignal и PSAR Grid — удалены. Используем Grid MM Regime.
+// NOTE: NoSignal Рё PSAR Grid вЂ” СѓРґР°Р»РµРЅС‹. РСЃРїРѕР»СЊР·СѓРµРј Grid MM Regime.
 
 
 // === Grid MM V8 (Trend-following) ===
@@ -1358,7 +1121,7 @@ app.MapPost("/strategy/grid-mm-v8/start", async (TradingService tradingSvc, Http
     var broker = tradingSvc.FinamBroker ?? throw new InvalidOperationException("Broker not connected");
     
     // Determine instrument from request body
-    string v8Instrument = "SiM6";
+    string v8Instrument = "SiU6";
     string? bodyRaw = null;
     try { bodyRaw = await new StreamReader(req.Body).ReadToEndAsync(); } catch {}
     if (!string.IsNullOrEmpty(bodyRaw))
@@ -1366,7 +1129,7 @@ app.MapPost("/strategy/grid-mm-v8/start", async (TradingService tradingSvc, Http
         try {
             var docPre = System.Text.Json.JsonDocument.Parse(bodyRaw);
             if (docPre.RootElement.TryGetProperty("instrument", out var instrEl))
-                v8Instrument = instrEl.GetString() ?? "SiM6";
+                v8Instrument = instrEl.GetString() ?? "SiU6";
         } catch {}
     }
     
@@ -1394,6 +1157,7 @@ app.MapPost("/strategy/grid-mm-v8/start", async (TradingService tradingSvc, Http
     catch { }
     
     gridMmV8 = new GridMmV8Launcher(broker, v8Config);
+    gridMmV8.SetRiskGate(riskGate);
     if (!string.IsNullOrEmpty(v8Instrument) && v8Instrument != "SiM6")
         gridMmV8.SetInstrument(v8Instrument);
     
@@ -1446,7 +1210,7 @@ app.MapGet("/strategy/grid-mm-v8/status", () =>
 app.MapPost("/strategy/grid-mm-v8/force-entry", () =>
 {
     if (gridMmV8 == null) return Results.Json(new { error = "Not running" }, statusCode: 400);
-    gridMmV8.Strategy.ForceEntry(0); // цена обновится при исполнении
+    gridMmV8.Strategy.ForceEntry(0); // С†РµРЅР° РѕР±РЅРѕРІРёС‚СЃСЏ РїСЂРё РёСЃРїРѕР»РЅРµРЅРёРё
     return Results.Json(new { status = "ok", detail = gridMmV8.GetStatus() });
 });
 
@@ -1529,6 +1293,7 @@ app.MapPost("/strategy/vp-scalp-grid/start", async (TradingService tradingSvc, H
 
     var vpStrategy = new VpScalpGridStrategy(config);
     vpScalpGrid = new VpScalpGridLauncher(broker, vpStrategy);
+    vpScalpGrid.SetRiskGate(riskGate);
 
     try {
         var startTask = vpScalpGrid.StartAsync();
@@ -1615,6 +1380,7 @@ app.MapPost("/strategy/vp-copy/start", async (TradingService tradingSvc, HttpReq
 
     var vpCopyStrategy = new VpScalpGridCopyStrategy(config);
     vpCopyLauncher = new VpScalpGridCopyLauncher(broker, vpCopyStrategy);
+    vpCopyLauncher.SetRiskGate(riskGate);
 
     try {
         var startTask = vpCopyLauncher.StartAsync();
@@ -1679,7 +1445,7 @@ app.MapGet("/api/active-strategies", () =>
     {
         var s = gridMm.Strategy;
         strategies.Add(new {
-            id = "grid-mm", name = "Grid MM v6", instrument = "SiM6", tf = "5 мин",
+            id = "grid-mm", name = "Grid MM v6", instrument = "SiM6", tf = "5 РјРёРЅ",
             mode = s.Mode.ToString(), posDir = s.PositionDirection, entryPrice = s.EntryPrice,
             lots = s.CurrentLotLevel, openLots = s.OpenLots, filledGrid = s.FilledGridLevels,
             totalTrades = s.TotalTrades, totalPnL = s.TotalPnL,
@@ -1690,7 +1456,7 @@ app.MapGet("/api/active-strategies", () =>
     {
         var s = volRev.Strategy;
         strategies.Add(new {
-            id = "vol-rev", name = "Volume Reversal", instrument = "SiM6", tf = "5 мин",
+            id = "vol-rev", name = "Volume Reversal", instrument = "SiM6", tf = "5 РјРёРЅ",
             mode = s.PositionDirection != 0 ? "Running" : "Waiting",
             posDir = s.PositionDirection, entryPrice = 0.0, lots = 0, openLots = 0, filledGrid = 0,
             totalTrades = s.TotalTrades, totalPnL = s.TotalPnL,
@@ -1701,7 +1467,7 @@ app.MapGet("/api/active-strategies", () =>
     {
         var s = gridMmV8.Strategy;
         strategies.Add(new {
-            id = "grid-mm-v8", name = "Grid MM v8 (Trend)", instrument = gridMmV8.Ticker, tf = "5 мин",
+            id = "grid-mm-v8", name = "Grid MM v8 (Trend)", instrument = gridMmV8.Ticker, tf = "5 РјРёРЅ",
             mode = s.CurrentMode.ToString(), posDir = s.PositionDirection, entryPrice = s.EntryPrice,
             lots = s.TotalLots, openLots = s.TotalLots, filledGrid = s.FilledLevels,
             totalTrades = s.RoundTrips, totalPnL = s.TotalPnL,
@@ -1713,7 +1479,7 @@ app.MapGet("/api/active-strategies", () =>
     {
         var s = vpScalpGrid.Strategy;
         strategies.Add(new {
-            id = "vp-scalp-grid", name = "VP Scalp Grid", instrument = "SiM6", tf = "1 мин",
+            id = "vp-scalp-grid", name = "VP Scalp Grid", instrument = "SiM6", tf = "1 РјРёРЅ",
             mode = s.CurrentMode.ToString(), posDir = s.PositionDirection, entryPrice = s.EntryPrice,
             lots = s.TotalLots, openLots = s.TotalLots, filledGrid = s.FilledLevels,
             totalTrades = 0, totalPnL = s.RealizedPnL,
@@ -1725,7 +1491,7 @@ app.MapGet("/api/active-strategies", () =>
     {
         var s = vpCopyLauncher.Strategy;
         strategies.Add(new {
-            id = "vp-copy", name = "VP Scalp Grid Copy", instrument = "SiM6", tf = "1 мин",
+            id = "vp-copy", name = "VP Scalp Grid Copy", instrument = "SiM6", tf = "1 РјРёРЅ",
             mode = s.CurrentMode.ToString(), posDir = s.PositionDirection, entryPrice = s.EntryPrice,
             lots = s.TotalLots, openLots = s.TotalLots, filledGrid = s.FilledLevels,
             totalTrades = s.RoundTrips, totalPnL = s.RealizedPnL,
@@ -1737,7 +1503,7 @@ app.MapGet("/api/active-strategies", () =>
     {
         var s = vpScalpSimpleLauncher.Strategy;
         strategies.Add(new {
-            id = "vp-simple", name = "VP Scalp Simple", instrument = "MXM6", tf = "5 мин",
+            id = "vp-simple", name = "VP Scalp Simple", instrument = "MXM6", tf = "5 РјРёРЅ",
             mode = s.CurrentMode.ToString(), posDir = s.PositionDir, entryPrice = s.EntryPrice,
             lots = s.PositionDir != 0 ? 1 : 0, openLots = s.PositionDir != 0 ? 1 : 0, filledGrid = 0,
             totalTrades = s.TotalTrades, totalPnL = s.RealizedPnL,
@@ -1749,7 +1515,7 @@ app.MapGet("/api/active-strategies", () =>
     {
         var s = v8TrailLauncher.Strategy;
         strategies.Add(new {
-            id = "v8-trail", name = "V8 Trail", instrument = v8TrailLauncher.Ticker, tf = "5 мин",
+            id = "v8-trail", name = "V8 Trail", instrument = v8TrailLauncher.Ticker, tf = "5 РјРёРЅ",
             mode = s.PositionDirection != 0 ? "Running" : "Waiting",
             posDir = s.PositionDirection, entryPrice = s.EntryPrice,
             lots = s.PositionDirection != 0 ? 1 : 0, openLots = s.PositionDirection != 0 ? 1 : 0, filledGrid = 0,
@@ -1768,6 +1534,7 @@ app.MapPost("/strategy/vol-rev/start", (TradingService svc) =>
     if (volRev != null) return Results.Json(new { status = "already_running", detail = volRev.GetStatus() });
     if (svc.Connector == null) return Results.Json(new { error = "Broker not connected" }, statusCode: 400);
     volRev = new VolumeReversalLauncher(svc.Connector, "RIM6");
+    volRev.SetRiskGate(riskGate);
     return Results.Json(new { status = "initialized", detail = volRev.GetStatus() });
 });
 
@@ -1890,7 +1657,7 @@ app.MapGet("/heartbeat", () =>
 // === ARB REMOVED ===
 
 
-// Отмена всех активных ордеров
+// РћС‚РјРµРЅР° РІСЃРµС… Р°РєС‚РёРІРЅС‹С… РѕСЂРґРµСЂРѕРІ
 app.MapPost("/api/orders/cancel-all", async () =>
 {
     try
@@ -1899,7 +1666,7 @@ app.MapPost("/api/orders/cancel-all", async () =>
         if (connector == null)
             return Results.Json(new { error = "No active connector" }, statusCode: 400);
         
-        // Получаем ордера через локальный API
+        // РџРѕР»СѓС‡Р°РµРј РѕСЂРґРµСЂР° С‡РµСЂРµР· Р»РѕРєР°Р»СЊРЅС‹Р№ API
         using var httpClient = new HttpClient();
         httpClient.BaseAddress = new Uri("http://localhost:5050");
         var ordersResp = await httpClient.GetAsync("/api/orders");
@@ -1940,38 +1707,38 @@ app.MapPost("/api/orders/cancel-all", async () =>
     }
 });
 
-Console.WriteLine($"═══════════════════════════════════════════");
+Console.WriteLine($"в•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђ");
 Console.WriteLine($"  OpenMarketflow Trading Server");
 Console.WriteLine($"  SignalR Hub: http://0.0.0.0:{port}/trading");
 Console.WriteLine($"  Health:     http://0.0.0.0:{port}/health");
 Console.WriteLine($"  Status:     http://0.0.0.0:{port}/status");
-Console.WriteLine($"  Grid MM:   POST /strategy/grid-mm/start → /run");
-Console.WriteLine($"═══════════════════════════════════════════");
+Console.WriteLine($"  Grid MM:   POST /strategy/grid-mm/start в†’ /run");
+Console.WriteLine($"в•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђ");
 
-// Автоподключение к Финам если токен задан
+// РђРІС‚РѕРїРѕРґРєР»СЋС‡РµРЅРёРµ Рє Р¤РёРЅР°Рј РµСЃР»Рё С‚РѕРєРµРЅ Р·Р°РґР°РЅ
 var finamToken = Environment.GetEnvironmentVariable("FINAM_TOKEN");
 if (!string.IsNullOrEmpty(finamToken))
 {
     _ = Task.Run(async () =>
     {
-        await Task.Delay(2000); // дождаться полного старта
+        await Task.Delay(2000); // РґРѕР¶РґР°С‚СЊСЃСЏ РїРѕР»РЅРѕРіРѕ СЃС‚Р°СЂС‚Р°
         var tradingService = app.Services.GetRequiredService<TradingService>();
         var hub = app.Services.GetRequiredService<IHubContext<TradingHub>>();
         
-        Console.WriteLine("🔌 Автоподключение к Финам...");
-        await hub.Clients.All.SendAsync("OnLogMessage", DateTime.UtcNow.ToString("HH:mm:ss"), "INFO", "🔌 Подключаюсь к Финам...");
+        Console.WriteLine("рџ”Њ РђРІС‚РѕРїРѕРґРєР»СЋС‡РµРЅРёРµ Рє Р¤РёРЅР°Рј...");
+        await hub.Clients.All.SendAsync("OnLogMessage", DateTime.UtcNow.ToString("HH:mm:ss"), "INFO", "рџ”Њ РџРѕРґРєР»СЋС‡Р°СЋСЃСЊ Рє Р¤РёРЅР°Рј...");
         
         var success = await tradingService.ConnectBrokerAsync(finamToken);
         if (success)
         {
-            Console.WriteLine("✅ Подключено к Финам!");
-            await hub.Clients.All.SendAsync("OnLogMessage", DateTime.UtcNow.ToString("HH:mm:ss"), "INFO", "✅ Подключено к Финам!");
+            Console.WriteLine("вњ… РџРѕРґРєР»СЋС‡РµРЅРѕ Рє Р¤РёРЅР°Рј!");
+            await hub.Clients.All.SendAsync("OnLogMessage", DateTime.UtcNow.ToString("HH:mm:ss"), "INFO", "вњ… РџРѕРґРєР»СЋС‡РµРЅРѕ Рє Р¤РёРЅР°Рј!");
             await hub.Clients.All.SendAsync("OnStatusUpdate", tradingService.GetStatus());
         }
         else
         {
-            Console.WriteLine("❌ Не удалось подключиться к Финам");
-            await hub.Clients.All.SendAsync("OnLogMessage", DateTime.UtcNow.ToString("HH:mm:ss"), "ERROR", "❌ Не удалось подключиться к Финам");
+            Console.WriteLine("вќЊ РќРµ СѓРґР°Р»РѕСЃСЊ РїРѕРґРєР»СЋС‡РёС‚СЊСЃСЏ Рє Р¤РёРЅР°Рј");
+            await hub.Clients.All.SendAsync("OnLogMessage", DateTime.UtcNow.ToString("HH:mm:ss"), "ERROR", "вќЊ РќРµ СѓРґР°Р»РѕСЃСЊ РїРѕРґРєР»СЋС‡РёС‚СЊСЃСЏ Рє Р¤РёРЅР°Рј");
         }
     });
 }
@@ -1986,6 +1753,7 @@ app.MapPost("/strategy/fade-impulse/start", (TradingService tradingSvc) =>
     var config = new FadeImpulseStrategy.Config();
     fadeImpulseLauncher = new FadeImpulseLauncher(
         broker, "1225953", "MXM6", "MXM6@RTSX", config);
+    fadeImpulseLauncher.SetRiskGate(riskGate);
     fadeImpulseLauncher.Start();
     return Results.Json(new { status = "started" });
 });
@@ -2061,6 +1829,7 @@ app.MapPost("/strategy/v8-trail/start", async (HttpRequest req, TradingService t
     if (body?.ContainsKey("slPct") == true) config.SlPct = body["slPct"].GetDouble();
     if (body?.ContainsKey("maxHoldMinutes") == true) config.MaxHoldMinutes = body["maxHoldMinutes"].GetInt32();
     v8TrailLauncher = new V8TrailLauncher(broker, "1225953", ticker, finamSym, stepPrice, config);
+    v8TrailLauncher.SetRiskGate(riskGate);
     v8TrailLauncher.Start();
     return Results.Json(new { status = "started", detail = v8TrailLauncher.GetStatus() });
 });
@@ -2114,6 +1883,7 @@ app.MapPost("/strategy/vp-simple/start", async (HttpRequest req, TradingService 
         }
     } catch {}
     vpScalpSimpleLauncher = new VpScalpSimpleLauncher(broker, "1225953", ticker, finamSym, config);
+    vpScalpSimpleLauncher.SetRiskGate(riskGate);
     vpScalpSimpleLauncher.Start();
     return Results.Json(new { status = "started" });
 });
@@ -2170,14 +1940,14 @@ app.MapPost("/api/instance/create", async (HttpRequest req) => {
         using var reader = new StreamReader(req.Body);
         var body = await reader.ReadToEndAsync();
         var json = System.Text.Json.JsonDocument.Parse(body);
-        var ticker = json.RootElement.GetProperty("ticker").GetString() ?? "SiM6";
+        var ticker = json.RootElement.GetProperty("ticker").GetString() ?? "SiU6";
         var port = json.RootElement.TryGetProperty("port", out var p) ? p.GetInt32() : 5071;
         var id = $"{ticker}_{port}";
         var dir = Path.Combine(instancesBase, id);
         Directory.CreateDirectory(dir);
         // Write params to file (avoids command-line JSON quoting issues)
         File.WriteAllText(Path.Combine(dir, "instance_params.json"), body);
-        // Call launcher create — reads params from instance_params.json
+        // Call launcher create вЂ” reads params from instance_params.json
         var psi = new System.Diagnostics.ProcessStartInfo {
             FileName = "python3",
             Arguments = $"\"{launcherPath}\" create \"{dir}\" {port} {ticker}",
@@ -2354,5 +2124,56 @@ app.MapPost("/api/robot/update-instrument", async (HttpRequest req) =>
     }
     catch (Exception ex) { return Results.Json(new { error = ex.Message }); }
 }).AllowAnonymous();
+
+
+// === RISK GATE + CIRCUIT BREAKER WIRING ===
+var circuitBreaker = new HedgeFund.Core.Risk.CircuitBreaker(
+    riskGate,
+    dailyLossLimit: 5000.0,
+    emergencyCloseAll: async () => {
+        Console.WriteLine("[CIRCUIT_BREAKER] Emergency close all positions");
+        try {
+            if (gridMm != null) gridMm.StopTrading();
+            if (gridMmV8 != null) await gridMmV8.StopAsync();
+            if (vpScalpGrid != null) await vpScalpGrid.StopAsync();
+            if (fadeImpulseLauncher != null) await fadeImpulseLauncher.StopAsync();
+            if (v8TrailLauncher != null) await v8TrailLauncher.StopAsync();
+            var tradingSvc = app.Services.GetRequiredService<TradingService>();
+            await tradingSvc.EmergencyStopAsync();
+        } catch (Exception ex) { Console.WriteLine($"[CIRCUIT_BREAKER] Error: {ex.Message}"); }
+    },
+    cancelAllOrders: async () => {
+        Console.WriteLine("[CIRCUIT_BREAKER] Cancelling all orders");
+        try {
+            var tradingSvc = app.Services.GetRequiredService<TradingService>();
+            await tradingSvc.CancelAllOrdersAsync();
+        } catch (Exception ex) { Console.WriteLine($"[CIRCUIT_BREAKER] Cancel error: {ex.Message}"); }
+    });
+
+// Wire RiskGate into TradingService
+var tSvc = app.Services.GetRequiredService<TradingService>();
+tSvc.RiskGate = riskGate;
+tSvc.CircuitBreaker = circuitBreaker;
+Console.WriteLine("[RISK] RiskGate + CircuitBreaker wired up");
+
+// === CIRCUIT BREAKER MONITORING (periodic PnL check) ===
+_ = Task.Run(async () =>
+{
+    while (true)
+    {
+        try
+        {
+            await Task.Delay(TimeSpan.FromSeconds(10));
+            if (tSvc.IsConnectedToBroker)
+            {
+                var (equity, positions) = await tSvc.FinamBroker!.GetAccountInfoAsync();
+                riskGate.SetEquityBaseline(equity);
+                double unrealised = positions.Sum(p => p.avgPrice * p.qty);
+                await circuitBreaker.UpdatePnLAsync(0, unrealised, equity);
+            }
+        }
+        catch (Exception ex) { Console.WriteLine($"[RISK_MONITOR] Error: {ex.Message}"); }
+    }
+});
 
 app.Run();

@@ -160,7 +160,7 @@ def place_order(account: str, symbol: str, side: str, quantity: int, price: floa
     if not the_provider or not the_provider.fp:
         return {"error": "not connected"}
     try:
-        from FinamPy.grpc import orders_service_pb2 as ord_pb2
+        from finam_trade_api.proto.grpc.tradeapi.v1.orders import orders_service_pb2 as ord_pb2
         from google.type import decimal_pb2
         import time as _t
 
@@ -224,7 +224,7 @@ def cancel_order(account: str, order_id: str):
     if not the_provider or not the_provider.fp:
         return {"error": "not connected"}
     try:
-        from FinamPy.grpc import orders_service_pb2 as ord_pb2
+        from finam_trade_api.proto.grpc.tradeapi.v1.orders import orders_service_pb2 as ord_pb2
         resp = the_provider.fp.call_function(
             the_provider.fp.orders_stub.CancelOrder,
             ord_pb2.CancelOrderRequest(account_id=account, order_id=order_id)

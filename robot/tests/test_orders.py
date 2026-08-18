@@ -5,7 +5,7 @@ import sys
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(name)s] %(message)s", datefmt="%H:%M:%S")
 
-from FinamPy import FinamPy
+from finam_compat import FinamPyCompat as FinamPy
 from orders import OrderManager, BUY, SELL
 import config
 
@@ -14,6 +14,7 @@ print("=== ORDERS TEST ===")
 # 1. Connect
 print("1. Connecting...")
 fp = FinamPy(os.environ["FINAM_TOKEN"])
+fp.connect()
 print(f"   Connected. Accounts: {fp.account_ids}")
 
 om = OrderManager(fp)
@@ -28,7 +29,7 @@ for o in active:
 
 # 3. Test that we can query account positions via gRPC
 print("3. Getting account info...")
-from FinamPy.grpc.accounts_service_pb2 import GetAccountRequest
+from finam_trade_api.proto.grpc.tradeapi.v1.accounts.accounts_service_pb2 import GetAccountRequest
 account = fp.call_function(
     fp.accounts_stub.GetAccount,
     GetAccountRequest(account_id=config.FINAM_ACCOUNT_ID),

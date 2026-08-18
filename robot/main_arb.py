@@ -11,8 +11,8 @@ from datetime import datetime, timezone, timedelta
 from http.server import HTTPServer, BaseHTTPRequestHandler
 import socket
 
-from FinamPy import FinamPy
-from FinamPy.grpc.accounts_service_pb2 import GetAccountRequest
+from finam_compat import FinamPyCompat as FinamPy
+from finam_trade_api.proto.grpc.tradeapi.v1.accounts.accounts_service_pb2 import GetAccountRequest
 
 import config_arb as config
 from strategy_arb import ArbitrageStrategy, ArbParams, LONG_BASIS, SHORT_BASIS, FLAT
@@ -146,6 +146,7 @@ def _reconnect_finam():
         token = os.environ.get("FINAM_API_KEY")
         log.info(f"FinamPy reconnecting (#{_reconnect_count})...")
         fp = FinamPy(token)
+        fp.connect()
         _attach_finam_to_orders()
         log.info(f"FinamPy reconnected (#{_reconnect_count}). Accounts: {fp.account_ids}")
         return True
@@ -221,7 +222,7 @@ def _quote_reconnect_loop(symbols):
 def _ob_poll_grpc_locked(sym, name):
     """Single OB poll under grpc_lock. Returns rows or raises.
     For stocks, converts RTSX→MISX for OB data (Finam gRPC OB requires correct MIC)."""
-    from FinamPy.grpc.marketdata_service_pb2 import OrderBookRequest
+    from finam_trade_api.proto.grpc.tradeapi.v1.marketdata.marketdata_service_pb2 import OrderBookRequest
     # Stocks need MISX for OB data, futures use RTSX
     ob_sym = sym.replace("@RTSX", "@MISX") if any(sym.startswith(p) for p in ['GAZP','SBER','LKOH','ROSN','NVTK','GMKN','PLZL','YNDX','MTSS','MGNT','CHMF','NLMK','ALRS','RUAL','POLY','FIVE','RTKM','TATN','VTBR','SNGS','AFLT','AFKS','ASTR','PHOR','HYDR','IRAO','FEES','SMLT','TRNFP']) else sym
     resp, _ = fp.marketdata_stub.OrderBook.with_call(
@@ -301,6 +302,7 @@ def connect_finam():
         return False
 
     fp = FinamPy(token)
+    fp.connect()
     log.info(f"FinamPy connected. Accounts: {fp.account_ids}")
     _attach_finam_to_orders()
 

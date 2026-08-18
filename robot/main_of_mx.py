@@ -21,7 +21,7 @@ from pathlib import Path
 from datetime import datetime, timezone, timedelta
 from http.server import HTTPServer, BaseHTTPRequestHandler
 
-from FinamPy import FinamPy
+from finam_compat import FinamPyCompat as FinamPy
 
 import config_of_mx as config
 from strategy_of import OrderFlowStrategy, OFParams, LONG, SHORT, FLAT
@@ -172,6 +172,7 @@ def connect_finam():
         return False
 
     fp = FinamPy(token)
+    fp.connect()
     log.info(f"FinamPy connected. Accounts: {fp.account_ids}")
 
     # Subscribe to latest trades (обезличенные сделки)
@@ -204,7 +205,7 @@ def connect_finam():
 
     # Subscribe to bars
     try:
-        from FinamPy.grpc import marketdata_service_pb2 as md
+        from finam_trade_api.proto.grpc.tradeapi.v1.marketdata import marketdata_service_pb2 as md
         tf_map = {
             "M1": md.TimeFrame.TIME_FRAME_M1,
             "M5": md.TimeFrame.TIME_FRAME_M5,
@@ -1021,7 +1022,7 @@ def _warmup_vwema():
     try:
         from google.protobuf.timestamp_pb2 import Timestamp
         from google.type.interval_pb2 import Interval
-        import FinamPy.grpc.marketdata_service_pb2 as md_pb2
+        from finam_trade_api.proto.grpc.tradeapi.v1.marketdata import marketdata_service_pb2 as md_pb2
 
         tf_map = {
             "M1": md_pb2.TimeFrame.TIME_FRAME_M1,

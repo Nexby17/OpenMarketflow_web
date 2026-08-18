@@ -11,7 +11,7 @@ DP_URL = os.environ.get("DP_URL", "http://localhost:5060")
 # Override in of_config.json
 LOTS = 1
 MAX_PYRAMID_LEVELS = 5
-MAX_AVERAGE_LEVELS = 100
+MAX_AVERAGE_LEVELS = 10
 STEP_AVERAGE = 50
 STEP_PYRAMID = 35
 SPREAD = 50

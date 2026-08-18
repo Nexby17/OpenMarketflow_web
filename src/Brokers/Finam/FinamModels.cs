@@ -257,6 +257,15 @@ public class Bar
     public DecimalValue? Volume { get; set; }
 }
 
+// === OrderBook (REST) ===
+
+public class OrderBookRow
+{
+    public double Price { get; set; }
+    public double BidVolume { get; set; }
+    public double AskVolume { get; set; }
+}
+
 // === Orders ===
 
 public class OrdersResponse

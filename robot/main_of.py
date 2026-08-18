@@ -19,7 +19,7 @@ from pathlib import Path
 from datetime import datetime, timezone, timedelta
 from http.server import HTTPServer, BaseHTTPRequestHandler
 
-from FinamPy import FinamPy
+from finam_compat import FinamPyCompat as FinamPy
 
 import config_of as config
 from strategy_of import OrderFlowStrategy, OFParams, LONG, SHORT, FLAT
@@ -170,6 +170,7 @@ def connect_finam():
         return False
 
     fp = FinamPy(token)
+    fp.connect()
     log.info(f"FinamPy connected. Accounts: {fp.account_ids}")
 
     # Subscribe to latest trades (обезличенные сделки)
@@ -202,7 +203,7 @@ def connect_finam():
 
     # Subscribe to bars
     try:
-        from FinamPy.grpc import marketdata_service_pb2 as md
+        from finam_trade_api.proto.grpc.tradeapi.v1.marketdata import marketdata_service_pb2 as md
         tf_map = {
             "M1": md.TimeFrame.TIME_FRAME_M1,
             "M5": md.TimeFrame.TIME_FRAME_M5,
@@ -266,7 +267,7 @@ _last_fill_qty: int = 0
 
 def _on_my_trade(trade):
     """Callback from FinamPy when our order is executed. Captures REAL fill price."""
-    global _last_fill_price, _last_fill_time, _last_fill_qty
+    global _last_fill, _last_fill_qty
     try:
         if str(trade.symbol) != SYMBOL:
             return
@@ -648,9 +649,9 @@ def _execute_action(action: dict):
         avg_for_record = strategy._avg_price
 
         side_int = SELL if side_str == "sell" else BUY
-        global _last_fill_price, _last_fill_time
-        _last_fill_price = 0.0
-        _last_fill_time = 0.0
+        global _last_fill
+        _last_fill = (0, 0.0, 0.0)
+        # _last_fill reset above (Story 5.4)
         result = orders.place_market(side_int, qty, tag=f"of_close_{action.get('reason', '')}")
         if result:
             time.sleep(0.3)  # wait for fill callback
@@ -681,8 +682,8 @@ def _execute_action(action: dict):
 
     elif act in ("entry", "average", "pyramid"):
         side_int = BUY if side_str == "buy" else SELL
-        _last_fill_price = 0.0
-        _last_fill_time = 0.0
+        _last_fill = (0, 0.0, 0.0)
+        # _last_fill reset above (Story 5.4)
         lots_before = strategy._total_lots - qty  # lots BEFORE this action added them
         result = orders.place_market(side_int, qty, tag=tag)
         if result:
@@ -704,8 +705,8 @@ def _execute_action(action: dict):
 
     elif act == "partial_tp":
         side_int = SELL if side_str == "sell" else BUY
-        _last_fill_price = 0.0
-        _last_fill_time = 0.0
+        _last_fill = (0, 0.0, 0.0)
+        # _last_fill reset above (Story 5.4)
         result = orders.place_market(side_int, qty, tag="of_partial_tp")
         if result:
             time.sleep(0.3)  # wait for fill callback
@@ -1016,7 +1017,7 @@ def _warmup_vwema():
     try:
         from google.protobuf.timestamp_pb2 import Timestamp
         from google.type.interval_pb2 import Interval
-        import FinamPy.grpc.marketdata_service_pb2 as md_pb2
+        from finam_trade_api.proto.grpc.tradeapi.v1.marketdata import marketdata_service_pb2 as md_pb2
 
         tf_map = {
             "M1": md_pb2.TimeFrame.TIME_FRAME_M1,

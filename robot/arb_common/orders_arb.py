@@ -16,6 +16,7 @@ Trade subscription:
 - execute_both_market waits for real fills before returning
 """
 import logging
+import os
 import time
 import threading
 import requests
@@ -26,9 +27,9 @@ log = logging.getLogger("orders_arb")
 
 # FinamPy gRPC order support (optional — used when DP server is down)
 try:
-    from FinamPy.grpc.orders_service_pb2 import Order as GrpcOrder, OrdersRequest
-    from FinamPy.grpc.orders_service_pb2 import CancelOrderRequest as GrpcCancel
-    from FinamPy.grpc.orders_service_pb2 import SubscribeTradesRequest as GrpcSubTradesReq
+    from finam_trade_api.proto.grpc.tradeapi.v1.orders.orders_service_pb2 import Order as GrpcOrder, OrdersRequest
+    from finam_trade_api.proto.grpc.tradeapi.v1.orders.orders_service_pb2 import CancelOrderRequest as GrpcCancel
+    from finam_trade_api.proto.grpc.tradeapi.v1.orders.orders_service_pb2 import SubscribeTradesRequest as GrpcSubTradesReq
     from google.type.decimal_pb2 import Decimal as GrpcDecimal
     _HAS_GRPC = True
 except ImportError:
@@ -55,7 +56,7 @@ class ArbOrderManager:
     def __init__(self, dp_url: str = "http://localhost:5060", account: str = ""):
         self._dp_url = dp_url.rstrip("/")
         self._account = account  # FORTS account for futures
-        self._stock_account = "1225950"  # MICEX account for stocks
+        self._stock_account = os.environ.get("FINAM_STOCK_ACCOUNT", self._account)  # MICEX account for stocks (= FORTS account by default)
         self._timeout = 5.0
         self._fp = None  # FinamPy instance (set via set_finam_py)
         self._stock_mic = "MISX"  # MIC for stock orders
@@ -145,7 +146,7 @@ class ArbOrderManager:
         # Trade subscription didn't fire — fallback to gRPC GetOrder for avg_price
         if self._fp and _HAS_GRPC:
             try:
-                from FinamPy.grpc.orders_service_pb2 import GetOrderRequest
+                from finam_trade_api.proto.grpc.tradeapi.v1.orders.orders_service_pb2 import GetOrderRequest
                 for acc in [self._account, self._stock_account]:
                     resp, _ = self._fp.orders_stub.GetOrder.with_call(
                         request=GetOrderRequest(account_id=acc, order_id=order_id),
@@ -174,7 +175,7 @@ class ArbOrderManager:
         # 2. Try gRPC GetOrder for average_price
         if self._fp and _HAS_GRPC:
             try:
-                from FinamPy.grpc.orders_service_pb2 import GetOrderRequest
+                from finam_trade_api.proto.grpc.tradeapi.v1.orders.orders_service_pb2 import GetOrderRequest
                 for acc in [self._account, self._stock_account]:
                     status = self._grpc_get_order_status(order_id, acc)
                     if status and status.get("avg_price", 0) > 0:
@@ -228,7 +229,7 @@ class ArbOrderManager:
             log.warning("gRPC: _HAS_GRPC=False")
             return None
         try:
-            from FinamPy.grpc.orders_service_pb2 import Order as GrpcOrder
+            from finam_trade_api.proto.grpc.tradeapi.v1.orders.orders_service_pb2 import Order as GrpcOrder
             # Determine account and MIC based on instrument type
             # Futures (GZ*, SR*, Si*, etc) → FORTS account + RTSX mic
             # Stocks (GAZP, SBER, etc) → MICEX account + MISX mic
@@ -398,7 +399,7 @@ class ArbOrderManager:
             return None
         acc = account or self._account
         try:
-            from FinamPy.grpc.orders_service_pb2 import GetOrderRequest
+            from finam_trade_api.proto.grpc.tradeapi.v1.orders.orders_service_pb2 import GetOrderRequest
             resp, _ = self._fp.orders_stub.GetOrder.with_call(
                 request=GetOrderRequest(account_id=acc, order_id=order_id),
                 timeout=5, metadata=(self._fp.metadata,))

@@ -1,13 +1,13 @@
-
 using HedgeFund.Core.Averaging;
+using HedgeFund.Core.Risk;
 using HedgeFund.Core.Models;
 using HedgeFund.Core.Strategies;
 
 namespace HedgeFund.Core;
 
 /// <summary>
-/// Центральный торговый движок.
-/// Связывает стратегии, усреднение и брокерские коннекторы.
+/// Универсальный торговый движок.
+/// Принимает стратегию, усреднение и брокерские операции.
 /// </summary>
 public class TradingEngine : IDisposable
 {
@@ -15,6 +15,7 @@ public class TradingEngine : IDisposable
     private readonly IStrategy _strategy;
     private readonly AveragingEngine _averaging;
     private readonly AveragingSettings _settings;
+    private RiskGate? _riskGate;
     
     private readonly Dictionary<string, Position> _positions = new();
     private readonly List<Trade> _tradeLog = new();
@@ -34,19 +35,21 @@ public class TradingEngine : IDisposable
         _broker.OnError += HandleError;
     }
 
-    // === Состояние (для UI) ===
+    public void SetRiskGate(RiskGate gate) => _riskGate = gate;
+
+    // === Свойства (для UI) ===
     public bool IsRunning => _isRunning;
     public IReadOnlyDictionary<string, Position> Positions => _positions;
     public IReadOnlyList<Trade> TradeLog => _tradeLog;
     public IReadOnlyList<string> EventLog => _eventLog;
     public AveragingSettings Settings => _settings;
 
-    // === Управление (для UI кнопок) ===
+    // === Ручное управление (для UI / тестов) ===
     
     public void Start() => _isRunning = true;
     public void Stop() => _isRunning = false;
     
-    /// <summary>Переключить мартингейл (кнопка UI)</summary>
+    /// <summary>Включить/выключить мартингейл (потребуется UI)</summary>
     public void ToggleMartingale()
     {
         _settings.Mode = _settings.Mode == AveragingMode.Fixed 
@@ -55,21 +58,21 @@ public class TradingEngine : IDisposable
         Log($"Режим усреднения: {_settings.Mode}");
     }
     
-    /// <summary>Включить/выключить стоп-лосс (кнопка UI)</summary>
+    /// <summary>Включить/выключить стоп-лосс (потребуется UI)</summary>
     public void ToggleStopLoss()
     {
         _settings.StopLossEnabled = !_settings.StopLossEnabled;
-        Log($"Стоп-лосс: {(_settings.StopLossEnabled ? "ВКЛ" : "ВЫКЛ")}");
+        Log($"Стоп-лосс: {(_settings.StopLossEnabled ? "Вкл" : "Выкл")}");
     }
     
-    /// <summary>Установить лимит усреднений (кнопка UI)</summary>
+    /// <summary>Установить лимит усреднений (потребуется UI)</summary>
     public void SetMaxAveraging(int max)
     {
         _settings.MaxAveragingCount = max;
         Log($"Лимит усреднений: {(max <= 0 ? "без лимита" : max.ToString())}");
     }
     
-    /// <summary>Установить размер стоп-лосса</summary>
+    /// <summary>Установить параметры стоп-лосса</summary>
     public void SetStopLoss(double value, bool usePercent)
     {
         _settings.UsePercentStopLoss = usePercent;
@@ -77,15 +80,15 @@ public class TradingEngine : IDisposable
             _settings.StopLossPercent = value;
         else
             _settings.StopLossPoints = value;
-        Log($"Стоп-лосс: {value}{(usePercent ? "%" : " п.")}");
+        Log($"Стоп-лосс: {value}{(usePercent ? "%" : " пт.")}");
     }
 
-    // === Основная логика ===
+    // === Основной цикл ===
 
     /// <summary>
-    /// Обработчик новой свечи. Вызывается из подписки на маркетдату.
+    /// Обработка нового бара. Вызывается при подписке на свечи.
     /// </summary>
-    public void OnNewCandle(Candle candle, string ticker)
+    public async void OnNewCandle(Candle candle, string ticker)
     {
         if (!_isRunning) return;
 
@@ -96,24 +99,24 @@ public class TradingEngine : IDisposable
         // 2. Проверяем текущую позицию
         if (_positions.TryGetValue(ticker, out var position) && position.IsOpen)
         {
-            // Позиция открыта — работает модуль усреднения
+            // Позиция открыта — принимаем решение об усреднении
             var result = _averaging.Evaluate(position, candle.Close, hasSignal);
             
             switch (result.Decision)
             {
                 case AveragingDecision.CloseAll:
-                    Log($"[{ticker}] ЗАКРЫТИЕ: {result.Reason}");
-                    ClosePosition(ticker, position, candle.Close);
+                    Log($"[{ticker}] Закрытие: {result.Reason}");
+                    await ClosePositionAsync(ticker, position, candle.Close);
                     break;
                     
                 case AveragingDecision.StopLoss:
-                    Log($"[{ticker}] СТОП-ЛОСС: {result.Reason}");
-                    ClosePosition(ticker, position, candle.Close);
+                    Log($"[{ticker}] Стоп-лосс: {result.Reason}");
+                    await ClosePositionAsync(ticker, position, candle.Close);
                     break;
                     
                 case AveragingDecision.Average:
-                    Log($"[{ticker}] УСРЕДНЕНИЕ: {result.Reason}");
-                    AddToPosition(ticker, position, candle.Close, result.Volume, signal!.Direction);
+                    Log($"[{ticker}] Усреднение: {result.Reason}");
+                    await AddToPositionAsync(ticker, position, candle.Close, result.Volume, signal!.Direction);
                     break;
                     
                 case AveragingDecision.Hold:
@@ -124,26 +127,16 @@ public class TradingEngine : IDisposable
         else if (hasSignal)
         {
             // Нет позиции — открываем по сигналу стратегии
-            Log($"[{ticker}] ВХОД: {signal!.Comment}");
-            OpenPosition(ticker, signal, candle.Close);
+            Log($"[{ticker}] Вход: {signal!.Comment}");
+            await OpenPositionAsync(ticker, signal, candle.Close);
         }
     }
 
-    // === Исполнение ===
+    // === Story 2.1: async void -> async Task ===
+    // === Story 2.2: синхронизация позиции с брокером ===
 
-    private async void OpenPosition(string ticker, Signal signal, double price)
+    private async Task OpenPositionAsync(string ticker, Signal signal, double price)
     {
-        var position = new Position
-        {
-            Ticker = ticker,
-            Direction = signal.Direction,
-            Entries = new List<PositionEntry>
-            {
-                new() { Timestamp = signal.Timestamp, Price = price, Volume = _settings.BaseLotSize, Comment = "Вход" }
-            }
-        };
-        _positions[ticker] = position;
-
         var order = new Order
         {
             Ticker = ticker,
@@ -156,24 +149,57 @@ public class TradingEngine : IDisposable
 
         try
         {
-            await _broker.PlaceOrderAsync(order);
+            var result = await _broker.PlaceOrderAsync(order);
+            // ТОЛЬКО после успешного ордера создаём позицию
+            if (result != null && result.Status != OrderStatus.Rejected)
+            {
+                var position = new Position
+                {
+                    Ticker = ticker,
+                    Direction = signal.Direction,
+                    Entries = new List<PositionEntry>
+                    {
+                        new() { Timestamp = signal.Timestamp, Price = price, Volume = _settings.BaseLotSize, Comment = "Вход" }
+                    }
+                };
+                _positions[ticker] = position;
+            }
+            else
+            {
+                Log($"[{ticker}] Ордер отклонён или не подтверждён — позиция НЕ создана");
+            }
         }
         catch (Exception ex)
         {
-            Log($"[{ticker}] ОШИБКА ЗАЯВКИ: {ex.Message}");
+            Log($"[{ticker}] Ошибка открытия: {ex.Message}");
+            // Fallback: запрос позиций у брокера
+            try
+            {
+                var brokerPositions = await _broker.GetPositionsAsync();
+                var brokerPos = brokerPositions?.FirstOrDefault(p => p.Ticker == ticker);
+                if (brokerPos != null && brokerPos.IsOpen)
+                {
+                    Log($"[{ticker}] FALLBACK: брокер показывает открытую позицию — синхронизируем");
+                    _positions[ticker] = new Position
+                    {
+                        Ticker = ticker,
+                        Direction = brokerPos.Direction,
+                        Entries = new List<PositionEntry>
+                        {
+                            new() { Timestamp = DateTime.UtcNow, Price = brokerPos.AveragePrice, Volume = brokerPos.TotalVolume, Comment = "Восстановлено из брокера" }
+                        }
+                    };
+                }
+            }
+            catch (Exception fallbackEx)
+            {
+                Log($"[{ticker}] FALLBACK не удался: {fallbackEx.Message}");
+            }
         }
     }
 
-    private async void AddToPosition(string ticker, Position position, double price, int volume, SignalDirection direction)
+    private async Task AddToPositionAsync(string ticker, Position position, double price, int volume, SignalDirection direction)
     {
-        position.Entries.Add(new PositionEntry
-        {
-            Timestamp = DateTime.UtcNow,
-            Price = price,
-            Volume = volume,
-            Comment = $"Усреднение #{position.AveragingCount}"
-        });
-
         var order = new Order
         {
             Ticker = ticker,
@@ -186,17 +212,54 @@ public class TradingEngine : IDisposable
 
         try
         {
-            await _broker.PlaceOrderAsync(order);
+            var result = await _broker.PlaceOrderAsync(order);
+            // ТОЛЬКО после успешного ордера обновляем позицию
+            if (result != null && result.Status != OrderStatus.Rejected)
+            {
+                position.Entries.Add(new PositionEntry
+                {
+                    Timestamp = DateTime.UtcNow,
+                    Price = price,
+                    Volume = volume,
+                    Comment = $"Усреднение #{position.AveragingCount}"
+                });
+            }
+            else
+            {
+                Log($"[{ticker}] Усреднение отклонено — позиция НЕ обновлена");
+            }
         }
         catch (Exception ex)
         {
-            Log($"[{ticker}] ОШИБКА УСРЕДНЕНИЯ: {ex.Message}");
+            Log($"[{ticker}] Ошибка усреднения: {ex.Message}");
+            // Fallback: сверка с брокером
+            try
+            {
+                var brokerPositions = await _broker.GetPositionsAsync();
+                var brokerPos = brokerPositions?.FirstOrDefault(p => p.Ticker == ticker);
+                if (brokerPos != null && brokerPos.TotalVolume != position.TotalVolume)
+                {
+                    Log($"[{ticker}] FALLBACK: расхождение объёмов (internal={position.TotalVolume}, broker={brokerPos.TotalVolume}) — синхронизируем");
+                    position.Entries.Clear();
+                    position.Entries.Add(new PositionEntry
+                    {
+                        Timestamp = DateTime.UtcNow,
+                        Price = brokerPos.AveragePrice,
+                        Volume = brokerPos.TotalVolume,
+                        Comment = "Восстановлено из брокера"
+                    });
+                }
+            }
+            catch (Exception fallbackEx)
+            {
+                Log($"[{ticker}] FALLBACK не удался: {fallbackEx.Message}");
+            }
         }
     }
 
-    private async void ClosePosition(string ticker, Position position, double price)
+    private async Task ClosePositionAsync(string ticker, Position position, double price)
     {
-        // Обратное направление для закрытия
+        // Определяем противоположное направление для закрытия
         var closeDirection = position.Direction == SignalDirection.Buy 
             ? SignalDirection.Sell 
             : SignalDirection.Buy;
@@ -213,16 +276,43 @@ public class TradingEngine : IDisposable
 
         try
         {
-            await _broker.PlaceOrderAsync(order);
-            _positions.Remove(ticker);
+            var result = await _broker.PlaceOrderAsync(order);
+            // ТОЛЬКО после успешного ордера удаляем позицию
+            if (result != null && result.Status != OrderStatus.Rejected)
+            {
+                _positions.Remove(ticker);
+            }
+            else
+            {
+                Log($"[{ticker}] Закрытие отклонено — позиция сохранена");
+            }
         }
         catch (Exception ex)
         {
-            Log($"[{ticker}] ОШИБКА ЗАКРЫТИЯ: {ex.Message}");
+            Log($"[{ticker}] Ошибка закрытия: {ex.Message}");
+            // Fallback: проверяем брокера — действительно ли позиция закрылась
+            try
+            {
+                var brokerPositions = await _broker.GetPositionsAsync();
+                var stillOpen = brokerPositions?.Any(p => p.Ticker == ticker && p.IsOpen) ?? true;
+                if (!stillOpen)
+                {
+                    Log($"[{ticker}] FALLBACK: брокер показывает позицию закрытой — удаляем из трекинга");
+                    _positions.Remove(ticker);
+                }
+                else
+                {
+                    Log($"[{ticker}] FALLBACK: брокер подтверждает открытую позицию — сохраняем");
+                }
+            }
+            catch (Exception fallbackEx)
+            {
+                Log($"[{ticker}] FALLBACK не удался: {fallbackEx.Message}");
+            }
         }
     }
 
-    // === Обработчики событий ===
+    // === Обработка событий ===
 
     private void HandleTrade(Trade trade)
     {
@@ -237,14 +327,14 @@ public class TradingEngine : IDisposable
 
     private void HandleError(string error)
     {
-        Log($"ОШИБКА БРОКЕРА: {error}");
+        Log($"Ошибка брокера: {error}");
     }
 
     private void Log(string message)
     {
         var entry = $"[{DateTime.UtcNow:HH:mm:ss}] {message}";
         _eventLog.Add(entry);
-        // TODO: запись в файл / UI обновление
+        // TODO: записывать в файл / UI обновление
     }
 
     public void Dispose()

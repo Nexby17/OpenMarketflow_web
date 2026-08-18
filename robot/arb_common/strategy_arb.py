@@ -62,6 +62,10 @@ class ArbParams:
     risk_type: str = "stop_loss_rub"
     risk_value: float = 5000.0
 
+    # Daily stop loss (rubles) — closes all layers and blocks until 07:00 MSK
+    daily_stop_loss_rub: float = 5000.0
+    daily_stop_active: bool = False
+
     # Execution
     leg_a_timeout: int = 5
     min_fill_ratio: float = 0.5
@@ -125,6 +129,14 @@ class ArbitrageStrategy:
         self.entry_lock: bool = False
         self._lock_time: float = 0.0
 
+        # Broker sync (updated from FinamPy every 30s)
+        self.broker_equity: float = 0.0
+        self.broker_pnl_today: float = 0.0
+        self.broker_pnl_total: float = 0.0
+        self.broker_pair_pnl: float = 0.0  # unrealized PnL from broker for symbol_a + symbol_b only
+        self.broker_positions: list[dict] = []
+        self.broker_sync_time: float = 0.0
+
     # === GO / Capital ===
 
     def _go_per_contract_b(self) -> float:
@@ -132,8 +144,9 @@ class ArbitrageStrategy:
         return getattr(self.p, 'go_per_contract_b', 2000.0)
 
     def _stock_cost_per_lot_a(self) -> float:
-        """Stock cost per lot A = price × mult_a (shares per lot × price)."""
-        return self.basis_calc.price_a * self.p.mult_a
+        """Stock GO per lot A = price × mult_a × margin_rate (50% for Russian stocks)."""
+        margin_rate = getattr(self.p, 'stock_margin_rate', 0.5)
+        return self.basis_calc.price_a * self.p.mult_a * margin_rate
 
     def _layer_cost(self) -> float:
         """Capital required for one layer."""
@@ -214,10 +227,21 @@ class ArbitrageStrategy:
     def get_status(self) -> dict:
         """Full status for API."""
         state = self.get_state()
-        unrealized = sum(self._layer_unrealized_pnl(l) for l in self.layers)
-        state["unrealizedPnl"] = round(unrealized, 2)
-        state["totalPnl"] = round(self.realized_pnl + unrealized, 2)
+        unrealized_local = sum(self._layer_unrealized_pnl(l) for l in self.layers)
+        state["localUnrealizedPnl"] = round(unrealized_local, 2)
+        # For UI: use broker pair PnL if available, else local
+        state["unrealizedPnl"] = round(self.broker_pair_pnl, 2) if self.broker_pair_pnl != 0 or self.broker_sync_time else round(unrealized_local, 2)
+        state["totalPnl"] = round(self.realized_pnl + (state["unrealizedPnl"] or 0), 2)
         state["tradeHistory"] = self.trade_history[-200:]
+        # Broker sync data
+        state["broker"] = {
+            "equity": round(self.broker_equity, 2),
+            "pnlToday": round(self.broker_pnl_today, 2),
+            "pnlTotal": round(self.broker_pnl_total, 2),
+            "pairPnl": round(self.broker_pair_pnl, 2),
+            "positions": self.broker_positions,
+            "syncAgeSec": round(time.time() - self.broker_sync_time, 1) if self.broker_sync_time else None,
+        }
         return state
 
     def save_state(self) -> dict:
@@ -298,10 +322,12 @@ class ArbitrageStrategy:
             return None
 
         if not self.basis_calc.has_enough_data:
+            log.warning(f"Entry blocked: insufficient data ({self.basis_calc.data_points}/{self.basis_calc.lookback})")
             return None
 
         # Capital check — stop adding layers if we can't afford another
         if not self._can_open_layer():
+            log.warning(f"Entry blocked: capital (used={self._used_capital():.0f} + layer={self._layer_cost():.0f} > capital={self.p.capital})")
             return None
 
         if self.p.entry_mode == "spread_rub":
@@ -312,13 +338,45 @@ class ArbitrageStrategy:
         if signal and self._is_duplicate_entry(signal["side"], signal["z"]):
             return None
 
+        # Averaging check: only add layer if basis continues to trend
+        # SHORT: basis must be > last layer entry_basis (expanding)
+        # LONG: basis must be < last layer entry_basis (contracting)
+        if self.layers and not self._allows_averaging(signal["side"]):
+            return None
+
         return signal
 
+    def _allows_averaging(self, side: str) -> bool:
+        """Check if current basis allows adding a new layer (averaging).
+        Only allow when basis continues to move in the entry direction.
+        SHORT: current basis > last layer entry_basis (basis expanding)
+        LONG: current basis < last layer entry_basis (basis contracting)"""
+        if not self.layers:
+            return True  # No layers — first entry always allowed
+        last = self.layers[-1]
+        side_int = LONG_BASIS if side == "long_basis" else SHORT_BASIS
+        if last.side != side_int:
+            return False  # Opposite direction — don't average
+        basis_now = self.basis_calc.basis
+        if side_int == SHORT_BASIS:
+            ok = basis_now > last.entry_basis
+        else:
+            ok = basis_now < last.entry_basis
+        if not ok:
+            log.debug(f"Averaging blocked: basis={basis_now:.2f} vs last entry_basis={last.entry_basis:.2f}")
+        return ok
+
     def _check_entry_zscore(self) -> Optional[dict]:
-        """Variant 2 (default): Z-score based entry."""
+        """Variant 2 (default): Z-score based entry.
+        SHORT only when basis > mean (basis is above fair value).
+        LONG only when basis < mean (basis is below fair value)."""
         z = self.basis_calc.zscore_no_push
+        mean_basis = self.basis_calc.basis_mean
 
         if z > self.p.entry_z:
+            # SHORT basis: only if basis is actually above mean
+            if self.basis_calc.basis <= mean_basis:
+                return None
             return {
                 "action": "entry",
                 "side": "short_basis",
@@ -329,6 +387,9 @@ class ArbitrageStrategy:
             }
         elif z < self.p.entry_z_long:
             if not self.p.allow_long_basis:
+                return None
+            # LONG basis: only if basis is actually below mean
+            if self.basis_calc.basis >= mean_basis:
                 return None
             return {
                 "action": "entry",
@@ -375,9 +436,11 @@ class ArbitrageStrategy:
             return None
 
         # Check each layer for min_profit exit
+        per_layer_pnls = []
         for layer in self.layers:
             unrealized = self._layer_unrealized_pnl(layer)
             hold_min = (time.time() - layer.entry_time) / 60
+            per_layer_pnls.append((layer, unrealized, hold_min))
 
             if self._meets_min_profit(unrealized, layer):
                 return {
@@ -386,6 +449,20 @@ class ArbitrageStrategy:
                     "pnl": unrealized,
                     "hold_min": hold_min,
                     "layer_id": layer.layer_id,
+                }
+
+        # Also close ALL layers if total unrealized >= min_profit and ALL profitable
+        if len(per_layer_pnls) > 1 and all(pnl > 0 for _, pnl, _ in per_layer_pnls):
+            total = sum(pnl for _, pnl, _ in per_layer_pnls)
+            if total >= self.p.min_profit_value:
+                max_hold = max(hold for _, _, hold in per_layer_pnls)
+                log.info(f"EXIT ALL (total profit target): total={total:.2f} >= {self.p.min_profit_value}, layers={len(per_layer_pnls)}")
+                return {
+                    "action": "exit_all",
+                    "reason": "profit_target_total",
+                    "pnl": total,
+                    "hold_min": max_hold,
+                    "layer_id": None,
                 }
 
         # Check risk on total portfolio PnL
@@ -433,6 +510,27 @@ class ArbitrageStrategy:
 
     def _check_risk(self, unrealized: float, hold_min: float) -> Optional[str]:
         """Check risk conditions. Returns reason string or None."""
+        # Daily stop loss check (independent of risk_type)
+        total_daily = self.realized_pnl + unrealized
+        if abs(total_daily) >= self.p.daily_stop_loss_rub and total_daily < 0:
+            if not self.p.daily_stop_active:
+                self.p.daily_stop_active = True
+                logging.error(f"DAILY STOP LOSS HIT: total_daily={total_daily:.0f} RUB, limit={self.p.daily_stop_loss_rub:.0f}")
+                return "daily_stop_loss"
+            # Already blocked — return None to skip further checks (will be handled by caller)
+            return None
+
+        # Auto-reset daily stop at 07:00 MSK
+        if self.p.daily_stop_active:
+            msk_hour = (datetime.now(timezone.utc) + timedelta(hours=3)).hour
+            msk_minute = (datetime.now(timezone.utc) + timedelta(hours=3)).minute
+            if msk_hour == 7 and msk_minute < 5:
+                self.p.daily_stop_active = False
+                logging.info("Daily stop reset (07:00 MSK)")
+
+        if self.p.daily_stop_active:
+            return "daily_stop_blocked"
+
         t = self.p.risk_type
         v = self.p.risk_value
 
@@ -483,11 +581,30 @@ class ArbitrageStrategy:
 
     def _layer_unrealized_pnl(self, layer: ArbLayer) -> float:
         """Calculate unrealized PnL using market bid/ask (net of commission).
+        For FORTS leg B: fall back to last price if bid/ask deviates >0.2% from last.
         To close: pay ask when buying, receive bid when selling."""
         bid_a = self.basis_calc.bid_a or self.basis_calc.price_a
         ask_a = self.basis_calc.ask_a or self.basis_calc.price_a
         bid_b = self.basis_calc.bid_b or self.basis_calc.price_b
         ask_b = self.basis_calc.ask_b or self.basis_calc.price_b
+
+        # For FORTS (leg B): check if bid/ask are stale — deviate >0.2% from last price
+        price_b = self.basis_calc.price_b
+        if price_b > 0:
+            stale = False
+            for val in (bid_b, ask_b):
+                if val > 0 and abs(val - price_b) / price_b > 0.002:
+                    stale = True
+                    break
+            if stale:
+                bid_b = price_b
+                ask_b = price_b
+                if not getattr(self, '_stale_warned_ts', 0) or time.time() - self._stale_warned_ts > 5:
+                    log.warning(f"OB stale: bid_b={self.basis_calc.bid_b:.2f} ask_b={self.basis_calc.ask_b:.2f} vs price_b={price_b:.2f} — using last")
+                    self._stale_warned_ts = time.time()
+        else:
+            self._stale_warned_ts = 0
+
         if bid_a <= 0 or ask_a <= 0 or bid_b <= 0 or ask_b <= 0:
             bid_a = ask_a = layer.entry_price_a
             bid_b = ask_b = layer.entry_price_b

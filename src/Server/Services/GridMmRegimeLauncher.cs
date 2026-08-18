@@ -3,6 +3,7 @@ using HedgeFund.Core.Strategies;
 using HedgeFund.Brokers.Finam;
 using Microsoft.AspNetCore.SignalR;
 using HedgeFund.Server.Hubs;
+using HedgeFund.Core.Risk;
 
 namespace HedgeFund.Server.Services;
 
@@ -17,13 +18,11 @@ namespace HedgeFund.Server.Services;
 ///   - Grid TP: отслеживается по OnOrderUpdate → round trip
 ///   - Close all: отмена всех лимиток + закрытие позиции маркетом
 /// 
-/// TF: 5 мин. Инструмент: SiM6 (или актуальный SI фьючерс).
+/// TF: 5 мин. Инструмент: SiU6 (или актуальный SI фьючерс).
 /// </summary>
 public class GridMmRegimeLauncher : IDisposable
 {
     private readonly FinamConnector _broker;
-    private readonly QuikCandleProvider? _quikProvider;
-    private readonly bool _useQuikData;
     private readonly GridMmRegimeStrategy _strategy;
     private readonly string _ticker;
     private readonly string _accountId;
@@ -56,20 +55,20 @@ public class GridMmRegimeLauncher : IDisposable
     // Close state
     private bool _closingAll;
     private readonly bool _forceEntryOnStart;
+    private RiskGate? _riskGate;
+
+    public void SetRiskGate(RiskGate riskGate) { _riskGate = riskGate; }
 
     public GridMmRegimeStrategy Strategy => _strategy;
-    public bool IsConnected => _useQuikData || _broker.IsConnected;
+    public bool IsConnected => _broker.IsConnected;
 
-    public GridMmRegimeLauncher(FinamConnector broker, string ticker = "SiM6", string accountId = "", IHubContext<TradingHub>? hub = null, bool useQuikData = false, bool forceEntryOnStart = false)
+    public GridMmRegimeLauncher(FinamConnector broker, string ticker = "SiU6", string accountId = "", IHubContext<TradingHub>? hub = null, bool forceEntryOnStart = false)
     {
-        _useQuikData = useQuikData;
         _ticker = ticker;
         _accountId = accountId;
         _forceEntryOnStart = forceEntryOnStart;
         _hub = hub;
         _broker = broker; // Общий экземпляр из TradingService
-        if (useQuikData)
-            _quikProvider = new QuikCandleProvider();
 
         // Параметры синхронизированы с TOOLS.md (v6 SAR 0.009/0.01/0.2, EMA30, 5мин)
         _strategy = new GridMmRegimeStrategy(new GridMmRegimeStrategy.Config
@@ -117,55 +116,9 @@ public class GridMmRegimeLauncher : IDisposable
 
         // Прогрев: 5-мин свечи
         Console.WriteLine($"[GRID-MM-v6] 📐 Прогрев индикаторов ({_ticker}, 5-мин)...");
-            System.IO.File.AppendAllText("/tmp/mm-debug.log", $"{DateTime.UtcNow:HH:mm:ss} About to load candles, useQuikData={_useQuikData}, quikProvider={_quikProvider != null}\n");
-        Candle[] history;
-        
-        if (_useQuikData && _quikProvider != null)
-        {
-            System.IO.File.AppendAllText("/tmp/mm-debug.log", $"{DateTime.UtcNow:HH:mm:ss} Loading QUIK candles...\n");
-            try
-            {
-                var quikTask = _quikProvider.GetHistoricalCandlesAsync();
-                var timeoutTask = Task.Delay(10000); // 10 sec timeout
-                var completed = await Task.WhenAny(quikTask, timeoutTask);
-                if (completed == timeoutTask)
-                {
-                    System.IO.File.AppendAllText("/tmp/mm-debug.log", $"{DateTime.UtcNow:HH:mm:ss} QUIK timeout, fallback to Finam\n");
-                    Console.WriteLine("[GRID-MM-v6] ⚠️ QUIK candles timeout, fallback to Finam");
-                    var from = DateTime.UtcNow.AddDays(-7);
-                    var to = DateTime.UtcNow;
-                    history = await _broker.GetHistoricalCandlesAsync(_ticker, _timeframe, from, to);
-                }
-                else
-                {
-                    history = quikTask.Result.ToArray();
-                    System.IO.File.AppendAllText("/tmp/mm-debug.log", $"{DateTime.UtcNow:HH:mm:ss} QUIK candles loaded: {history.Length}\n");
-                    if (history.Length == 0)
-                    {
-                        System.IO.File.AppendAllText("/tmp/mm-debug.log", $"{DateTime.UtcNow:HH:mm:ss} QUIK empty, fallback to Finam\n");
-                        Console.WriteLine("[GRID-MM-v6] ⚠️ QUIK candles empty, fallback to Finam");
-                        var from = DateTime.UtcNow.AddDays(-7);
-                        var to = DateTime.UtcNow;
-                        history = await _broker.GetHistoricalCandlesAsync(_ticker, _timeframe, from, to);
-                    }
-                }
-            }
-            catch (Exception ex)
-            {
-                System.IO.File.AppendAllText("/tmp/mm-debug.log", $"{DateTime.UtcNow:HH:mm:ss} QUIK failed: {ex.Message}\n");
-                Console.WriteLine($"[GRID-MM-v6] ⚠️ QUIK candles failed: {ex.Message}, fallback to Finam");
-                var from = DateTime.UtcNow.AddDays(-7);
-                var to = DateTime.UtcNow;
-                history = await _broker.GetHistoricalCandlesAsync(_ticker, _timeframe, from, to);
-            }
-        }
-        else
-        {
-            var from = DateTime.UtcNow.AddDays(-7);
-            var to = DateTime.UtcNow;
-            history = await _broker.GetHistoricalCandlesAsync(_ticker, _timeframe, from, to);
-        }
-
+        var from = DateTime.UtcNow.AddDays(-7);
+        var to = DateTime.UtcNow;
+        Candle[] history = await _broker.GetHistoricalCandlesAsync(_ticker, _timeframe, from, to);
         if (history.Length > 0)
         {
             Console.WriteLine($"[GRID-MM-v6] Загружено {history.Length} исторических свечей");
@@ -199,25 +152,17 @@ public class GridMmRegimeLauncher : IDisposable
         }
         else
         {
-            Console.WriteLine($"[GRID-MM-v6] ⚠️ Нет исторических данных");
+            Console.WriteLine($"[GRID-MM-v6] ?? ��� �����᪨� ������");
         }
 
-        if (_useQuikData)
-        {
-            Console.WriteLine($"[GRID-MM-v6] 📡 QUIK poll активен. Ждём сигналов.");
-            _cts = new CancellationTokenSource();
-            _ = Task.Run(() => QuikPollLoop(_cts.Token));
-        }
-        else
-        {
-            Console.WriteLine($"[GRID-MM-v6] 📡 Подписка на {_ticker} 5-мин...");
-            await _broker.SubscribeCandlesAsync(_ticker, _timeframe, OnNewCandle);
-            Console.WriteLine($"[GRID-MM-v6] 📡 Активна. Ждём сигналов.");
-        }
+        // Subscribe to candles for live trading
+        Console.WriteLine($"[GRID-MM-v6] ?? �����᪠ �� {_ticker} 5-���...");
+        await _broker.SubscribeCandlesAsync(_ticker, _timeframe, OnNewCandle);
+        Console.WriteLine("[GRID-MM-v6] ?? ��⨢��. ��� ᨣ�����.");
     }
     catch (Exception ex)
     {
-        Console.WriteLine($"[GRID-MM-v6] ❌ ConnectAndWarm error: {ex.Message}");
+        Console.WriteLine($"[GRID-MM-v6] ? ConnectAndWarm error: {ex.Message}");
         System.IO.File.AppendAllText("/tmp/mm-debug.log", $"{DateTime.UtcNow:HH:mm:ss} ConnectAndWarm ERROR: {ex.Message}\n{ex.StackTrace}\n");
     }
     }
@@ -292,43 +237,6 @@ public class GridMmRegimeLauncher : IDisposable
         Console.WriteLine("[GRID-MM-v6] ✅ ForceEntry completed");
     }
 
-    private async Task QuikPollLoop(CancellationToken ct)
-    {
-        DateTime? lastCandleTime = null;
-        while (!ct.IsCancellationRequested)
-        {
-            try
-            {
-                await Task.Delay(5000, ct); // Poll каждые 5 секунд
-                if (_quikProvider == null) continue;
-                
-                var candles = await _quikProvider.GetHistoricalCandlesAsync();
-                if (candles.Count == 0) continue;
-                
-                var latest = candles.LastOrDefault();
-                if (latest == null) continue;
-                
-                // Новая свеча?
-                if (lastCandleTime == null || latest.Timestamp > lastCandleTime)
-                {
-                    // Проверяем, не старая ли это свеча (уже обработана)
-                    if (lastCandleTime != null && latest.Timestamp <= lastCandleTime.Value)
-                        continue;
-                    
-                    OnNewCandle(latest);
-                    lastCandleTime = latest.Timestamp;
-                }
-            }
-            catch (TaskCanceledException)
-            {
-                break;
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"[QUIK POLL] Error: {ex.Message}");
-            }
-        }
-    }
 
     private int _candleCount = 0;
     
@@ -423,6 +331,12 @@ public class GridMmRegimeLauncher : IDisposable
                 Volume = evt.Volume,
                 Comment = evt.Reason
             };
+        // === RISK CHECK ===
+        var (riskApproved, _) = RiskIntegrationHelper.CheckBeforeOrder(
+            _riskGate, entryOrder, currentLots: _strategy.OpenLots,
+            accountEquity: 0, logger: null);
+        if (!riskApproved) return;
+
             var result = await _broker.PlaceOrderAsync(entryOrder);
             Console.WriteLine("[EXEC] ✅ Entry {0} {1}x {2} → order={3}", evt.Direction, evt.Volume, _ticker, result.BrokerOrderId);
             

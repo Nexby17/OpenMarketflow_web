@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>OpenMarketflow</title>
-    <link rel="stylesheet" href="/css/style.css?v=19">
+    <link rel="stylesheet" href="/css/style.css?v=21">
     <script src="/js/signalr.min.js"></script>
     <script src="/js/lightweight-charts.js"></script>
 </head>
@@ -20,16 +20,17 @@
             <button class="btn btn-danger" onclick="emergencyStop()">🔴 СТОП</button>
         </div>
     </header>
+    <div id="connErrorBanner" class="connection-error" role="alert"><strong>Connection Error</strong><br><span id="connErrorMsg">Connection lost. Reconnecting...</span></div>
 
     <!-- Tabs -->
-    <nav class="tabs">
-        <button class="tab active" data-tab="trading">📊 Торговля</button>
-        <button class="tab" data-tab="orderbook">📊 График</button>
-        <button class="tab" data-tab="monitoring">🤖 Роботы</button>
-        <button class="tab" data-tab="testing">🧪 Тестирование</button>
-        <button class="tab" data-tab="arbitrage">🔄 Арбитраж</button>
-        <button class="tab" data-tab="strategies">⚙️ Стратегии</button>
-        <button class="tab" data-tab="settings">🔧 Настройки подключения</button>
+    <nav class="tabs" role="tablist" aria-label="Sections">
+        <button class="tab active" data-tab="trading" role="tab" aria-selected="true">📊 Торговля</button>
+        <button class="tab" data-tab="orderbook" role="tab" aria-selected="false">📊 График</button>
+        <button class="tab" data-tab="monitoring" role="tab" aria-selected="false">🤖 Роботы</button>
+        <button class="tab" data-tab="testing" role="tab" aria-selected="false">🧪 Тестирование</button>
+        <button class="tab" data-tab="arbitrage" role="tab" aria-selected="false">🔄 Арбитраж</button>
+        <button class="tab" data-tab="strategies" role="tab" aria-selected="false">⚙️ Стратегии</button>
+        <button class="tab" data-tab="settings" role="tab" aria-selected="false">🔧 Настройки подключения</button>
     </nav>
 
     <!-- ==================== ТОРГОВЛЯ ==================== -->
@@ -88,9 +89,8 @@
             <div class="card" style="width:320px; flex-shrink:0; display:flex; flex-direction:column">
                 <div class="card-header row gap-8">
                     <select id="obInstrument" class="select" onchange="switchOrderBookInstrument()">
-                        <option>SiM6</option><option>SiU6</option><option>SBER</option>
-                        <option>GAZP</option><option>BRM6</option><option>GDM6</option>
-                        <option>RIM6</option>
+                        <option>SiU6</option><option>SiZ6</option><option>MXU6</option><option>MXZ6</option><option>GDU6</option><option>BRU6</option><option>RIU6</option><option>SBER</option>
+                        <option>GAZP</option><option>LKOH</option>
                     </select>
                     <button class="btn btn-secondary btn-sm" onclick="switchOrderBookInstrument()">🔄</button>
                 </div>
@@ -156,7 +156,7 @@
             <div class="card-body">
                 <!-- Строка 1: Инструмент + период -->
                 <div class="metrics-row" style="flex-wrap:wrap;margin-bottom:12px">
-                    <div class="metric-card" style="min-width:180px"><div class="metric-label">Инструмент</div><input id="testTicker" class="input" value="SiM6" list="tickerList2" style="width:120px"><datalist id="tickerList2"><option value="SiM6"><option value="SiU6"><option value="SiH7"><option value="MXM6"><option value="GDM6"><option value="BRK6"><option value="RIU6"><option value="SBRF"><option value="GAZP"><option value="LKOH"></datalist></div>
+                    <div class="metric-card" style="min-width:180px"><div class="metric-label">Инструмент</div><input id="testTicker" class="input" value="SiU6" list="tickerList2" style="width:120px"><datalist id="tickerList2"><option value="SiU6"><option value="SiZ6"><option value="MXU6"><option value="MXZ6"><option value="GDU6"><option value="BRU6"><option value="RIU6"><option value="RIZ6"><option value="SBER"><option value="GAZP"><option value="LKOH"></datalist></div>
                     <div class="metric-card" style="min-width:100px"><div class="metric-label">Таймфрейм</div>
                         <select id="testTf" class="input" style="width:80px">
                             <option value="1">1 мин</option><option value="5" selected>5 мин</option>
@@ -243,7 +243,7 @@
         <!-- VP Scalp Grid — Python Robot -->
         <div class="strategy-item" style="padding:16px; gap:12px; align-items:center; flex-wrap:wrap; margin-top:12px; border-top:1px solid var(--border-color)">
             <strong style="min-width:100px">🐍 VP Scalp Grid</strong> <span class="badge" style="background:#2196F3">PYTHON</span>
-            <div class="metric-card" style="min-width:140px"><div class="metric-label">Инструмент</div><select id="cfgVpTicker" class="input" style="width:120px"><option value="SiM6">SiM6 (Si)</option><option value="SiU6">SiU6 (Si)</option><option value="MXM6">MXM6 (MOEX)</option><option value="MXU6">MXU6 (MOEX)</option><option value="GDM6">GDM6 (Золото)</option><option value="BRK6">BRK6 (Нефть)</option><option value="RIM6">RIM6 (RTS)</option><option value="RIU6">RIU6 (RTS)</option></select></div>
+            <div class="metric-card" style="min-width:140px"><div class="metric-label">Инструмент</div><select id="cfgVpTicker" class="input" style="width:120px"><option value="SiU6">SiU6 (Si, сен)</option><option value="SiZ6">SiZ6 (Si, дек)</option><option value="MXU6">MXU6 (MOEX, сен)</option><option value="MXZ6">MXZ6 (MOEX, дек)</option><option value="GDU6">GDU6 (Золото)</option><option value="BRU6">BRU6 (Нефть)</option><option value="RIU6">RIU6 (RTS)</option><option value="RIZ6">RIZ6 (RTS)</option></select></div>
             <div class="metric-card" style="min-width:120px"><div class="metric-label">Max Levels</div><input id="cfgVpMaxLevels" class="input" type="number" step="1" value="100" style="width:70px"></div>
             <div class="metric-card" style="min-width:120px"><div class="metric-label">Step Base (пт)</div><input id="cfgVpStepBase" class="input" type="number" step="1" value="31" style="width:70px"></div>
             <div class="metric-card" style="min-width:120px"><div class="metric-label">Spread Base (пт)</div><input id="cfgVpSpreadBase" class="input" type="number" step="1" value="31" style="width:70px"></div>
@@ -261,7 +261,7 @@
         <!-- Order Flow — Python Robot -->
         <div class="strategy-item" style="padding:16px; gap:12px; align-items:center; flex-wrap:wrap; margin-top:12px; border-top:1px solid var(--border-color)">
             <strong style="min-width:100px">📊 Order Flow</strong> <span class="badge" style="background:#9C27B0">PYTHON</span>
-            <div class="metric-card" style="min-width:140px"><div class="metric-label">Инструмент</div><select id="cfgOfTicker" class="input" style="width:120px"><option value="SiM6">SiM6 (Si)</option><option value="SiU6" selected>SiU6 (Si)</option><option value="MXM6">MXM6 (MOEX)</option><option value="MXU6">MXU6 (MOEX)</option><option value="GDM6">GDM6 (Золото)</option><option value="BRK6">BRK6 (Нефть)</option><option value="RIM6">RIM6 (RTS)</option><option value="RIU6">RIU6 (RTS)</option></select></div>
+            <div class="metric-card" style="min-width:140px"><div class="metric-label">Инструмент</div><select id="cfgOfTicker" class="input" style="width:120px"><option value="SiU6" selected>SiU6 (Si, сен)</option><option value="SiZ6">SiZ6 (Si, дек)</option><option value="MXU6">MXU6 (MOEX, сен)</option><option value="MXZ6">MXZ6 (MOEX, дек)</option><option value="GDU6">GDU6 (Золото)</option><option value="BRU6">BRU6 (Нефть)</option><option value="RIU6">RIU6 (RTS)</option><option value="RIZ6">RIZ6 (RTS)</option></select></div>
             <div class="metric-card" style="min-width:120px"><div class="metric-label">Счёт</div><select id="cfgOfAccount" class="input" style="width:100px"><option value="1225950">1225950</option><option value="1225951">1225951</option><option value="1225952">1225952</option><option value="1225953" selected>1225953</option></select></div>
             <div class="metric-card" style="min-width:100px"><div class="metric-label">Lots</div><input id="cfgOfLots" class="input" type="number" step="1" value="1" style="width:60px"></div>
             <div class="metric-card" style="min-width:100px"><div class="metric-label">Max Pyramid</div><input id="cfgOfMaxPyr" class="input" type="number" step="1" value="5" style="width:60px"></div>
@@ -472,6 +472,11 @@
         </div>
     </div>
 
-    <script src="/js/app.js?v=78"></script>
+    <!-- Module scripts (loaded before app.js) -->
+<script src="/js/modules/helpers.js?v=1"></script>
+<script src="/js/modules/log.js?v=1"></script>
+<script src="/js/modules/indicators.js?v=1"></script>
+<script src="/js/modules/chart.js?v=1"></script>
+<script src="/js/app.js?v=80"></script>
 </body>
 </html>

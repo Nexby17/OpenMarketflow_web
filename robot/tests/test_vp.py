@@ -1,5 +1,5 @@
 """Test VP: load real bars via gRPC, calculate VP, verify sanity."""
-from FinamPy import FinamPy
+from finam_compat import FinamPyCompat as FinamPy
 from google.protobuf.timestamp_pb2 import Timestamp
 from google.type.interval_pb2 import Interval
 from datetime import datetime, timezone, timedelta
@@ -8,6 +8,7 @@ import os
 from vp import VolumeProfile
 
 fp = FinamPy(os.environ["FINAM_TOKEN"])
+fp.connect()
 symbol = "SiM6@RTSX"
 finam_tf, tf_range, _ = fp.timeframe_to_finam_timeframe("M1")
 
@@ -17,7 +18,7 @@ start = now - timedelta(hours=1)
 
 bars_resp = fp.call_function(
     fp.marketdata_stub.Bars,
-    __import__("FinamPy.grpc.marketdata_service_pb2", fromlist=["BarsRequest"]).BarsRequest(
+    __import__("finam_trade_api.proto.grpc.tradeapi.v1.marketdata.marketdata_service_pb2", fromlist=["BarsRequest"]).BarsRequest(
         symbol=symbol,
         timeframe=finam_tf,
         interval=Interval(

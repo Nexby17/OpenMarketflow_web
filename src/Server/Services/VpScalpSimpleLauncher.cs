@@ -1,6 +1,7 @@
 using HedgeFund.Core.Models;
 using HedgeFund.Core.Strategies;
 using HedgeFund.Brokers.Finam;
+using HedgeFund.Core.Risk;
 
 namespace HedgeFund.Server.Services;
 
@@ -10,6 +11,9 @@ namespace HedgeFund.Server.Services;
 /// </summary>
 public class VpScalpSimpleLauncher : IDisposable
 {
+    private RiskGate? _riskGate;
+    public void SetRiskGate(RiskGate gate) => _riskGate = gate;
+
     private readonly FinamConnector _broker;
     private readonly string _accountId;
     private readonly string _ticker;

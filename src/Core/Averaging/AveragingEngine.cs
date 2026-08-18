@@ -1,4 +1,4 @@
-using HedgeFund.Core.Models;
+﻿using HedgeFund.Core.Models;
 
 namespace HedgeFund.Core.Averaging;
 
@@ -93,6 +93,17 @@ public class AveragingEngine
         // 3. Если PnL < 0 и есть новый сигнал — усредняем
         if (pnl < 0 && hasNewSignal)
         {
+            // Kill-switch: проверка максимальной позиции в рублях
+            double positionValue = Math.Abs(currentPrice * position.TotalVolume);
+            if (_settings.MaxPositionRub > 0 && positionValue >= _settings.MaxPositionRub)
+            {
+                return new AveragingResult
+                {
+                    Decision = AveragingDecision.Hold,
+                    Reason = $"Kill-switch: позиция {positionValue:F0}₽ >= лимит {_settings.MaxPositionRub:F0}₽. Усреднение заблокировано."
+                };
+            }
+
             if (_settings.CanAverage(position.AveragingCount))
             {
                 int nextLot = _settings.GetNextLotSize(position.AveragingCount);

@@ -1,4 +1,5 @@
-using Microsoft.AspNetCore.SignalR;
+﻿using Microsoft.AspNetCore.SignalR;
+using Microsoft.AspNetCore.Authorization;
 using HedgeFund.Core.Models;
 using HedgeFund.Server.Services;
 using System.Collections.Generic;
@@ -10,6 +11,7 @@ namespace HedgeFund.Server.Hubs;
 /// Клиент (WPF) → Сервер: команды.
 /// Сервер → Клиент: события.
 /// </summary>
+[Authorize]
 public class TradingHub : Hub
 {
     private readonly TradingService _tradingService;

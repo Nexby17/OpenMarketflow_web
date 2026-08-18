@@ -5,12 +5,12 @@ from dataclasses import dataclass
 from datetime import datetime, timezone, timedelta
 from typing import Optional, Callable
 
-from FinamPy import FinamPy
-from FinamPy.grpc.orders_service_pb2 import (
+from finam_compat import FinamPyCompat as FinamPy
+from finam_trade_api.proto.grpc.tradeapi.v1.orders.orders_service_pb2 import (
     Order, CancelOrderRequest, OrdersRequest,
     ORDER_TYPE_MARKET, ORDER_TYPE_LIMIT,
 )
-from FinamPy.grpc.side_pb2 import SIDE_BUY, SIDE_SELL
+from finam_trade_api.proto.grpc.tradeapi.v1.side_pb2 import SIDE_BUY, SIDE_SELL
 from google.type.decimal_pb2 import Decimal
 
 import config

@@ -23,7 +23,7 @@ import time
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
 
-from FinamPy import FinamPy
+from finam_compat import FinamPyCompat as FinamPy
 
 log = logging.getLogger("collector")
 
@@ -230,6 +230,7 @@ def connect_finam() -> bool:
         return False
 
     fp = FinamPy(token)
+    fp.connect()
     _last_trade_ts = time.time()
     _last_ob_ts = time.time()
     log.info(f"FinamPy connected. Accounts: {fp.account_ids}")

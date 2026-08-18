@@ -4,6 +4,7 @@ using GrpcAuth = Grpc.Tradeapi.V1.Auth;
 using GrpcMd = Grpc.Tradeapi.V1.Marketdata;
 using GrpcOrd = Grpc.Tradeapi.V1.Orders;
 using GrpcAcc = Grpc.Tradeapi.V1.Accounts;
+using System.Threading;
 
 namespace HedgeFund.Brokers.Finam;
 
@@ -19,6 +20,7 @@ public class FinamGrpcClient : IDisposable
     private readonly string _endpoint;
     private GrpcChannel? _channel;
     private string _jwt = string.Empty;
+    private readonly ReaderWriterLockSlim _jwtLock = new();
     private string _accountId = string.Empty;
     private CancellationTokenSource? _jwtRenewalCts;
 
@@ -63,7 +65,9 @@ public class FinamGrpcClient : IDisposable
 
             // Получаем JWT
             var authReply = await _authClient.AuthAsync(new GrpcAuth.AuthRequest { Secret = _accessToken });
-            _jwt = authReply.Token;
+            _jwtLock.EnterWriteLock();
+            try { _jwt = authReply.Token; }
+            finally { _jwtLock.ExitWriteLock(); }
             Log("✅ gRPC JWT получен");
 
             // Определяем account_id
@@ -106,7 +110,9 @@ public class FinamGrpcClient : IDisposable
 
                 await foreach (var response in stream.ResponseStream.ReadAllAsync(ct))
                 {
-                    _jwt = response.Token;
+                    _jwtLock.EnterWriteLock();
+                    try { _jwt = response.Token; }
+                    finally { _jwtLock.ExitWriteLock(); }
                     Log("🔄 JWT обновлён");
                 }
             }
@@ -403,7 +409,9 @@ public class FinamGrpcClient : IDisposable
                 try
                 {
                     var authReply = await _authClient!.AuthAsync(new GrpcAuth.AuthRequest { Secret = _accessToken });
-                    _jwt = authReply.Token;
+                    _jwtLock.EnterWriteLock();
+            try { _jwt = authReply.Token; }
+            finally { _jwtLock.ExitWriteLock(); }
                     Log("🔄 JWT обновлён");
                     retryDelay = 1000;
                     continue;
@@ -429,7 +437,9 @@ public class FinamGrpcClient : IDisposable
 
     private Metadata CreateAuthHeaders()
     {
-        return new Metadata { { "Authorization", $"Bearer {_jwt}" } };
+        _jwtLock.EnterReadLock();
+        try { return new Metadata { { "Authorization", $"Bearer {_jwt}" } }; }
+        finally { _jwtLock.ExitReadLock(); }
     }
 
     private static Core.Models.Candle BarToCandle(GrpcMd.Bar bar) => new()
@@ -459,5 +469,6 @@ public class FinamGrpcClient : IDisposable
     {
         _jwtRenewalCts?.Cancel();
         _channel?.Dispose();
+        _jwtLock?.Dispose();
     }
 }

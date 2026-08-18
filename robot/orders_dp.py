@@ -38,23 +38,32 @@ class OrderManager:
 
     def place_market(self, side: int, quantity: int, tag: str = "") -> Optional[PlacedOrder]:
         side_str = "buy" if side == BUY else "sell"
-        try:
-            r = requests.post(
-                f"{self._dp_url}/order/place",
-                params={"account": self._account, "symbol": self._symbol,
-                        "side": side_str, "quantity": quantity, "order_type": "market", "tag": tag},
-                timeout=self._timeout,
-            )
-            data = r.json()
-            if "error" in data:
-                log.error(f"Market order error: {data['error']}")
+        import time as _t
+        for attempt in range(2):
+            try:
+                r = requests.post(
+                    f"{self._dp_url}/order/place",
+                    params={"account": self._account, "symbol": self._symbol,
+                            "side": side_str, "quantity": quantity, "order_type": "market", "tag": tag},
+                    timeout=self._timeout,
+                )
+                data = r.json()
+                if "error" in data:
+                    log.error(f"Market order error (attempt {attempt+1}/2): {data['error']}")
+                    if attempt < 1:
+                        _t.sleep(2)
+                        continue
+                    return None
+                po = PlacedOrder(order_id=data.get("order_id", ""), client_order_id=data.get("client_order_id", ""))
+                log.info(f"Market order placed: {tag} side={side_str} qty={quantity} id={po.order_id}")
+                return po
+            except Exception as e:
+                log.error(f"Market order exception (attempt {attempt+1}/2): {e}")
+                if attempt < 1:
+                    _t.sleep(2)
+                    continue
                 return None
-            po = PlacedOrder(order_id=data.get("order_id", ""), client_order_id=data.get("client_order_id", ""))
-            log.info(f"Market order placed: {tag} side={side_str} qty={quantity} id={po.order_id}")
-            return po
-        except Exception as e:
-            log.error(f"Market order exception: {e}")
-            return None
+        return None
 
     def place_limit(self, side: int, quantity: int, price: float, tag: str = "") -> Optional[PlacedOrder]:
         side_str = "buy" if side == BUY else "sell"
