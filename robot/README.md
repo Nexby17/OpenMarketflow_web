@@ -1,197 +1,55 @@
-# VP Scalp Grid Robot
+# robot/ — Торговые роботы OpenMarketflow
 
-Автономный торговый робот для фьючерса SI ($/руб) на Московской бирже через Finam Trade API. Стратегия Volume Profile Scalp Grid — вход при выходе цены за Value Area, усреднение через сетку лимитных ордеров, выход по POC или PnL/lot.
+Python-роботы: Order Flow скальперы, VP-сетка, арбитраж. Данные — через единый WS-хаб (`finam_hub.py` в корне проекта, подключается после завершения миграции у каждого робота), ордера/аккаунты — Finam REST API v1.
 
-## Архитектура
+**Прогресс ведётся в [PROGRESS.md](PROGRESS.md) — обновлять при каждом изменении роботов.**
+Эксперименты — только в [paper_lab/papercuts.md](paper_lab/papercuts.md).
+
+## Состав
+
+| Робот | Файл | Порт | Инструмент | Стратегия | Статус |
+|---|---|---|---|---|---|
+| OF Si | `main_of.py` | 5080 | SiU6@RTSX | Order Flow: CVD/VWEMA/absorption/DM-wall/VAH-VAL | Код готов; ждёт Этап 5 |
+| OF MX | `main_of_mx.py` | 5081 | MXU6@RTSX | + VWEMA Avg Exit (B2), VA-breakout stop, /reset-stats | Код готов; ждёт Этап 5 |
+| VP Scalp Grid | `main.py` | 5070 | SiU6@RTSX | Volume Profile сетка (вход вне VA, TP к POC) | Код готов |
+| Арбитраж SBER | `arb_sber_sru6/` | 5090 | SBER/SRU6 | Z-score базиса, LIMIT+MARKET ноги | Код готов (общий `arb_common/`) |
+| Арбитраж LKOH | `arb_lkoh_lku6/` | 5093 | LKOH/LKU6 | Z-score базиса | Код готов |
+| Арбитраж BR | `arb_br_calendar/` | 5092 | BRQ6/BRU6 | Календарный спред | Код готов |
+| **Paper Lab** | `paper_lab/` | 5181 | MXU6 | Лаборатория нового стека (WS+REST4) | 🟡 Soak PC-005 |
+
+## API роботов (единый для OF)
 
 ```
-gRPC Push Events (FinamPy)
-         │
-    ┌────▼────┐
-    │ feed.py │ ← quotes, bars, orders, trades
-    └────┬────┘
-         │
-    ┌────▼────┐
-    │  vp.py  │ → POC, VAH, VAL (Volume Profile)
-    └────┬────┘
-         │
-    ┌────▼────────┐
-    │ strategy.py │ → Entry/Grid/TP/Close сигналы
-    └────┬────────┘
-         │
-    ┌────▼────┐     ┌──────────┐
-    │ main.py │────▶│ orders.py│ → gRPC PlaceOrder/Cancel
-    └────┬────┘     └──────────┘
-         │
-    ┌────▼────┐     ┌─────────┐
-    │ risk.py │     │state.py │ → JSON persistence
-    └─────────┘     └─────────┘
+GET  /status          — состояние, позиция, PnL, параметры, журнал сделок
+POST /start|/stop|/pause|/resume
+POST /params          — горячая смена параметров (JSON)
+POST /reset-stats     — сброс статистики (только OF)
 ```
 
-**Один процесс, gRPC push events, событийная архитектура.** Никакого REST polling.
+## Архитектура OF-робота
 
-## Стратегия: VP Scalp Grid
-
-### Вход
-- M1 бары → Volume Profile (33 бара, bin=50 пт, VA=70%)
-- Цена < VAL → LONG
-- Цена > VAH → SHORT
-
-### Управление позицией
-- Entry: 1 лот market
-- Grid: limit ордера через step пт против позиции (усреднение)
-- TP: limit ордера +spread пт от grid fill
-- Max grid уровней: 100
-
-### Выход
-- **1 лот:** POC hit → close all безусловно
-- **2+ лота:** PnL/lot ≥ MinProfitPerLot → close all
-- **Timeout:** MaxHoldMinutes → close all
-
-### Параметры по умолчанию
-| Параметр | Значение | Описание |
-|----------|----------|----------|
-| max_levels | 100 | Макс grid уровней |
-| step_base | 31 | Шаг grid (пт) |
-| spread_base | 31 | TP spread (пт) |
-| max_hold_minutes | 999 | Таймаут позиции |
-| min_profit_per_lot | 29 | Мин PnL/lot для exit |
-| vp_lookback | 33 | Баров для VP |
-| vp_bin_size | 50 | Размер бина (пт) |
-| va_percent | 0.70 | Value Area % |
-
-## Модули
-
-### `config.py` — Конфигурация
-- Symbol, account, timeframe, warmup bars
-- Env vars: `FINAM_TOKEN`, `FINAM_ACCOUNT_ID`
-
-### `feed.py` — gRPC подписки
-- Quotes (bid/ask/last) в реальном времени
-- Bars (M1) — закрытые бары
-- Orders — статусы ордеров
-- Trades — fills
-- **Watchdog:** auto-reconnect через 60 сек без данных (после клиринга)
-
-### `vp.py` — Volume Profile калькулятор
-- Rolling window баров
-- Бины по цене, кумулятивный объём
-- POC = max volume bin, VA = top bins covering 70% volume
-
-### `strategy.py` — Торговая логика
-- Чистые сигналы (Signal dataclass), без API вызовов
-- `check_entry(price)` → ENTRY LONG/SHORT
-- `on_entry_fill()` → GRID-1 + POC-TP
-- `on_grid_fill()` → next GRID + TP
-- `check_exit()` → CLOSE_ALL
-
-### `orders.py` — Ордера через gRPC
-- Market и limit ордера
-- Cancel, cancel_all
-- Fill tracking
-- client_order_id ≤ 20 символов (Finam limit)
-
-### `state.py` — State persistence
-- JSON, atomic write (os.replace)
-- Recovery после краша
-- Tracked orders: add/update/remove/filter
-
-### `risk.py` — Risk manager
-- Max loss: -7000₽
-- Max lots: 101
-- Night mode: 23:50-07:00 MSK
-- Clearing: 13:59-14:06 MSK
-
-### `main.py` — Оркестратор
-- Подключение, warmup VP, подписки, broker sync
-- Paper mode (`--paper` flag)
-- Entry pending lock (30 сек)
-- Stale streams → auto-reconnect
-
-### `api.py` — FastAPI web API
-- `GET /status` — текущий статус
-- `POST /start`, `/stop`, `/pause`, `/resume`
-- `GET /health`
-
-## Быстрый старт
-
-### Требования
-- Python 3.12+
-- Finam Trade API токен
-- `pip install finampy fastapi uvicorn`
-
-### Paper trading (без реальных ордеров)
-```bash
-export FINAM_TOKEN="your-token"
-export FINAM_ACCOUNT_ID="your-account-id"
-python3 main.py --paper
+```
+finam_hub (WS: quotes/orderbook/trades/bars)  ──▶ hub_adapter ──▶ _on_quote/_on_ob/_on_trades/_on_bar
+                                                                      │
+                                              strategy_of.py (OrderFlowStrategy)
+                                              ├─ VWEMA-фильтр (avg-exit B2)
+                                              ├─ Volume Profile (VAH/VAL/POC, range|fade|breakout)
+                                              ├─ CVD/accel/agg-ratio сигналы
+                                              └─ risk: daily-stop, max-levels
+                                                                      │
+                                              orders (orders_dp | orders_rest4 в lab)
 ```
 
-### Реальная торговля
-```bash
-python3 main.py
-```
+## Конфигурация
 
-### systemd сервис
-```bash
-# Установить
-sudo cp trading-robot.service /etc/systemd/system/
-sudo systemctl daemon-reload
-sudo systemctl enable trading-robot
+- Параметры стратегии: `config_of*.py` (дефолты) + `of_config*.json` (hot-update через /params)
+- Состояние: `of_state_*.json` — переживает рестарт (позиция/статистика)
+- Ключ: `src/.env` → `FINAM_API_KEY`, `FINAM_ACCOUNT_ID`
 
-# Запустить
-sudo systemctl start trading-robot
+## Правила для роботов (из AGENTS.md корня)
 
-# Логи
-journalctl -u trading-robot -f
-```
-
-## Тесты
-
-```bash
-python3 test_vp.py         # Volume Profile на живых данных
-python3 test_state.py      # State persistence
-python3 test_strategy.py   # Торговые сигналы
-python3 test_risk.py       # Risk manager
-python3 test_orders.py     # gRPC ордера
-python3 test_integration.py # 15 сек живого рынка
-```
-
-## Paper Trading результаты (22.05.2026)
-
-7 сделок за 1.5 часа, все плюсовые:
-
-| # | Dir | Entry | Exit | PnL | Hold |
-|---|-----|-------|------|-----|------|
-| 1 | LONG | 71749 | 71776 | +26₽ | ~1 мин |
-| 2 | SHORT | 71851 | 71775 | +75₽ | ~12 мин |
-| 3 | LONG | 71749 | 71800 | +50₽ | 6 сек |
-| 4 | LONG | 71745 | 71775 | +29₽ | ~1 мин |
-| 5 | SHORT | 71802 | 71775 | +26₽ | ~1 мин |
-| 6 | LONG | ~71750 | 71775 | +28₽ | ~1 мин |
-| 7 | SHORT | 71851 | 71775 | +75₽ | ~12 мин |
-
-**Итого: ~309₽, Win Rate: 100%**
-
-## Известные баги (исправленные)
-
-1. **client_order_id > 20 chars** — Finam reject. Fix: 13-digit timestamp
-2. **Entry spam on error** — skip_ticks=30/60
-3. **Quote last=0** — fallback to mid=(bid+ask)/2
-4. **Entry только по bar** — добавлена проверка по quote
-5. **gRPC streams die after clearing** — watchdog auto-reconnect
-6. **import time забыт** — добавлен в feed.py
-
-## Безопасность
-
-- **Paper mode по умолчанию** в systemd
-- Stop-loss: -7000₽
-- Max lots: 101
-- Night mode: нет торговли 23:50-07:00 MSK
-- Clearing: нет торговли 13:59-14:06 MSK
-- Atomic state: corrupt recovery → defaults
-- Entry pending lock: 30 сек
-
-## Лицензия
-
-Private project.
+1. **Одна фича → сделана → протестирована → ОК → следующая.**
+2. Торговую логику/параметры не менять без явного запроса Дмитрия.
+3. `MAX_AVERAGE_LEVELS=10` в `config_of_mx.py` — риск-фикс, не поднимать.
+4. Эксперименты — только в `paper_lab/` (PC-XXX в papercuts.md), перенос — через PORT.
+5. Embedded python: изоляция `pip --target` (см. paper_lab/py4 + patch_sdk.py).
