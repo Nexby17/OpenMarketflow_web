@@ -9,6 +9,28 @@ v2 — fixed: bar callback signature, dynamic bar_start_ts, stale price check,
       entry lock reset on manual stop, config consolidation.
 """
 import sys, os
+
+# PORT-A2: bootstrap paths + .env (py4 SDK 4.3.3, robot/, project root with finam_hub.py)
+import sys as _sys, os as _os
+_HERE = _os.path.dirname(_os.path.abspath(__file__))
+_PROJ = _os.path.dirname(_HERE)
+_PY4 = _os.path.join(_HERE, "py4")
+for _p in (_PY4, _HERE, _PROJ):
+    if _os.path.isdir(_p) and _p not in _sys.path:
+        _sys.path.insert(0, _p)
+
+def _load_env():
+    for _base in (_HERE, _PROJ, _os.path.join(_PROJ, "src")):
+        _p = _os.path.join(_base, ".env")
+        if _os.path.exists(_p):
+            with open(_p) as _f:
+                for _line in _f:
+                    _line = _line.strip()
+                    if _line and not _line.startswith("#") and "=" in _line:
+                        _k, _, _v = _line.partition("=")
+                        _os.environ.setdefault(_k.strip(), _v.strip())
+_load_env()
+
 import argparse
 import json
 import logging
@@ -19,7 +41,16 @@ from pathlib import Path
 from datetime import datetime, timezone, timedelta
 from http.server import HTTPServer, BaseHTTPRequestHandler
 
-from finam_compat import FinamPyCompat as FinamPy
+# PORT-A2: legacy gRPC compat import — py4 (REST SDK 4.3.3) now shadows the global
+# finam_trade_api package, so this import only works when py4 is absent.
+# Kept for C2 removal; all data flows through FinamHubAdapter now.
+try:
+    from finam_compat import FinamPyCompat as FinamPy
+except ImportError:
+    FinamPy = None  # removed in step C2
+
+from hub_adapter import FinamHubAdapter  # PORT-A2: data via WS-hub
+import finam_rest4 as _rest4mod  # PORT-B2: REST 4.3.3
 
 import config_of as config
 from strategy_of import OrderFlowStrategy, OFParams, LONG, SHORT, FLAT
@@ -121,8 +152,9 @@ log.info(f"Trading account: {ACTIVE_ACCOUNT_KEY} ({ACCOUNTS[ACTIVE_ACCOUNT_KEY]}
 # Fill subscription thread tracking (for watchdog)
 _fill_sub_thread: threading.Thread | None = None
 
-# --- FinamPy connection ---
-fp: FinamPy | None = None
+# --- Data connection (PORT-A2: WS-hub adapter) ---
+_hub_adapter = None
+fp = None  # legacy gRPC handle, unused after PORT-A2 (removed in C2)
 _running = True
 _mode = "stopped"  # stopped, running, paused
 _last_fp_reconnect: float = 0.0  # guard against reconnect loop
@@ -162,107 +194,31 @@ def load_state_from_disk():
 # ========== FinamPy subscriptions ==========
 
 def connect_finam():
-    """Connect FinamPy for Trades + OrderBook + Bars + Quotes."""
-    global fp
+    """PORT-A2: subscribe via WS-hub (replaces 5 gRPC subscription threads)."""
+    global _hub_adapter
     token = os.environ.get("FINAM_API_KEY")
     if not token:
         log.error("FINAM_API_KEY not set!")
         return False
 
-    fp = FinamPy(token)
-    fp.connect()
-    log.info(f"FinamPy connected. Accounts: {fp.account_ids}")
-
-    # Subscribe to latest trades (обезличенные сделки)
+    # PORT-B2 preview: REST4 probe (non-fatal)
     try:
-        fp.on_latest_trades.subscribe(_on_latest_trades)
-        t_trades = threading.Thread(
-            target=fp.subscribe_latest_trades_thread,
-            args=(SYMBOL,),
-            daemon=True,
-            name="sub-trades",
-        )
-        t_trades.start()
-        log.info(f"Subscribed to LatestTrades: {SYMBOL}")
-    except AttributeError:
-        log.warning("subscribe_latest_trades_thread not available in FinamPy — check API")
-
-    # Subscribe to order book
-    try:
-        fp.on_order_book.subscribe(_on_order_book)
-        t_ob = threading.Thread(
-            target=fp.subscribe_order_book_thread,
-            args=(SYMBOL,),
-            daemon=True,
-            name="sub-orderbook",
-        )
-        t_ob.start()
-        log.info(f"Subscribed to OrderBook: {SYMBOL}")
-    except AttributeError:
-        log.warning("subscribe_order_book_thread not available in FinamPy — check API")
-
-    # Subscribe to bars
-    try:
-        from finam_trade_api.proto.grpc.tradeapi.v1.marketdata import marketdata_service_pb2 as md
-        tf_map = {
-            "M1": md.TimeFrame.TIME_FRAME_M1,
-            "M5": md.TimeFrame.TIME_FRAME_M5,
-            "M15": md.TimeFrame.TIME_FRAME_M15,
-            "M30": md.TimeFrame.TIME_FRAME_M30,
-        }
-        finam_tf = tf_map.get(params.timeframe, md.TimeFrame.TIME_FRAME_M5)
-        fp.on_new_bar.subscribe(_on_new_bar)
-        t_bars = threading.Thread(
-            target=fp.subscribe_bars_thread,
-            args=(SYMBOL, finam_tf),
-            daemon=True,
-            name="sub-bars",
-        )
-        t_bars.start()
-        log.info(f"Subscribed to Bars: {SYMBOL} {params.timeframe}")
-    except AttributeError:
-        log.warning("subscribe_bars_thread not available in FinamPy — check API")
+        _acc = _rest4mod.get_account_info(ACCOUNTS[ACTIVE_ACCOUNT_KEY])
+        log.info(f"REST4 OK: account {_acc.get('account_id')}, equity={_acc.get('equity')}")
     except Exception as e:
-        log.error(f"Bars subscription error: {e}")
+        log.warning(f"REST4 account probe failed (non-fatal): {str(e)[:100]}")
 
-    # Subscribe to quotes for current price
-    try:
-        fp.on_quote.subscribe(_on_quote)
-        t_quote = threading.Thread(
-            target=fp.subscribe_quote_thread,
-            args=((SYMBOL,),),
-            daemon=True,
-            name="sub-quote",
-        )
-        t_quote.start()
-        log.info(f"Subscribed to Quotes: {SYMBOL}")
-    except AttributeError:
-        log.warning("subscribe_quote_thread not available in FinamPy — check API")
-
-    # Subscribe to own trades (order executions) for real fill prices
-    try:
-        fp.on_trade.subscribe(_on_my_trade)
-        for acc_id in fp.account_ids:
-            fp.subscribe_orders_trades(orders=False, trades=True, account_id=acc_id)
-        global _fill_sub_thread
-        t_ot = threading.Thread(
-            target=fp.subscribe_orders_trades_thread,
-            daemon=True,
-            name="sub-orders-trades",
-        )
-        _fill_sub_thread = t_ot
-        t_ot.start()
-        log.info("Subscribed to own trades (OrderTrade stream)")
-    except Exception as e:
-        log.warning(f"subscribe_orders_trades failed: {e}")
-
+    # Data: WS-hub adapter
+    _hub_adapter = FinamHubAdapter(SYMBOL)
+    _hub_adapter.start(
+        on_trades=_on_latest_trades,
+        on_order_book=_on_order_book,
+        on_quote=_on_quote,
+        on_bar=_on_new_bar,
+        timeframe=params.timeframe,
+    )
+    log.info(f"HubAdapter: subscriptions started ({SYMBOL}, TF={params.timeframe})")
     return True
-
-
-# ========== Fill tracking (real broker prices) ==========
-_last_fill_price: float = 0.0
-_last_fill_time: float = 0.0
-_last_fill_qty: int = 0
 
 
 def _on_my_trade(trade):
@@ -426,26 +382,25 @@ def _to_float(val) -> float:
 
 
 def _reconnect_finampy():
-    """Shutdown old FinamPy and reconnect all subscriptions."""
-    global fp, _last_fp_reconnect
+    """Watchdog: reconnect hub subscriptions (PORT-A2 lab pattern)."""
+    global _last_fp_reconnect
     now = time.time()
     if now - _last_fp_reconnect < 30:
         return  # don't reconnect more than once per 30s
     _last_fp_reconnect = now
-    log.warning("[WATCHDOG] Price stale — reconnecting FinamPy...")
+    log.warning("[WATCHDOG] Price stale - reconnecting hub...")
     try:
-        if fp is not None:
+        if _hub_adapter is not None:
             try:
-                fp.close()
+                _hub_adapter.stop()
             except Exception:
                 pass
         time.sleep(1)
-        fp = None
         ok = connect_finam()
         if ok:
-            log.info("[WATCHDOG] FinamPy reconnected OK")
+            log.info("[WATCHDOG] Hub resubscribed OK")
         else:
-            log.error("[WATCHDOG] FinamPy reconnect failed")
+            log.error("[WATCHDOG] Hub reconnect failed")
     except Exception as e:
         log.error(f"[WATCHDOG] Reconnect error: {e}")
 
@@ -561,21 +516,9 @@ def main_loop():
                     _reconnect_finampy()
 
             # === WATCHDOG: re-subscribe fill stream if thread died ===
-            if _fill_sub_thread and not _fill_sub_thread.is_alive():
-                log.warning("[WATCHDOG] Fill subscription thread dead — re-subscribing")
-                try:
-                    fp.on_trade.subscribe(_on_my_trade)
-                    for acc_id in fp.account_ids:
-                        fp.subscribe_orders_trades(orders=False, trades=True, account_id=acc_id)
-                    _fill_sub_thread = threading.Thread(
-                        target=fp.subscribe_orders_trades_thread,
-                        daemon=True,
-                        name="sub-orders-trades",
-                    )
-                    _fill_sub_thread.start()
-                    log.info("[WATCHDOG] Fill subscription re-subscribed OK")
-                except Exception as e:
-                    log.error(f"[WATCHDOG] Fill re-subscribe error: {e}")
+            # PORT-A2: fill-channel = WS ORDERS (real-mode, post-F decision);
+            # paper-mode fills are simulated by OrderManagerRest4 (PORT-B2)
+            pass
 
             # Tick rate: 50ms (20x per second)
             time.sleep(0.05)
@@ -1049,6 +992,12 @@ def _warmup_vwema():
     if not strategy.vwema:
         return
 
+    # PORT-A2: gRPC path retired; REST-based warmup arrives in PORT-B2.
+    # Until then skip gracefully (filter warms up from live bars).
+    if fp is None:
+        log.info("VWEMA warmup skipped: gRPC removed in A2, REST warmup arrives in B2")
+        return
+
     try:
         from google.protobuf.timestamp_pb2 import Timestamp
         from google.type.interval_pb2 import Interval
@@ -1110,9 +1059,9 @@ def on_shutdown(signum, frame):
     global _mode
     _mode = "stopped"
     save_state()
-    if fp:
+    if _hub_adapter:
         try:
-            fp.close_channel()
+            _hub_adapter.stop()
         except Exception:
             pass
     sys.exit(0)
