@@ -567,6 +567,17 @@ def _execute_action(action: dict):
 
     if PAPER_MODE:
         log.info(f"📄 PAPER {act}: {side_str} {qty} @ {action.get('price', 0):.0f}")
+        # PORT-FIX (paper-исполнение): применяем действие к стратегии, иначе позиция из
+        # state никогда не закрывается → вечный CLOSE_ALL-цикл (баг найден в soak 20.08)
+        action["fill_price"] = action.get("price", 0) or strategy._current_price
+        if act == "close_all":
+            action["avgPrice"] = strategy._avg_price
+            _record_broker_trade(action, action["fill_price"])
+            strategy._reset_position()
+        elif act == "partial_tp":
+            _record_broker_trade(action, action["fill_price"])
+        else:  # entry / average / pyramid
+            strategy.update_fill_price(action["fill_price"], act)
         return
 
     if act == "close_all":
