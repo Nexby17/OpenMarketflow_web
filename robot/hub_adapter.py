@@ -121,7 +121,7 @@ class FinamHubAdapter:
     def __init__(self, symbol: str):
         import sys, os
         here = os.path.dirname(os.path.abspath(__file__))
-        proj = os.path.dirname(os.path.dirname(here))  # robot/paper_lab → проект
+        proj = os.path.dirname(here)  # robot/ → проект
         if proj not in sys.path:
             sys.path.insert(0, proj)
         from finam_hub import get_hub
