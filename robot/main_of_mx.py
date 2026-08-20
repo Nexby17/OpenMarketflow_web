@@ -1,6 +1,6 @@
 """Order Flow Robot — main entry point.
 
-Subscribes to Trades + OrderBook + Bars via FinamPy gRPC,
+Subscribes to Trades + OrderBook + Bars via Finam WS-hub (PORT-A1),
 runs OrderFlowStrategy, sends orders via DataProvider REST.
 
 Usage: python3 main_of_mx.py [--paper] [--port 5081]
@@ -43,14 +43,6 @@ from pathlib import Path
 from datetime import datetime, timezone, timedelta
 from http.server import HTTPServer, BaseHTTPRequestHandler
 
-# PORT-A1: legacy gRPC compat import — py4 (REST SDK 4.3.3) now shadows the global
-# finam_trade_api package, so this import only works when py4 is absent.
-# Kept for C1 removal; all data flows through FinamHubAdapter now.
-try:
-    from finam_compat import FinamPyCompat as FinamPy
-except ImportError:
-    FinamPy = None  # removed in step C1
-
 from hub_adapter import FinamHubAdapter  # PORT-A1: data via WS-hub
 import finam_rest4 as _rest4mod  # PORT-B1: REST 4.3.3 (probe only for now)
 
@@ -87,7 +79,6 @@ logging.basicConfig(
 SYMBOL = getattr(config, "SYMBOL", "SiU6@RTSX")
 TICKER = getattr(config, "TICKER", "SiU6")
 ACCOUNT = getattr(config, "ACCOUNT_ID", os.environ.get("FINAM_ACCOUNT", "1225953"))
-DP_URL = getattr(config, "DP_URL", "http://localhost:5060")
 
 # === Multi-account support ===
 ACCOUNTS = {
@@ -160,7 +151,6 @@ _fill_sub_thread: threading.Thread | None = None
 
 # --- Data connection (PORT-A1: WS-hub adapter) ---
 _hub_adapter = None
-fp = None  # legacy gRPC handle, unused after PORT-A1 (removed in C1)
 _running = True
 _mode = "stopped"  # stopped, running, paused
 _last_fp_reconnect: float = 0.0  # guard against reconnect loop
@@ -197,7 +187,7 @@ def load_state_from_disk():
             log.error(f"Load state error: {e}")
 
 
-# ========== FinamPy subscriptions ==========
+# ========== Hub subscriptions (PORT-A1) ==========
 
 def connect_finam():
     """PORT-A1: subscribe via WS-hub (replaces 5 gRPC subscription threads)."""
@@ -228,7 +218,7 @@ def connect_finam():
 
 
 def _on_my_trade(trade):
-    """Callback from FinamPy when our order is executed. Captures REAL fill price."""
+    """Fill callback for real-mode WS ORDERS (post-F decision); unused in paper. Captures REAL fill price."""
     global _last_fill_price, _last_fill_time, _last_fill_qty
     try:
         if str(trade.symbol) != SYMBOL:
@@ -322,7 +312,7 @@ def _on_order_book(event):
 
 def _on_new_bar(event, finam_timeframe=None):
     """Callback from SubscribeBars — bar closed.
-    Note: FinamPy passes (event, finam_timeframe) — accept both.
+    Note: hub adapter passes (event, finam_timeframe) — accept both.
     """
     try:
         # Calculate bar duration from timeframe
@@ -489,7 +479,7 @@ def main_loop():
                     log.debug(f"Price sync: {e}")
                 last_price_sync = time.time()
 
-            # === WATCHDOG: reconnect FinamPy if price stale > 60s ===
+            # === WATCHDOG: reconnect hub if price stale > 60s ===
             if strategy._is_price_stale(max_age_sec=60):
                 _reconnect_finampy()
 
@@ -1031,12 +1021,12 @@ if __name__ == "__main__":
     # Load state
     load_state_from_disk()
 
-    # Connect FinamPy
+    # Connect data hub
     if not connect_finam():
-        log.error("Failed to connect FinamPy — exiting")
+        log.error("Failed to connect hub - exiting")
         sys.exit(1)
 
-    # VWEMA warmup: load historical bars so filter is ready immediately
+    # VWEMA warmup    # VWEMA warmup: load historical bars so filter is ready immediately
     _warmup_vwema()
 
     # Warmup period (let subscriptions accumulate data)
