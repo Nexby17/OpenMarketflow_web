@@ -56,7 +56,7 @@ import finam_rest4 as _rest4mod  # PORT-B1: REST 4.3.3 (probe only for now)
 
 import config_of_mx as config
 from strategy_of import OrderFlowStrategy, OFParams, LONG, SHORT, FLAT
-from orders_dp import OrderManager, BUY, SELL
+from orders_rest4 import OrderManagerRest4, get_broker_position, BUY, SELL  # PORT-B1
 
 log = logging.getLogger("robot_of_mx")
 
@@ -148,7 +148,11 @@ def _load_active_account():
 
 _load_active_account()
 
-orders = OrderManager(dp_url=DP_URL, account=ACCOUNTS[ACTIVE_ACCOUNT_KEY], symbol=SYMBOL)
+orders = OrderManagerRest4(
+    account=ACCOUNTS[ACTIVE_ACCOUNT_KEY], symbol=SYMBOL,
+    paper=PAPER_MODE, rest4=_rest4mod,
+    quote_provider=lambda: getattr(strategy, '_current_price', 0) or 0,
+)
 log.info(f"Trading account: {ACTIVE_ACCOUNT_KEY} ({ACCOUNTS[ACTIVE_ACCOUNT_KEY]})")
 
 # Fill subscription thread tracking (for watchdog)
@@ -432,12 +436,12 @@ def main_loop():
                 price = _current_price
 
             if price <= 0:
-                # Try fallback: get from DP
+                # Try fallback: REST 4.3.3 last quote (PORT-B1)
                 try:
-                    import requests
-                    r = requests.get(f"{DP_URL}/quote", params={"symbol": SYMBOL}, timeout=2)
-                    data = r.json()
-                    price = float(data.get("last", 0))
+                    q = _rest4mod.get_last_quote(SYMBOL)
+                    _q = q.get("quote", {}) if isinstance(q, dict) else {}
+                    _l = _q.get("last", {})
+                    price = float(_l.get("value", 0)) if isinstance(_l, dict) else float(_l or 0)
                     if price > 0:
                         _set_current_price(price)
                         strategy.update_price(price)
@@ -474,18 +478,13 @@ def main_loop():
             if time.time() - last_price_sync > 30.0:
                 try:
                     sync_account = ACCOUNTS.get(ACTIVE_ACCOUNT_KEY, ACCOUNT)
-                    import requests
-                    r = requests.get(f"{DP_URL}/position",
-                                     params={"account": sync_account, "ticker": SYMBOL},
-                                     timeout=5)
-                    if r.status_code == 200:
-                        bd = r.json()
-                        strategy.sync_from_broker(bd)
-                        # Passive desync monitor
-                        bl = bd.get('lots', 0)
-                        rl = strategy._total_lots
-                        if rl != bl:
-                            log.warning(f"DESYNC: robot={rl} broker={bl} avg_robot={strategy._avg_price:.0f} avg_broker={bd.get('avg_price',0):.0f} — manual fix needed")
+                    bd = get_broker_position(_rest4mod, sync_account, SYMBOL)
+                    strategy.sync_from_broker(bd)
+                    # Passive desync monitor
+                    bl = bd.get('lots', 0)
+                    rl = strategy._total_lots
+                    if rl != bl:
+                        log.warning(f"DESYNC: robot={rl} broker={bl} avg_robot={strategy._avg_price:.0f} avg_broker={bd.get('avg_price',0):.0f} — manual fix needed")
                 except Exception as e:
                     log.debug(f"Price sync: {e}")
                 last_price_sync = time.time()
@@ -560,13 +559,10 @@ def _record_broker_trade(action: dict, fill_price: float):
 
 
 def _get_broker_position_fast() -> int:
-    """Quick broker lots check via DP, returns 0 on error."""
+    """Quick broker lots check via REST 4.3.3, returns 0 on error (PORT-B1)."""
     try:
-        import requests
         acc = ACCOUNTS.get(ACTIVE_ACCOUNT_KEY, ACCOUNT)
-        r = requests.get(f"{DP_URL}/position", params={"account": acc, "ticker": SYMBOL}, timeout=3)
-        if r.status_code == 200:
-            return r.json().get('lots', 0)
+        return get_broker_position(_rest4mod, acc, SYMBOL).get('lots', 0)
     except Exception:
         pass
     return 0
@@ -915,7 +911,11 @@ class APIHandler(BaseHTTPRequestHandler):
                 new_account = ACCOUNTS.get(account_key)
                 if new_account:
                     ACTIVE_ACCOUNT_KEY = account_key
-                    orders = OrderManager(dp_url=DP_URL, account=new_account, symbol=SYMBOL)
+                    orders = OrderManagerRest4(
+                        account=new_account, symbol=SYMBOL,
+                        paper=PAPER_MODE, rest4=_rest4mod,
+                        quote_provider=lambda: getattr(strategy, '_current_price', 0) or 0,
+                    )
                     log.info(f"Account switched to {account_key} ({new_account})")
                     save_state()
                     self._json(200, {"ok": True, "account": account_key, "id": new_account})
@@ -958,30 +958,16 @@ class APIHandler(BaseHTTPRequestHandler):
 # ========== VWEMA Warmup ==========
 
 def _warmup_vwema():
-    """Fetch historical bars and warm up VWEMA filter before live trading."""
+    """Fetch historical bars via REST 4.3.3 and warm up VWEMA filter (PORT-B1, lab pattern)."""
     if not strategy.vwema:
         return
 
-    # PORT-A1: gRPC path retired; REST-based warmup arrives in PORT-B1.
-    # Until then skip gracefully (filter warms up from live bars).
-    if fp is None:
-        log.info("VWEMA warmup skipped: gRPC removed in A1, REST warmup arrives in B1")
-        return
-
     try:
-        from google.protobuf.timestamp_pb2 import Timestamp
-        from google.type.interval_pb2 import Interval
-        from finam_trade_api.proto.grpc.tradeapi.v1.marketdata import marketdata_service_pb2 as md_pb2
+        # REST 4.3.3 bars
+        tf_map = {"M1": "TIME_FRAME_M1", "M5": "TIME_FRAME_M5",
+                  "M15": "TIME_FRAME_M15", "M30": "TIME_FRAME_M30"}
+        ws_tf = tf_map.get(params.timeframe, "TIME_FRAME_M1")
 
-        tf_map = {
-            "M1": md_pb2.TimeFrame.TIME_FRAME_M1,
-            "M5": md_pb2.TimeFrame.TIME_FRAME_M5,
-            "M15": md_pb2.TimeFrame.TIME_FRAME_M15,
-            "M30": md_pb2.TimeFrame.TIME_FRAME_M30,
-        }
-        finam_tf = tf_map.get(params.timeframe, md_pb2.TimeFrame.TIME_FRAME_M1)
-
-        # Need enough bars for slow period (default 40) + buffer
         bar_seconds = TF_SECONDS.get(params.timeframe, 60)
         bars_needed = params.vwema_slow + 20
         lookback_seconds = bars_needed * bar_seconds
@@ -989,26 +975,17 @@ def _warmup_vwema():
         now = datetime.now(timezone.utc)
         start = now - timedelta(seconds=lookback_seconds)
 
-        resp = fp.call_function(
-            fp.marketdata_stub.Bars,
-            md_pb2.BarsRequest(
-                symbol=SYMBOL,
-                timeframe=finam_tf,
-                interval=Interval(
-                    start_time=Timestamp(seconds=int(start.timestamp())),
-                    end_time=Timestamp(seconds=int(now.timestamp())),
-                ),
-            ),
-        )
+        resp = _rest4mod.get_bars(SYMBOL, ws_tf,
+                                  start.isoformat().replace("+00:00", "Z"),
+                                  now.isoformat().replace("+00:00", "Z"))
 
-        if resp and resp.bars:
-            bars = list(resp.bars)
+        bars = resp.get("bars", []) if isinstance(resp, dict) else []
+        if bars:
             fed = 0
             for bar in bars:
-                h = _to_float(bar.high)
-                l = _to_float(bar.low)
-                c = _to_float(bar.close)
-                v = _to_float(bar.volume)
+                def _dv(x):
+                    return float(x.get("value", 0)) if isinstance(x, dict) else float(x or 0)
+                h, l, c, v = _dv(bar.get("high")), _dv(bar.get("low")), _dv(bar.get("close")), _dv(bar.get("volume"))
                 if c > 0:
                     strategy.vwema.update(c, h, l, volume=v)
                     fed += 1
@@ -1067,18 +1044,15 @@ if __name__ == "__main__":
     time.sleep(10)
     log.info(f"Warmup done. OB has data: {strategy.ob_tracker.has_data}")
 
-    # === STARTUP RECONCILIATION: check broker position once ===
+    # === STARTUP RECONCILIATION: check broker position once (PORT-B1: REST) ===
     try:
-        import requests as _req
         _sync_acc = ACCOUNTS.get(ACTIVE_ACCOUNT_KEY, ACCOUNT)
-        _r = _req.get(f"{DP_URL}/position", params={"account": _sync_acc, "ticker": SYMBOL}, timeout=5)
-        if _r.status_code == 200:
-            _bpos = _r.json()
-            _bl = _bpos.get('lots', 0)
-            if _bl != 0:
-                log.warning(f"STARTUP: broker has {_bl} lots (avg={_bpos.get('avg_price', 0):.0f}) but robot is FLAT. NOT entering — investigate manually.")
-                _mode = "stopped"
-                save_state()
+        _bpos = get_broker_position(_rest4mod, _sync_acc, SYMBOL)
+        _bl = _bpos.get('lots', 0)
+        if _bl != 0:
+            log.warning(f"STARTUP: broker has {_bl} lots (avg={_bpos.get('avg_price', 0):.0f}) but robot is FLAT. NOT entering — investigate manually.")
+            _mode = "stopped"
+            save_state()
     except Exception as _e:
         log.warning(f"STARTUP: broker position check failed: {_e}")
 
