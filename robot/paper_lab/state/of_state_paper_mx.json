@@ -12,11 +12,11 @@
   "roundTrips": 50306,
   "realizedPnL": 0.0,
   "dailyPnL": 0.0,
-  "dailyPnLDate": "2026-08-18",
+  "dailyPnLDate": "2026-08-20",
   "entryTime": "",
   "signalType": "",
   "tradeHistory": [],
-  "mode": "running",
+  "mode": "stopped",
   "activeAccount": "main",
   "direction_filter": "both"
 }
