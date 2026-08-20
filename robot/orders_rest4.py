@@ -169,6 +169,49 @@ class OrderManagerRest4:
         with self._fills_lock:
             self._recent_fills.append(fill)
 
+    def wait_fill(self, order_id: str, timeout: float = 3.0, poll: float = 0.3) -> Optional[float]:
+        """PORT-B2: wait for order fill. Returns fill price or None.
+
+        Paper: look up simulated fill in _recent_fills (no REST).
+        Real: poll REST get_order until filled/executed or timeout.
+        Conservative heuristic (per SPEC B2): any non-active status with price>0 = fill;
+        explicit fills: ORDER_STATUS_FILLED / ORDER_STATUS_EXECUTED / ORDER_STATUS_SL_EXECUTED /
+        ORDER_STATUS_TP_EXECUTED; partial: ORDER_STATUS_PARTIALLY_FILLED (price known = usable).
+        """
+        if not order_id:
+            return None
+        if self._paper:
+            with self._fills_lock:
+                for f in reversed(self._recent_fills):
+                    if f.order_id == order_id:
+                        return f.price
+            return None
+        # real: REST polling
+        deadline = time.time() + timeout
+        while time.time() < deadline:
+            try:
+                o = self._rest4.get_order(self._account, order_id)
+                status = str(o.get("status", "")).upper()
+                avg = o.get("average_price") or o.get("avg_price") or {}
+                price = float(avg.get("value", 0)) if isinstance(avg, dict) else float(avg or 0)
+                if price <= 0:
+                    # fallback: limit price for limit orders (OrderState carries nested order)
+                    inner = o.get("order") or {}
+                    lp = inner.get("limit_price") or {}
+                    if isinstance(lp, dict) and lp.get("value"):
+                        price = float(lp["value"])
+                filled_explicit = ("FILLED" in status or "EXECUTED" in status) and "PARTIALLY" not in status
+                filled_heuristic = (price > 0 and status not in (
+                    "", "ORDER_STATUS_UNSPECIFIED", "ORDER_STATUS_NEW", "ORDER_STATUS_PENDING_NEW",
+                    "ORDER_STATUS_FORWARDING", "ORDER_STATUS_WAIT", "ORDER_STATUS_LINK_WAIT",
+                    "ORDER_STATUS_WATCHING", "ORDER_STATUS_SUSPENDED"))
+                if filled_explicit or filled_heuristic:
+                    return price or None
+            except Exception as e:
+                log.debug("wait_fill %s: %s", order_id, str(e)[:80])
+            time.sleep(poll)
+        return None
+
 
 # --- позиция для startup-reconciliation (замена DP /position) ---
 
