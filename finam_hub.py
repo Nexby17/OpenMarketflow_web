@@ -336,6 +336,9 @@ class FinamHub:
             log.info("WS EVENT: %s", ev)
 
     def _fan_out(self, sub_type: str, key: str, payload):
+        # Нормализация: сервер присылает BARS-ключ как "SYM:TF", локальный формат "SYM|TF"
+        if sub_type == SUB_BARS and key and "|" not in key and ":" in key:
+            key = key.replace(":", "|", 1)
         with self._lock:
             # точные подписчики по ключу
             cbs = set()
