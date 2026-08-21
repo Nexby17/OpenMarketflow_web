@@ -102,7 +102,7 @@ class OrderManagerRest4:
         try:
             resp = self._rest4.place_market(
                 self._account, self._symbol,
-                "buy" if side == BUY else "sell", quantity, comment=tag)
+                "SIDE_BUY" if side == BUY else "SIDE_SELL", quantity, comment=tag)
             oid = str(resp.get("order_id", resp.get("orderId", "")))
             log.info("REST MARKET %s %d %s -> %s", side, quantity, self._symbol, oid)
             return PlacedOrder(order_id=oid, side=side, quantity=quantity, tag=tag)
@@ -121,7 +121,7 @@ class OrderManagerRest4:
         try:
             resp = self._rest4.place_limit(
                 self._account, self._symbol,
-                "buy" if side == BUY else "sell", quantity, price, comment=tag)
+                "SIDE_BUY" if side == BUY else "SIDE_SELL", quantity, price, comment=tag)
             oid = str(resp.get("order_id", resp.get("orderId", "")))
             return PlacedOrder(order_id=oid, side=side, quantity=quantity, price=price, tag=tag)
         except Exception as e:
