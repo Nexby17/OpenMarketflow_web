@@ -1063,9 +1063,11 @@ if __name__ == "__main__":
 
     # Start HTTP server with SO_REUSEADDR to prevent "Address already in use" on restart
     import socket
+    import socketserver
     HTTPServer.address_family = socket.AF_INET
     HTTPServer.socket_type = socket.SOCK_STREAM
-    class ReusableHTTPServer(HTTPServer):
+
+    class ReusableHTTPServer(socketserver.ThreadingMixIn, HTTPServer):  # PORT-FIX: threaded API
         allow_reuse_address = True
     server = ReusableHTTPServer(("0.0.0.0", PORT), APIHandler)
     log.info(f"API listening on :{PORT}")

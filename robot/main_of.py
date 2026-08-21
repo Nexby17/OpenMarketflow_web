@@ -1053,7 +1053,9 @@ if __name__ == "__main__":
     import socket
     HTTPServer.address_family = socket.AF_INET
     HTTPServer.socket_type = socket.SOCK_STREAM
-    class ReusableHTTPServer(HTTPServer):
+    import socketserver
+
+    class ReusableHTTPServer(socketserver.ThreadingMixIn, HTTPServer):  # PORT-FIX: threaded API
         allow_reuse_address = True
     server = ReusableHTTPServer(("0.0.0.0", PORT), APIHandler)
     log.info(f"API listening on :{PORT}")

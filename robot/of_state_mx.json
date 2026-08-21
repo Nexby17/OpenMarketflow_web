@@ -1,20 +1,31 @@
 {
-  "dir": 0,
-  "entryPrice": 0.0,
-  "avgPrice": 0.0,
-  "totalLots": 0,
-  "averageLevels": 0,
+  "dir": 1,
+  "entryPrice": 213025.0,
+  "avgPrice": 212850.0,
+  "totalLots": 2,
+  "averageLevels": 1,
   "pyramidLevels": 0,
-  "lastAveragePrice": 0.0,
-  "lastPyramidPrice": 0.0,
-  "peakLots": 0,
-  "lotQueue": [],
-  "roundTrips": 705284,
-  "realizedPnL": 20255.079999999998,
-  "dailyPnL": -152.56,
+  "lastAveragePrice": 212675.0,
+  "lastPyramidPrice": 213000.0,
+  "peakLots": 2,
+  "lotQueue": [
+    {
+      "price": 213025.0,
+      "side": 1,
+      "lots": 1
+    },
+    {
+      "price": 212675.0,
+      "side": 1,
+      "lots": 1
+    }
+  ],
+  "roundTrips": 1008575,
+  "realizedPnL": 20407.64,
+  "dailyPnL": 0.0,
   "dailyPnLDate": "2026-08-21",
-  "entryTime": "",
-  "signalType": "",
+  "entryTime": "2026-08-18T11:04:34.638981+03:00",
+  "signalType": "cvd_trend",
   "tradeHistory": [
     {
       "entryPrice": 229406.25,
@@ -1059,17 +1070,6 @@
       "entryTime": "2026-08-17T23:49:59.112308+03:00",
       "exitTime": "2026-08-18T07:00:00.532818+03:00",
       "reason": "tp_full",
-      "signal": "cvd_trend"
-    },
-    {
-      "entryPrice": 212850.0,
-      "exitPrice": 212775.0,
-      "direction": "LONG",
-      "lots": 2,
-      "pnl": -152.56,
-      "entryTime": "2026-08-18T11:04:34.638981+03:00",
-      "exitTime": "2026-08-21T10:35:49.985804+03:00",
-      "reason": "vwema_avg_exit",
       "signal": "cvd_trend"
     }
   ],
