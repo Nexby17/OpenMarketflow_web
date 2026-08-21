@@ -17,6 +17,12 @@
 
 ## Лента изменений
 
+### 2026-08-21 — REAL-запуск MXU6 (:5081, счёт main 1225953)
+- Дмитрий одобрил real-режим. Предстарт: позиции на обоих счётах 0, state почищен.
+- **Баг real найден и исправлен сразу**: SDK 4.3.3 ждёт Side 'SIDE_BUY'/'SIDE_SELL', orders_rest4 слал 'buy'/'sell' → place_market падал (ордер НЕ ушёл — ошибка сохранила от случайного шорта при фантомном CLOSE_ALL). Фикс закоммичен.
+- Стартовая последовательность: REST4 OK (equity 914 935 ₽), WS-hub данные, VWEMA warmup 44 бара (dir=-1), FLAT, mode=running/paper=false.
+- Наблюдение: phantom-позиция в state (dir=1 lots=2 из paper) вызвала мгновенный CLOSE_ALL при старте — в real это привело бы к продаже 2 лотов без позиции; ошибка side-маппинга предотвратила. Урок: перед real всегда полный state-reset + проверка позиций брокера (добавлено в процедуру).
+
 ### 2026-08-20 — PORT на боевых роботов (Этап 5, ТЗ: paper_lab/SPEC_STAGE5_PORT.md)
 - Code-агент выполнил 8 шагов (e021d0a→540c9c0): PORT-0 общие модули в robot/ (hub_adapter/finam_rest4/orders_rest4/patch_sdk/py4), A1+A2 данные→WS-hub, B1+B2a+B2 ордера→REST 4.3.3 (+wait_fill), C1+C2 cleanup (0 зависимостей gRPC/DP у обоих OF-роботов).
 - **Баг-фикс (20.08, soak)**: paper-режим не применял действия к стратегии → вечный CLOSE_ALL-цикл при открытом state. Фикс: paper-ветка исполняет close_all/entry/average/pyramid/partial_tp на стратегии. Оба робота перезапущены detached, dir=0/FLAT, данные живые.
