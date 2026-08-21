@@ -938,6 +938,88 @@ class OrderFlowStrategy:
             self._reset_position()
         log.info(f"SYNC complete: broker={broker_lots} internal={self._total_lots} avg={self._avg_price:.0f} levels={self._average_levels}")
 
+    def _pos_snapshot(self) -> dict:
+        """Compact position snapshot for adjust reports."""
+        return {"dir": self._dir, "lots": self._total_lots, "avg": round(self._avg_price, 2)}
+
+    def manual_adjust(self, lots: int, price: float) -> dict:
+        """Manual position adjustment (state-only, NO orders sent).
+
+        Human opens/closes position in terminal, robot adopts it.
+        lots > 0 = LONG add, lots < 0 = SHORT add, at given price.
+        - Same side / FLAT: append LotEntry (VWAP recalc).
+        - Opposite side: LIFO-close from queue (returned for PnL record),
+          crossing zero -> open new opposite position with remainder.
+        All derived state (avg, levels, peak) recomputed from queue.
+        """
+        new_side = LONG if lots > 0 else SHORT
+        adj_qty = abs(lots)
+        before = self._pos_snapshot()
+        closed = []  # LotEntry copies closed by this adjust (for main to record PnL)
+
+        if self._dir == FLAT or self._dir == new_side:
+            # Add lots to position
+            self._lot_queue.append(LotEntry(
+                price=price, side=new_side, lots=adj_qty,
+                added_ts=time.monotonic(),  # 2s grace vs instant partial TP
+            ))
+            if self._dir == FLAT:
+                self._dir = new_side
+                self._entry_price = price
+                self._entry_time = datetime.now(MSK)
+            self._signal_type = "manual_adjust"
+        else:
+            # Opposite side: LIFO-close, possibly cross zero
+            remaining = adj_qty
+            while remaining > 0 and self._lot_queue:
+                last = self._lot_queue[-1]
+                if last.lots <= remaining:
+                    self._lot_queue.pop()
+                    closed.append(LotEntry(price=last.price, side=last.side, lots=last.lots))
+                    remaining -= last.lots
+                else:
+                    # Split entry: close part of it
+                    closed.append(LotEntry(price=last.price, side=last.side, lots=remaining))
+                    self._lot_queue[-1] = LotEntry(price=last.price, side=last.side,
+                                                   lots=last.lots - remaining,
+                                                   added_ts=last.added_ts)
+                    remaining = 0
+
+            if remaining > 0:
+                # Crossed zero: open opposite position with remainder
+                self._dir = new_side
+                self._entry_price = price
+                self._entry_time = datetime.now(MSK)
+                self._signal_type = "manual_adjust"
+                self._lot_queue.clear()
+                self._lot_queue.append(LotEntry(
+                    price=price, side=new_side, lots=remaining,
+                    added_ts=time.monotonic(),
+                ))
+
+        # --- Recompute derived state from queue (same invariants as sync_lot_count) ---
+        self._total_lots = sum(e.lots for e in self._lot_queue)
+        if self._total_lots > 0:
+            total_cost = sum(e.price * e.lots for e in self._lot_queue)
+            self._avg_price = total_cost / self._total_lots
+            if self._dir == SHORT:
+                self._last_average_price = max(e.price for e in self._lot_queue)
+            else:
+                self._last_average_price = min(e.price for e in self._lot_queue)
+            self._average_levels = max(0, self._total_lots - 1)
+            self._pyramid_levels = min(self._pyramid_levels, self._total_lots - 1) if self._total_lots > 1 else 0
+            self._peak_lots = max(self._peak_lots, self._total_lots)
+        else:
+            # Fully closed by hand
+            self._round_trips += 1
+            self._reset_position()
+
+        after = self._pos_snapshot()
+        log.info(f"ADJUST: {before} -> {after} "
+                 f"(add {lots:+d} @ {price:.0f}, closed {sum(c.lots for c in closed)} lots)")
+        return {"closed": [{"price": c.price, "side": c.side, "lots": c.lots} for c in closed],
+                "before": before, "after": after}
+
     def _check_pyramiding(self, price: float) -> Optional[dict]:
         """Check if we should pyramid (add in profit direction)."""
         if self._pyramid_levels >= self.p.max_pyramid_levels:

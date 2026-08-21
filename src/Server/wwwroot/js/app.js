@@ -5592,6 +5592,14 @@ function ofRobotEditPanel() {
                 <div class="metric-card"><div class="metric-label">Avg Levels</div><div id="ofAvgLvl" style="font-size:18px;font-weight:bold">0</div></div>
                 <div class="metric-card"><div class="metric-label">Pyr Levels</div><div id="ofPyrLvl" style="font-size:18px;font-weight:bold">0</div></div>
                 <div class="metric-card"><div class="metric-label">RT</div><div id="ofRt" style="font-size:18px;font-weight:bold">0</div></div>
+                <div class="metric-card"><div class="metric-label">Брокер лоты</div><div id="ofBrokerLots" style="font-size:18px;font-weight:bold">—</div></div>
+            </div>
+            <!-- Ручная корректировка позиции (state-only) -->
+            <div class="metrics-row" style="flex-wrap:wrap;margin-bottom:12px;align-items:center;border:1px dashed #FF7043;border-radius:8px;padding:8px">
+                <div style="font-size:13px;color:#FF7043;font-weight:bold">✏️ Ручная корректировка (без ордеров — принять позицию в управление):</div>
+                <input id="ofAdjLots" class="input" type="number" placeholder="+3 / -3" style="width:90px" title="+N = добавить лонг, -N = шорт/закрытие">
+                <input id="ofAdjPrice" class="input" type="number" placeholder="Цена" style="width:120px">
+                <button class="btn btn-primary btn-sm" onclick="ofPositionAdjust()">Корректировать</button>
             </div>
             <hr style="border-color:#2D2D44;margin:12px 0">
             <!-- Параметры -->
@@ -5780,6 +5788,12 @@ function ofUpdatePanel() {
     if (el('ofAvgLvl')) el('ofAvgLvl').textContent = s.averageLevels || 0;
     if (el('ofPyrLvl')) el('ofPyrLvl').textContent = s.pyramidLevels || 0;
     if (el('ofRt')) el('ofRt').textContent = s.roundTrips || 0;
+    if (el('ofBrokerLots')) {
+        const bl = s.brokerLots;
+        const be = el('ofBrokerLots');
+        be.textContent = (bl === null || bl === undefined) ? '—' : (bl + (s.brokerMismatch ? ' ⚠️' : ''));
+        be.style.color = s.brokerMismatch ? 'var(--red)' : '';
+    }
 
     // VAH/VAL state
     if (s.vp) {
@@ -6134,6 +6148,14 @@ function ofMxRobotEditPanel() {
                 <div class="metric-card"><div class="metric-label">Avg Levels</div><div id="ofMxAvgLvl" style="font-size:18px;font-weight:bold">0</div></div>
                 <div class="metric-card"><div class="metric-label">Pyr Levels</div><div id="ofMxPyrLvl" style="font-size:18px;font-weight:bold">0</div></div>
                 <div class="metric-card"><div class="metric-label">RT</div><div id="ofMxRt" style="font-size:18px;font-weight:bold">0</div></div>
+                <div class="metric-card"><div class="metric-label">Брокер лоты</div><div id="ofMxBrokerLots" style="font-size:18px;font-weight:bold">—</div></div>
+            </div>
+            <!-- Ручная корректировка позиции (state-only) -->
+            <div class="metrics-row" style="flex-wrap:wrap;margin-bottom:12px;align-items:center;border:1px dashed #FF7043;border-radius:8px;padding:8px">
+                <div style="font-size:13px;color:#FF7043;font-weight:bold">✏️ Ручная корректировка (без ордеров — принять позицию в управление):</div>
+                <input id="ofMxAdjLots" class="input" type="number" placeholder="+3 / -3" style="width:90px" title="+N = добавить лонг, -N = шорт/закрытие">
+                <input id="ofMxAdjPrice" class="input" type="number" placeholder="Цена 215100" style="width:120px">
+                <button class="btn btn-primary btn-sm" onclick="ofMxPositionAdjust()">Корректировать</button>
             </div>
             <hr style="border-color:#2D2D44;margin:12px 0">
             <!-- Параметры -->
@@ -6273,6 +6295,12 @@ function ofMxUpdateLive() {
     setText('ofMxAvgLvl', s.averageLevels || 0);
     setText('ofMxPyrLvl', s.pyramidLevels || 0);
     setText('ofMxRt', s.roundTrips || 0);
+    if (el('ofMxBrokerLots')) {
+        const bl = s.brokerLots;
+        const be = el('ofMxBrokerLots');
+        be.textContent = (bl === null || bl === undefined) ? '—' : (bl + (s.brokerMismatch ? ' ⚠️' : ''));
+        be.style.color = s.brokerMismatch ? 'var(--red)' : '';
+    }
     // VAH/POC/VAL (Volume Profile)
     if (s.vp) {
         setText('ofMxVah', s.vp.vah ? s.vp.vah.toFixed(0) : '—');
@@ -6461,4 +6489,66 @@ function ofMxRenderJournalSummary(total, wins, losses, totalPnl) {
         '<div class="metric-card"><div class="metric-label">Avg Loss</div><div style="font-size:16px;font-weight:bold" class="red">' + (avgLoss !== '—' ? avgLoss + '₽' : '—') + '</div></div>' +
         '<div class="metric-card"><div class="metric-label">Итог PnL</div><div style="font-size:16px;font-weight:bold" class="' + cls + '">' + (totalPnl >= 0 ? '+' : '') + totalPnl.toFixed(0) + '₽</div></div>' +
         '<div class="metric-card" style="border:1px solid var(--border-color)"><div class="metric-label">&nbsp;</div><button class="btn btn-danger btn-sm" onclick="ofMxResetStats()" style="font-size:12px">🗑 Сбросить</button></div>';
+}
+
+
+// === Ручная корректировка позиции (state-only) ===
+async function ofMxPositionAdjust() {
+    const lots = parseInt(el('ofMxAdjLots')?.value);
+    const price = parseFloat(el('ofMxAdjPrice')?.value);
+    if (!lots || !price) { alert('Заполни: лоты (±N) и цену'); return; }
+    const s = ofMxRobot || {};
+    const wasDir = s.direction === 'LONG' ? 'LONG' : s.direction === 'SHORT' ? 'SHORT' : 'FLAT';
+    const msg = 'Ручная корректировка MXU6\n\n' +
+        'Было: ' + wasDir + ' ' + (s.totalLots || 0) + ' лот. @ ' + (s.avgPrice > 0 ? s.avgPrice.toFixed(0) : '—') +
+        (s.brokerMismatch ? '\n⚠️ ВНИМАНИЕ: сейчас рассинхрон с брокером (робот: ' + (s.totalLots||0) + ', брокер: ' + s.brokerLots + ')' : '') +
+        '\nКоманда: ' + (lots > 0 ? '+' : '') + lots + ' @ ' + price +
+        '\n\nРобот НЕ выставляет ордера — только принимает позицию в управление.\nСразу начнёт управлять: partial TP, стоп-лосс, усреднение.\n\nПодтверждаешь?';
+    if (!confirm(msg)) return;
+    try {
+        const r = await fetch(OF_MX_ROBOT_API + '/position/adjust', {
+            method: 'POST', headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({lots, price}), signal: AbortSignal.timeout(8000)
+        });
+        const j = await r.json();
+        if (!r.ok) { alert('Ошибка: ' + (j.error || r.status)); return; }
+        const d = v => v > 0 ? 'LONG' : v < 0 ? 'SHORT' : 'FLAT';
+        addLog(nowTime(), j.brokerMismatch ? 'WARN' : 'INFO',
+            '✏️ MX коррекция: ' + d(j.before.dir) + ' ' + j.before.lots + ' → ' + d(j.after.dir) + ' ' + j.after.lots +
+            (j.recordedPnL ? ' | PnL ' + j.recordedPnL.toFixed(1) + '₽' : '') +
+            (j.brokerMismatch ? ' | ⚠️ ДЕСИНК: брокер ' + j.brokerLots : ''));
+        if (j.brokerMismatch) alert('⚠️ Рассинхрон с брокером: робот ' + j.after.lots + ', брокер ' + j.brokerLots + '. Проверь терминал!');
+        el('ofMxAdjLots').value = ''; el('ofMxAdjPrice').value = '';
+        ofMxRobotPoll();
+    } catch(e) { alert('Сеть: ' + e.message); }
+}
+
+async function ofPositionAdjust() {
+    const lots = parseInt(el('ofAdjLots')?.value);
+    const price = parseFloat(el('ofAdjPrice')?.value);
+    if (!lots || !price) { alert('Заполни: лоты (±N) и цену'); return; }
+    const s = ofRobot || {};
+    const wasDir = s.direction === 'LONG' ? 'LONG' : s.direction === 'SHORT' ? 'SHORT' : 'FLAT';
+    const msg = 'Ручная корректировка SiU6\n\n' +
+        'Было: ' + wasDir + ' ' + (s.totalLots || 0) + ' лот. @ ' + (s.avgPrice > 0 ? s.avgPrice.toFixed(0) : '—') +
+        (s.brokerMismatch ? '\n⚠️ ВНИМАНИЕ: сейчас рассинхрон с брокером (робот: ' + (s.totalLots||0) + ', брокер: ' + s.brokerLots + ')' : '') +
+        '\nКоманда: ' + (lots > 0 ? '+' : '') + lots + ' @ ' + price +
+        '\n\nРобот НЕ выставляет ордера — только принимает позицию в управление.\nСразу начнёт управлять: partial TP, стоп-лосс, усреднение.\n\nПодтверждаешь?';
+    if (!confirm(msg)) return;
+    try {
+        const r = await fetch(OF_ROBOT_API + '/position/adjust', {
+            method: 'POST', headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({lots, price}), signal: AbortSignal.timeout(8000)
+        });
+        const j = await r.json();
+        if (!r.ok) { alert('Ошибка: ' + (j.error || r.status)); return; }
+        const d = v => v > 0 ? 'LONG' : v < 0 ? 'SHORT' : 'FLAT';
+        addLog(nowTime(), j.brokerMismatch ? 'WARN' : 'INFO',
+            '✏️ OF коррекция: ' + d(j.before.dir) + ' ' + j.before.lots + ' → ' + d(j.after.dir) + ' ' + j.after.lots +
+            (j.recordedPnL ? ' | PnL ' + j.recordedPnL.toFixed(1) + '₽' : '') +
+            (j.brokerMismatch ? ' | ⚠️ ДЕСИНК: брокер ' + j.brokerLots : ''));
+        if (j.brokerMismatch) alert('⚠️ Рассинхрон с брокером: робот ' + j.after.lots + ', брокер ' + j.brokerLots + '. Проверь терминал!');
+        el('ofAdjLots').value = ''; el('ofAdjPrice').value = '';
+        ofRobotPoll();
+    } catch(e) { alert('Сеть: ' + e.message); }
 }

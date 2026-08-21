@@ -125,6 +125,7 @@ _fill_sub_thread: threading.Thread | None = None
 fp: FinamPy | None = None
 _running = True
 _mode = "stopped"  # stopped, running, paused
+_last_broker_lots = None  # last known broker lots (from periodic /position sync)
 _last_fp_reconnect: float = 0.0  # guard against reconnect loop
 
 # --- Current price (thread-safe via lock) ---
@@ -458,7 +459,7 @@ def _set_current_price(price: float):
 
 def main_loop():
     """Main strategy loop — poll price + process ticks."""
-    global _mode, _fill_sub_thread
+    global _mode, _fill_sub_thread, _last_broker_lots
 
     log.info("Main loop started")
     last_save = time.time()
@@ -540,6 +541,7 @@ def main_loop():
                         strategy.sync_from_broker(bd)
                         # Passive desync monitor
                         bl = bd.get('lots', 0)
+                        _last_broker_lots = bl
                         rl = strategy._total_lots
                         if rl != bl:
                             log.warning(f"DESYNC: robot={rl} broker={bl} avg_robot={strategy._avg_price:.0f} avg_broker={bd.get('avg_price',0):.0f} — manual fix needed")
@@ -626,6 +628,38 @@ def _record_broker_trade(action: dict, fill_price: float):
         strategy._daily_pnl = pnl
         strategy._daily_pnl_date = today
     log.info(f"TRADE {direction} {lots}L entry={entry_price:.0f} exit={fill_price:.0f} pnl={pnl:+.1f}₽ comm={comm_per_lot * lots:.1f}₽")
+
+
+def _record_manual_trade(closed: dict, exit_price: float):
+    """Record manually-adjusted (closed) lot using the same accounting as broker trades."""
+    entry_price = closed.get('price', 0)
+    entry_side = closed.get('side', strategy._dir)
+    lots = closed.get('lots', 0)
+    if lots <= 0:
+        return 0.0
+    comm_per_lot = strategy.p.commission * 2  # round-trip
+    pnl = (exit_price - entry_price) * entry_side * lots - comm_per_lot * lots
+    pnl = round(pnl, 2)
+    strategy._trade_history.append({
+        'entryPrice': round(entry_price, 2),
+        'exitPrice': round(exit_price, 2),
+        'direction': 'LONG' if entry_side == 1 else 'SHORT',
+        'lots': lots,
+        'pnl': pnl,
+        'entryTime': strategy._entry_time.isoformat() if strategy._entry_time else None,
+        'exitTime': datetime.now(MSK).isoformat(),
+        'reason': 'manual_adjust',
+        'signal': 'manual',
+    })
+    strategy._realized_pnl += pnl
+    today = datetime.now(MSK).strftime('%Y-%m-%d')
+    if strategy._daily_pnl_date == today:
+        strategy._daily_pnl += pnl
+    else:
+        strategy._daily_pnl = pnl
+        strategy._daily_pnl_date = today
+    log.info(f"TRADE manual_adjust {lots}L entry={entry_price:.0f} exit={exit_price:.0f} pnl={pnl:+.1f}₽")
+    return pnl
 
 
 def _get_broker_position_fast() -> int:
@@ -794,6 +828,8 @@ class APIHandler(BaseHTTPRequestHandler):
             status["activeAccount"] = ACTIVE_ACCOUNT_KEY
             status["activeAccountId"] = ACCOUNTS.get(ACTIVE_ACCOUNT_KEY, ACCOUNT)
             status["directionFilter"] = params.direction_filter
+            status["brokerLots"] = _last_broker_lots
+            status["brokerMismatch"] = (_last_broker_lots is not None and _last_broker_lots != strategy._total_lots)
             
             # Filter tradeHistory by date period
             start_date = params_url.get('startDate', [None])[0]
@@ -997,6 +1033,57 @@ class APIHandler(BaseHTTPRequestHandler):
             load_state_from_disk()
             log.info("State reloaded from disk")
             self._json(200, {"ok": True, "mode": _mode, "dir": strategy.dir(), "lots": strategy.total_lots()})
+
+        elif path == "/position/adjust":
+            # Manual position adjustment (state-only, NO orders sent)
+            length = int(self.headers.get("Content-Length", 0))
+            if length <= 0:
+                self._json(400, {"error": "body required: {lots: \u00b1N, price: P}"})
+                return
+            try:
+                data = json.loads(self.rfile.read(length))
+                lots = int(data.get("lots", 0))
+                price = float(data.get("price", 0))
+            except (ValueError, TypeError):
+                self._json(400, {"error": "invalid body"})
+                return
+            if lots == 0 or price <= 0:
+                self._json(400, {"error": "lots must be non-zero, price > 0"})
+                return
+            with _price_lock:
+                cur = _current_price
+            if cur > 0 and abs(price - cur) / cur > 0.05:
+                self._json(400, {"error": f"price too far from current ({cur:.0f}), max \u00b15%"})
+                return
+            if strategy._is_entry_locked():
+                self._json(409, {"error": "entry locked (recent action), retry in a few seconds"})
+                return
+            result = strategy.manual_adjust(lots, price)
+            pnl = sum(_record_manual_trade(c, price) for c in result["closed"])
+            save_state()
+            # Verify vs broker (soft) — None = DP unavailable, no verdict
+            broker_now = None
+            try:
+                import requests as _rq
+                _r = _rq.get(f"{DP_URL}/position",
+                             params={"account": ACCOUNTS.get(ACTIVE_ACCOUNT_KEY, ACCOUNT), "ticker": SYMBOL},
+                             timeout=3)
+                if _r.status_code == 200:
+                    broker_now = int(_r.json().get('lots', 0))
+            except Exception:
+                pass
+            mismatch = (broker_now is not None and broker_now != strategy._total_lots) or None
+            if mismatch:
+                log.warning(f"ADJUST DESYNC: robot={strategy._total_lots} broker={broker_now} \u2014 check terminal")
+            self._json(200, {
+                "ok": True,
+                "before": result["before"],
+                "after": result["after"],
+                "closedLots": sum(c["lots"] for c in result["closed"]),
+                "recordedPnL": round(pnl, 2),
+                "brokerLots": broker_now,
+                "brokerMismatch": mismatch,
+            })
 
         elif path == "/params":
             # Update parameters
