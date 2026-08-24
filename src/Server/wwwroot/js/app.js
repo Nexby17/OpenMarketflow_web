@@ -5226,6 +5226,74 @@ function pythonRobotCreate() {
     addLog(nowTime(), 'INFO', '🤖 Робот создан: ' + ticker + ' step=' + params.step_base + ' spread=' + params.spread_base + ' port=' + port);
 }
 
+// === MANUAL POSITION ADJUST (Si) ===
+async function ofAdjustPosition() {
+    const lotsEl = document.getElementById('ofAdjLots');
+    const priceEl = document.getElementById('ofAdjPrice');
+    const resEl = document.getElementById('ofAdjResult');
+    const lots = parseInt(lotsEl.value);
+    const price = parseFloat(priceEl.value);
+    if (isNaN(lots)) { resEl.textContent = '⚠ укажите лоты (3 / -3 / 0)'; resEl.style.color = '#ff9800'; return; }
+    if (lots !== 0 && (isNaN(price) || price <= 0)) { resEl.textContent = '⚠ при лотах≠0 нужна цена > 0'; resEl.style.color = '#ff9800'; return; }
+    const posText = lots === 0 ? 'FLAT' : (lots > 0 ? 'LONG ' + lots : 'SHORT ' + Math.abs(lots));
+    if (!confirm(`Установить позицию робота SiU6: ${posText}${lots !== 0 ? ' @ ' + price : ''}?\nОрдеров НЕ отправляется — это синхронизация с брокером.`)) return;
+    try {
+        const resp = await fetch(OF_ROBOT_API + '/position/adjust', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({lots: lots, price: lots === 0 ? 0 : price})
+        });
+        const data = await resp.json();
+        if (data.ok) {
+            resEl.textContent = '✓ ' + (lots === 0 ? 'FLAT' : (data.dir === 1 ? 'LONG' : 'SHORT') + ' ' + data.lots + ' @ ' + data.avgPrice);
+            resEl.style.color = '#4caf50';
+            addLog(nowTime(), 'INFO', 'Si коррекция: ' + resEl.textContent + ' (ордеров нет)');
+            setTimeout(async () => { await ofRobotPoll(); renderRobots(); }, 500);
+        } else {
+            resEl.textContent = '✗ ' + (data.error || 'ошибка');
+            resEl.style.color = '#ef4444';
+            addLog(nowTime(), 'ERROR', 'Si коррекция отклонена: ' + data.error);
+        }
+    } catch (e) {
+        resEl.textContent = '✗ робот недоступен';
+        resEl.style.color = '#ef4444';
+    }
+}
+
+// === MANUAL POSITION ADJUST (MX) ===
+async function ofMxAdjustPosition() {
+    const lotsEl = document.getElementById('ofMxAdjLots');
+    const priceEl = document.getElementById('ofMxAdjPrice');
+    const resEl = document.getElementById('ofMxAdjResult');
+    const lots = parseInt(lotsEl.value);
+    const price = parseFloat(priceEl.value);
+    if (isNaN(lots)) { resEl.textContent = '⚠ укажите лоты (3 / -3 / 0)'; resEl.style.color = '#ff9800'; return; }
+    if (lots !== 0 && (isNaN(price) || price <= 0)) { resEl.textContent = '⚠ при лотах≠0 нужна цена > 0'; resEl.style.color = '#ff9800'; return; }
+    const posText = lots === 0 ? 'FLAT' : (lots > 0 ? 'LONG ' + lots : 'SHORT ' + Math.abs(lots));
+    if (!confirm(`Установить позицию робота: ${posText}${lots !== 0 ? ' @ ' + price : ''}?\nОрдеров НЕ отправляется — это синхронизация с брокером.`)) return;
+    try {
+        const resp = await fetch(OF_MX_ROBOT_API + '/position/adjust', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({lots: lots, price: lots === 0 ? 0 : price})
+        });
+        const data = await resp.json();
+        if (data.ok) {
+            resEl.textContent = '✓ ' + (lots === 0 ? 'FLAT' : (data.dir === 1 ? 'LONG' : 'SHORT') + ' ' + data.lots + ' @ ' + data.avgPrice);
+            resEl.style.color = '#4caf50';
+            addLog(nowTime(), 'INFO', 'MX коррекция: ' + resEl.textContent + ' (ордеров нет)');
+            setTimeout(async () => { await ofMxRobotPoll(); renderRobots(); }, 500);
+        } else {
+            resEl.textContent = '✗ ' + (data.error || 'ошибка');
+            resEl.style.color = '#ef4444';
+            addLog(nowTime(), 'ERROR', 'MX коррекция отклонена: ' + data.error);
+        }
+    } catch (e) {
+        resEl.textContent = '✗ робот недоступен';
+        resEl.style.color = '#ef4444';
+    }
+}
+
 // === ORDER FLOW ROBOT (порт 5080) ===
 const OF_ROBOT_API = 'http://' + window.location.hostname + ':5080';
 let ofRobot = null;
@@ -5270,6 +5338,16 @@ function ofRobotEditPanel() {
                 <div class="metric-card"><div class="metric-label">Pyr Levels</div><div id="ofPyrLvl" style="font-size:18px;font-weight:bold">0</div></div>
                 <div class="metric-card"><div class="metric-label">RT</div><div id="ofRt" style="font-size:18px;font-weight:bold">0</div></div>
             </div>
+
+            <!-- MANUAL POSITION ADJUST: ручная коррекция позиции (синхронизация с брокером, БЕЗ ордеров) -->
+            <div style="display:flex;gap:8px;align-items:center;margin:10px 0;padding:10px;background:#1a2332;border:1px solid #607D8B;border-radius:8px">
+                <span style="color:#B0BEC5;font-size:13px;font-weight:bold">⚙ КОРРЕКЦИЯ ПОЗИЦИИ</span>
+                <input id="ofAdjLots" type="number" step="1" placeholder="лоты: 3 лонг / -3 шорт / 0 флэт" title="Абсолютная позиция: +N лонг, -N шорт, 0 флэт" style="width:170px;padding:6px 8px;background:#0D1117;color:#fff;border:1px solid #607D8B;border-radius:4px;font-size:13px">
+                <input id="ofAdjPrice" type="number" step="1" placeholder="цена (83800)" title="Средняя цена входа позиции брокера" style="width:130px;padding:6px 8px;background:#0D1117;color:#fff;border:1px solid #607D8B;border-radius:4px;font-size:13px">
+                <button class="btn btn-primary btn-sm" onclick="ofAdjustPosition()" title="Установить позицию робота = позиция брокера (ордеров НЕ отправляет)">Применить</button>
+                <span id="ofAdjResult" style="font-size:12px;color:#B0BEC5"></span>
+            </div>
+
             <hr style="border-color:#2D2D44;margin:12px 0">
             <!-- Параметры -->
             <div class="metrics-row" style="flex-wrap:wrap;margin-bottom:16px">
@@ -5828,6 +5906,16 @@ function ofMxRobotEditPanel() {
                 <div class="metric-card"><div class="metric-label">Pyr Levels</div><div id="ofMxPyrLvl" style="font-size:18px;font-weight:bold">0</div></div>
                 <div class="metric-card"><div class="metric-label">RT</div><div id="ofMxRt" style="font-size:18px;font-weight:bold">0</div></div>
             </div>
+
+            <!-- MANUAL POSITION ADJUST: ручная коррекция позиции (синхронизация с брокером, БЕЗ ордеров) -->
+            <div style="display:flex;gap:8px;align-items:center;margin:10px 0;padding:10px;background:#1a2332;border:1px solid #607D8B;border-radius:8px">
+                <span style="color:#B0BEC5;font-size:13px;font-weight:bold">⚙ КОРРЕКЦИЯ ПОЗИЦИИ</span>
+                <input id="ofMxAdjLots" type="number" step="1" placeholder="лоты: 3 лонг / -3 шорт / 0 флэт" title="Абсолютная позиция: +N лонг, -N шорт, 0 флэт" style="width:170px;padding:6px 8px;background:#0D1117;color:#fff;border:1px solid #607D8B;border-radius:4px;font-size:13px">
+                <input id="ofMxAdjPrice" type="number" step="1" placeholder="цена (209300)" title="Средняя цена входа позиции брокера" style="width:130px;padding:6px 8px;background:#0D1117;color:#fff;border:1px solid #607D8B;border-radius:4px;font-size:13px">
+                <button class="btn btn-primary btn-sm" onclick="ofMxAdjustPosition()" title="Установить позицию робота = позиция брокера (ордеров НЕ отправляет)">Применить</button>
+                <span id="ofMxAdjResult" style="font-size:12px;color:#B0BEC5"></span>
+            </div>
+
             <hr style="border-color:#2D2D44;margin:12px 0">
             <!-- Параметры -->
             <div class="metrics-row" style="flex-wrap:wrap;margin-bottom:16px">
