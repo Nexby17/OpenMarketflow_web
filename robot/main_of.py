@@ -45,7 +45,7 @@ from hub_adapter import FinamHubAdapter  # PORT-A2: data via WS-hub
 import finam_rest4 as _rest4mod  # PORT-B2: REST 4.3.3
 
 import config_of as config
-from strategy_of import OrderFlowStrategy, OFParams, LONG, SHORT, FLAT
+from strategy_of import OrderFlowStrategy, OFParams, LONG, SHORT, FLAT, LotEntry
 from orders_rest4 import OrderManagerRest4, get_broker_position, BUY, SELL  # PORT-B2
 
 log = logging.getLogger("robot_of")
@@ -821,6 +821,54 @@ class APIHandler(BaseHTTPRequestHandler):
                         orders.cancel(oid)
             save_state()
             self._json(200, {"ok": True, "mode": _mode, "paper": PAPER_MODE})
+
+        elif path == "/position/adjust":
+            # MANUAL POSITION ADJUST: синхронизация state с брокером БЕЗ ордеров.
+            # POST {lots: int со знаком (абсолютная позиция), price: float}
+            length = int(self.headers.get("Content-Length", 0))
+            if length > 0:
+                try:
+                    body = self.rfile.read(length)
+                    data = json.loads(body)
+                    lots = int(data.get("lots", 0))
+                    price = float(data.get("price", 0) or 0)
+
+                    if lots != 0 and price <= 0:
+                        self._json(400, {"error": "при lots!=0 требуется price > 0"})
+                        return
+                    if abs(lots) > 100:
+                        self._json(400, {"error": "|lots| > 100 — подозрительно много"})
+                        return
+                    if strategy._is_entry_locked():
+                        self._json(409, {"error": "entry lock активен (недавний вход) — повторите через ~60с"})
+                        return
+
+                    new_dir = (1 if lots > 0 else -1) if lots != 0 else 0
+                    abs_lots = abs(lots)
+
+                    if lots == 0:
+                        strategy._reset_position()
+                        log.info("MANUAL ADJUST: FLAT (позиция обнулена, ордеров НЕ было)")
+                    else:
+                        strategy._dir = new_dir
+                        strategy._total_lots = abs_lots
+                        strategy._entry_price = price
+                        strategy._avg_price = price
+                        strategy._last_average_price = 0.0
+                        strategy._last_pyramid_price = 0.0
+                        strategy._peak_lots = abs_lots
+                        strategy._entry_time = datetime.now(MSK)
+                        strategy._lot_queue.clear()
+                        strategy._lot_queue.append(LotEntry(
+                            price=price, side=new_dir, lots=abs_lots, added_ts=time.monotonic()))
+                        log.info(f"MANUAL ADJUST: dir={'LONG' if new_dir == 1 else 'SHORT'} lots={abs_lots} @ {price:.0f} (ордеров НЕ было)")
+                    save_state()
+                    self._json(200, {"ok": True, "dir": strategy._dir, "lots": strategy._total_lots,
+                                     "avgPrice": strategy._avg_price, "mode": _mode})
+                except (ValueError, TypeError) as e:
+                    self._json(400, {"error": f"Некорректные данные: {e}"})
+            else:
+                self._json(400, {"error": "Missing request body"})
 
         elif path == "/trades":
             # Filter tradeHistory by date period (POST with JSON body)
