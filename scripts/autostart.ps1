@@ -20,19 +20,9 @@ if (-not $serverAlive) {
     }
 } else { Log "server already running ($($serverAlive.Id))" }
 
-Start-Sleep -Seconds 5
+# ТОРГОВЫЕ РОБОТЫ НЕ автозапускаются (решение Дмитрия 2026-08-25):
+# роботы работают только в режиме, явно выбранном Дмитрием (paper ИЛИ real),
+# и запускаются вручную: кнопкой в UI или командой.
+# Автозапуск поднимает ТОЛЬКО сервер (UI, данные, риск-панель).
 
-# OF-роботы (paper): только если не запущены
-$mxAlive = Get-CimInstance Win32_Process -Filter "Name='python3.exe'" | Where-Object { $_.CommandLine -match "main_of_mx\.py" }
-if (-not $mxAlive) {
-    Start-Process -FilePath "python3" -ArgumentList "main_of_mx.py --paper" -WorkingDirectory "$proj\robot" -WindowStyle Hidden -RedirectStandardOutput "$proj\robot\logs\auto_mx.out" -RedirectStandardError "$proj\robot\logs\auto_mx.err"
-    Log "MX robot started (paper)"
-} else { Log "MX robot already running" }
-
-$ofAlive = Get-CimInstance Win32_Process -Filter "Name='python3.exe'" | Where-Object { $_.CommandLine -match "main_of\.py" }
-if (-not $ofAlive) {
-    Start-Process -FilePath "python3" -ArgumentList "main_of.py --paper" -WorkingDirectory "$proj\robot" -WindowStyle Hidden -RedirectStandardOutput "$proj\robot\logs\auto_of.out" -RedirectStandardError "$proj\robot\logs\auto_of.err"
-    Log "OF Si robot started (paper)"
-} else { Log "OF Si robot already running" }
-
-Log "autostart done"
+Log "autostart done (server only; robots are manual by design)"
