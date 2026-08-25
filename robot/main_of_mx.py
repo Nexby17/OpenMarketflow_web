@@ -105,7 +105,7 @@ def load_params() -> OFParams:
         if attr.isupper() and hasattr(p, attr.lower()):
             setattr(p, attr.lower(), val)
     # Then override from of_config_mx.json if exists
-    cfg_path = os.path.join(os.getcwd(), "of_config_mx.json")
+    cfg_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "of_config_mx.json")  # FIX: не cwd
     if os.path.exists(cfg_path):
         with open(cfg_path) as f:
             data = json.load(f)
@@ -417,6 +417,24 @@ def main_loop():
 
     while _running:
         try:
+            if _mode == "paused":
+                # PAUSE-SEMANTICS: не открываем НОВЫЕ позиции, но УПРАВЛЯЕМ открытыми
+                # (close_all/partial_tp/stop-loss исполняются; entry/average/pyramid блокируются)
+                with _price_lock:
+                    price = _current_price
+                if price > 0:
+                    try:
+                        actions = strategy.process_tick(price, datetime.now(MSK))
+                        for action in actions:
+                            act = action.get("action")
+                            if act in ("entry", "average", "pyramid"):
+                                continue  # пауза: новые позиции запрещены
+                            _execute_action(action)
+                    except Exception as e:
+                        log.warning(f"paused tick error: {e}")
+                time.sleep(1)
+                continue
+
             if _mode != "running":
                 time.sleep(1)
                 continue
@@ -984,26 +1002,33 @@ class APIHandler(BaseHTTPRequestHandler):
             self._json(200, {"ok": True, "mode": _mode, "dir": strategy.dir(), "lots": strategy.total_lots()})
 
         elif path == "/params":
-            # Update parameters
+            # Update parameters (FIX: стабильный cfg-путь + защита от исключений)
             length = int(self.headers.get("Content-Length", 0))
             if length > 0:
-                body = self.rfile.read(length)
-                data = json.loads(body)
-                for k, v in data.items():
-                    if hasattr(params, k):
-                        setattr(params, k, v)
-                        log.info(f"Param updated: {k} = {v}")
-                # Reconstruct VWEMA if toggle changed
-                if "use_vwema" in data or any(k.startswith("vwema_") for k in data):
-                    strategy._init_vwema()
-                # Reconstruct Volume Profile if toggle changed
-                if "use_vah_val" in data or "vah_val_pct" in data or "vah_val_bin_size" in data or "vah_val_mode" in data:
-                    strategy._init_vp()
-                # Save to config
-                cfg_path = os.path.join(os.getcwd(), "of_config_mx.json")
-                with open(cfg_path, "w") as f:
-                    json.dump({k: getattr(params, k) for k in dir(params) if not k.startswith("_") and not callable(getattr(params, k))}, f, indent=2)
-            self._json(200, {"ok": True})
+                try:
+                    body = self.rfile.read(length)
+                    data = json.loads(body)
+                    for k, v in data.items():
+                        if hasattr(params, k):
+                            setattr(params, k, v)
+                            log.info(f"Param updated: {k} = {v}")
+                    # Reconstruct VWEMA if toggle changed
+                    if "use_vwema" in data or any(k.startswith("vwema_") for k in data):
+                        strategy._init_vwema()
+                    # Reconstruct VP if VAH/VAL params changed
+                    if "use_vah_val" in data or "vah_val_pct" in data or "vah_val_bin_size" in data or "vah_val_mode" in data:
+                        strategy._init_vp()
+
+                    # Save to config (FIX: путь от папки робота, не cwd)
+                    cfg_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "of_config_mx.json")
+                    with open(cfg_path, "w") as f:
+                        json.dump({k: getattr(params, k) for k in dir(params) if not k.startswith("_") and not callable(getattr(params, k))}, f, indent=2)
+                    self._json(200, {"ok": True})
+                except Exception as e:
+                    log.error(f"/params error: {e}")
+                    self._json(400, {"error": str(e)[:200]})
+            else:
+                self._json(400, {"error": "Missing request body"})
 
         else:
             self._json(404, {"error": "not found"})
