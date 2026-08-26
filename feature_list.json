@@ -1,0 +1,176 @@
+{
+  "meta": {
+    "version": "1.0",
+    "updated": "2026-08-26",
+    "description": "Реестр фич OpenMarketflow: контроль, статусы, история логики. Дополнение к коммитам: фича шире коммита (несколько коммитов, тесты, решения).",
+    "rules": {
+      "statuses": ["planned", "in_progress", "done", "deprecated", "rejected"],
+      "update_on": "каждое изменение статуса/логики фичи — обязательная запись в changes",
+      "id_format": "F-XXX (сквозной, не переиспользовать)",
+      "discipline": "Новая фича или изменение логики существующей → запись в changes + при необходимости правка logic/status. Связка с PROGRESS.md: PROGRESS — дневник событий, feature_list — реестр текущего состояния (что есть и как работает)."
+    }
+  },
+  "features": [
+    {
+      "id": "F-001",
+      "name": "Ручная коррекция позиции (/position/adjust + UI)",
+      "area": "robots",
+      "status": "done",
+      "owner": "main",
+      "version_introduced": "app.js v82",
+      "commits": ["71992c2", "287f092", "a67b0a0"],
+      "summary": "Синхронизация позиции робота с брокером без ордеров: API на обоих OF-роботах + блок «⚙ КОРРЕКЦИЯ ПОЗИЦИИ» в edit-панелях UI",
+      "logic": {
+        "semantics": "абсолютная установка: lots со знаком (+N лонг / -N шорт / 0 флэт) + средняя цена входа",
+        "guards": ["валидация price>0 при lots≠0", "|lots|≤100", "блок при entry-lock 60с", "ордера НЕ отправляются"]
+      },
+      "tests": ["curl +3/-3/FLAT/валидация PASS (оба робота)", "CDP: панель→ввод→API→статус PASS"],
+      "changes": [
+        {"date": "2026-08-24", "action": "created", "note": "по запросу Дмитрия"}
+      ]
+    },
+    {
+      "id": "F-002",
+      "name": "Семантика кнопок управления (СТАРТ/СТОП/ПАУЗА)",
+      "area": "robots",
+      "status": "done",
+      "owner": "main",
+      "commits": ["f06e2e8"],
+      "summary": "СТАРТ запускает/будит; СТОП полностью останавливает с закрытием всех позиций; ПАУЗА запрещает новые входы, но ведёт открытые позиции",
+      "logic": {
+        "pause_impl": "main_loop в paused: process_tick исполняет close_all/partial_tp, блокирует entry/average/pyramid",
+        "critical_fix": "раньше paused замораживал весь цикл — открытые позиции оставались без стоп-лосса"
+      },
+      "tests": ["живые переходы оба робота: позиция жива в паузе → start будит → stop закрывает (manual_stop)"],
+      "changes": [
+        {"date": "2026-08-25", "action": "created", "note": "семантика по ТЗ Дмитрия"}
+      ]
+    },
+    {
+      "id": "F-003",
+      "name": "Автозапуск Windows",
+      "area": "infra",
+      "status": "done",
+      "owner": "main",
+      "commits": ["004898b", "d55c515"],
+      "summary": "scripts/autostart.ps1 + ярлык в Startup. Поднимает ТОЛЬКО сервер; торговые роботы не автозапускаются",
+      "logic": {
+        "policy": "paper-режим только по явному указанию Дмитрия; роботы запускаются вручную, режим выбирает Дмитрий",
+        "idempotent": true,
+        "log": "robot/logs/autostart.log"
+      },
+      "tests": ["живой прогон после ребута: server+health OK, лог корректен"],
+      "changes": [
+        {"date": "2026-08-25", "action": "created", "note": "первая версия с роботами в paper"},
+        {"date": "2026-08-25", "action": "modified", "note": "роботы УБРАНЫ из автозапуска по решению Дмитрия (paper без указания запрещён)"}
+      ]
+    },
+    {
+      "id": "F-004",
+      "name": "Сохранение параметров роботов из UI (/params)",
+      "area": "robots",
+      "status": "done",
+      "owner": "main",
+      "commits": ["f06e2e8"],
+      "summary": "Параметры из edit-панелей применяются в рантайме и пишутся в конфиг; починен кейс SiU6 «не сохраняются»",
+      "logic": {
+        "cfg_path": "от __file__ робота (не cwd — раньше конфиг плыл от папки запуска)",
+        "error_handling": "битый JSON → 400 + лог (раньше молча ронял соединение)",
+        "caveat": "при остановленном роботе UI-fetch не доходит — параметры меняются при живом роботе"
+      },
+      "tests": ["запуск из чужой cwd → конфиг в правильном месте; lots/step_average в рантайме и на диске"],
+      "changes": [
+        {"date": "2026-08-25", "action": "fixed", "note": "3 дефекта: cwd-путь, нет try/except, тихий фейл при офлайне робота"}
+      ]
+    },
+    {
+      "id": "F-005",
+      "name": "Единый WebSocket-хаб Finam (finam_hub.py)",
+      "area": "data",
+      "status": "done",
+      "owner": "main",
+      "commits": ["f87a0b1", "d9645b5"],
+      "summary": "Один WS-коннект (wss://api.finam.ru/ws) на всех роботов: котировки/стакан/сделки/бары push-ом, без REST-квот",
+      "logic": {
+        "jwt": "автопродление за минуту до истечения (TTL 15 мин)",
+        "reconnect": "backoff 1→30с + resubscribe_all + outbox-буфер",
+        "fan_out": "подписчики через callbacks; BARS-ключ нормализован SYM:TF → SYM|TF (фикс d9645b5)",
+        "limits": "WS не расходует REST-квоты (200 rpm/метод)"
+      },
+      "tests": ["60с: 1198 сообщений 0 ошибок", "живой поток баров после фикса ключа"],
+      "changes": [
+        {"date": "2026-08-18", "action": "created", "note": "Этап 1 миграции на новое API"},
+        {"date": "2026-08-21", "action": "fixed", "note": "BARS fan-out ключ — бары не доходили до стратегий"}
+      ]
+    },
+    {
+      "id": "F-006",
+      "name": "REST SDK 4.3.3 (finam_rest4 + orders_rest4 + patch_sdk)",
+      "area": "data",
+      "status": "done",
+      "owner": "main",
+      "commits": ["3570399", "c4d2111", "628a3ed"],
+      "summary": "Ордера/аккаунты/история через официальный SDK; paper-эмуляция ордеров в lab; изоляция py4 (pip --target)",
+      "logic": {
+        "sdk_patches": ["Position optional-поля", "stale-JWT на /sessions", "httpx-timeout 10с", "Side SIDE_BUY/SELL", "OrderType ORDER_TYPE_*"],
+        "paper_orders": "эмуляция по цене хаба, окно филлов 10 мин",
+        "real_orders": "только с явного одобрения Дмитрия"
+      },
+      "tests": ["quote/account/quotas PASS", "юнит Order с enum PASS"],
+      "changes": [
+        {"date": "2026-08-18", "action": "created", "note": "Этапы 3-4 миграции"},
+        {"date": "2026-08-21", "action": "fixed", "note": "Side и OrderType маппинги — все real-ордера падали на валидации"}
+      ]
+    },
+    {
+      "id": "F-007",
+      "name": "ChartController (перереаботка графика)",
+      "area": "ui",
+      "status": "done",
+      "owner": "code-agent + main",
+      "version_introduced": "app.js v80",
+      "commits": ["819e96c"],
+      "summary": "modules/chart.js: единая точка истины графика; все 4 live-канала через контроллер; смерть серии от update() в прошлое — исключена",
+      "logic": {
+        "invariants": ["time-монотонность", "OHLC-валидность", "ticker/TF соответствие", "epoch-версионирование"],
+        "viewport": "fitContent после истории; live не трогает viewport"
+      },
+      "tests": ["CDP 14/14: 10 переключений TF, смена инструмента, 30с live, 0 Value is null"],
+      "changes": [
+        {"date": "2026-08-17", "action": "created", "note": "goal 49649e5c, полная реорганизация по требованию Дмитрия"}
+      ]
+    },
+    {
+      "id": "F-008",
+      "name": "Paper Lab (robot/paper_lab)",
+      "area": "infra",
+      "status": "deprecated",
+      "owner": "main",
+      "commits": ["455da1b", "819e96c", "3570399", "a25d89e"],
+      "summary": "Изолированная лаборатория для обкатки перед PORT: papercuts.md (журнал PC-XXX), 4 слоя изоляции",
+      "logic": {
+        "lifecycle": "эксперимент ≥1 торговый дня → вердикт PORT/DROP → перенос отдельным коммитом",
+        "verdicts": "PC-005 (новый стек) PORT выполнен; paper-режим лаборатории приостановлен решением Дмитрия 25.08"
+      },
+      "tests": ["soak 32ч: 0 рестартов, 0 трейсбеков; вердикт ГОТОВ К PORT"],
+      "changes": [
+        {"date": "2026-08-18", "action": "created", "note": "по требованию Дмитрия: отдельное пространство для paper-тестов"},
+        {"date": "2026-08-20", "action": "deprecated", "note": "paper-тесты заморожены: paper только по явному указанию"}
+      ]
+    },
+    {
+      "id": "F-009",
+      "name": "Threaded API роботов",
+      "area": "robots",
+      "status": "done",
+      "owner": "main",
+      "commits": ["c4d2111"],
+      "summary": "HTTPServer → ThreadingMixIn у обоих OF-роботов: поллинг UI больше не блокирует /stop и другие запросы",
+      "logic": {"mro": "socketserver.ThreadingMixIn + HTTPServer, daemon_threads"},
+      "tests": ["10x /status за 2.4с без блокировок"],
+      "changes": [
+        {"date": "2026-08-21", "action": "created", "note": "найдено при разборе зависания /status"}
+      ]
+    }
+  ]
+}
