@@ -401,6 +401,25 @@
         "robot/finam_rest4.py: +get_today_trades()",
         "robot/orders_rest4.py: wait_fill real-ветка переписана"
       ]
+    },
+    {
+      "id": "F-014",
+      "area": "ui/robots-tab",
+      "status": "done",
+      "owner": "main",
+      "commits": [
+        "см. git log --grep=F-014"
+      ],
+      "summary": "Статус SiU6 OF-робота в таблице роботов: poll :5080 + живой рендер (была вечная заглушка «Не запущен»)",
+      "logic": "ofRobotPoll() каждые 2с -> ofRobot -> renderRobots показывает реальный mode",
+      "tests": [
+        "CDP live: Работает/Остановлен скриншоты",
+        "node --check OK"
+      ],
+      "changes": [
+        "app.js: +ofRobotPoll, 2с-цикл",
+        "index.html: v=86"
+      ]
     }
   ]
 }

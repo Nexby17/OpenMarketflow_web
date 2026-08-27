@@ -101,3 +101,9 @@ RobotProcessManager (C#): POST /api/of/process/{name}/{start|stop|status}; ▶ �
 **Тесты.** 4/4 PASS: (1) average_price приоритетна (86731, не 92343); (2) VWAP сделок 2+1 лота = 86732.0; (3) fill без цены → None, limit_price не просачивается; (4) paper-ветка цела. Интеграция: get_today_trades против живого брокера — 41 сделка, цены совпали с расследованием. py_compile обоих файлов OK.
 
 **Коммит:** df925e1 (robot/orders_rest4.py, robot/finam_rest4.py).
+
+## 2026-08-27 17:5x — F-014: статус SiU6 в UI (fix)
+
+Строка Si (Order Flow, :5080) вечно показывала «🔴 Не запущен»: переменная ofRobot никогда не заполнялась — poll-функции не существовало (у MX была ofMxRobotPoll, у Si нет). Добавлен ofRobotPoll() + включён в общий 2с-цикл. app.js v86.
+
+CDP-приёмка на живых роботах: «🟢 Работает» при running, «🔴 Остановлен» при stopped, скриншоты; node --check OK. Коммит (см. git log -1 --grep=F-014).
