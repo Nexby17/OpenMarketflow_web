@@ -173,10 +173,12 @@ class OrderManagerRest4:
         """PORT-B2: wait for order fill. Returns fill price or None.
 
         Paper: look up simulated fill in _recent_fills (no REST).
-        Real: poll REST get_order until filled/executed or timeout.
-        Conservative heuristic (per SPEC B2): any non-active status with price>0 = fill;
-        explicit fills: ORDER_STATUS_FILLED / ORDER_STATUS_EXECUTED / ORDER_STATUS_SL_EXECUTED /
-        ORDER_STATUS_TP_EXECUTED; partial: ORDER_STATUS_PARTIALLY_FILLED (price known = usable).
+        Real: price source priority (FIX PnL-2026-08-27):
+          1) average_price из get_order (если брокер вернул);
+          2) фактические сделки брокера (get_today_trades) по order_id —
+             средневзвешенная цена исполнения;
+          3) None — НЕ используем limit_price IOC-ордера: это цена ЗАЯВКИ,
+             а не исполнения (фантомный PnL: 92343/78113 вместо 86731/86746).
         """
         if not order_id:
             return None
@@ -194,19 +196,30 @@ class OrderManagerRest4:
                 status = str(o.get("status", "")).upper()
                 avg = o.get("average_price") or o.get("avg_price") or {}
                 price = float(avg.get("value", 0)) if isinstance(avg, dict) else float(avg or 0)
-                if price <= 0:
-                    # fallback: limit price for limit orders (OrderState carries nested order)
-                    inner = o.get("order") or {}
-                    lp = inner.get("limit_price") or {}
-                    if isinstance(lp, dict) and lp.get("value"):
-                        price = float(lp["value"])
                 filled_explicit = ("FILLED" in status or "EXECUTED" in status) and "PARTIALLY" not in status
                 filled_heuristic = (price > 0 and status not in (
                     "", "ORDER_STATUS_UNSPECIFIED", "ORDER_STATUS_NEW", "ORDER_STATUS_PENDING_NEW",
                     "ORDER_STATUS_FORWARDING", "ORDER_STATUS_WAIT", "ORDER_STATUS_LINK_WAIT",
                     "ORDER_STATUS_WATCHING", "ORDER_STATUS_SUSPENDED"))
                 if filled_explicit or filled_heuristic:
-                    return price or None
+                    if price > 0:
+                        return price
+                    # фактические сделки по этому ордеру (средневзвешенная цена)
+                    try:
+                        trades = [t for t in self._rest4.get_today_trades(self._account)
+                                  if t.get("order_id") == order_id and t.get("price", 0) > 0]
+                        if trades:
+                            total_qty = sum(t["size"] for t in trades) or 1.0
+                            vwap = sum(t["price"] * t["size"] for t in trades) / total_qty
+                            log.info("wait_fill %s: fill из сделок брокера vwap=%.1f (%d сделок)",
+                                     order_id, vwap, len(trades))
+                            return vwap
+                    except Exception as e:
+                        log.warning("wait_fill %s: trades lookup failed: %s", order_id, str(e)[:80])
+                    # fill подтверждён, но цены нет — честный None (вызывающий код запишет по strategy price с WARNING)
+                    log.warning("wait_fill %s: fill %s без цены исполнения — None (limit_price НЕ используем)",
+                                order_id, status)
+                    return None
             except Exception as e:
                 log.debug("wait_fill %s: %s", order_id, str(e)[:80])
             time.sleep(poll)

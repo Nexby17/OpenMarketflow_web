@@ -161,3 +161,31 @@ def get_order(account_id: str, order_id: str) -> dict:
     req = GetOrderRequest(account_id=account_id, order_id=order_id)
     resp = r4.call(r4.client.orders.get_order(req))
     return resp.model_dump(mode="json") if hasattr(resp, "model_dump") else dict(resp)
+
+
+def get_today_trades(account_id: str, limit: int = 200) -> list:
+    """Исполненные сделки счёта за сегодня (UTC-день). [{order_id, price, size, side, timestamp}]"""
+    r4 = _get_module()
+    from finam_trade_api.account.model import GetTradesRequest
+    from datetime import datetime, timezone
+    now = datetime.now(timezone.utc)
+    start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    req = GetTradesRequest(
+        account_id=account_id,
+        start_time=start.strftime("%Y-%m-%dT%H:%M:%SZ"),
+        end_time=now.strftime("%Y-%m-%dT%H:%M:%SZ"),
+        limit=limit)
+    resp = r4.call(r4.client.account.get_trades(req))
+    d = resp.model_dump(mode="json") if hasattr(resp, "model_dump") else dict(resp)
+    out = []
+    for t in d.get("trades", []):
+        price = t.get("price") or {}
+        size = t.get("size") or {}
+        out.append({
+            "order_id": str(t.get("order_id", "")),
+            "price": float(price.get("value", 0)) if isinstance(price, dict) else float(price or 0),
+            "size": float(size.get("value", 0)) if isinstance(size, dict) else float(size or 0),
+            "side": t.get("side", ""),
+            "timestamp": t.get("timestamp", ""),
+        })
+    return out
