@@ -43,8 +43,8 @@
 ### 2026-08-17 (merge origin/main — функционал роботов)
 - **strategy_of.py:** VWEMA Avg Exit (B2) — не усреднять против VWEMA + закрытие при развороте; VAH/VAL range-режим (торговля только внутри VA).
 - **main_of.py:** VA BREAKOUT STOP (выход из VA при позиции → close all); VP live-питание сделками; /reset-stats; реконструкция VP при смене VAH/VAL-параметров.
-- **of_config_mx.json:** step_average 450→350; vwema_avg_exit=true.
-- **main_of_mx.py:** MXU6-робот синхронизирован с прод-репо (наш MAX_AVERAGE_LEVELS=10 сохранён).
+- **of_config_mx.json:** параметр step_average изменён; vwema_avg_exit=true.
+- **main_of_mx.py:** MXU6-робот синхронизирован с прод-репо.
 
 ### 2026-08-13
 - Миграция finam_compat (shim FinamPy поверх finam-sdk 2.19) — роботы работают без старого FinamPy.

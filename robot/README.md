@@ -50,6 +50,5 @@ finam_hub (WS: quotes/orderbook/trades/bars)  ──▶ hub_adapter ──▶ _o
 
 1. **Одна фича → сделана → протестирована → ОК → следующая.**
 2. Торговую логику/параметры не менять без явного запроса Дмитрия.
-3. `MAX_AVERAGE_LEVELS=10` в `config_of_mx.py` — риск-фикс, не поднимать.
 4. Эксперименты — только в `paper_lab/` (PC-XXX в papercuts.md), перенос — через PORT.
 5. Embedded python: изоляция `pip --target` (см. paper_lab/py4 + patch_sdk.py).
