@@ -5957,9 +5957,18 @@ async function toggleOfMxSignal(param, value) {
     }
 }
 
-// Auto-poll MX
+async function ofRobotPoll() {
+    try {
+        const resp = await fetch(OF_ROBOT_API + '/status', {signal: AbortSignal.timeout(2000)});
+        ofRobot = await resp.json();
+    } catch(e) {
+        ofRobot = null;
+    }
+}
+
+// Auto-poll MX + Si
 (function() {
-    setInterval(async () => { await ofMxRobotPoll(); renderRobots(); }, 2000);
+    setInterval(async () => { await ofMxRobotPoll(); await ofRobotPoll(); renderRobots(); }, 2000);
 })();
 
 // === ORDER FLOW MX EDIT PANEL ===
