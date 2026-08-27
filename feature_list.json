@@ -382,6 +382,25 @@
           "note": "по требованию Дмитрия: «пришёл сигнал запуска — должно всё запускаться»"
         }
       ]
+    },
+    {
+      "id": "F-013",
+      "area": "robot/orders",
+      "status": "done",
+      "owner": "main",
+      "commits": [
+        "df925e1"
+      ],
+      "summary": "PnL и fill-цены по фактическим сделкам брокера (VWAP по order_id), limit_price-фолбэк удалён",
+      "logic": "wait_fill: average_price -> get_today_trades VWAP -> None; исключена запись цены ЗАЯВКИ как цены ИСПОЛНЕНИЯ (фантомный PnL/ложные стопы)",
+      "tests": [
+        "unit 4/4 PASS (average_price, VWAP, None-no-limit, paper)",
+        "integration: get_today_trades live 41 сделка"
+      ],
+      "changes": [
+        "robot/finam_rest4.py: +get_today_trades()",
+        "robot/orders_rest4.py: wait_fill real-ветка переписана"
+      ]
     }
   ]
 }
