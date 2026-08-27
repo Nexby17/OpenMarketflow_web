@@ -5299,12 +5299,21 @@ const OF_ROBOT_API = 'http://' + window.location.hostname + ':5080';
 let ofRobot = null;
 
 // === ORDER FLOW EDIT PANEL ===
-function ofRobotEditPanel() {
+async function ofRobotEditPanel() {
     const existing = el('ofRobotEditPanel');
     if (existing) { existing.remove(); return; }
 
     const s = ofRobot || {};
-    const p = s.params || {};
+    // F-010: если робот offline — параметры из config через сервер (реальные сохранённые, не фантазийные дефолты)
+    let _cfgSrc = 'robot';
+    let p = s.params || null;
+    if (!p) {
+        try {
+            const r = await fetch('/api/of/config/of', {signal: AbortSignal.timeout(2000)});
+            if (r.ok) { p = await r.json(); _cfgSrc = 'config'; }
+        } catch(e) {}
+    }
+    p = p || {};
 
     const div = document.createElement('div');
     div.id = 'ofRobotEditPanel';
@@ -5314,6 +5323,7 @@ function ofRobotEditPanel() {
         <div class="card-header row gap-8">
             📊 SiU6 Order Flow (PYTHON)
             <button class="btn btn-primary btn-sm" onclick="ofRobotSaveFromPanel()">💾 Сохранить</button>
+            <span id="ofCfgSrcBadge" style="font-size:11px;padding:2px 8px;border-radius:10px;opacity:.85"></span>
             <button class="btn btn-secondary btn-sm" onclick="if(window._ofVpTimer){clearInterval(window._ofVpTimer);window._ofVpTimer=null;}el('ofRobotEditPanel')?.remove()">✕</button>
         </div>
         <div style="padding:12px">
@@ -5461,6 +5471,12 @@ function ofRobotEditPanel() {
         </div>
     `;
     document.body.appendChild(div);
+    // F-010: бейдж источника параметров
+    const _srcBadge = el('ofCfgSrcBadge');
+    if (_srcBadge) {
+        if (_cfgSrc === 'robot') { _srcBadge.textContent = '🟢 от робота (live)'; _srcBadge.style.background = 'rgba(34,197,94,.15)'; _srcBadge.style.color = '#22c55e'; }
+        else { _srcBadge.textContent = '💾 из конфига (робот остановлен)'; _srcBadge.style.background = 'rgba(59,130,246,.15)'; _srcBadge.style.color = '#60a5fa'; }
+    }
 
     // Start live updates
     ofUpdatePanel();
@@ -5607,15 +5623,29 @@ async function ofRobotSaveFromPanel() {
         vah_val_mode: el('editOfVpMode')?.value || 'range',
     };
     try {
-        const resp = await fetch(OF_ROBOT_API + '/params', {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify(body)
-        });
-        const data = await resp.json();
-        addLog(nowTime(), 'INFO', '💾 OF конфиг сохранён из панели');
+        // F-010: если робот offline — пишем конфиг через сервер (применится при старте)
+        let _savedVia = null;
+        try {
+            const resp = await fetch(OF_ROBOT_API + '/params', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(body)
+            });
+            if (resp.ok) { await resp.json(); _savedVia = 'robot'; }
+        } catch(e) {}
+        if (!_savedVia) {
+            const r2 = await fetch('/api/of/config/of', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(body),
+                signal: AbortSignal.timeout(3000)
+            });
+            if (!r2.ok) throw new Error('config proxy failed: ' + r2.status);
+            _savedVia = 'config';
+        }
+        addLog(nowTime(), 'INFO', '💾 OF конфиг сохранён (' + (_savedVia === 'robot' ? 'робот live' : 'конфиг, применится при старте') + ')');
     } catch(e) {
-        addLog(nowTime(), 'WARN', 'OF save failed: ' + e.message);
+        addLog(nowTime(), 'ERROR', 'OF save НЕ удался: ' + e.message);
     }
 }
 
@@ -5855,12 +5885,21 @@ async function toggleOfMxSignal(param, value) {
 })();
 
 // === ORDER FLOW MX EDIT PANEL ===
-function ofMxRobotEditPanel() {
+async function ofMxRobotEditPanel() {
     const existing = el('ofMxRobotEditPanel');
     if (existing) { existing.remove(); return; }
 
     const s = ofMxRobot || {};
-    const p = s.params || JSON.parse(localStorage.getItem('ofMxSavedParams') || '{}');
+    // F-010: живой робот -> его params; иначе config через сервер (localStorage больше не нужен)
+    let _cfgSrc = 'robot';
+    let p = s.params || null;
+    if (!p) {
+        try {
+            const r = await fetch('/api/of/config/of_mx', {signal: AbortSignal.timeout(2000)});
+            if (r.ok) { p = await r.json(); _cfgSrc = 'config'; }
+        } catch(e) {}
+    }
+    p = p || {};
     // Fallback defaults for MXU6 if no params anywhere
     if (!p.step_average) p.step_average = 150;
     if (!p.step_pyramid) p.step_pyramid = 80;
@@ -5878,6 +5917,7 @@ function ofMxRobotEditPanel() {
         <div class="card-header row gap-8">
             📊 MXU6 Order Flow (PYTHON)
             <button class="btn btn-primary btn-sm" onclick="ofMxRobotSaveFromPanel()">💾 Сохранить</button>
+            <span id="ofMxCfgSrcBadge" style="font-size:11px;padding:2px 8px;border-radius:10px;opacity:.85"></span>
             <button class="btn btn-secondary btn-sm" onclick="if(window._ofMxVpTimer){clearInterval(window._ofMxVpTimer);window._ofMxVpTimer=null;}el('ofMxRobotEditPanel')?.remove()">✕</button>
         </div>
         <div style="padding:12px">
@@ -6013,6 +6053,12 @@ function ofMxRobotEditPanel() {
         </div>
     `;
     document.body.appendChild(div);
+    // F-010: бейдж источника параметров
+    const _mxSrcBadge = el('ofMxCfgSrcBadge');
+    if (_mxSrcBadge) {
+        if (_cfgSrc === 'robot') { _mxSrcBadge.textContent = '🟢 от робота (live)'; _mxSrcBadge.style.background = 'rgba(34,197,94,.15)'; _mxSrcBadge.style.color = '#22c55e'; }
+        else { _mxSrcBadge.textContent = '💾 из конфига (робот остановлен)'; _mxSrcBadge.style.background = 'rgba(59,130,246,.15)'; _mxSrcBadge.style.color = '#60a5fa'; }
+    }
 
     // Initialize direction filter dropdown
     if (p.direction_filter) {
@@ -6132,16 +6178,30 @@ async function ofMxRobotSaveFromPanel() {
     // Always save to localStorage first
     localStorage.setItem('ofMxSavedParams', JSON.stringify(body));
     try {
-        const resp = await fetch(OF_MX_ROBOT_API + '/params', {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify(body)
-        });
-        const data = await resp.json();
+        // F-010: живой робот -> ему; иначе конфиг через сервер (localStorage больше не используется)
+        let _savedVia = null;
+        try {
+            const resp = await fetch(OF_MX_ROBOT_API + '/params', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(body)
+            });
+            if (resp.ok) { await resp.json(); _savedVia = 'robot'; }
+        } catch(e) {}
+        if (!_savedVia) {
+            const r2 = await fetch('/api/of/config/of_mx', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(body),
+                signal: AbortSignal.timeout(3000)
+            });
+            if (!r2.ok) throw new Error('config proxy failed: ' + r2.status);
+            _savedVia = 'config';
+        }
         localStorage.removeItem('ofMxSavedParams');
-        addLog(nowTime(), 'INFO', '💾 OF-MX конфиг сохранён');
+        addLog(nowTime(), 'INFO', '💾 OF-MX конфиг сохранён (' + (_savedVia === 'robot' ? 'робот live' : 'конфиг, применится при старте') + ')');
     } catch(e) {
-        addLog(nowTime(), 'INFO', '💾 OF-MX конфиг сохранён локально (робот offline — применится при старте)');
+        addLog(nowTime(), 'ERROR', 'OF-MX save НЕ удался: ' + e.message);
     }
 }
 

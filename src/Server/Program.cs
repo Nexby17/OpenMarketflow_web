@@ -497,6 +497,61 @@ app.MapPost("/api/robot/config", async (HttpRequest req) =>
     catch (Exception ex) { return Results.Json(new { error = ex.Message }); }
 }).AllowAnonymous();
 
+// === F-010: OF robot params proxy (works when robot offline) ===
+app.MapGet("/api/of/config/{name}", (string name) =>
+{
+    var files = new Dictionary<string, string> { { "of", "of_config.json" }, { "of_mx", "of_config_mx.json" } };
+    if (!files.TryGetValue(name, out var fname)) return Results.Json(new { error = "unknown robot" }, statusCode: 400);
+    var dir = new System.IO.DirectoryInfo(AppContext.BaseDirectory);
+    for (int i = 0; i < 8 && dir != null; i++)
+    {
+        var candidate = System.IO.Path.Combine(dir.FullName, "robot", fname);
+        if (System.IO.File.Exists(candidate))
+        {
+            try { return Results.Content(System.IO.File.ReadAllText(candidate), "application/json"); }
+            catch (Exception ex) { return Results.Json(new { error = ex.Message }, statusCode: 500); }
+        }
+        dir = dir.Parent;
+    }
+    return Results.Json(new Dictionary<string, object> { });
+});
+app.MapPost("/api/of/config/{name}", async (string name, HttpRequest req) =>
+{
+    var files = new Dictionary<string, string> { { "of", "of_config.json" }, { "of_mx", "of_config_mx.json" } };
+    if (!files.TryGetValue(name, out var fname)) return Results.Json(new { error = "unknown robot" }, statusCode: 400);
+    try
+    {
+        using var reader = new StreamReader(req.Body);
+        var body = await reader.ReadToEndAsync();
+        using var doc = System.Text.Json.JsonDocument.Parse(body);
+        string? robotDirFound = null;
+        var dir = new System.IO.DirectoryInfo(AppContext.BaseDirectory);
+        for (int i = 0; i < 8 && dir != null; i++)
+        {
+            var cdir = System.IO.Path.Combine(dir.FullName, "robot");
+            if (System.IO.File.Exists(System.IO.Path.Combine(cdir, fname))) { robotDirFound = cdir; break; }
+            dir = dir.Parent;
+        }
+        if (robotDirFound == null) return Results.Json(new { error = "robot config dir not found" }, statusCode: 500);
+        var path = System.IO.Path.Combine(robotDirFound, fname);
+        var cfg = new Dictionary<string, System.Text.Json.JsonElement>();
+        if (System.IO.File.Exists(path))
+        {
+            try
+            {
+                using var old = System.Text.Json.JsonDocument.Parse(System.IO.File.ReadAllText(path));
+                foreach (var prop in old.RootElement.EnumerateObject()) cfg[prop.Name] = prop.Value.Clone();
+            }
+            catch { }
+        }
+        using var inc = System.Text.Json.JsonDocument.Parse(body);
+        foreach (var prop in inc.RootElement.EnumerateObject()) cfg[prop.Name] = prop.Value.Clone();
+        System.IO.File.WriteAllText(path, System.Text.Json.JsonSerializer.Serialize(cfg));
+        return Results.Json(new { ok = true });
+    }
+    catch (Exception ex) { return Results.Json(new { error = ex.Message }, statusCode: 400); }
+});
+
 // === Update robot ticker in config.py ===
 app.MapPost("/api/robot/ticker", async (HttpRequest req) =>
 {

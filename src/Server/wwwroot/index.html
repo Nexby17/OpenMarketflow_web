@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
@@ -12,87 +12,87 @@
     <!-- Header -->
     <header>
         <div class="header-left">
-            <span class="logo">⚡ OpenMarketflow</span>
+            <span class="logo">вљЎ OpenMarketflow</span>
             <span id="statusIndicator" class="status-dot red"></span>
-            <span id="statusText" class="status-text">Не подключён</span>
+            <span id="statusText" class="status-text">РќРµ РїРѕРґРєР»СЋС‡С‘РЅ</span>
         </div>
         <div class="header-right">
-            <button class="btn btn-danger" onclick="emergencyStop()">🔴 СТОП</button>
+            <button class="btn btn-danger" onclick="emergencyStop()">рџ”ґ РЎРўРћРџ</button>
         </div>
     </header>
     <div id="connErrorBanner" class="connection-error" role="alert"><strong>Connection Error</strong><br><span id="connErrorMsg">Connection lost. Reconnecting...</span></div>
 
     <!-- Tabs -->
     <nav class="tabs" role="tablist" aria-label="Sections">
-        <button class="tab active" data-tab="trading" role="tab" aria-selected="true">📊 Торговля</button>
-        <button class="tab" data-tab="orderbook" role="tab" aria-selected="false">📊 График</button>
-        <button class="tab" data-tab="monitoring" role="tab" aria-selected="false">🤖 Роботы</button>
-        <button class="tab" data-tab="testing" role="tab" aria-selected="false">🧪 Тестирование</button>
-        <button class="tab" data-tab="arbitrage" role="tab" aria-selected="false">🔄 Арбитраж</button>
-        <button class="tab" data-tab="strategies" role="tab" aria-selected="false">⚙️ Стратегии</button>
-        <button class="tab" data-tab="settings" role="tab" aria-selected="false">🔧 Настройки подключения</button>
+        <button class="tab active" data-tab="trading" role="tab" aria-selected="true">рџ“Љ РўРѕСЂРіРѕРІР»СЏ</button>
+        <button class="tab" data-tab="orderbook" role="tab" aria-selected="false">рџ“Љ Р“СЂР°С„РёРє</button>
+        <button class="tab" data-tab="monitoring" role="tab" aria-selected="false">рџ¤– Р РѕР±РѕС‚С‹</button>
+        <button class="tab" data-tab="testing" role="tab" aria-selected="false">рџ§Є РўРµСЃС‚РёСЂРѕРІР°РЅРёРµ</button>
+        <button class="tab" data-tab="arbitrage" role="tab" aria-selected="false">рџ”„ РђСЂР±РёС‚СЂР°Р¶</button>
+        <button class="tab" data-tab="strategies" role="tab" aria-selected="false">вљ™пёЏ РЎС‚СЂР°С‚РµРіРёРё</button>
+        <button class="tab" data-tab="settings" role="tab" aria-selected="false">рџ”§ РќР°СЃС‚СЂРѕР№РєРё РїРѕРґРєР»СЋС‡РµРЅРёСЏ</button>
     </nav>
 
-    <!-- ==================== ТОРГОВЛЯ ==================== -->
+    <!-- ==================== РўРћР Р“РћР’Р›РЇ ==================== -->
     <div id="trading" class="tab-content active">
 
-        <!-- Состояние счёта -->
+        <!-- РЎРѕСЃС‚РѕСЏРЅРёРµ СЃС‡С‘С‚Р° -->
         <div class="card" style="margin-bottom:20px">
-            <div class="card-header">💰 Состояние счёта</div>
+            <div class="card-header">рџ’° РЎРѕСЃС‚РѕСЏРЅРёРµ СЃС‡С‘С‚Р°</div>
             <table class="data-table">
-                <thead><tr><th>Счёт</th><th>Баланс</th><th>Свободные средства</th><th>Маржа</th><th>ГО</th><th>PnL за сегодня</th><th>PnL за всё время</th></tr></thead>
+                <thead><tr><th>РЎС‡С‘С‚</th><th>Р‘Р°Р»Р°РЅСЃ</th><th>РЎРІРѕР±РѕРґРЅС‹Рµ СЃСЂРµРґСЃС‚РІР°</th><th>РњР°СЂР¶Р°</th><th>Р“Рћ</th><th>PnL Р·Р° СЃРµРіРѕРґРЅСЏ</th><th>PnL Р·Р° РІСЃС‘ РІСЂРµРјСЏ</th></tr></thead>
                 <tbody id="accountsTable"></tbody>
             </table>
         </div>
 
-        <!-- Позиции -->
+        <!-- РџРѕР·РёС†РёРё -->
         <div class="card" style="margin-bottom:20px">
-            <div class="card-header">📊 Позиции</div>
+            <div class="card-header">рџ“Љ РџРѕР·РёС†РёРё</div>
             <table class="data-table">
-                <thead><tr><th>Счёт</th><th>Тикер</th><th>Направление</th><th>Количество</th><th>Цена</th><th>PnL сегодня</th></tr></thead>
+                <thead><tr><th>РЎС‡С‘С‚</th><th>РўРёРєРµСЂ</th><th>РќР°РїСЂР°РІР»РµРЅРёРµ</th><th>РљРѕР»РёС‡РµСЃС‚РІРѕ</th><th>Р¦РµРЅР°</th><th>PnL СЃРµРіРѕРґРЅСЏ</th></tr></thead>
                 <tbody id="positionsTable"></tbody>
             </table>
         </div>
 
-        <!-- Сделки за сегодня -->
+        <!-- РЎРґРµР»РєРё Р·Р° СЃРµРіРѕРґРЅСЏ -->
         <div class="card" style="margin-bottom:20px">
-            <div class="card-header">💹 Сделки за сегодня</div>
+            <div class="card-header">рџ’№ РЎРґРµР»РєРё Р·Р° СЃРµРіРѕРґРЅСЏ</div>
             <table class="data-table">
-                <thead><tr><th>Время</th><th>Тикер</th><th>Направление</th><th>Кол-во</th><th>Цена</th><th>Комментарий</th></tr></thead>
+                <thead><tr><th>Р’СЂРµРјСЏ</th><th>РўРёРєРµСЂ</th><th>РќР°РїСЂР°РІР»РµРЅРёРµ</th><th>РљРѕР»-РІРѕ</th><th>Р¦РµРЅР°</th><th>РљРѕРјРјРµРЅС‚Р°СЂРёР№</th></tr></thead>
                 <tbody id="tradesTable"></tbody>
             </table>
         </div>
 
-        <!-- Заявки -->
+        <!-- Р—Р°СЏРІРєРё -->
         <div class="card" style="margin-bottom:20px">
-            <div class="card-header">📝 Заявки</div>
+            <div class="card-header">рџ“ќ Р—Р°СЏРІРєРё</div>
             <table class="data-table">
-                <thead><tr><th>#</th><th>Тикер</th><th>Направление</th><th>Кол-во</th><th>Цена</th><th>Объём</th><th>Статус</th></tr></thead>
+                <thead><tr><th>#</th><th>РўРёРєРµСЂ</th><th>РќР°РїСЂР°РІР»РµРЅРёРµ</th><th>РљРѕР»-РІРѕ</th><th>Р¦РµРЅР°</th><th>РћР±СЉС‘Рј</th><th>РЎС‚Р°С‚СѓСЃ</th></tr></thead>
                 <tbody id="ordersTable"></tbody>
             </table>
         </div>
 
-        <!-- Котировки -->
+        <!-- РљРѕС‚РёСЂРѕРІРєРё -->
         <div class="card" style="margin-bottom:20px">
-            <div class="card-header">💹 Котировки</div>
+            <div class="card-header">рџ’№ РљРѕС‚РёСЂРѕРІРєРё</div>
             <table class="data-table">
-                <thead><tr><th>Тикер</th><th>Last</th><th>Bid</th><th>Ask</th><th>Объём</th></tr></thead>
+                <thead><tr><th>РўРёРєРµСЂ</th><th>Last</th><th>Bid</th><th>Ask</th><th>РћР±СЉС‘Рј</th></tr></thead>
                 <tbody id="quotesTable"></tbody>
             </table>
         </div>
     </div>
 
-    <!-- ==================== СТАКАН ==================== -->
+    <!-- ==================== РЎРўРђРљРђРќ ==================== -->
     <div id="orderbook" class="tab-content">
         <div class="panel-row">
-            <!-- Левая панель: стакан -->
+            <!-- Р›РµРІР°СЏ РїР°РЅРµР»СЊ: СЃС‚Р°РєР°РЅ -->
             <div class="card" style="width:320px; flex-shrink:0; display:flex; flex-direction:column">
                 <div class="card-header row gap-8">
                     <select id="obInstrument" class="select" onchange="switchOrderBookInstrument()">
                         <option>SiU6</option><option>SiZ6</option><option>MXU6</option><option>MXZ6</option><option>GDU6</option><option>BRU6</option><option>RIU6</option><option>SBER</option>
                         <option>GAZP</option><option>LKOH</option>
                     </select>
-                    <button class="btn btn-secondary btn-sm" onclick="switchOrderBookInstrument()">🔄</button>
+                    <button class="btn btn-secondary btn-sm" onclick="switchOrderBookInstrument()">рџ”„</button>
                 </div>
                 <div style="display:flex;flex:1;overflow:hidden">
                     <div id="tradeTape" class="trade-tape"></div>
@@ -100,27 +100,27 @@
                 </div>
             </div>
 
-            <!-- Правая панель: котировки + график -->
+            <!-- РџСЂР°РІР°СЏ РїР°РЅРµР»СЊ: РєРѕС‚РёСЂРѕРІРєРё + РіСЂР°С„РёРє -->
             <div class="flex-1" style="display:flex;flex-direction:column;gap:8px">
-                <!-- Котировки -->
+                <!-- РљРѕС‚РёСЂРѕРІРєРё -->
                 <div class="metrics-row">
-                    <div class="metric-card"><div class="metric-label">Последняя</div><div id="obLast" class="metric-value accent">—</div></div>
-                    <div class="metric-card"><div class="metric-label">Bid</div><div id="obBid" class="metric-value green">—</div></div>
-                    <div class="metric-card"><div class="metric-label">Ask</div><div id="obAsk" class="metric-value red">—</div></div>
-                    <div class="metric-card"><div class="metric-label">Спред</div><div id="obSpread" class="metric-value yellow">—</div></div>
+                    <div class="metric-card"><div class="metric-label">РџРѕСЃР»РµРґРЅСЏСЏ</div><div id="obLast" class="metric-value accent">вЂ”</div></div>
+                    <div class="metric-card"><div class="metric-label">Bid</div><div id="obBid" class="metric-value green">вЂ”</div></div>
+                    <div class="metric-card"><div class="metric-label">Ask</div><div id="obAsk" class="metric-value red">вЂ”</div></div>
+                    <div class="metric-card"><div class="metric-label">РЎРїСЂРµРґ</div><div id="obSpread" class="metric-value yellow">вЂ”</div></div>
                 </div>
 
-                <!-- Таймфрейм -->
+                <!-- РўР°Р№РјС„СЂРµР№Рј -->
                 <div class="card-body row gap-8" style="padding:4px 8px">
                     <span class="text-secondary">TF:</span>
                     <select id="obTimeframe" class="select select-sm" onchange="switchTimeframe()">
-                        <option value="1">1м</option><option value="5" selected>5м</option>
-                        <option value="15">15м</option><option value="60">1ч</option><option value="1440">Д</option>
+                        <option value="1">1Рј</option><option value="5" selected>5Рј</option>
+                        <option value="15">15Рј</option><option value="60">1С‡</option><option value="1440">Р”</option>
                     </select>
                     <span id="obCandleCount" class="text-secondary"></span>
                 </div>
 
-                <!-- График -->
+                <!-- Р“СЂР°С„РёРє -->
                 <div class="card flex-1" style="flex:1; min-height:300px">
                     <div id="chartContainer" style="width:100%;height:100%"></div>
                 </div>
@@ -128,346 +128,346 @@
         </div>
     </div>
 
-    <!-- ==================== МОНИТОРИНГ ==================== -->
+    <!-- ==================== РњРћРќРРўРћР РРќР“ ==================== -->
     <div id="monitoring" class="tab-content">
         <div class="card">
-            <div class="card-header">📈 Активные стратегии</div>
+            <div class="card-header">рџ“€ РђРєС‚РёРІРЅС‹Рµ СЃС‚СЂР°С‚РµРіРёРё</div>
             <table class="data-table">
-                <thead><tr><th>Инструмент</th><th>Стратегия</th><th>Счёт</th><th>Позиция</th><th>PnL сегодня</th><th>PnL всего</th><th>Лоты</th><th>ГО (₽)</th><th>Управление</th><th>Статус</th></tr></thead>
+                <thead><tr><th>РРЅСЃС‚СЂСѓРјРµРЅС‚</th><th>РЎС‚СЂР°С‚РµРіРёСЏ</th><th>РЎС‡С‘С‚</th><th>РџРѕР·РёС†РёСЏ</th><th>PnL СЃРµРіРѕРґРЅСЏ</th><th>PnL РІСЃРµРіРѕ</th><th>Р›РѕС‚С‹</th><th>Р“Рћ (в‚Ѕ)</th><th>РЈРїСЂР°РІР»РµРЅРёРµ</th><th>РЎС‚Р°С‚СѓСЃ</th></tr></thead>
                 <tbody id="robotsTable"></tbody>
             </table>
-            <div id="noRobots" class="card-body text-secondary" style="text-align:center;padding:32px">Нет активных роботов. Создайте робота на вкладке «Стратегии».</div>
+            <div id="noRobots" class="card-body text-secondary" style="text-align:center;padding:32px">РќРµС‚ Р°РєС‚РёРІРЅС‹С… СЂРѕР±РѕС‚РѕРІ. РЎРѕР·РґР°Р№С‚Рµ СЂРѕР±РѕС‚Р° РЅР° РІРєР»Р°РґРєРµ В«РЎС‚СЂР°С‚РµРіРёРёВ».</div>
         </div>
 
     </div>
 
-    <!-- ==================== ТЕСТИРОВАНИЕ ==================== -->
+    <!-- ==================== РўР•РЎРўРР РћР’РђРќРР• ==================== -->
     <div id="testing" class="tab-content">
-        <!-- VP Scalp Grid — параметры теста -->
+        <!-- VP Scalp Grid вЂ” РїР°СЂР°РјРµС‚СЂС‹ С‚РµСЃС‚Р° -->
         <div class="card" style="margin-bottom:16px">
             <div class="card-header" style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
-                🐍 VP Scalp Grid <span class="badge" style="background:#2196F3">PYTHON</span>
+                рџђЌ VP Scalp Grid <span class="badge" style="background:#2196F3">PYTHON</span>
                 <span style="flex:1"></span>
-                <button class="btn btn-success btn-sm" onclick="startVpTest()" id="btnRunVpTest">▶️ Начать тестирование</button>
-                <button class="btn btn-primary btn-sm" onclick="createVpRobotFromTest()">🤖 Создать робота</button>
-                <button class="btn btn-danger btn-sm" onclick="clearTestResults()">🗑 Удалить</button>
+                <button class="btn btn-success btn-sm" onclick="startVpTest()" id="btnRunVpTest">в–¶пёЏ РќР°С‡Р°С‚СЊ С‚РµСЃС‚РёСЂРѕРІР°РЅРёРµ</button>
+                <button class="btn btn-primary btn-sm" onclick="createVpRobotFromTest()">рџ¤– РЎРѕР·РґР°С‚СЊ СЂРѕР±РѕС‚Р°</button>
+                <button class="btn btn-danger btn-sm" onclick="clearTestResults()">рџ—‘ РЈРґР°Р»РёС‚СЊ</button>
                 <span id="testStatus" class="text-secondary"></span>
             </div>
             <div class="card-body">
-                <!-- Строка 1: Инструмент + период -->
+                <!-- РЎС‚СЂРѕРєР° 1: РРЅСЃС‚СЂСѓРјРµРЅС‚ + РїРµСЂРёРѕРґ -->
                 <div class="metrics-row" style="flex-wrap:wrap;margin-bottom:12px">
-                    <div class="metric-card" style="min-width:180px"><div class="metric-label">Инструмент</div><input id="testTicker" class="input" value="SiU6" list="tickerList2" style="width:120px"><datalist id="tickerList2"><option value="SiU6"><option value="SiZ6"><option value="MXU6"><option value="MXZ6"><option value="GDU6"><option value="BRU6"><option value="RIU6"><option value="RIZ6"><option value="SBER"><option value="GAZP"><option value="LKOH"></datalist></div>
-                    <div class="metric-card" style="min-width:100px"><div class="metric-label">Таймфрейм</div>
+                    <div class="metric-card" style="min-width:180px"><div class="metric-label">РРЅСЃС‚СЂСѓРјРµРЅС‚</div><input id="testTicker" class="input" value="SiU6" list="tickerList2" style="width:120px"><datalist id="tickerList2"><option value="SiU6"><option value="SiZ6"><option value="MXU6"><option value="MXZ6"><option value="GDU6"><option value="BRU6"><option value="RIU6"><option value="RIZ6"><option value="SBER"><option value="GAZP"><option value="LKOH"></datalist></div>
+                    <div class="metric-card" style="min-width:100px"><div class="metric-label">РўР°Р№РјС„СЂРµР№Рј</div>
                         <select id="testTf" class="input" style="width:80px">
-                            <option value="1">1 мин</option><option value="5" selected>5 мин</option>
-                            <option value="15">15 мин</option><option value="60">1 час</option><option value="1440">День</option>
+                            <option value="1">1 РјРёРЅ</option><option value="5" selected>5 РјРёРЅ</option>
+                            <option value="15">15 РјРёРЅ</option><option value="60">1 С‡Р°СЃ</option><option value="1440">Р”РµРЅСЊ</option>
                         </select>
                     </div>
-                    <div class="metric-card" style="min-width:140px"><div class="metric-label">Дата с</div><input type="date" id="testFrom" class="input"></div>
-                    <div class="metric-card" style="min-width:140px"><div class="metric-label">Дата по</div><input type="date" id="testTo" class="input"></div>
+                    <div class="metric-card" style="min-width:140px"><div class="metric-label">Р”Р°С‚Р° СЃ</div><input type="date" id="testFrom" class="input"></div>
+                    <div class="metric-card" style="min-width:140px"><div class="metric-label">Р”Р°С‚Р° РїРѕ</div><input type="date" id="testTo" class="input"></div>
                 </div>
-                <!-- Строка 2: Параметры стратегии -->
+                <!-- РЎС‚СЂРѕРєР° 2: РџР°СЂР°РјРµС‚СЂС‹ СЃС‚СЂР°С‚РµРіРёРё -->
                 <div class="metrics-row" style="flex-wrap:wrap">
                     <div class="metric-card" style="min-width:120px"><div class="metric-label">Max Levels</div><input id="tstVpMaxLevels" class="input" type="number" value="100" style="width:70px"></div>
-                    <div class="metric-card" style="min-width:120px"><div class="metric-label">Step Base (пт)</div><input id="tstVpStepBase" class="input" type="number" value="31" style="width:70px"></div>
-                    <div class="metric-card" style="min-width:120px"><div class="metric-label">Spread Base (пт)</div><input id="tstVpSpreadBase" class="input" type="number" value="31" style="width:70px"></div>
-                    <div class="metric-card" style="min-width:120px"><div class="metric-label">PnL/лот (пт)</div><input id="tstVpMinProfit" class="input" type="number" value="35" style="width:70px"></div>
+                    <div class="metric-card" style="min-width:120px"><div class="metric-label">Step Base (РїС‚)</div><input id="tstVpStepBase" class="input" type="number" value="31" style="width:70px"></div>
+                    <div class="metric-card" style="min-width:120px"><div class="metric-label">Spread Base (РїС‚)</div><input id="tstVpSpreadBase" class="input" type="number" value="31" style="width:70px"></div>
+                    <div class="metric-card" style="min-width:120px"><div class="metric-label">PnL/Р»РѕС‚ (РїС‚)</div><input id="tstVpMinProfit" class="input" type="number" value="35" style="width:70px"></div>
                     <div class="metric-card" style="min-width:120px"><div class="metric-label">VP Lookback</div><input id="tstVpLookback" class="input" type="number" value="33" style="width:70px"></div>
                     <div class="metric-card" style="min-width:120px"><div class="metric-label">VP Bin Size</div><input id="tstVpBinSize" class="input" type="number" value="50" style="width:70px"></div>
                     <div class="metric-card" style="min-width:120px"><div class="metric-label">VA %</div><input id="tstVpVaPercent" class="input" type="number" step="0.05" value="0.70" style="width:70px"></div>
-                    <div class="metric-card" style="min-width:120px"><div class="metric-label">Комиссия</div><input id="tstVpComm" class="input" type="number" step="0.1" value="0.9" style="width:70px"></div>
+                    <div class="metric-card" style="min-width:120px"><div class="metric-label">РљРѕРјРёСЃСЃРёСЏ</div><input id="tstVpComm" class="input" type="number" step="0.1" value="0.9" style="width:70px"></div>
                 </div>
             </div>
         </div>
 
-        <!-- Результаты -->
+        <!-- Р РµР·СѓР»СЊС‚Р°С‚С‹ -->
         <div id="testResults" style="display:none">
-            <!-- Метрики -->
+            <!-- РњРµС‚СЂРёРєРё -->
             <div class="card" style="margin-bottom:16px">
-                <div class="card-header">📊 Результаты</div>
+                <div class="card-header">рџ“Љ Р РµР·СѓР»СЊС‚Р°С‚С‹</div>
                 <div class="card-body">
                     <div class="metrics-row" style="flex-wrap:wrap">
-                        <div class="metric-card"><div class="metric-label">PnL</div><div id="btPnl" class="metric-value">—</div></div>
-                        <div class="metric-card"><div class="metric-label">PnL / день</div><div id="btPpd" class="metric-value">—</div></div>
-                        <div class="metric-card"><div class="metric-label">Сделок</div><div id="btTrades" class="metric-value">—</div></div>
-                        <div class="metric-card"><div class="metric-label">RT / день</div><div id="btRtpd" class="metric-value">—</div></div>
-                        <div class="metric-card"><div class="metric-label">Win Rate</div><div id="btWR" class="metric-value">—</div></div>
-                        <div class="metric-card"><div class="metric-label">Profit Factor</div><div id="btPF" class="metric-value">—</div></div>
-                        <div class="metric-card"><div class="metric-label">Sharpe</div><div id="btSharpe" class="metric-value">—</div></div>
-                        <div class="metric-card"><div class="metric-label">Avg сделка</div><div id="btAvgTrade" class="metric-value">—</div></div>
-                        <div class="metric-card"><div class="metric-label">Avg выигрыш</div><div id="btAvgWin" class="metric-value green">—</div></div>
-                        <div class="metric-card"><div class="metric-label">Avg проигрыш</div><div id="btAvgLoss" class="metric-value red">—</div></div>
-                        <div class="metric-card"><div class="metric-label">Max DD (₽)</div><div id="btMaxDD" class="metric-value red">—</div></div>
-                        <div class="metric-card"><div class="metric-label">Max DD (%)</div><div id="btMaxDDpct" class="metric-value red">—</div></div>
-                        <div class="metric-card"><div class="metric-label">Max DD длит.</div><div id="btMaxDDdur" class="metric-value">—</div></div>
-                        <div class="metric-card"><div class="metric-label">Max позиция</div><div id="btMaxPos" class="metric-value">—</div></div>
-                        <div class="metric-card"><div class="metric-label">Max ГО</div><div id="btMaxGO" class="metric-value">—</div></div>
-                        <div class="metric-card"><div class="metric-label">Сессий всего</div><div id="btSessions" class="metric-value">—</div></div>
-                        <div class="metric-card"><div class="metric-label">Сессий прибыльных</div><div id="btSessionsWR" class="metric-value">—</div></div>
-                        <div class="metric-card"><div class="metric-label">Медиана сессии</div><div id="btMedSession" class="metric-value">—</div></div>
-                        <div class="metric-card"><div class="metric-label">Макс выигрыш</div><div id="btMaxWin" class="metric-value green">—</div></div>
-                        <div class="metric-card"><div class="metric-label">Макс проигрыш</div><div id="btMaxLoss" class="metric-value red">—</div></div>
-                        <div class="metric-card"><div class="metric-label">Подряд выигрышей</div><div id="btMaxWinsStreak" class="metric-value">—</div></div>
-                        <div class="metric-card"><div class="metric-label">Подряд проигрышей</div><div id="btMaxLossStreak" class="metric-value">—</div></div>
-                        <div class="metric-card"><div class="metric-label">Комиссия всего</div><div id="btCommission" class="metric-value">—</div></div>
+                        <div class="metric-card"><div class="metric-label">PnL</div><div id="btPnl" class="metric-value">вЂ”</div></div>
+                        <div class="metric-card"><div class="metric-label">PnL / РґРµРЅСЊ</div><div id="btPpd" class="metric-value">вЂ”</div></div>
+                        <div class="metric-card"><div class="metric-label">РЎРґРµР»РѕРє</div><div id="btTrades" class="metric-value">вЂ”</div></div>
+                        <div class="metric-card"><div class="metric-label">RT / РґРµРЅСЊ</div><div id="btRtpd" class="metric-value">вЂ”</div></div>
+                        <div class="metric-card"><div class="metric-label">Win Rate</div><div id="btWR" class="metric-value">вЂ”</div></div>
+                        <div class="metric-card"><div class="metric-label">Profit Factor</div><div id="btPF" class="metric-value">вЂ”</div></div>
+                        <div class="metric-card"><div class="metric-label">Sharpe</div><div id="btSharpe" class="metric-value">вЂ”</div></div>
+                        <div class="metric-card"><div class="metric-label">Avg СЃРґРµР»РєР°</div><div id="btAvgTrade" class="metric-value">вЂ”</div></div>
+                        <div class="metric-card"><div class="metric-label">Avg РІС‹РёРіСЂС‹С€</div><div id="btAvgWin" class="metric-value green">вЂ”</div></div>
+                        <div class="metric-card"><div class="metric-label">Avg РїСЂРѕРёРіСЂС‹С€</div><div id="btAvgLoss" class="metric-value red">вЂ”</div></div>
+                        <div class="metric-card"><div class="metric-label">Max DD (в‚Ѕ)</div><div id="btMaxDD" class="metric-value red">вЂ”</div></div>
+                        <div class="metric-card"><div class="metric-label">Max DD (%)</div><div id="btMaxDDpct" class="metric-value red">вЂ”</div></div>
+                        <div class="metric-card"><div class="metric-label">Max DD РґР»РёС‚.</div><div id="btMaxDDdur" class="metric-value">вЂ”</div></div>
+                        <div class="metric-card"><div class="metric-label">Max РїРѕР·РёС†РёСЏ</div><div id="btMaxPos" class="metric-value">вЂ”</div></div>
+                        <div class="metric-card"><div class="metric-label">Max Р“Рћ</div><div id="btMaxGO" class="metric-value">вЂ”</div></div>
+                        <div class="metric-card"><div class="metric-label">РЎРµСЃСЃРёР№ РІСЃРµРіРѕ</div><div id="btSessions" class="metric-value">вЂ”</div></div>
+                        <div class="metric-card"><div class="metric-label">РЎРµСЃСЃРёР№ РїСЂРёР±С‹Р»СЊРЅС‹С…</div><div id="btSessionsWR" class="metric-value">вЂ”</div></div>
+                        <div class="metric-card"><div class="metric-label">РњРµРґРёР°РЅР° СЃРµСЃСЃРёРё</div><div id="btMedSession" class="metric-value">вЂ”</div></div>
+                        <div class="metric-card"><div class="metric-label">РњР°РєСЃ РІС‹РёРіСЂС‹С€</div><div id="btMaxWin" class="metric-value green">вЂ”</div></div>
+                        <div class="metric-card"><div class="metric-label">РњР°РєСЃ РїСЂРѕРёРіСЂС‹С€</div><div id="btMaxLoss" class="metric-value red">вЂ”</div></div>
+                        <div class="metric-card"><div class="metric-label">РџРѕРґСЂСЏРґ РІС‹РёРіСЂС‹С€РµР№</div><div id="btMaxWinsStreak" class="metric-value">вЂ”</div></div>
+                        <div class="metric-card"><div class="metric-label">РџРѕРґСЂСЏРґ РїСЂРѕРёРіСЂС‹С€РµР№</div><div id="btMaxLossStreak" class="metric-value">вЂ”</div></div>
+                        <div class="metric-card"><div class="metric-label">РљРѕРјРёСЃСЃРёСЏ РІСЃРµРіРѕ</div><div id="btCommission" class="metric-value">вЂ”</div></div>
                     </div>
                 </div>
             </div>
 
-            <!-- Графики -->
+            <!-- Р“СЂР°С„РёРєРё -->
             <div class="panel-row">
                 <div class="card" style="flex:1; min-height:300px">
-                    <div class="card-header">📈 Equity Curve</div>
+                    <div class="card-header">рџ“€ Equity Curve</div>
                     <div id="testEquityChart" style="width:100%;min-height:300px;background:#1A1A2E"></div>
                 </div>
                 <div class="card" style="flex:1; min-height:300px">
-                    <div class="card-header">🕯️ Свечи + Сделки + Индикаторы</div>
+                    <div class="card-header">рџ•ЇпёЏ РЎРІРµС‡Рё + РЎРґРµР»РєРё + РРЅРґРёРєР°С‚РѕСЂС‹</div>
                     <div id="testCandleChart" style="width:100%;min-height:400px;background:#1A1A2E"></div>
                 </div>
             </div>
 
-            <!-- Таблица сделок -->
+            <!-- РўР°Р±Р»РёС†Р° СЃРґРµР»РѕРє -->
             <div class="card" style="margin-top:16px">
-                <div class="card-header">📋 Сделки</div>
+                <div class="card-header">рџ“‹ РЎРґРµР»РєРё</div>
                 <table class="data-table">
-                    <thead><tr><th>Время входа</th><th>Время выхода</th><th>Напр.</th><th>Цена вх.</th><th>Цена вых.</th><th>Лоты</th><th>PnL</th><th>RT</th></tr></thead>
+                    <thead><tr><th>Р’СЂРµРјСЏ РІС…РѕРґР°</th><th>Р’СЂРµРјСЏ РІС‹С…РѕРґР°</th><th>РќР°РїСЂ.</th><th>Р¦РµРЅР° РІС….</th><th>Р¦РµРЅР° РІС‹С….</th><th>Р›РѕС‚С‹</th><th>PnL</th><th>RT</th></tr></thead>
                     <tbody id="testTradesTable"></tbody>
                 </table>
             </div>
         </div>
     </div>
 
-    <!-- ==================== СТРАТЕГИИ ==================== -->
+    <!-- ==================== РЎРўР РђРўР•Р“РР ==================== -->
     <div id="strategies" class="tab-content">
-        <!-- Одна строка: название + инструмент + параметры + кнопки -->
-        <!-- VP Scalp Grid — Python Robot -->
+        <!-- РћРґРЅР° СЃС‚СЂРѕРєР°: РЅР°Р·РІР°РЅРёРµ + РёРЅСЃС‚СЂСѓРјРµРЅС‚ + РїР°СЂР°РјРµС‚СЂС‹ + РєРЅРѕРїРєРё -->
+        <!-- VP Scalp Grid вЂ” Python Robot -->
         <div class="strategy-item" style="padding:16px; gap:12px; align-items:center; flex-wrap:wrap; margin-top:12px; border-top:1px solid var(--border-color)">
-            <strong style="min-width:100px">🐍 VP Scalp Grid</strong> <span class="badge" style="background:#2196F3">PYTHON</span>
-            <div class="metric-card" style="min-width:140px"><div class="metric-label">Инструмент</div><select id="cfgVpTicker" class="input" style="width:120px"><option value="SiU6">SiU6 (Si, сен)</option><option value="SiZ6">SiZ6 (Si, дек)</option><option value="MXU6">MXU6 (MOEX, сен)</option><option value="MXZ6">MXZ6 (MOEX, дек)</option><option value="GDU6">GDU6 (Золото)</option><option value="BRU6">BRU6 (Нефть)</option><option value="RIU6">RIU6 (RTS)</option><option value="RIZ6">RIZ6 (RTS)</option></select></div>
+            <strong style="min-width:100px">рџђЌ VP Scalp Grid</strong> <span class="badge" style="background:#2196F3">PYTHON</span>
+            <div class="metric-card" style="min-width:140px"><div class="metric-label">РРЅСЃС‚СЂСѓРјРµРЅС‚</div><select id="cfgVpTicker" class="input" style="width:120px"><option value="SiU6">SiU6 (Si, СЃРµРЅ)</option><option value="SiZ6">SiZ6 (Si, РґРµРє)</option><option value="MXU6">MXU6 (MOEX, СЃРµРЅ)</option><option value="MXZ6">MXZ6 (MOEX, РґРµРє)</option><option value="GDU6">GDU6 (Р—РѕР»РѕС‚Рѕ)</option><option value="BRU6">BRU6 (РќРµС„С‚СЊ)</option><option value="RIU6">RIU6 (RTS)</option><option value="RIZ6">RIZ6 (RTS)</option></select></div>
             <div class="metric-card" style="min-width:120px"><div class="metric-label">Max Levels</div><input id="cfgVpMaxLevels" class="input" type="number" step="1" value="100" style="width:70px"></div>
-            <div class="metric-card" style="min-width:120px"><div class="metric-label">Step Base (пт)</div><input id="cfgVpStepBase" class="input" type="number" step="1" value="31" style="width:70px"></div>
-            <div class="metric-card" style="min-width:120px"><div class="metric-label">Spread Base (пт)</div><input id="cfgVpSpreadBase" class="input" type="number" step="1" value="31" style="width:70px"></div>
-            <div class="metric-card" style="min-width:120px"><div class="metric-label">Max Hold (мин)</div><input id="cfgVpMaxHold" class="input" type="number" step="1" value="99999999999999" style="width:100px"></div>
+            <div class="metric-card" style="min-width:120px"><div class="metric-label">Step Base (РїС‚)</div><input id="cfgVpStepBase" class="input" type="number" step="1" value="31" style="width:70px"></div>
+            <div class="metric-card" style="min-width:120px"><div class="metric-label">Spread Base (РїС‚)</div><input id="cfgVpSpreadBase" class="input" type="number" step="1" value="31" style="width:70px"></div>
+            <div class="metric-card" style="min-width:120px"><div class="metric-label">Max Hold (РјРёРЅ)</div><input id="cfgVpMaxHold" class="input" type="number" step="1" value="99999999999999" style="width:100px"></div>
             <div class="metric-card" style="min-width:120px"><div class="metric-label">VP Lookback</div><input id="cfgVpLookback" class="input" type="number" step="1" value="33" style="width:70px"></div>
             <div class="metric-card" style="min-width:120px"><div class="metric-label">VP Bin Size</div><input id="cfgVpBinSize" class="input" type="number" step="1" value="50" style="width:70px"></div>
             <div class="metric-card" style="min-width:120px"><div class="metric-label">VA %</div><input id="cfgVpVaPercent" class="input" type="number" step="0.05" value="0.70" style="width:70px"></div>
-            <div class="metric-card" style="min-width:120px"><div class="metric-label">PnL/лот (пт)</div><input id="cfgVpMinProfit" class="input" type="number" step="1" value="29" style="width:70px"></div>
+            <div class="metric-card" style="min-width:120px"><div class="metric-label">PnL/Р»РѕС‚ (РїС‚)</div><input id="cfgVpMinProfit" class="input" type="number" step="1" value="29" style="width:70px"></div>
             <div class="metric-card" style="min-width:120px"><div class="metric-label">RV Adaptation</div><input id="cfgVpRvAdapt" type="checkbox" style="width:20px;height:20px;vertical-align:middle"></div>
-            <button class="btn btn-success btn-sm" onclick="pythonRobotSaveConfig()">💾 Сохранить</button>
-            <button class="btn btn-warning btn-sm" onclick="pythonRobotTest()">🧪 Тестирование</button>
-            <button class="btn btn-primary btn-sm" onclick="pythonRobotCreate()">🤖 Создать робота</button>
+            <button class="btn btn-success btn-sm" onclick="pythonRobotSaveConfig()">рџ’ѕ РЎРѕС…СЂР°РЅРёС‚СЊ</button>
+            <button class="btn btn-warning btn-sm" onclick="pythonRobotTest()">рџ§Є РўРµСЃС‚РёСЂРѕРІР°РЅРёРµ</button>
+            <button class="btn btn-primary btn-sm" onclick="pythonRobotCreate()">рџ¤– РЎРѕР·РґР°С‚СЊ СЂРѕР±РѕС‚Р°</button>
         </div>
 
-        <!-- Order Flow — Python Robot -->
+        <!-- Order Flow вЂ” Python Robot -->
         <div class="strategy-item" style="padding:16px; gap:12px; align-items:center; flex-wrap:wrap; margin-top:12px; border-top:1px solid var(--border-color)">
-            <strong style="min-width:100px">📊 Order Flow</strong> <span class="badge" style="background:#9C27B0">PYTHON</span>
-            <div class="metric-card" style="min-width:140px"><div class="metric-label">Инструмент</div><select id="cfgOfTicker" class="input" style="width:120px"><option value="SiU6" selected>SiU6 (Si, сен)</option><option value="SiZ6">SiZ6 (Si, дек)</option><option value="MXU6">MXU6 (MOEX, сен)</option><option value="MXZ6">MXZ6 (MOEX, дек)</option><option value="GDU6">GDU6 (Золото)</option><option value="BRU6">BRU6 (Нефть)</option><option value="RIU6">RIU6 (RTS)</option><option value="RIZ6">RIZ6 (RTS)</option></select></div>
-            <div class="metric-card" style="min-width:120px"><div class="metric-label">Счёт</div><select id="cfgOfAccount" class="input" style="width:100px"><option value="1225950">1225950</option><option value="1225951">1225951</option><option value="1225952">1225952</option><option value="1225953" selected>1225953</option></select></div>
+            <strong style="min-width:100px">рџ“Љ Order Flow</strong> <span class="badge" style="background:#9C27B0">PYTHON</span>
+            <div class="metric-card" style="min-width:140px"><div class="metric-label">РРЅСЃС‚СЂСѓРјРµРЅС‚</div><select id="cfgOfTicker" class="input" style="width:120px"><option value="SiU6" selected>SiU6 (Si, СЃРµРЅ)</option><option value="SiZ6">SiZ6 (Si, РґРµРє)</option><option value="MXU6">MXU6 (MOEX, СЃРµРЅ)</option><option value="MXZ6">MXZ6 (MOEX, РґРµРє)</option><option value="GDU6">GDU6 (Р—РѕР»РѕС‚Рѕ)</option><option value="BRU6">BRU6 (РќРµС„С‚СЊ)</option><option value="RIU6">RIU6 (RTS)</option><option value="RIZ6">RIZ6 (RTS)</option></select></div>
+            <div class="metric-card" style="min-width:120px"><div class="metric-label">РЎС‡С‘С‚</div><select id="cfgOfAccount" class="input" style="width:100px"><option value="1225950">1225950</option><option value="1225951">1225951</option><option value="1225952">1225952</option><option value="1225953" selected>1225953</option></select></div>
             <div class="metric-card" style="min-width:100px"><div class="metric-label">Lots</div><input id="cfgOfLots" class="input" type="number" step="1" value="1" style="width:60px"></div>
             <div class="metric-card" style="min-width:100px"><div class="metric-label">Max Pyramid</div><input id="cfgOfMaxPyr" class="input" type="number" step="1" value="5" style="width:60px"></div>
             <div class="metric-card" style="min-width:100px"><div class="metric-label">Max Average</div><input id="cfgOfMaxAvg" class="input" type="number" step="1" value="100" style="width:60px"></div>
-            <div class="metric-card" style="min-width:100px"><div class="metric-label">Step Avg (пт)</div><input id="cfgOfStepAvg" class="input" type="number" step="1" value="50" style="width:60px"></div>
-            <div class="metric-card" style="min-width:100px"><div class="metric-label">Step Pyr (пт)</div><input id="cfgOfStepPyr" class="input" type="number" step="1" value="35" style="width:60px"></div>
-            <div class="metric-card" style="min-width:100px"><div class="metric-label">Spread (пт)</div><input id="cfgOfSpread" class="input" type="number" step="1" value="50" style="width:60px"></div>
-            <div class="metric-card" style="min-width:100px"><div class="metric-label">SL Mode</div><select id="cfgOfSlMode" class="input" style="width:70px"><option value="rub">₽</option><option value="pct">%</option><option value="pts">пт</option></select></div>
+            <div class="metric-card" style="min-width:100px"><div class="metric-label">Step Avg (РїС‚)</div><input id="cfgOfStepAvg" class="input" type="number" step="1" value="50" style="width:60px"></div>
+            <div class="metric-card" style="min-width:100px"><div class="metric-label">Step Pyr (РїС‚)</div><input id="cfgOfStepPyr" class="input" type="number" step="1" value="35" style="width:60px"></div>
+            <div class="metric-card" style="min-width:100px"><div class="metric-label">Spread (РїС‚)</div><input id="cfgOfSpread" class="input" type="number" step="1" value="50" style="width:60px"></div>
+            <div class="metric-card" style="min-width:100px"><div class="metric-label">SL Mode</div><select id="cfgOfSlMode" class="input" style="width:70px"><option value="rub">в‚Ѕ</option><option value="pct">%</option><option value="pts">РїС‚</option></select></div>
             <div class="metric-card" style="min-width:100px"><div class="metric-label">SL Value</div><input id="cfgOfSlValue" class="input" type="number" step="1" value="7000" style="width:70px"></div>
             <div class="metric-card" style="min-width:100px"><div class="metric-label">Min Profit/Lot</div><input id="cfgOfMinProfit" class="input" type="number" step="1" value="30" style="width:60px"></div>
-            <div class="metric-card" style="min-width:100px"><div class="metric-label">Max Hold (мин)</div><input id="cfgOfMaxHold" class="input" type="number" step="1" value="999" style="width:70px"></div>
+            <div class="metric-card" style="min-width:100px"><div class="metric-label">Max Hold (РјРёРЅ)</div><input id="cfgOfMaxHold" class="input" type="number" step="1" value="999" style="width:70px"></div>
             <div class="metric-card" style="min-width:100px"><div class="metric-label">Absorption</div><input id="cfgOfAbsThr" class="input" type="number" step="0.01" value="0.35" style="width:60px"></div>
             <div class="metric-card" style="min-width:80px"><div class="metric-label">CVD Lookback</div><input id="cfgOfCvdLb" class="input" type="number" step="1" value="10" style="width:50px"></div>
             <div class="metric-card" style="min-width:100px"><div class="metric-label">CVD Accel Thresh</div><input id="cfgOfCvdAccelThresh" class="input" type="number" step="100" value="1000" style="width:60px"></div>
             <div class="metric-card" style="min-width:80px"><div class="metric-label">Confirm In</div><input id="cfgOfConfirm" class="input" type="number" step="1" value="1" min="1" max="3" style="width:50px"></div>
             <div class="metric-card" style="min-width:80px"><div class="metric-label">Confirm Out</div><input id="cfgOfConfirmOut" class="input" type="number" step="1" value="1" min="1" max="3" style="width:50px"></div>
-            <div class="metric-card" style="min-width:90px"><div class="metric-label">Timeframe</div><select id="cfgOfTf" class="input" style="width:70px"><option value="M1">1 мин</option><option value="M5" selected>5 мин</option><option value="M15">15 мин</option><option value="M30">30 мин</option><option value="H1">1 час</option><option value="H4">4 часа</option><option value="D">День</option></select></div>
-            <button class="btn btn-success btn-sm" onclick="ofRobotSaveConfig()">💾 Сохранить</button>
-            <button class="btn btn-primary btn-sm" onclick="ofRobotCreate()">🤖 Создать робота</button>
+            <div class="metric-card" style="min-width:90px"><div class="metric-label">Timeframe</div><select id="cfgOfTf" class="input" style="width:70px"><option value="M1">1 РјРёРЅ</option><option value="M5" selected>5 РјРёРЅ</option><option value="M15">15 РјРёРЅ</option><option value="M30">30 РјРёРЅ</option><option value="H1">1 С‡Р°СЃ</option><option value="H4">4 С‡Р°СЃР°</option><option value="D">Р”РµРЅСЊ</option></select></div>
+            <button class="btn btn-success btn-sm" onclick="ofRobotSaveConfig()">рџ’ѕ РЎРѕС…СЂР°РЅРёС‚СЊ</button>
+            <button class="btn btn-primary btn-sm" onclick="ofRobotCreate()">рџ¤– РЎРѕР·РґР°С‚СЊ СЂРѕР±РѕС‚Р°</button>
         </div>
 
     </div>
 
-    <!-- ==================== АРБИТРАЖ ==================== -->
+    <!-- ==================== РђР Р‘РРўР РђР– ==================== -->
     <div id="arbitrage" class="tab-content">
-        <!-- Управление -->
+        <!-- РЈРїСЂР°РІР»РµРЅРёРµ -->
         <div class="card" style="margin-bottom:16px">
             <div class="card-header row gap-8">
-                🔄 Арбитражный робот (PYTHON)
+                рџ”„ РђСЂР±РёС‚СЂР°Р¶РЅС‹Р№ СЂРѕР±РѕС‚ (PYTHON)
                 <span style="flex:1"></span>
-                <button class="btn btn-success btn-sm" onclick="arbPyStart()" id="arbPyStartBtn">▶️ Старт</button>
-                <button class="btn btn-secondary btn-sm" onclick="arbPyPause()" id="arbPyPauseBtn">⏸ Пауза</button>
-                <button class="btn btn-danger btn-sm" onclick="arbPyStop()" id="arbPyStopBtn">⏹ Стоп</button>
-                <span id="arbPyStatus" class="status-text">Не подключён</span>
+                <button class="btn btn-success btn-sm" onclick="arbPyStart()" id="arbPyStartBtn">в–¶пёЏ РЎС‚Р°СЂС‚</button>
+                <button class="btn btn-secondary btn-sm" onclick="arbPyPause()" id="arbPyPauseBtn">вЏё РџР°СѓР·Р°</button>
+                <button class="btn btn-danger btn-sm" onclick="arbPyStop()" id="arbPyStopBtn">вЏ№ РЎС‚РѕРї</button>
+                <span id="arbPyStatus" class="status-text">РќРµ РїРѕРґРєР»СЋС‡С‘РЅ</span>
             </div>
-            <!-- Метрики -->
+            <!-- РњРµС‚СЂРёРєРё -->
             <div class="metrics-row" style="flex-wrap:wrap">
-                <div class="metric-card"><div class="metric-label">Пара</div><div id="arbPyPair" class="metric-value">—</div></div>
-                <div class="metric-card"><div class="metric-label">Basis</div><div id="arbPyBasis" class="metric-value">—</div></div>
-                <div class="metric-card"><div class="metric-label">Z-score</div><div id="arbPyZ" class="metric-value accent">—</div></div>
-                <div class="metric-card"><div class="metric-label">Позиция</div><div id="arbPyPos" class="metric-value">—</div></div>
-                <div class="metric-card"><div class="metric-label">Unrealized PnL</div><div id="arbPyUnreal" class="metric-value">—</div></div>
-                <div class="metric-card"><div class="metric-label">Realized PnL</div><div id="arbPyRealized" class="metric-value">0 ₽</div></div>
-                <div class="metric-card"><div class="metric-label">Сделок</div><div id="arbPyTrades" class="metric-value">0</div></div>
-                <div class="metric-card"><div class="metric-label">Paper</div><div id="arbPyPaper" class="metric-value">—</div></div>
+                <div class="metric-card"><div class="metric-label">РџР°СЂР°</div><div id="arbPyPair" class="metric-value">вЂ”</div></div>
+                <div class="metric-card"><div class="metric-label">Basis</div><div id="arbPyBasis" class="metric-value">вЂ”</div></div>
+                <div class="metric-card"><div class="metric-label">Z-score</div><div id="arbPyZ" class="metric-value accent">вЂ”</div></div>
+                <div class="metric-card"><div class="metric-label">РџРѕР·РёС†РёСЏ</div><div id="arbPyPos" class="metric-value">вЂ”</div></div>
+                <div class="metric-card"><div class="metric-label">Unrealized PnL</div><div id="arbPyUnreal" class="metric-value">вЂ”</div></div>
+                <div class="metric-card"><div class="metric-label">Realized PnL</div><div id="arbPyRealized" class="metric-value">0 в‚Ѕ</div></div>
+                <div class="metric-card"><div class="metric-label">РЎРґРµР»РѕРє</div><div id="arbPyTrades" class="metric-value">0</div></div>
+                <div class="metric-card"><div class="metric-label">Paper</div><div id="arbPyPaper" class="metric-value">вЂ”</div></div>
             </div>
         </div>
 
-        <!-- ====== SBER/SRU6 робот ====== -->
+        <!-- ====== SBER/SRU6 СЂРѕР±РѕС‚ ====== -->
         <div class="card" style="margin-bottom:16px;margin-top:8px">
             <div class="card-header row gap-8">
-                🔄 Арбитражный робот (PYTHON) — SBER/SRU6
+                рџ”„ РђСЂР±РёС‚СЂР°Р¶РЅС‹Р№ СЂРѕР±РѕС‚ (PYTHON) вЂ” SBER/SRU6
                 <span style="flex:1"></span>
-                <button class="btn btn-success btn-sm" onclick="sberStart()" id="sberStartBtn">▶️ Старт</button>
-                <button class="btn btn-secondary btn-sm" onclick="sberPause()" id="sberPauseBtn">⏸ Пауза</button>
-                <button class="btn btn-danger btn-sm" onclick="sberStop()" id="sberStopBtn">⏹ Стоп</button>
-                <span id="sberStatus" class="status-text">Не подключён</span>
+                <button class="btn btn-success btn-sm" onclick="sberStart()" id="sberStartBtn">в–¶пёЏ РЎС‚Р°СЂС‚</button>
+                <button class="btn btn-secondary btn-sm" onclick="sberPause()" id="sberPauseBtn">вЏё РџР°СѓР·Р°</button>
+                <button class="btn btn-danger btn-sm" onclick="sberStop()" id="sberStopBtn">вЏ№ РЎС‚РѕРї</button>
+                <span id="sberStatus" class="status-text">РќРµ РїРѕРґРєР»СЋС‡С‘РЅ</span>
             </div>
             <div class="metrics-row" style="flex-wrap:wrap">
-                <div class="metric-card"><div class="metric-label">Пара</div><div id="sberPair" class="metric-value">—</div></div>
-                <div class="metric-card"><div class="metric-label">Basis</div><div id="sberBasis" class="metric-value">—</div></div>
-                <div class="metric-card"><div class="metric-label">Z-score</div><div id="sberZ" class="metric-value accent">—</div></div>
-                <div class="metric-card"><div class="metric-label">Позиция</div><div id="sberPos" class="metric-value">—</div></div>
-                <div class="metric-card"><div class="metric-label">Unrealized PnL</div><div id="sberUnreal" class="metric-value">—</div></div>
-                <div class="metric-card"><div class="metric-label">Realized PnL</div><div id="sberRealized" class="metric-value">0 ₽</div></div>
-                <div class="metric-card"><div class="metric-label">Сделок</div><div id="sberTrades" class="metric-value">0</div></div>
-                <div class="metric-card"><div class="metric-label">Paper</div><div id="sberPaper" class="metric-value">—</div></div>
+                <div class="metric-card"><div class="metric-label">РџР°СЂР°</div><div id="sberPair" class="metric-value">вЂ”</div></div>
+                <div class="metric-card"><div class="metric-label">Basis</div><div id="sberBasis" class="metric-value">вЂ”</div></div>
+                <div class="metric-card"><div class="metric-label">Z-score</div><div id="sberZ" class="metric-value accent">вЂ”</div></div>
+                <div class="metric-card"><div class="metric-label">РџРѕР·РёС†РёСЏ</div><div id="sberPos" class="metric-value">вЂ”</div></div>
+                <div class="metric-card"><div class="metric-label">Unrealized PnL</div><div id="sberUnreal" class="metric-value">вЂ”</div></div>
+                <div class="metric-card"><div class="metric-label">Realized PnL</div><div id="sberRealized" class="metric-value">0 в‚Ѕ</div></div>
+                <div class="metric-card"><div class="metric-label">РЎРґРµР»РѕРє</div><div id="sberTrades" class="metric-value">0</div></div>
+                <div class="metric-card"><div class="metric-label">Paper</div><div id="sberPaper" class="metric-value">вЂ”</div></div>
             </div>
         </div>
 
-        <!-- ====== BR Calendar робот ====== -->
+        <!-- ====== BR Calendar СЂРѕР±РѕС‚ ====== -->
         <div class="card" style="margin-bottom:16px;margin-top:8px">
             <div class="card-header row gap-8">
-                🔄 Арбитражный робот (PYTHON) — BR Calendar
+                рџ”„ РђСЂР±РёС‚СЂР°Р¶РЅС‹Р№ СЂРѕР±РѕС‚ (PYTHON) вЂ” BR Calendar
                 <span style="flex:1"></span>
-                <button class="btn btn-success btn-sm" onclick="brCalStart()" id="brCalStartBtn">▶️ Старт</button>
-                <button class="btn btn-secondary btn-sm" onclick="brCalPause()" id="brCalPauseBtn">⏸ Пауза</button>
-                <button class="btn btn-danger btn-sm" onclick="brCalStop()" id="brCalStopBtn">⏹ Стоп</button>
-                <span id="brCalStatus" class="status-text">Не подключён</span>
+                <button class="btn btn-success btn-sm" onclick="brCalStart()" id="brCalStartBtn">в–¶пёЏ РЎС‚Р°СЂС‚</button>
+                <button class="btn btn-secondary btn-sm" onclick="brCalPause()" id="brCalPauseBtn">вЏё РџР°СѓР·Р°</button>
+                <button class="btn btn-danger btn-sm" onclick="brCalStop()" id="brCalStopBtn">вЏ№ РЎС‚РѕРї</button>
+                <span id="brCalStatus" class="status-text">РќРµ РїРѕРґРєР»СЋС‡С‘РЅ</span>
             </div>
             <div class="metrics-row" style="flex-wrap:wrap">
-                <div class="metric-card"><div class="metric-label">Пара</div><div id="brCalPair" class="metric-value">—</div></div>
-                <div class="metric-card"><div class="metric-label">Basis</div><div id="brCalBasis" class="metric-value">—</div></div>
-                <div class="metric-card"><div class="metric-label">Z-score</div><div id="brCalZ" class="metric-value accent">—</div></div>
-                <div class="metric-card"><div class="metric-label">Позиция</div><div id="brCalPos" class="metric-value">—</div></div>
-                <div class="metric-card"><div class="metric-label">Unrealized PnL</div><div id="brCalUnreal" class="metric-value">—</div></div>
-                <div class="metric-card"><div class="metric-label">Realized PnL</div><div id="brCalRealized" class="metric-value">0 ₽</div></div>
-                <div class="metric-card"><div class="metric-label">Сделок</div><div id="brCalTrades" class="metric-value">0</div></div>
-                <div class="metric-card"><div class="metric-label">Paper</div><div id="brCalPaper" class="metric-value">—</div></div>
+                <div class="metric-card"><div class="metric-label">РџР°СЂР°</div><div id="brCalPair" class="metric-value">вЂ”</div></div>
+                <div class="metric-card"><div class="metric-label">Basis</div><div id="brCalBasis" class="metric-value">вЂ”</div></div>
+                <div class="metric-card"><div class="metric-label">Z-score</div><div id="brCalZ" class="metric-value accent">вЂ”</div></div>
+                <div class="metric-card"><div class="metric-label">РџРѕР·РёС†РёСЏ</div><div id="brCalPos" class="metric-value">вЂ”</div></div>
+                <div class="metric-card"><div class="metric-label">Unrealized PnL</div><div id="brCalUnreal" class="metric-value">вЂ”</div></div>
+                <div class="metric-card"><div class="metric-label">Realized PnL</div><div id="brCalRealized" class="metric-value">0 в‚Ѕ</div></div>
+                <div class="metric-card"><div class="metric-label">РЎРґРµР»РѕРє</div><div id="brCalTrades" class="metric-value">0</div></div>
+                <div class="metric-card"><div class="metric-label">Paper</div><div id="brCalPaper" class="metric-value">вЂ”</div></div>
             </div>
         </div>
 
-        <!-- Список роботов (двойной клик = параметры) -->
+        <!-- РЎРїРёСЃРѕРє СЂРѕР±РѕС‚РѕРІ (РґРІРѕР№РЅРѕР№ РєР»РёРє = РїР°СЂР°РјРµС‚СЂС‹) -->
         <div class="card">
-            <div class="card-header">Активные роботы</div>
+            <div class="card-header">РђРєС‚РёРІРЅС‹Рµ СЂРѕР±РѕС‚С‹</div>
             <table class="data-table">
                 <thead><tr>
-                    <th>Пара</th>
-                    <th>Режим</th>
-                    <th>Позиция</th>
+                    <th>РџР°СЂР°</th>
+                    <th>Р РµР¶РёРј</th>
+                    <th>РџРѕР·РёС†РёСЏ</th>
                     <th>PnL</th>
                     <th>Z</th>
                     <th>Basis</th>
-                    <th>Статус</th>
+                    <th>РЎС‚Р°С‚СѓСЃ</th>
                 </tr></thead>
                 <tbody id="arbPyRobotsTable">
-                    <tr ondblclick="arbPyEditPanel()" style="cursor:pointer" title="Двойной клик — настройки робота">
+                    <tr ondblclick="arbPyEditPanel()" style="cursor:pointer" title="Р”РІРѕР№РЅРѕР№ РєР»РёРє вЂ” РЅР°СЃС‚СЂРѕР№РєРё СЂРѕР±РѕС‚Р°">
                         <td id="arbPyRbPair">GAZP / GZM6</td>
                         <td id="arbPyRbMode">stopped</td>
-                        <td id="arbPyRbPos">—</td>
-                        <td id="arbPyRbPnl">0 ₽</td>
-                        <td id="arbPyRbZ">—</td>
-                        <td id="arbPyRbBasis">—</td>
-                        <td id="arbPyRbStatus">⚪</td>
+                        <td id="arbPyRbPos">вЂ”</td>
+                        <td id="arbPyRbPnl">0 в‚Ѕ</td>
+                        <td id="arbPyRbZ">вЂ”</td>
+                        <td id="arbPyRbBasis">вЂ”</td>
+                        <td id="arbPyRbStatus">вљЄ</td>
                     </tr>
-                    <tr ondblclick="sberEditPanel()" style="cursor:pointer" title="Двойной клик — настройки робота">
+                    <tr ondblclick="sberEditPanel()" style="cursor:pointer" title="Р”РІРѕР№РЅРѕР№ РєР»РёРє вЂ” РЅР°СЃС‚СЂРѕР№РєРё СЂРѕР±РѕС‚Р°">
                         <td id="sberRbPair">SBER / SRU6</td>
-                        <td id="sberRbMode">—</td>
-                        <td id="sberRbPos">—</td>
-                        <td id="sberRbPnl">0 ₽</td>
-                        <td id="sberRbZ">—</td>
-                        <td id="sberRbBasis">—</td>
-                        <td id="sberRbStatus">⚪</td>
+                        <td id="sberRbMode">вЂ”</td>
+                        <td id="sberRbPos">вЂ”</td>
+                        <td id="sberRbPnl">0 в‚Ѕ</td>
+                        <td id="sberRbZ">вЂ”</td>
+                        <td id="sberRbBasis">вЂ”</td>
+                        <td id="sberRbStatus">вљЄ</td>
                     </tr>
-                    <tr ondblclick="brCalEditPanel()" style="cursor:pointer" title="Двойной клик — настройки робота">
+                    <tr ondblclick="brCalEditPanel()" style="cursor:pointer" title="Р”РІРѕР№РЅРѕР№ РєР»РёРє вЂ” РЅР°СЃС‚СЂРѕР№РєРё СЂРѕР±РѕС‚Р°">
                         <td id="brCalRbPair">BRQ6 / BRU6</td>
-                        <td id="brCalRbMode">—</td>
-                        <td id="brCalRbPos">—</td>
-                        <td id="brCalRbPnl">0 ₽</td>
-                        <td id="brCalRbZ">—</td>
-                        <td id="brCalRbBasis">—</td>
-                        <td id="brCalRbStatus">⚪</td>
+                        <td id="brCalRbMode">вЂ”</td>
+                        <td id="brCalRbPos">вЂ”</td>
+                        <td id="brCalRbPnl">0 в‚Ѕ</td>
+                        <td id="brCalRbZ">вЂ”</td>
+                        <td id="brCalRbBasis">вЂ”</td>
+                        <td id="brCalRbStatus">вљЄ</td>
                     </tr>
                 </tbody>
             </table>
         </div>
 
-        <!-- Лог -->
+        <!-- Р›РѕРі -->
         <div class="card" style="margin-top:16px">
-            <div class="card-header">Лог событий</div>
+            <div class="card-header">Р›РѕРі СЃРѕР±С‹С‚РёР№</div>
             <div id="arbPyLogContainer" class="log-container"></div>
         </div>
     </div>
 
-    <!-- ==================== АЛЬФА-ДИРЕКТ ==================== -->
-    <!-- ==================== НАСТРОЙКИ ==================== -->
+    <!-- ==================== РђР›Р¬Р¤Рђ-Р”РР Р•РљРў ==================== -->
+    <!-- ==================== РќРђРЎРўР РћР™РљР ==================== -->
     <div id="settings" class="tab-content">
-        <!-- Подключение -->
+        <!-- РџРѕРґРєР»СЋС‡РµРЅРёРµ -->
         <div class="card" style="max-width:600px">
-            <div class="card-header">🔌 Подключение</div>
+            <div class="card-header">рџ”Њ РџРѕРґРєР»СЋС‡РµРЅРёРµ</div>
             <div class="card-body" style="display:flex;flex-direction:column;gap:16px">
                 <div class="row gap-8" style="align-items:center">
                     <select id="brokerSelect" class="select" onchange="switchConnector(this.value)">
-                        <option value="Finam">Финам (Trade API)</option>
+                        <option value="Finam">Р¤РёРЅР°Рј (Trade API)</option>
                         <option value="QUIK">QUIK (Lua Bridge)</option>
-                        <option value="Transaq" disabled>Transaq (недоступен)</option>
+                        <option value="Transaq" disabled>Transaq (РЅРµРґРѕСЃС‚СѓРїРµРЅ)</option>
                     </select>
-                    <button class="btn btn-secondary" onclick="connectBroker()">🔌 Подключиться</button>
-                    <span id="brokerStatus" class="status-text">❌ Не подключён</span>
+                    <button class="btn btn-secondary" onclick="connectBroker()">рџ”Њ РџРѕРґРєР»СЋС‡РёС‚СЊСЃСЏ</button>
+                    <span id="brokerStatus" class="status-text">вќЊ РќРµ РїРѕРґРєР»СЋС‡С‘РЅ</span>
                 </div>
             </div>
         </div>
 
         <div class="card" style="max-width:600px; margin-top:12px">
-            <div class="card-header">🔑 Токен</div>
+            <div class="card-header">рџ”‘ РўРѕРєРµРЅ</div>
             <div class="card-body" style="display:flex;flex-direction:column;gap:16px">
                 <div>
-                    <label>Финам Trade API</label>
-                    <input type="password" id="finamToken" class="input" placeholder="Вставьте токен Финам">
+                    <label>Р¤РёРЅР°Рј Trade API</label>
+                    <input type="password" id="finamToken" class="input" placeholder="Р’СЃС‚Р°РІСЊС‚Рµ С‚РѕРєРµРЅ Р¤РёРЅР°Рј">
                     <div id="finamTokenStatus" class="text-secondary" style="margin-top:4px"></div>
                 </div>
                 <div class="row gap-8">
-                    <button class="btn btn-primary" onclick="saveSettings()">💾 Сохранить</button>
+                    <button class="btn btn-primary" onclick="saveSettings()">рџ’ѕ РЎРѕС…СЂР°РЅРёС‚СЊ</button>
                     <span id="settingsStatus" class="text-secondary"></span>
                 </div>
                 <div class="info-box">
-                    <b>ℹ️ Как получить токен:</b><br>
-                    api.finam.ru → Токены → Создать новый токен<br><br>
-                    Токен сохраняется в localStorage браузера.
+                    <b>в„№пёЏ РљР°Рє РїРѕР»СѓС‡РёС‚СЊ С‚РѕРєРµРЅ:</b><br>
+                    api.finam.ru в†’ РўРѕРєРµРЅС‹ в†’ РЎРѕР·РґР°С‚СЊ РЅРѕРІС‹Р№ С‚РѕРєРµРЅ<br><br>
+                    РўРѕРєРµРЅ СЃРѕС…СЂР°РЅСЏРµС‚СЃСЏ РІ localStorage Р±СЂР°СѓР·РµСЂР°.
                 </div>
             </div>
         </div>
 
         <!-- Transaq -->
         <div class="card" style="max-width:600px; margin-top:12px">
-            <div class="card-header">📡 Transaq (резервный канал)</div>
+            <div class="card-header">рџ“Ў Transaq (СЂРµР·РµСЂРІРЅС‹Р№ РєР°РЅР°Р»)</div>
             <div class="card-body" style="display:flex;flex-direction:column;gap:16px">
                 <div class="row gap-8">
-                    <input type="text" id="txLogin" class="input" placeholder="Логин Transaq" style="flex:1">
-                    <input type="password" id="txPassword" class="input" placeholder="Пароль" style="flex:1">
+                    <input type="text" id="txLogin" class="input" placeholder="Р›РѕРіРёРЅ Transaq" style="flex:1">
+                    <input type="password" id="txPassword" class="input" placeholder="РџР°СЂРѕР»СЊ" style="flex:1">
                 </div>
                 <div class="row gap-8">
-                    <input type="text" id="txHost" class="input" value="tr.finam.ru" placeholder="Сервер" style="flex:1">
-                    <input type="number" id="txPort" class="input" value="39000" placeholder="Порт" style="width:100px">
-                    <button class="btn btn-secondary" onclick="connectTransaq()">🔌 Подключить</button>
-                    <button class="btn btn-danger btn-sm" onclick="disconnectTransaq()">Отключить</button>
+                    <input type="text" id="txHost" class="input" value="tr.finam.ru" placeholder="РЎРµСЂРІРµСЂ" style="flex:1">
+                    <input type="number" id="txPort" class="input" value="39000" placeholder="РџРѕСЂС‚" style="width:100px">
+                    <button class="btn btn-secondary" onclick="connectTransaq()">рџ”Њ РџРѕРґРєР»СЋС‡РёС‚СЊ</button>
+                    <button class="btn btn-danger btn-sm" onclick="disconnectTransaq()">РћС‚РєР»СЋС‡РёС‚СЊ</button>
                 </div>
                 <div class="row gap-8" style="align-items:center">
-                    <span id="txStatus" class="status-text">⚪ Не подключён</span>
+                    <span id="txStatus" class="status-text">вљЄ РќРµ РїРѕРґРєР»СЋС‡С‘РЅ</span>
                 </div>
             </div>
         </div>
 
-        <!-- Лог событий -->
+        <!-- Р›РѕРі СЃРѕР±С‹С‚РёР№ -->
         <div class="card" style="margin-top:12px">
-            <div class="card-header">📋 Лог событий</div>
+            <div class="card-header">рџ“‹ Р›РѕРі СЃРѕР±С‹С‚РёР№</div>
             <div id="logContainer" class="log-container"></div>
         </div>
     </div>
@@ -477,6 +477,6 @@
 <script src="/js/modules/log.js?v=1"></script>
 <script src="/js/modules/indicators.js?v=1"></script>
 <script src="/js/modules/chart.js?v=1"></script>
-<script src="/js/app.js?v=82"></script>
+<script src="/js/app.js?v=83"></script>
 </body>
 </html>
