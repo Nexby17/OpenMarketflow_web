@@ -2357,7 +2357,10 @@ async function robotStart(i) {
         r.exchangeStatus = 'Подключен';
         saveRobots(); renderRobots();
         addLog(nowTime(), 'INFO', `🤖 Робот ${r.strategy} ${r.ticker} запущен`);
-    } catch (e) { addLog(nowTime(), 'ERROR', e.message); }
+    } catch (e) {
+        addLog(nowTime(), 'ERROR', 'Действие не выполнено: ' + e.message);
+        showToast('⚠ Действие не выполнено: ' + e.message + ' — проверь, поднят ли процесс робота', 'error');
+    }
 }
 
 async function startLocalStorageRobot(idx) {
@@ -2755,7 +2758,10 @@ async function robotPause(i) {
         r.status = 'paused';
         saveRobots(); renderRobots();
         addLog(nowTime(), 'INFO', `⏸ Робот ${r.ticker} на паузе`);
-    } catch (e) { addLog(nowTime(), 'ERROR', e.message); }
+    } catch (e) {
+        addLog(nowTime(), 'ERROR', 'Действие не выполнено: ' + e.message);
+        showToast('⚠ Действие не выполнено: ' + e.message + ' — проверь, поднят ли процесс робота', 'error');
+    }
 }
 
 async function robotStop(i) {
@@ -5294,6 +5300,24 @@ async function ofMxAdjustPosition() {
     }
 }
 
+// F-011: видимые уведомления о действиях (toast поверх любой вкладки)
+function showToast(msg, kind) {
+    let host = document.getElementById('toastHost');
+    if (!host) {
+        host = document.createElement('div');
+        host.id = 'toastHost';
+        host.style.cssText = 'position:fixed;top:16px;right:16px;z-index:9999;display:flex;flex-direction:column;gap:8px;pointer-events:none';
+        document.body.appendChild(host);
+    }
+    const t = document.createElement('div');
+    const bg = kind === 'error' ? '#7f1d1d' : (kind === 'warn' ? '#78350f' : '#14532d');
+    t.style.cssText = `background:${bg};color:#fff;padding:10px 14px;border-radius:8px;font-size:13px;box-shadow:0 4px 12px rgba(0,0,0,.4);max-width:380px;pointer-events:auto`;
+    t.textContent = msg;
+    host.appendChild(t);
+    setTimeout(() => { t.style.opacity = '0'; t.style.transition = 'opacity .4s'; }, 4500);
+    setTimeout(() => t.remove(), 5000);
+}
+
 // === ORDER FLOW ROBOT (порт 5080) ===
 const OF_ROBOT_API = 'http://' + window.location.hostname + ':5080';
 let ofRobot = null;
@@ -5840,6 +5864,19 @@ function onOfMxRobotInstrumentChange(val) {
     renderRobots();
 }
 
+async function ofRobotApi(action) {
+    try {
+        const resp = await fetch(OF_ROBOT_API + '/' + action, {method: 'POST'});
+        const data = await resp.json();
+        addLog(nowTime(), 'INFO', 'OF ' + action + ': ' + JSON.stringify(data).slice(0, 120));
+        setTimeout(async () => { if (typeof ofRobotPoll === 'function') await ofRobotPoll(); renderRobots(); }, 500);
+    } catch(e) {
+        // F-011: робот offline — видимая обратная связь вместо тихой смерти
+        addLog(nowTime(), 'ERROR', `Робот SiU6 недоступен (${action} не отправлено: робот остановлен или процесс не поднят)`);
+        showToast('⚠ Робот SiU6 не отвечает — запусти процесс (кнопка в строке робота или python3 main_of.py)', 'error');
+    }
+}
+
 async function ofMxRobotApi(action) {
     try {
         if (action === 'start' || action === 'stop') {
@@ -5861,7 +5898,8 @@ async function ofMxRobotApi(action) {
         addLog(nowTime(), 'INFO', 'OF-MX ' + action + ': ' + JSON.stringify(data));
         setTimeout(async () => { await ofMxRobotPoll(); renderRobots(); }, 500);
     } catch(e) {
-        addLog(nowTime(), 'ERROR', 'OF-MX ' + action + ' failed: ' + e.message);
+        addLog(nowTime(), 'ERROR', `Робот MXU6 недоступен (${action} не отправлено: ${e.message})`);
+        showToast('⚠ Робот MXU6 не отвечает — запусти процесс (python3 main_of_mx.py) или проверь порт 5081', 'error');
     }
 }
 
