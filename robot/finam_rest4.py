@@ -121,7 +121,8 @@ def place_market(account_id: str, symbol: str, side: str, quantity: int, comment
         symbol=symbol,
         quantity=FinamDecimal(value=str(quantity)),
         side=Side(side),
-        type=OrderType("ORDER_TYPE_MARKET")),
+        type=OrderType("ORDER_TYPE_MARKET"),
+    )
     if comment:
         o.comment = comment
     resp = r4.call(r4.client.orders.place_order(o), timeout=10)
