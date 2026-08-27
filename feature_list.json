@@ -353,6 +353,35 @@
           "note": "по репорту Дмитрия: нажал Запустить и ничего не увидел"
         }
       ]
+    },
+    {
+      "id": "F-012",
+      "name": "Запуск робота одной кнопкой (process manager на сервере)",
+      "area": "infra",
+      "status": "done",
+      "owner": "main",
+      "version_introduced": "app.js v85",
+      "commits": [
+        "см. git log F-012"
+      ],
+      "summary": "Кнопка ▶ в UI сама поднимает python-процесс робота через C#-сервер (RobotProcessManager), ждёт health, потом включает торговлю. Никаких ручных консолей.",
+      "logic": {
+        "chain": "кнопка ▶ → POST /api/of/process/{of|of_mx}/start (spawn+health-wait ≤25с) → POST :508x/start → mode=running",
+        "logs": "console робота пишется в robot/logs/{of|of_mx}_console_YYYYMMDD.{log,err}",
+        "stop_semantics": "⏹ останавливает торговлю и закрывает позиции; процесс остаётся жить для быстрого рестарта",
+        "authonomy_principle": "по требованию Дмитрия: сигнал из UI достаточен, ничего вручную пинать не нужно"
+      },
+      "tests": [
+        "API: start→pid, mode=running; stop→stopped; полный цикл PASS",
+        "живой запуск MX: 17с до health OK"
+      ],
+      "changes": [
+        {
+          "date": "2026-08-27",
+          "action": "created",
+          "note": "по требованию Дмитрия: «пришёл сигнал запуска — должно всё запускаться»"
+        }
+      ]
     }
   ]
 }
