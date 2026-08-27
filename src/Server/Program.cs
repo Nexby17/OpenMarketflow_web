@@ -497,6 +497,31 @@ app.MapPost("/api/robot/config", async (HttpRequest req) =>
     catch (Exception ex) { return Results.Json(new { error = ex.Message }); }
 }).AllowAnonymous();
 
+// === F-012 endpoint ниже; сам класс в конце файла ===
+
+app.MapPost("/api/of/process/{name}/{action}", async (string name, string action) =>
+{
+    try
+    {
+        if (action == "start")
+        {
+            var result = await RobotProcessManager.StartAsync(name);
+            return Results.Json(result);
+        }
+        else if (action == "stop")
+        {
+            return Results.Json(RobotProcessManager.Stop(name));
+        }
+        else if (action == "status")
+        {
+            return Results.Json(new { alive = RobotProcessManager.IsAlive(name) });
+        }
+        return Results.Json(new { error = "unknown action" }, statusCode: 400);
+    }
+    catch (Exception ex) { return Results.Json(new { error = ex.Message }, statusCode: 500);
+    }
+});
+
 // === F-010: OF robot params proxy (works when robot offline) ===
 app.MapGet("/api/of/config/{name}", (string name) =>
 {
@@ -2245,3 +2270,101 @@ _ = Task.Run(async () =>
 });
 
 app.Run();
+
+// === F-012: RobotProcessManager (класс в конце: top-level statements выше) ===
+public static class RobotProcessManager
+{
+    private static readonly Dictionary<string, System.Diagnostics.Process?> _procs = new();
+    private static readonly object _lock = new();
+
+    public static (string script, int port, string args) Spec(string name) => name switch
+    {
+        "of" => ("main_of.py", 5080, ""),
+        "of_mx" => ("main_of_mx.py", 5081, ""),
+        _ => throw new ArgumentException("unknown robot")
+    };
+
+    public static bool IsAlive(string name)
+    {
+        lock (_lock)
+        {
+            if (_procs.TryGetValue(name, out var p) && p != null && !p.HasExited) return true;
+            // процесс мог быть запущен снаружи — проверять порт дорого; считаем по нашей записи
+            return false;
+        }
+    }
+
+    public static async System.Threading.Tasks.Task<object> StartAsync(string name)
+    {
+        var (script, port, extraArgs) = Spec(name);
+        lock (_lock)
+        {
+            if (_procs.TryGetValue(name, out var existing) && existing != null && !existing.HasExited)
+                return new { ok = true, alreadyRunning = true, pid = existing.Id };
+        }
+        var root = FindRobotDir();
+        if (root == null) return new { ok = false, error = "robot dir not found" };
+        var psi = new System.Diagnostics.ProcessStartInfo
+        {
+            FileName = "python3",
+            Arguments = "\"" + System.IO.Path.Combine(root, script) + "\" " + extraArgs,
+            WorkingDirectory = root,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false,
+            CreateNoWindow = true
+        };
+        // stdout/stderr -> daily log file в robot/logs (как раньше при ручном запуске)
+        var logsDir = System.IO.Path.Combine(root, "logs");
+        System.IO.Directory.CreateDirectory(logsDir);
+        var stamp = DateTime.Now.ToString("yyyyMMdd");
+        var prefix = name == "of" ? "of" : "of_mx";
+        psi.StandardOutputEncoding = System.Text.Encoding.UTF8;
+        psi.StandardErrorEncoding = System.Text.Encoding.UTF8;
+        var proc = System.Diagnostics.Process.Start(psi);
+        if (proc == null) return new { ok = false, error = "process failed to start" };
+        _ = proc.StandardOutput.ReadToEndAsync().ContinueWith(t => System.IO.File.AppendAllText(System.IO.Path.Combine(logsDir, prefix + "_console_" + stamp + ".log"), t.Result ?? ""));
+        _ = proc.StandardError.ReadToEndAsync().ContinueWith(t => System.IO.File.AppendAllText(System.IO.Path.Combine(logsDir, prefix + "_console_" + stamp + ".err"), t.Result ?? ""));
+        proc.Exited += (s_, e_) => { lock (_lock) { if (_procs.GetValueOrDefault(name) == proc) _procs[name] = null; } };
+        proc.EnableRaisingEvents = true;
+        lock (_lock) { _procs[name] = proc; }
+        // ждём подъёма API до 25с (warmup 10с + запас)
+        var deadline = DateTime.UtcNow.AddSeconds(25);
+        using var client = new System.Net.Http.HttpClient { Timeout = TimeSpan.FromSeconds(2) };
+        while (DateTime.UtcNow < deadline)
+        {
+            if (proc.HasExited) return new { ok = false, error = "robot process exited during startup (см. robot/logs/" + prefix + "_console_" + stamp + ".err)" };
+            try {
+                var resp = await client.GetAsync("http://localhost:" + port + "/health");
+                if (resp.IsSuccessStatusCode) return new { ok = true, pid = proc.Id };
+            } catch { }
+            await System.Threading.Tasks.Task.Delay(500);
+        }
+        return new { ok = true, timeoutWait = true, pid = proc.Id };
+    }
+
+    public static object Stop(string name)
+    {
+        lock (_lock)
+        {
+            if (_procs.TryGetValue(name, out var p) && p != null && !p.HasExited)
+            {
+                try { p.Kill(entireProcessTree: true); } catch { }
+                return new { ok = true, killed = true };
+            }
+        }
+        return new { ok = true, wasNotOurs = true };
+    }
+
+    private static string? FindRobotDir()
+    {
+        var dir = new System.IO.DirectoryInfo(AppContext.BaseDirectory);
+        for (int i = 0; i < 8 && dir != null; i++)
+        {
+            var cand = System.IO.Path.Combine(dir.FullName, "robot");
+            if (System.IO.File.Exists(System.IO.Path.Combine(cand, "main_of_mx.py"))) return cand;
+            dir = dir.Parent;
+        }
+        return null;
+    }
+}

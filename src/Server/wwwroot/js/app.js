@@ -5866,6 +5866,28 @@ function onOfMxRobotInstrumentChange(val) {
 
 async function ofRobotApi(action) {
     try {
+        // F-012: одна кнопка = весь цикл. Если робот не поднят — поднимаем процесс, затем команду.
+        if ((action === 'start' || action === 'resume') && typeof _ofProcBooting === 'undefined') { window._ofProcBooting = true; }
+        if (action === 'start') {
+            showToast('⏳ Поднимаю процесс SiU6 (подключение к Finam ~15с)...', 'info');
+            try {
+                const pr = await fetch('/api/of/process/of/start', {method: 'POST', signal: AbortSignal.timeout(35000)});
+                const pd = await pr.json();
+                if (!pd.ok) {
+                    showToast('❌ Процесс SiU6 не поднялся: ' + (pd.error || '?'), 'error');
+                    addLog(nowTime(), 'ERROR', 'SiU6 process start failed: ' + (pd.error || '?'));
+                    window._ofProcBooting = false;
+                    return;
+                }
+                showToast('🟢 Процесс SiU6 поднят' + (pd.alreadyRunning ? ' (уже работал)' : ''), 'ok');
+            } catch(pe) {
+                showToast('❌ Не удалось поднять процесс SiU6: ' + pe.message, 'error');
+                addLog(nowTime(), 'ERROR', 'SiU6 process start error: ' + pe.message);
+                window._ofProcBooting = false;
+                return;
+            }
+            window._ofProcBooting = false;
+        }
         const resp = await fetch(OF_ROBOT_API + '/' + action, {method: 'POST'});
         const data = await resp.json();
         addLog(nowTime(), 'INFO', 'OF ' + action + ': ' + JSON.stringify(data).slice(0, 120));
@@ -5879,6 +5901,24 @@ async function ofRobotApi(action) {
 
 async function ofMxRobotApi(action) {
     try {
+        // F-012: одна кнопка = поднять процесс + включить
+        if (action === 'start') {
+            showToast('⏳ Поднимаю процесс MXU6 (подключение к Finam ~15с)...', 'info');
+            try {
+                const pr = await fetch('/api/of/process/of_mx/start', {method: 'POST', signal: AbortSignal.timeout(35000)});
+                const pd = await pr.json();
+                if (!pd.ok) {
+                    showToast('❌ Процесс MXU6 не поднялся: ' + (pd.error || '?'), 'error');
+                    addLog(nowTime(), 'ERROR', 'MXU6 process start failed: ' + (pd.error || '?'));
+                    return;
+                }
+                showToast('🟢 Процесс MXU6 поднят' + (pd.alreadyRunning ? ' (уже работал)' : ''), 'ok');
+            } catch(pe) {
+                showToast('❌ Не удалось поднять процесс MXU6: ' + pe.message, 'error');
+                addLog(nowTime(), 'ERROR', 'MXU6 process start error: ' + pe.message);
+                return;
+            }
+        }
         if (action === 'start' || action === 'stop') {
             const acctVal = localStorage.getItem('ofMxRobotAccount') || '1225953';
             if (acctVal) {
