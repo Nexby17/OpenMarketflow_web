@@ -2321,6 +2321,8 @@ public static class RobotProcessManager
         var prefix = name == "of" ? "of" : "of_mx";
         psi.StandardOutputEncoding = System.Text.Encoding.UTF8;
         psi.StandardErrorEncoding = System.Text.Encoding.UTF8;
+        psi.EnvironmentVariables["PYTHONIOENCODING"] = "utf-8";
+        psi.EnvironmentVariables["PYTHONUTF8"] = "1";
         var proc = System.Diagnostics.Process.Start(psi);
         if (proc == null) return new { ok = false, error = "process failed to start" };
         _ = proc.StandardOutput.ReadToEndAsync().ContinueWith(t => System.IO.File.AppendAllText(System.IO.Path.Combine(logsDir, prefix + "_console_" + stamp + ".log"), t.Result ?? ""));
