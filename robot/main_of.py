@@ -63,13 +63,44 @@ LOG_DIR = Path(__file__).parent / "logs"
 LOG_DIR.mkdir(exist_ok=True)
 _log_file = LOG_DIR / f"of_{datetime.now().strftime('%Y%m%d')}.log"
 
+
+
+class DailyFileHandler(logging.FileHandler):
+    """FileHandler с суточной ротацией по имени: of_<YYYYMMDD>.log.
+    Стандартный FileHandler фиксирует имя при старте процесса — живущий через полночь
+    пишет в файл вчерашнего дня (баг наблюдения 2026-08-28)."""
+    def __init__(self, dir_path, prefix, encoding='utf-8'):
+        self._dir = dir_path
+        self._prefix = prefix
+        self._current_date = None
+        super().__init__(self._path_for_today(), mode='a', encoding=encoding)
+
+    def _today(self):
+        return datetime.now().strftime('%Y%m%d')
+
+    def _path_for_today(self):
+        return f"{self._dir}/{self._prefix}_{self._today()}.log"
+
+    def emit(self, record):
+        today = self._today()
+        if today != self._current_date:
+            self._current_date = today
+            try:
+                self.stream.close()
+            except Exception:
+                pass
+            self.stream = None
+            self.baseFilename = self._path_for_today()
+            self.stream = self._open()
+        super().emit(record)
+
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s %(name)s %(levelname)s %(message)s",
     datefmt="%Y-%m-%d %H:%M:%S",
     handlers=[
         logging.StreamHandler(sys.stdout),
-        logging.FileHandler(_log_file, mode='a', encoding='utf-8'),
+        DailyFileHandler(LOG_DIR, 'of'),
     ],
 )
 
