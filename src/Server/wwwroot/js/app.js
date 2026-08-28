@@ -2338,6 +2338,7 @@ async function renderRobots() {
                 <button class="btn btn-success btn-sm" onclick="ofRobotApi('start')" ${mode==='running'?'disabled':''}>▶</button>
                 <button class="btn btn-warning btn-sm" onclick="ofRobotApi('pause')" ${mode!=='running'?'disabled':''}>⏸</button>
                 <button class="btn btn-danger btn-sm" onclick="ofRobotApi('stop')" ${mode==='stopped'?'disabled':''}>⏹</button>
+                <button class="btn btn-sm" style="background:#2196F3;color:#fff" onclick="ofRobotRestart()" ${window._ofRestarting?'disabled':''}>${window._ofRestarting?'⏳':'🔄'}</button>
             </td>
             <td class="${modeCls}">${modeText}</td>
         </tr>`;
@@ -2358,6 +2359,7 @@ async function renderRobots() {
             <td>—</td>
             <td>
                 <button class="btn btn-success btn-sm" onclick="ofRobotApi('start')">▶</button>
+                <button class="btn btn-sm" style="background:#2196F3;color:#fff" onclick="ofRobotRestart()" ${window._ofRestarting?'disabled':''}>${window._ofRestarting?'⏳':'🔄'}</button>
             </td>
             <td class="red">🔴 Не запущен</td>
         </tr>`;
@@ -2396,6 +2398,7 @@ async function renderRobots() {
                 <button class="btn btn-success btn-sm" onclick="ofMxRobotApi('start')" ${mode==='running'?'disabled':''}>▶</button>
                 <button class="btn btn-warning btn-sm" onclick="ofMxRobotApi('pause')" ${mode!=='running'?'disabled':''}>⏸</button>
                 <button class="btn btn-danger btn-sm" onclick="ofMxRobotApi('stop')" ${mode==='stopped'?'disabled':''}>⏹</button>
+                <button class="btn btn-sm" style="background:#2196F3;color:#fff" onclick="ofMxRobotRestart()" ${window._ofMxRestarting?'disabled':''}>${window._ofMxRestarting?'⏳':'🔄'}</button>
             </td>
             <td class="${modeCls}">${modeText}</td>
         </tr>`;
@@ -2417,6 +2420,7 @@ async function renderRobots() {
             <td>—</td>
             <td>
                 <button class="btn btn-success btn-sm" onclick="ofMxRobotApi('start')">▶</button>
+                <button class="btn btn-sm" style="background:#2196F3;color:#fff" onclick="ofMxRobotRestart()" ${window._ofMxRestarting?'disabled':''}>${window._ofMxRestarting?'⏳':'🔄'}</button>
             </td>
             <td class="red">🔴 Не запущен</td>
         </tr>`;
@@ -6077,6 +6081,78 @@ async function ofMxRobotApi(action) {
         addLog(nowTime(), 'ERROR', 'OF-MX ' + action + ' failed: ' + e.message);
     }
 }
+
+// ===== OF Robots: 🔄 restart by reglement (FLAT check -> cooldown -> journal vacuum -> deferred self-restart) =====
+function ofToast(msg, ok) {
+    let t = document.createElement('div');
+    t.textContent = msg;
+    t.style.cssText = 'position:fixed;bottom:24px;right:24px;z-index:99999;max-width:440px;padding:12px 16px;border-radius:8px;color:#fff;font-size:13px;box-shadow:0 4px 14px rgba(0,0,0,.4);background:' + (ok ? '#2e7d32' : '#c62828');
+    document.body.appendChild(t);
+    setTimeout(() => t.remove(), 9000);
+    addLog(nowTime(), ok ? 'INFO' : 'ERROR', msg);
+}
+
+async function ofRobotRestartCore(api, service, setBusy) {
+    if ((service === 'OF SiU6' && window._ofRestarting) || (service === 'OF MXU6' && window._ofMxRestarting)) return;
+    // 1. Remember current mode before restart
+    let mode = 'stopped', lots = 0;
+    try {
+        const s = await (await fetch(api + '/status', {cache: 'no-store'})).json();
+        mode = s.mode || 'stopped'; lots = s.totalLots || 0;
+    } catch (e) {}
+    if (!confirm('Перезапустить ' + service + '?' + (lots > 0 ? '\n\n⚠️ Позиция открыта: ' + lots + ' лотов. Позиция НЕ закрывается — робот подхватит её после рестарта.' : ''))) return;
+    setBusy(true); renderRobots();
+    try {
+        // 2. POST /restart — robot runs the reglement itself
+        let r = await fetch(api + '/restart', {method: 'POST'});
+        let d = await r.json().catch(() => ({}));
+        if (r.status === 409) {
+            // Position open — ask again, then force (position kept, robot re-attaches after restart)
+            if (!confirm('Робот держит позицию ' + (d.lots || lots) + ' лотов. Рестартовать ВСЁ РАВНО?\nПозиция не закрывается, робот подхватит её после рестарта.')) { setBusy(false); renderRobots(); return; }
+            r = await fetch(api + '/restart?force=1', {method: 'POST'});
+            d = await r.json().catch(() => ({}));
+        }
+        if (!r.ok) {
+            ofToast('🔄 ' + service + ': рестарт отклонён — ' + (d.error || ('HTTP ' + r.status)) + (d.retry_after_sec ? ' (подожди ' + d.retry_after_sec + ' сек)' : ''), false);
+            setBusy(false); renderRobots(); return;
+        }
+        // 3. Wait for the process to die and come back — poll /health up to 60s
+        let up = false;
+        const t0 = Date.now();
+        while (Date.now() - t0 < 60000) {
+            await new Promise(res => setTimeout(res, 2000));
+            try {
+                const h = await (await fetch(api + '/health', {cache: 'no-store'})).json();
+                if (h && h.ok) { up = true; break; }
+            } catch (e) {}
+        }
+        if (!up) { ofToast('❌ ' + service + ': не поднялся за 60 сек — проверь вручную (journalctl / systemctl)', false); setBusy(false); renderRobots(); return; }
+        // 4. If it was trading — resume trading
+        if (mode === 'running') {
+            await new Promise(res => setTimeout(res, 1500));
+            try { await fetch(api + '/start', {method: 'POST'}); } catch (e) {}
+        }
+        // 5. Final verification: price fresh, bars ready, VWEMA ready (up to 20s)
+        let v = null;
+        const t1 = Date.now();
+        while (Date.now() - t1 < 20000) {
+            try {
+                const s = await (await fetch(api + '/status', {cache: 'no-store'})).json();
+                if (s.priceStale === false && (s.barsReady || 0) > 0 && s.vwema && s.vwema.ready === true) { v = s; break; }
+            } catch (e) {}
+            await new Promise(res => setTimeout(res, 2000));
+        }
+        setBusy(false); renderRobots();
+        if (v) ofToast('✅ ' + service + ' перезапущен, стримы живы (цена/бары/VWEMA). VP/CVD оживёт к ближайшей границе M5 (:00 :05 :10…)', true);
+        else ofToast('🟡 ' + service + ' перезапущен' + (mode === 'running' ? ', торговая запущена' : '') + ', но стримы ещё прогреваются — проверь через минуту. VP/CVD оживёт к границе M5.', true);
+    } catch (e) {
+        setBusy(false); renderRobots();
+        ofToast('❌ ' + service + ' restart failed: ' + e.message, false);
+    }
+}
+
+function ofRobotRestart()   { return ofRobotRestartCore(OF_ROBOT_API,    'OF SiU6', v => { window._ofRestarting = v; }); }
+function ofMxRobotRestart() { return ofRobotRestartCore(OF_MX_ROBOT_API, 'OF MXU6', v => { window._ofMxRestarting = v; }); }
 
 async function toggleOfMxSignal(param, value) {
     try {

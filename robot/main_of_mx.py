@@ -15,6 +15,7 @@ import argparse
 import json
 import logging
 import signal as sig_module
+import subprocess
 import threading
 import time
 from pathlib import Path
@@ -945,6 +946,53 @@ class APIHandler(BaseHTTPRequestHandler):
                         orders.cancel(oid)
             save_state()
             self._json(200, {"ok": True, "mode": _mode, "paper": PAPER_MODE})
+
+        elif path == "/restart":
+            # Restart robot service by reglement:
+            # FLAT check -> cooldown 90s -> journal vacuum -> deferred self-restart (systemd-run)
+            qs = self.path.split("?")[1] if "?" in self.path else ""
+            force = "force=1" in qs
+            lots_now = strategy.total_lots
+            if lots_now > 0 and not force:
+                self._json(409, {"ok": False, "error": "position open", "lots": lots_now,
+                                 "hint": "call /restart?force=1 to restart anyway (position kept)"})
+                return
+            # Cooldown 90s — protects against Finam rate limit; force does NOT bypass it.
+            # Timestamp lives in its own file, survives the restart.
+            restart_ts_file = os.path.join(os.getcwd(), "of_restart_ts_mx.json")
+            now_ts = time.time()
+            try:
+                with open(restart_ts_file) as f:
+                    last_restart = json.load(f).get("last_restart", 0)
+            except Exception:
+                last_restart = 0
+            if now_ts - last_restart < 90:
+                self._json(429, {"ok": False, "error": "cooldown",
+                                 "retry_after_sec": int(90 - (now_ts - last_restart)) + 1})
+                return
+            try:
+                with open(restart_ts_file, "w") as f:
+                    json.dump({"last_restart": now_ts}, f)
+            except Exception as e:
+                log.warning(f"Restart ts write failed: {e}")
+            # Journal vacuum (async — must not block the response)
+            try:
+                subprocess.Popen(["journalctl", "--vacuum-size=500M"],
+                                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            except Exception as e:
+                log.warning(f"journalctl vacuum failed: {e}")
+            # Deferred self-restart: transient systemd timer lives outside the service
+            # cgroup, so it survives the service being killed and restarts it in 2s.
+            # Port zombie is handled by ExecStartPre in the unit.
+            try:
+                subprocess.Popen(["systemd-run", "--on-active=2s",
+                                  "systemctl", "restart", "of-robot-mx"],
+                                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                log.info(f"RESTART scheduled in 2s (force={force}, lots={lots_now})")
+            except Exception as e:
+                self._json(500, {"ok": False, "error": f"systemd-run failed: {e}"})
+                return
+            self._json(200, {"ok": True, "restarting": True, "force": force, "lots": lots_now})
 
         elif path == "/trades":
             # Filter tradeHistory by date period (POST with JSON body)
