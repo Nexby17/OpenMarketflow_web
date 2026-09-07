@@ -75,6 +75,10 @@ class OFParams:
     ob_scan_radius: int = 50      # pts radius for OB filter
     commission: float = 0.90      # per side (0.90₽ = one-way)
     direction_filter: str = "both"  # "both" | "long" | "short"
+    # Custom trading window (HH:MM MSK). Empty = full session (07:00-23:50, legacy).
+    # Outside the window: no new entries; position is force-closed (session_close).
+    session_start: str = ""       # e.g. "10:30"
+    session_end: str = ""         # e.g. "18:30"
     # VAH/VAL Volume Profile filter
     use_vah_val: bool = False      # enable VAH/VAL entry filter
     vah_val_pct: int = 70          # value area percentage (70%)
@@ -214,7 +218,7 @@ class VolumeProfileCalculator:
         self._check_session_reset(now)
         if price <= 0 or volume <= 0:
             return
-        bin_key = int(price // self.bin_size * self.bin_size)
+        bin_key = price // self.bin_size * self.bin_size
         self._profile[bin_key] = self._profile.get(bin_key, 0) + volume
         self._total_volume += volume
 
@@ -327,6 +331,7 @@ class OrderFlowStrategy:
         self._peak_lots: int = 0
         self._average_levels: int = 0
         self._pyramid_levels: int = 0
+        self._avg_va_block_logged: bool = False
         self._last_average_price: float = 0.0
         self._last_pyramid_price: float = 0.0
         self._lot_queue: deque[LotEntry] = deque()
@@ -412,6 +417,20 @@ class OrderFlowStrategy:
     def _is_clearing(self, now: datetime) -> bool:
         msk = now.astimezone(MSK)
         return msk.hour == 14 and msk.minute < 5
+
+    def _is_outside_session(self, now: datetime) -> bool:
+        """Custom trading window check (session_start/session_end in MSK, HH:MM).
+        Empty params = disabled (legacy full-session behavior)."""
+        if not self.p.session_start or not self.p.session_end:
+            return False
+        msk = now.astimezone(MSK)
+        cur = msk.hour * 60 + msk.minute
+        try:
+            h1, m1 = self.p.session_start.split(":")
+            h2, m2 = self.p.session_end.split(":")
+        except ValueError:
+            return False
+        return cur < int(h1) * 60 + int(m1) or cur > int(h2) * 60 + int(m2)
 
     def _is_entry_locked(self) -> bool:
         return time.time() < self._entry_lock_until
@@ -577,6 +596,16 @@ class OrderFlowStrategy:
 
             # Time guards
             if self._is_night(now) or self._is_clearing(now):
+                return []
+
+            # Session window: outside window → close position, no entries (bactest EOD-equivalent)
+            if self._is_outside_session(now):
+                if self.in_position:
+                    action = self._close_all(current_price, "session_close")
+                    actions.append(action)
+                    self._last_action_time = time.time()
+                    log.info(f"SESSION window end: closed position at {current_price}")
+                    return actions
                 return []
 
             # Stale data guard
@@ -839,6 +868,19 @@ class OrderFlowStrategy:
         """
         if self.p.enable_max_levels and self._average_levels >= self.p.max_average_levels:
             return []
+
+        # VP RANGE mode: вне VA не усредняемся (по команде Самурая 07.09.2026).
+        # Позиция не закрывается — выход только по обычным правилам (partial TP,
+        # Min Profit/Lot, Close % All, дневной SL). При возврате цены внутрь VA
+        # штатный catch-up доберёт ВСЕ пропущенные уровни по текущей цене.
+        if self.is_outside_va(price):
+            if not self._avg_va_block_logged:
+                log.info(f"AVG VA BLOCK: price={price:.0f} outside VA — averaging paused, missed levels accumulate for catch-up")
+                self._avg_va_block_logged = True
+            return []
+        elif self._avg_va_block_logged:
+            log.info("AVG VA BLOCK lifted: price back inside VA — catch-up averaging resumes")
+            self._avg_va_block_logged = False
 
         # B2: не усреднять против тренда VWEMA
         if self.p.vwema_avg_exit and self.vwema and self.vwema.ready:

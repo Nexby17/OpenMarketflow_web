@@ -506,22 +506,9 @@ def main_loop():
                 if fill_price > 0:
                     strategy.update_fill_price(fill_price, action.get("action", ""))
 
-            # === VAH/VAL RANGE BREAKOUT STOP ===
-            # If price exits VA and we have a position → hard close all
-            if strategy.in_position and strategy.is_outside_va(price):
-                vah = strategy.vp.vah if strategy.vp else 0
-                val = strategy.vp.val if strategy.vp else 0
-                log.warning(f"VA BREAKOUT STOP: price={price:.0f} outside VA (VAL={val:.0f}..VAH={vah:.0f}) — closing all")
-                if not PAPER_MODE:
-                    side = SELL if strategy.direction == LONG else BUY
-                    try:
-                        orders.place_market(side, strategy.total_lots, tag="va_stop")
-                        time.sleep(0.3)
-                    except Exception as e:
-                        log.error(f"VA BREAKOUT STOP: order failed: {e}")
-                strategy._close_all(price, "va_breakout_stop")
-                strategy._reset_position()
-                save_state()
+            # === VAH/VAL RANGE: жёсткий va_stop убран (Самурай, 07.09.2026) ===
+            # Вне VA: нет входов и усреднения (внутри strategy), позиция живёт
+            # и закрывается только по partial TP / Min Profit/Lot / Close % All.
 
             # Periodic state save (every 30 sec)
             if time.time() - last_save > 30:
