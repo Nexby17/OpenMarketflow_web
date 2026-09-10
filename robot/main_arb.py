@@ -476,18 +476,24 @@ def _moex_poller():
 # ========== Main loop ==========
 
 def main_loop():
-    global _mode
+    global _mode, _last_dev_push
     log.info("Main loop started")
     last_save = time.time()
     last_basis_push = 0.0
+    _last_dev_push = 0.0
 
     while _running:
         try:
             # Update basis tracking (push to history) — always, even when stopped
             now = time.time()
-            if now - last_basis_push > 1.0:  # push every 1 sec
+            if now - last_basis_push > 1.0:  # push raw spread every 1 sec (spread mode stats only)
                 strategy.basis_calc._push_spread()  # push directly, don't read zscore
                 last_basis_push = now
+            # Fix #1: deviation-from-fair is pushed at SLOW cadence (default 60s)
+            # inside _push_deviation(); 1-second pushes must not feed deviation stats.
+            if now - _last_dev_push > max(1.0, params.dev_push_interval):
+                strategy.basis_calc._push_deviation(force=True)
+                _last_dev_push = now
 
             if _mode != "running":
                 # Even when stopped/paused, attempt to close remaining layers
@@ -638,7 +644,7 @@ def _execute_entry(signal: dict):
             strategy._set_lock(10.0)
             return
 
-    log.info(f"ENTRY SIGNAL {side} | Z={z:.2f} basis={signal['basis']:.2f} | "
+    log.info(f"ENTRY SIGNAL {side} | Z={z:.2f} dev_ann={signal.get('dev_ann', 0):+.2f}% basis={signal['basis']:.2f} | "
              f"A={signal['price_a']:.2f} B={signal['price_b']:.2f} | "
              f"limit {side_a} {params.lots_a} @ {limit_price:.2f} | "
              f"market {side_b} {params.lots_b} @ {market_price_b:.2f}")
@@ -668,6 +674,7 @@ def _execute_entry(signal: dict):
             lots_a=fill_a.quantity,
             lots_b=fill_b.quantity,
             z=z,
+            dev_ann=signal.get("dev_ann", 0.0),
         )
         log.info(
             f"LAYER OPEN {side.upper()} #{strategy.layers[-1].layer_id} | "
@@ -1010,6 +1017,11 @@ class APIHandler(BaseHTTPRequestHandler):
                 strategy.basis_calc.rate = params.risk_free_rate
                 strategy.basis_calc.expiration_date = params.expiration_date
                 strategy.basis_calc.contract_size = params.contract_size
+                # Fair-value deviation mode wiring (Fix #1/#2)
+                strategy.basis_calc._history_mode = "dev"
+                strategy.basis_calc.dev_lookback = params.dev_lookback
+                strategy.basis_calc.dev_push_interval = params.dev_push_interval
+                strategy.basis_calc.set_dividends(getattr(params, "dividends", []) or [])
                 save_config()
             self._json(200, {"ok": True})
 
@@ -1091,7 +1103,8 @@ if __name__ == "__main__":
     log.info(f"=== Arbitrage Robot v1 ===")
     log.info(f"Pair: {params.ticker_a} / {params.ticker_b}")
     log.info(f"Account: {ACCOUNT} | Port: {PORT} | Paper: {PAPER_MODE}")
-    log.info(f"Params: entry_z={params.entry_z} lookback={params.lookback} "
+    log.info(f"Params: entry_mode={params.entry_mode} dev_ann=[{params.dev_ann_low}, {params.dev_ann_high}]% "
+             f"entry_z={params.entry_z} lookback={params.lookback} "
              f"lots_a={params.lots_a} lots_b={params.lots_b} "
              f"hedge_ratio={params.hedge_ratio}")
     log.info(f"Min profit: {params.min_profit_type}={params.min_profit_value}")

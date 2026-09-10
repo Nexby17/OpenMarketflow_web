@@ -3626,9 +3626,13 @@ function arbPyEditPanel() {
 
             <!-- Вход -->
             <div class="metrics-row" style="flex-wrap:wrap">
-                <div class="metric-card"><div class="metric-label">Entry Z (SHORT)</div><input id="arbEntryZ" class="input" type="number" step="0.1" value="${p.entry_z||1.5}" style="width:70px"></div>
-                <div class="metric-card"><div class="metric-label">Entry Z (LONG)</div><input id="arbEntryZLong" class="input" type="number" step="0.1" value="${p.entry_z_long||1.5}" style="width:70px"></div>
-                <div class="metric-card"><div class="metric-label">Lookback</div><input id="arbLookback" class="input" type="number" value="${p.lookback||50}" style="width:70px"></div>
+                <div class="metric-card"><div class="metric-label">Dev-порог SHORT (% год.)</div><input id="arbDevAnnHigh" class="input" type="number" step="0.1" value="${p.dev_ann_high!=null?p.dev_ann_high:2.5}" style="width:70px"></div>
+                <div class="metric-card"><div class="metric-label">Dev-порог LONG (% год.)</div><input id="arbDevAnnLow" class="input" type="number" step="0.1" value="${p.dev_ann_low!=null?p.dev_ann_low:-1}" style="width:70px"></div>
+                <div class="metric-card"><div class="metric-label">Dev-окно (пушей)</div><input id="arbDevLookback" class="input" type="number" step="100" value="${p.dev_lookback||2500}" style="width:90px"></div>
+                <div class="metric-card"><div class="metric-label">Dev-пуш (сек)</div><input id="arbDevPush" class="input" type="number" step="10" value="${p.dev_push_interval||60}" style="width:70px"></div>
+                <div class="metric-card"><div class="metric-label">Entry Z (SHORT) — устар. режим ₽</div><input id="arbEntryZ" class="input" type="number" step="0.1" value="${p.entry_z||2.0}" style="width:70px"></div>
+                <div class="metric-card"><div class="metric-label">Entry Z (LONG) — устар. режим ₽</div><input id="arbEntryZLong" class="input" type="number" step="0.1" value="${p.entry_z_long||-2.0}" style="width:70px"></div>
+                <div class="metric-card"><div class="metric-label">Lookback (режим ₽)</div><input id="arbLookback" class="input" type="number" value="${p.lookback||50}" style="width:70px"></div>
                 <div class="metric-card"><div class="metric-label">Leg A Timeout (сек)</div><input id="arbLegTimeout" class="input" type="number" value="${p.leg_a_timeout||5}" style="width:70px"></div>
                 <div class="metric-card"><div class="metric-label">Min Fill Ratio</div><input id="arbMinFill" class="input" type="number" step="0.05" value="${p.min_fill_ratio||0.5}" style="width:70px"></div>
             </div>
@@ -3692,7 +3696,8 @@ function arbPyEditPanel() {
                 <div class="metric-card"><div class="metric-label">GAZP × 100</div><div id="arbSpotValue" style="font-size:18px;font-weight:bold">—</div></div>
                 <div class="metric-card"><div class="metric-label" id="arbFutLabel">GZM6 (фьюч)</div><div id="arbFutValue" style="font-size:18px;font-weight:bold">—</div></div>
                 <div class="metric-card"><div class="metric-label">Basis (Z-score base)</div><div id="arbBasisVal" style="font-size:18px;font-weight:bold">—</div></div>
-                <div class="metric-card"><div class="metric-label">Z-score</div><div id="arbZVal" style="font-size:18px;font-weight:bold">—</div></div>
+                <div class="metric-card"><div class="metric-label">Z-score (dev)</div><div id="arbZVal" style="font-size:18px;font-weight:bold">—</div></div>
+                <div class="metric-card"><div class="metric-label">Dev годовых %</div><div id="arbDevAnn" style="font-size:18px;font-weight:bold">—</div></div>
                 <div class="metric-card"><div class="metric-label">Basis Mean</div><div id="arbMeanVal" style="font-size:14px">—</div></div>
                 <div class="metric-card"><div class="metric-label">Basis Std</div><div id="arbStdVal" style="font-size:14px">—</div></div>
                 <div class="metric-card"><div class="metric-label">Days to Exp</div><div id="arbDaysExp" style="font-size:18px;font-weight:bold">—</div></div>
@@ -3828,7 +3833,7 @@ function sberEditPanel() {
 async function sberSaveFromPanel() {
     const body = {
         ticker_a: el('arbSymA').value,
-        symbol_a: el('arbSymA').value + '@RTSX',
+        symbol_a: el('arbSymA').value + '@MISX',
         ticker_b: el('arbSymB').value,
         symbol_b: el('arbSymB').value + '@RTSX',
         lots_a: parseInt(el('arbLotsA').value),
@@ -3895,6 +3900,7 @@ async function brCalEditPanel() {
         if (closeBtn) closeBtn.setAttribute('onclick', 'el(\'brCalEditPanel\')?.remove(); _arbJournalInstance=null;');
     }
 }
+// NOTE: brCal = Brent calendar spread (both legs futures @RTSX) — symbol_a stays @RTSX there.
 
 async function brCalSaveFromPanel() {
     const body = {
@@ -4002,12 +4008,17 @@ function arbPyUpdateL2() {
     if (futLabel) futLabel.textContent = (arbPyData?.tickerB || 'Фьюч') + ' (фьюч)';
     if (el('arbBasisVal')) el('arbBasisVal').textContent = basis.basis != null ? basis.basis.toFixed(1) : '—';
     if (el('arbZVal')) {
-        const z = basis.zscore || 0;
+        const z = basis.zscore_dev != null ? basis.zscore_dev : (basis.zscore || 0);
         el('arbZVal').textContent = z.toFixed(3);
-        el('arbZVal').style.color = Math.abs(z) >= 1.5 ? 'var(--accent)' : '';
+        el('arbZVal').style.color = Math.abs(z) >= 2 ? 'var(--accent)' : '';
     }
-    if (el('arbMeanVal')) el('arbMeanVal').textContent = (basis.basis_mean || 0).toFixed(0);
-    if (el('arbStdVal')) el('arbStdVal').textContent = (basis.basis_std || 0).toFixed(0);
+    if (el('arbDevAnn')) {
+        const da = basis.dev_ann_pct || 0;
+        el('arbDevAnn').textContent = (da >= 0 ? '+' : '') + da.toFixed(2) + '%';
+        el('arbDevAnn').style.color = da > 0 ? 'var(--green)' : da < 0 ? 'var(--red)' : '';
+    }
+    if (el('arbMeanVal')) el('arbMeanVal').textContent = (basis.dev_mean != null ? basis.dev_mean : (basis.basis_mean || 0)).toFixed(1);
+    if (el('arbStdVal')) el('arbStdVal').textContent = (basis.dev_std != null ? basis.dev_std : (basis.basis_std || 0)).toFixed(1);
     if (el('arbDaysExp')) el('arbDaysExp').textContent = basis.days_to_exp || '—';
     // Spread calculator (always visible)
     if (el('arbCalcSpread')) {
@@ -4021,9 +4032,9 @@ function arbPyUpdateL2() {
         el('arbCalcDev').style.color = dev > 0 ? 'var(--green)' : dev < 0 ? 'var(--red)' : '';
     }
     if (el('arbCalcZ')) {
-        const z = basis.zscore || 0;
+        const z = basis.zscore_dev != null ? basis.zscore_dev : (basis.zscore || 0);
         el('arbCalcZ').textContent = z.toFixed(3);
-        el('arbCalcZ').style.color = Math.abs(z) >= 1.5 ? 'var(--accent)' : '';
+        el('arbCalcZ').style.color = Math.abs(z) >= 2 ? 'var(--accent)' : '';
     }
     const ext = basis.dev_extremes || {};
     if (el('arbCalcMax')) el('arbCalcMax').textContent = '+' + (ext.dev_max || 0).toFixed(1) + '₽';
@@ -4037,7 +4048,7 @@ async function arbPySaveFromPanel() {
     const chosenAccount = el('arbAccount')?.value;
     const body = {
         ticker_a: el('arbSymA').value,
-        symbol_a: el('arbSymA').value + '@RTSX',
+        symbol_a: el('arbSymA').value + '@MISX',
         ticker_b: el('arbSymB').value,
         symbol_b: el('arbSymB').value + '@RTSX',
         lots_a: parseInt(el('arbLotsA').value),
@@ -4047,6 +4058,10 @@ async function arbPySaveFromPanel() {
         entry_z: parseFloat(el('arbEntryZ').value),
         entry_z_long: parseFloat(el('arbEntryZLong').value),
         entry_mode: el('arbEntryModeRub')?.checked ? 'spread_rub' : 'zscore',
+        dev_ann_high: parseFloat(el('arbDevAnnHigh')?.value ?? 2.5),
+        dev_ann_low: parseFloat(el('arbDevAnnLow')?.value ?? -1),
+        dev_lookback: parseInt(el('arbDevLookback')?.value || 2500),
+        dev_push_interval: parseFloat(el('arbDevPush')?.value || 60),
         spread_rub_high: parseFloat(el('arbSpreadRubHigh')?.value || 400),
         spread_rub_low: parseFloat(el('arbSpreadRubLow')?.value || 200),
         risk_free_rate: parseFloat(el('arbRate').value) / 100,

@@ -4,6 +4,7 @@ import threading
 import time
 from collections import deque
 from dataclasses import dataclass, field
+from datetime import datetime
 from typing import Optional
 import numpy as np
 
@@ -142,6 +143,13 @@ class BasisCalculator:
         self._bid_b: float = 0.0
         self._ask_b: float = 0.0
         self._ts: float = 0.0
+        # === Fair-value deviation mode (Fix #1/#2, 2026-09-10) ===
+        # Deviation history is pushed at a slow cadence (minutes); lookback counts pushes.
+        self._dev_lookback: int = 2500         # pushes (~5 trading days @ 60s push)
+        self._dev_push_interval: float = 60.0  # seconds between deviation pushes
+        self._last_dev_push: float = 0.0
+        # Dividend calendar: [("YYYY-MM-DD", rub_per_share), ...] ex-dividend dates
+        self._dividends: list[tuple[str, float]] = []
 
     @property
     def lookback(self) -> int:
@@ -186,7 +194,66 @@ class BasisCalculator:
     @contract_size.setter
     def contract_size(self, val: int):
         with self._lock:
-            self._contract_size = val
+            self._contract_size = int(val)
+
+    @property
+    def dev_lookback(self) -> int:
+        return self._dev_lookback
+
+    @dev_lookback.setter
+    def dev_lookback(self, val: int):
+        with self._lock:
+            self._dev_lookback = max(10, int(val))
+            self._deviation_history = deque(self._deviation_history, maxlen=self._dev_lookback * 5)
+
+    @property
+    def dev_push_interval(self) -> float:
+        return self._dev_push_interval
+
+    @dev_push_interval.setter
+    def dev_push_interval(self, val: float):
+        with self._lock:
+            self._dev_push_interval = max(1.0, float(val))
+
+    def set_dividends(self, dividends) -> None:
+        """Set dividend calendar for fair value (Fix #2).
+        dividends: list of {"date": "YYYY-MM-DD", "amount": rub_per_share}
+        or list of (date_str, amount) tuples. Ex-dividend dates on or before
+        expiration reduce the theoretical carry premium."""
+        parsed: list[tuple[str, float]] = []
+        for d in dividends or []:
+            if isinstance(d, dict):
+                date_s = str(d.get("date", "")).strip()
+                amount = float(d.get("amount", 0))
+            else:
+                date_s, amount = str(d[0]), float(d[1])
+            if date_s and amount:
+                parsed.append((date_s, amount))
+        parsed.sort(key=lambda x: x[0])
+        with self._lock:
+            self._dividends = parsed
+
+    @property
+    def dividends(self) -> list[tuple[str, float]]:
+        return list(self._dividends)
+
+    def _dividends_before_expiration(self) -> float:
+        """Sum of rub-per-share dividends with ex-date <= expiration."""
+        if not self._dividends or not self._expiration_date:
+            return 0.0
+        try:
+            exp = datetime.strptime(self._expiration_date, "%Y-%m-%d")
+        except Exception:
+            return 0.0
+        total = 0.0
+        for date_s, amount in self._dividends:
+            try:
+                ex = datetime.strptime(date_s, "%Y-%m-%d")
+            except Exception:
+                continue
+            if ex <= exp:
+                total += amount
+        return total
 
     def update_price_a(self, price: float):
         with self._lock:
@@ -252,6 +319,17 @@ class BasisCalculator:
         return self._price_b - self._price_a * self._hedge_ratio
 
     @property
+    def spread_long_rub(self) -> float:
+        """Realizable LONG-basis spread (Fix #3): ask_B - bid_A × hedge_ratio.
+        Long basis entry = sell stock A @ bid, buy futures B @ ask.
+        Falls back to LAST prices if no OB data."""
+        if self._ask_b > 0 and self._bid_a > 0:
+            return self._ask_b - self._bid_a * self._hedge_ratio
+        if self._price_a <= 0 or self._price_b <= 0:
+            return 0.0
+        return self._price_b - self._price_a * self._hedge_ratio
+
+    @property
     def spread_pct(self) -> float:
         """Spread as % of spot value."""
         spot_value = self._price_a * self._contract_size
@@ -276,14 +354,16 @@ class BasisCalculator:
 
     @property
     def fair_spread(self) -> float:
-        """Theoretical fair spread = spot × contract_size × rate × T / 365.
-        This is the cost-of-carry premium the futures should trade at."""
+        """Theoretical fair premium in ₽ per contract (cost of carry, Fix #2):
+        fair = S × CS × (r × T/365) − CS × Σ dividends (ex-date ≤ expiration).
+        Futures holder does not receive dividends, so they reduce fair premium.
+        Can be negative near expiration with big upcoming dividends."""
         if self._price_a <= 0:
             return 0.0
         days = self._days_to_expiration()
-        if days <= 0:
-            return 0.0
-        return self._price_a * self._contract_size * self._rate * days / 365.0
+        carry = self._price_a * self._contract_size * self._rate * days / 365.0
+        div_part = self._dividends_before_expiration() * self._contract_size
+        return carry - div_part
 
     @property
     def deviation(self) -> float:
@@ -291,18 +371,27 @@ class BasisCalculator:
         Positive = futures expensive, negative = futures cheap."""
         return self.spread_rub - self.fair_spread
 
-    def _push_deviation(self):
-        """Push current deviation from fair value to history."""
+    def _push_deviation(self, force: bool = False):
+        """Push current deviation from fair value to history (Fix #1).
+
+        Called at a SLOW cadence (default 60s, dev_push_interval) so the
+        deviation mean/std span days, not seconds. The 1-second spread push
+        in main_arb must NOT feed these stats — that made Z useless.
+        """
+        now = time.time()
+        if not force and (now - self._last_dev_push) < self._dev_push_interval:
+            return
+        self._last_dev_push = now
         d = self.deviation
         if d != 0.0:
             self._deviation_history.append(d)
 
     def _deviation_stats(self) -> tuple[float, float]:
-        """Returns (mean, std) of deviation from fair value over lookback."""
-        if len(self._deviation_history) < self._lookback:
+        """Returns (mean, std) of deviation from fair value over dev_lookback pushes."""
+        if len(self._deviation_history) < self._dev_lookback:
             arr = np.array(self._deviation_history)
         else:
-            arr = np.array(list(self._deviation_history)[-self._lookback:])
+            arr = np.array(list(self._deviation_history)[-self._dev_lookback:])
         if len(arr) < 2:
             return 0.0, 0.0
         return float(np.mean(arr)), float(np.std(arr))
@@ -385,11 +474,49 @@ class BasisCalculator:
 
     @property
     def has_enough_data(self) -> bool:
-        return len(self._spread_history) >= self._lookback
+        # Mode-aware (Fix #1): zscore mode needs deviation history at dev cadence;
+        # spread_rub mode needs raw spread history at 1s cadence.
+        if getattr(self, '_history_mode', 'dev') == 'spread':
+            return len(self._spread_history) >= self._lookback
+        return len(self._deviation_history) >= min(self._dev_lookback, 50)
 
     @property
     def data_points(self) -> int:
-        return len(self._spread_history)
+        return len(self._deviation_history)
+
+    # === Deviation-based Z and annualized carry (Fix #1) ===
+
+    def _deviation_z(self, push: bool) -> float:
+        if push:
+            self._push_deviation()
+        with self._lock:
+            mean, std = self._deviation_stats()
+            if std < 1e-9:
+                return 0.0
+            return (self.deviation - mean) / std
+
+    @property
+    def zscore_dev(self) -> float:
+        """Z-score of deviation-from-fair at slow push cadence.
+        This is the CORRECT signal Z: deviation is stationary around 0
+        (unlike raw spread which trends with carry to expiration)."""
+        return self._deviation_z(push=True)
+
+    @property
+    def zscore_dev_no_push(self) -> float:
+        return self._deviation_z(push=False)
+
+    @property
+    def dev_ann_pct(self) -> float:
+        """Annualized deviation in % of spot notional.
+        Answers 'how expensive is the futures vs fair' in yield terms:
+        dev_ann = deviation / (spot_value) / days_to_exp * 365 * 100.
+        Entry thresholds live in these units (comparable across expiries)."""
+        spot_value = self._price_a * self._contract_size
+        days = self._days_to_expiration()
+        if spot_value <= 0 or days <= 0:
+            return 0.0
+        return self.deviation / spot_value / days * 365.0 * 100.0
 
     def get_state(self) -> dict:
         ext = self._deviation_extremes()
@@ -399,19 +526,29 @@ class BasisCalculator:
             "price_b": self._price_b,
             "basis": round(self.basis, 2),
             "spread_rub": round(self.spread_rub, 2),
+            "spread_long_rub": round(self.spread_long_rub, 2),
             "spread_pct": round(self.spread_pct, 3),
             "fair_spread": fs,
             "deviation": round(self.deviation, 2),
-            "zscore": round(self.zscore_no_push, 3),
+            "dev_ann_pct": round(self.dev_ann_pct, 2),
+            "zscore": round(self.zscore_dev_no_push, 3),
+            "zscore_dev": round(self.zscore_dev_no_push, 3),
+            "zscore_spread": round(self.zscore_no_push, 3),
+            "dev_mean": round(self._deviation_stats()[0], 2),
+            "dev_std": round(self._deviation_stats()[1], 2),
             "basis_mean": round(self.basis_mean, 2),
             "basis_std": round(self.basis_std, 2),
             "data_points": self.data_points,
+            "dev_points": len(self._deviation_history),
             "lookback": self._lookback,
+            "dev_lookback": self._dev_lookback,
             "hedge_ratio": self._hedge_ratio,
             "rate": self._rate,
             "expiration_date": self._expiration_date,
             "contract_size": self._contract_size,
             "days_to_exp": self._days_to_expiration(),
+            "dividends": [{"date": d, "amount": a} for d, a in self._dividends],
+            "div_sum": round(self._dividends_before_expiration(), 2),
             "dev_extremes": ext,
             "suggested_high": round(ext["dev_max"], 1),
             "suggested_low": round(ext["dev_min"], 1),

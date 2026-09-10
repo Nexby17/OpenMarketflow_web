@@ -37,20 +37,28 @@ class ArbParams:
     mult_a: float = 10.0
     mult_b: float = 1.0
 
-    # Z-score
-    entry_z: float = 1.5          # SHORT basis: enter when z > entry_z
-    entry_z_long: float = -1.5    # LONG basis: enter when z < entry_z_long
-    lookback: int = 50
+    # Z-score (deviation-from-fair mode, Fix #1): entry in ANNUALIZED deviation %
+    # (comparable across expiries). Legacy entry_z fields kept for spread mode + UI.
+    entry_z: float = 2.0           # legacy z-score of raw spread (spread_rub mode only)
+    entry_z_long: float = -2.0     # legacy z-score of raw spread (spread_rub mode only)
+    lookback: int = 50             # pushes for raw-spread history (spread mode)
+    dev_ann_high: float = 2.5      # SHORT basis when dev_ann_pct > this (futures too expensive)
+    dev_ann_low: float = -1.0      # LONG basis when dev_ann_pct < this (futures too cheap)
+    dev_lookback: int = 2500       # deviation history pushes (~5 trading days @ 60s)
+    dev_push_interval: float = 60.0  # seconds between deviation history pushes
 
-    # Entry mode: "zscore" (default) | "spread_rub" (absolute thresholds)
+    # Entry mode: "zscore" (deviation-annualized, default) | "spread_rub" (absolute ₽ thresholds)
     entry_mode: str = "zscore"
-    spread_rub_high: float = 400.0   # SHORT when spread_rub > this
-    spread_rub_low: float = 200.0    # LONG when spread_rub < this
+    spread_rub_high: float = 400.0   # SHORT when spread_rub > this (spread_rub mode)
+    spread_rub_low: float = 200.0    # LONG when spread_rub < this (spread_rub mode)
 
     # Fair value (cost of carry)
     risk_free_rate: float = 0.16         # CBR key rate (annual)
     expiration_date: str = "2026-09-18"  # futures expiration date
     contract_size: int = 100             # shares per futures contract (GAZP=100)
+    # Dividend calendar (Fix #2): [{"date": "YYYY-MM-DD", "amount": rub/share}, ...]
+    # ex-dividend dates falling before expiration are subtracted from fair premium.
+    dividends: list = field(default_factory=list)
 
     # Min profit exit (single choice)
     # type: "pts" | "rub" | "pct"
@@ -99,6 +107,7 @@ class ArbLayer:
     entry_price_b: float = 0.0    # fill price of leg B
     entry_basis: float = 0.0
     entry_z: float = 0.0
+    entry_dev_ann: float = 0.0    # annualized deviation % at entry (Fix #1)
     entry_time: float = 0.0       # unix ts
     lots_a: int = 0
     lots_b: int = 0
@@ -119,6 +128,12 @@ class ArbitrageStrategy:
         )
         self.ob_a = OrderBookTracker()
         self.ob_b = OrderBookTracker()
+        # Fair-value deviation mode wiring (Fix #1/#2)
+        self.basis_calc._history_mode = "dev"
+        self.basis_calc.dev_lookback = params.dev_lookback
+        self.basis_calc.dev_push_interval = params.dev_push_interval
+        if params.dividends:
+            self.basis_calc.set_dividends(params.dividends)
 
         self.layers: list[ArbLayer] = []
         self._next_layer_id: int = 1
@@ -181,6 +196,7 @@ class ArbitrageStrategy:
                     "entryPriceB": l.entry_price_b,
                     "entryBasis": round(l.entry_basis, 2),
                     "entryZ": round(l.entry_z, 3),
+                    "entryDevAnn": round(l.entry_dev_ann, 2) if l.entry_dev_ann else None,
                     "entryTime": datetime.fromtimestamp(l.entry_time, MSK).isoformat(),
                     "lotsA": l.lots_a,
                     "lotsB": l.lots_b,
@@ -257,6 +273,7 @@ class ArbitrageStrategy:
                     "entry_price_b": l.entry_price_b,
                     "entry_basis": l.entry_basis,
                     "entry_z": l.entry_z,
+                    "entry_dev_ann": l.entry_dev_ann,
                     "entry_time": l.entry_time,
                     "lots_a": l.lots_a,
                     "lots_b": l.lots_b,
@@ -293,6 +310,7 @@ class ArbitrageStrategy:
                 entry_price_b=ld["entry_price_b"],
                 entry_basis=ld.get("entry_basis", 0),
                 entry_z=ld.get("entry_z", 0),
+                entry_dev_ann=ld.get("entry_dev_ann", 0),
                 entry_time=ld["entry_time"],
                 lots_a=ld["lots_a"],
                 lots_b=ld["lots_b"],
@@ -322,7 +340,7 @@ class ArbitrageStrategy:
             return None
 
         if not self.basis_calc.has_enough_data:
-            log.warning(f"Entry blocked: insufficient data ({self.basis_calc.data_points}/{self.basis_calc.lookback})")
+            log.warning(f"Entry blocked: insufficient data ({self.basis_calc.data_points}/dev, spread_pts={len(self.basis_calc._spread_history)}/{self.basis_calc.lookback})")
             return None
 
         # Capital check — stop adding layers if we can't afford another
@@ -347,54 +365,76 @@ class ArbitrageStrategy:
         return signal
 
     def _allows_averaging(self, side: str) -> bool:
-        """Check if current basis allows adding a new layer (averaging).
-        Only allow when basis continues to move in the entry direction.
-        SHORT: current basis > last layer entry_basis (basis expanding)
-        LONG: current basis < last layer entry_basis (basis contracting)"""
+        """Check if current deviation allows adding a new layer (averaging).
+        Only allow when deviation continues to move in the entry direction.
+        SHORT: dev_ann now > dev_ann at last layer entry (futures getting MORE expensive)
+        LONG: dev_ann now < dev_ann at last layer entry (futures getting CHEAPER)"""
         if not self.layers:
             return True  # No layers — first entry always allowed
         last = self.layers[-1]
         side_int = LONG_BASIS if side == "long_basis" else SHORT_BASIS
         if last.side != side_int:
             return False  # Opposite direction — don't average
-        basis_now = self.basis_calc.basis
+        dev_now = self.basis_calc.dev_ann_pct
+        entry_dev = self._last_entry_dev_ann()
         if side_int == SHORT_BASIS:
-            ok = basis_now > last.entry_basis
+            ok = entry_dev is not None and dev_now > entry_dev
         else:
-            ok = basis_now < last.entry_basis
+            ok = entry_dev is not None and dev_now < entry_dev
         if not ok:
-            log.debug(f"Averaging blocked: basis={basis_now:.2f} vs last entry_basis={last.entry_basis:.2f}")
+            log.debug(f"Averaging blocked: dev_ann={dev_now:.2f} vs last entry_dev={entry_dev}")
         return ok
 
-    def _check_entry_zscore(self) -> Optional[dict]:
-        """Variant 2 (default): Z-score based entry.
-        SHORT only when basis > mean (basis is above fair value).
-        LONG only when basis < mean (basis is below fair value)."""
-        z = self.basis_calc.zscore_no_push
-        mean_basis = self.basis_calc.basis_mean
+    def _last_entry_dev_ann(self) -> Optional[float]:
+        """Deviation at last layer entry. Legacy layers store entry_z only —
+        for them averaging is allowed conservatively (None → compare fails closed
+        for SHORT, and falls back to raw basis comparison for LONG)."""
+        if not self.layers:
+            return None
+        last = self.layers[-1]
+        v = getattr(last, "entry_dev_ann", None)
+        if v is not None and v != 0.0:
+            return v
+        # Legacy layer: use raw basis as weak proxy (monotonic with dev when fair fixed)
+        side = last.side
+        basis_now = self.basis_calc.basis
+        if side == SHORT_BASIS:
+            return basis_now if basis_now > last.entry_basis else None
+        return basis_now if basis_now < last.entry_basis else None
 
-        if z > self.p.entry_z:
-            # SHORT basis: only if basis is actually above mean
-            if self.basis_calc.basis <= mean_basis:
+    def _check_entry_zscore(self) -> Optional[dict]:
+        """Variant 2 (default, Fix #1): annualized deviation-from-fair entry.
+        SHORT basis when futures are TOO EXPENSIVE vs fair (dev_ann > dev_ann_high).
+        LONG basis when futures are TOO CHEAP vs fair (dev_ann < dev_ann_low).
+        Z of deviation is logged for monitoring only — thresholds are in % годовых,
+        comparable across expiries (unlike raw-spread Z whose mean drifts with carry)."""
+        dev_ann = self.basis_calc.dev_ann_pct
+        z = self.basis_calc.zscore_dev_no_push  # monitoring only
+
+        if dev_ann > self.p.dev_ann_high:
+            # SHORT basis: futures expensive — also require positive realizable spread
+            if self.basis_calc.spread_rub <= 0:
                 return None
             return {
                 "action": "entry",
                 "side": "short_basis",
                 "z": z,
+                "dev_ann": dev_ann,
                 "basis": self.basis_calc.basis,
                 "price_a": self.basis_calc.price_a,
                 "price_b": self.basis_calc.price_b,
             }
-        elif z < self.p.entry_z_long:
+        elif dev_ann < self.p.dev_ann_low:
             if not self.p.allow_long_basis:
                 return None
-            # LONG basis: only if basis is actually below mean
-            if self.basis_calc.basis >= mean_basis:
+            # LONG basis: futures cheap — realizable LONG spread must be below fair
+            if self.basis_calc.spread_long_rub >= self.basis_calc.fair_spread:
                 return None
             return {
                 "action": "entry",
                 "side": "long_basis",
                 "z": z,
+                "dev_ann": dev_ann,
                 "basis": self.basis_calc.basis,
                 "price_a": self.basis_calc.price_a,
                 "price_b": self.basis_calc.price_b,
@@ -402,28 +442,28 @@ class ArbitrageStrategy:
         return None
 
     def _check_entry_spread_rub(self) -> Optional[dict]:
-        """Variant 1: absolute spread thresholds in ₽."""
-        spread = self.basis_calc.spread_rub
+        """Variant 1: absolute spread thresholds in ₽ (legacy mode).
+        SHORT uses realizable SHORT spread, LONG uses realizable LONG spread (Fix #3)."""
         z = self.basis_calc.zscore_no_push
 
-        if spread > self.p.spread_rub_high:
+        if self.basis_calc.spread_rub > self.p.spread_rub_high:
             return {
                 "action": "entry",
                 "side": "short_basis",
                 "z": z,
-                "spread_rub": spread,
+                "spread_rub": self.basis_calc.spread_rub,
                 "basis": self.basis_calc.basis,
                 "price_a": self.basis_calc.price_a,
                 "price_b": self.basis_calc.price_b,
             }
-        elif spread < self.p.spread_rub_low:
+        elif self.basis_calc.spread_long_rub < self.p.spread_rub_low:
             if not self.p.allow_long_basis:
                 return None
             return {
                 "action": "entry",
                 "side": "long_basis",
                 "z": z,
-                "spread_rub": spread,
+                "spread_rub": self.basis_calc.spread_long_rub,
                 "basis": self.basis_calc.basis,
                 "price_a": self.basis_calc.price_a,
                 "price_b": self.basis_calc.price_b,
@@ -632,7 +672,7 @@ class ArbitrageStrategy:
     # === Layer Management ===
 
     def open_layer(self, side: int, price_a: float, price_b: float,
-                   lots_a: int, lots_b: int, z: float):
+                   lots_a: int, lots_b: int, z: float, dev_ann: float = 0.0):
         """Open a new layer after both legs filled."""
         entry_basis = price_b - price_a * self.p.hedge_ratio
         layer = ArbLayer(
@@ -641,6 +681,7 @@ class ArbitrageStrategy:
             entry_price_b=price_b,
             entry_basis=entry_basis,
             entry_z=z,
+            entry_dev_ann=dev_ann,
             entry_time=time.time(),
             lots_a=lots_a,
             lots_b=lots_b,
@@ -651,7 +692,7 @@ class ArbitrageStrategy:
         # Brief anti-duplicate lock (main loop ticks every 0.5s)
         self._set_lock(2.0)
         side_str = "LONG" if side == LONG_BASIS else "SHORT"
-        log.info(f"LAYER #{layer.layer_id} OPEN {side_str} | A={price_a:.2f} ×{lots_a} | B={price_b:.2f} ×{lots_b} | basis={entry_basis:.2f} Z={z:.2f} | layers={len(self.layers)}")
+        log.info(f"LAYER #{layer.layer_id} OPEN {side_str} | A={price_a:.2f} ×{lots_a} | B={price_b:.2f} ×{lots_b} | basis={entry_basis:.2f} Z={z:.2f} dev_ann={dev_ann:+.2f}% | layers={len(self.layers)}")
 
     def get_layer(self, layer_id: int) -> Optional[ArbLayer]:
         """Find layer by id."""
