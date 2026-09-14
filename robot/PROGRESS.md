@@ -63,3 +63,22 @@
 1. Soak ≥1 торговый день → PORT-вердикт PC-005
 2. Этап 5 (по шагам, одна фича за раз): main_of_mx.py → hub+rest4 (paper), затем real минимальным лотом (только по явному одобрению Дмитрия) → main_of.py → арбитраж → удаление gRPC-зависимостей
 3. DataProvider :5060 — вывод из эксплуатации после Этапа 5
+
+
+## 2026-09-14 — Фикс: честная сверка позиции брокера (знак шорта + ретраи)
+
+Инцидент 11:46 МСК: MXU6 шорт 1 @232200 исполнился (order 1984994379379006531, POST /orders 200),
+но DESYNC-монитор закричал "robot=1 broker=-1" — Finam отдаёт quantity СО ЗНАКОМ (шорт=-1),
+а робот хранит шорт как 1 лот. Ложная раскорреляция → ручной стоп, закрытие 232325 (~-125 пт).
+
+Фикс (orders_rest4.py + main_of.py + main_of_mx.py):
+- get_broker_position: {lots: |lots|, dir: ±1, avg_price} | None; transient-ошибки (429 code=8,
+  токен code=16) ретраятся 3 раза; при неуспехе None = "позиция НЕИЗВЕСТНА", не 0.
+- positions_in_sync(): честное сравнение лотов И направления; broker=None — не тревога.
+- avg_price: читаем average_price/avg_price/weighted_average_price (раньше avg_broker всегда 0).
+- Мониторы/verify-ветки (close_all/entry/partial_tp/startup) знают про None.
+- cancel(): "cannot be canceled" (ордер уже исполнен) — info, не ERROR.
+- Startup reconciliation при None: пропустить проверку (раньше transient-429 остановил бы робота).
+
+Тесты: robot/test_broker_pos_sync.py — 32/32 PASS (мок-брокер, сценарий инцидента включён).
+Роботы НЕ перезапускались; фиксы подхватятся при следующем ▶ Дмитрия.

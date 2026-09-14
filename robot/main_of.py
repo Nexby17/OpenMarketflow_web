@@ -46,7 +46,7 @@ import finam_rest4 as _rest4mod  # PORT-B2: REST 4.3.3
 
 import config_of as config
 from strategy_of import OrderFlowStrategy, OFParams, LONG, SHORT, FLAT, LotEntry
-from orders_rest4 import OrderManagerRest4, get_broker_position, BUY, SELL  # PORT-B2
+from orders_rest4 import OrderManagerRest4, get_broker_position, positions_in_sync, BUY, SELL  # PORT-B2
 
 log = logging.getLogger("robot_of")
 
@@ -498,12 +498,14 @@ def main_loop():
                 try:
                     sync_account = ACCOUNTS.get(ACTIVE_ACCOUNT_KEY, ACCOUNT)
                     bd = get_broker_position(_rest4mod, sync_account, SYMBOL)
-                    strategy.sync_from_broker(bd)
-                    # Passive desync monitor
-                    bl = bd.get('lots', 0)
-                    rl = strategy._total_lots
-                    if rl != bl:
-                        log.warning(f"DESYNC: robot={rl} broker={bl} avg_robot={strategy._avg_price:.0f} avg_broker={bd.get('avg_price',0):.0f} — manual fix needed")
+                    if bd is not None:
+                        strategy.sync_from_broker(bd)
+                        # Passive desync monitor (dir-aware; None = API упал, НЕ тревога)
+                        ok, msg = positions_in_sync(strategy._total_lots, strategy._dir, bd)
+                        if not ok:
+                            log.warning(f"DESYNC: {msg} avg_robot={strategy._avg_price:.0f} avg_broker={bd.get('avg_price',0):.0f} — manual fix needed")
+                    else:
+                        log.debug("Price sync: broker position unavailable (API) — desync check skipped")
                 except Exception as e:
                     log.debug(f"Price sync: {e}")
                 last_price_sync = time.time()
@@ -577,14 +579,16 @@ def _record_broker_trade(action: dict, fill_price: float):
     log.info(f"TRADE {direction} {lots}L entry={entry_price:.0f} exit={fill_price:.0f} pnl={pnl:+.1f}₽ comm={comm_per_lot * lots:.1f}₽")
 
 
-def _get_broker_position_fast() -> int:
-    """Quick broker lots check via REST 4.3.3, returns 0 on error (PORT-B2)."""
+def _get_broker_position_fast():
+    """Broker |lots| via REST 4.3.3; None = позиция НЕИЗВЕСТНА (API failed) (PORT-B2)."""
     try:
         acc = ACCOUNTS.get(ACTIVE_ACCOUNT_KEY, ACCOUNT)
-        return get_broker_position(_rest4mod, acc, SYMBOL).get('lots', 0)
+        bd = get_broker_position(_rest4mod, acc, SYMBOL)
+        if bd is not None:
+            return bd.get('lots', 0)
     except Exception:
         pass
-    return 0
+    return None
 
 
 def _execute_action(action: dict):
@@ -646,7 +650,9 @@ def _execute_action(action: dict):
             lots_before = strategy._total_lots
             time.sleep(3)
             broker_lots = _get_broker_position_fast()
-            if broker_lots < lots_before:
+            if broker_lots is None:
+                log.error(f"CLOSE_ALL: order placement failed for {side_str} {qty} AND broker unreadable — keeping position, will retry next tick")
+            elif broker_lots < lots_before:
                 log.warning(f"CLOSE_ALL: DP failed but broker lots changed ({lots_before}→{broker_lots}) — order executed, resetting")
                 action['avgPrice'] = avg_for_record
                 _record_broker_trade(action, strategy._current_price)
@@ -669,7 +675,9 @@ def _execute_action(action: dict):
             # DP failed — verify with broker before rollback
             time.sleep(3)
             broker_lots = _get_broker_position_fast()
-            if broker_lots != lots_before:
+            if broker_lots is None:
+                log.error(f"{act.upper()}: order placement failed for {side_str} {qty} AND broker unreadable — keeping lots, DESYNC monitor will verify")
+            elif broker_lots != lots_before:
                 log.warning(f"{act.upper()}: DP failed but broker lots changed ({lots_before}→{broker_lots}) — order executed, keeping lots")
             else:
                 log.error(f"{act.upper()}: order placement FAILED for {side_str} {qty} — rolling back {qty} lot(s)")
@@ -692,7 +700,9 @@ def _execute_action(action: dict):
             expected_lots = strategy._total_lots  # already decremented by strategy
             time.sleep(3)
             broker_lots = _get_broker_position_fast()
-            if broker_lots < expected_lots + qty:
+            if broker_lots is None:
+                log.error(f"PARTIAL_TP: order placement failed for {side_str} {qty} AND broker unreadable — lot stays removed, DESYNC monitor will verify")
+            elif broker_lots < expected_lots + qty:
                 log.warning(f"PARTIAL_TP: DP failed but broker lots changed — order executed, lot stays removed")
             else:
                 log.error(f"PARTIAL_TP: order placement failed for {side_str} {qty} — re-adding lot to queue")
@@ -1140,11 +1150,16 @@ if __name__ == "__main__":
     try:
         _sync_acc = ACCOUNTS.get(ACTIVE_ACCOUNT_KEY, ACCOUNT)
         _bpos = get_broker_position(_rest4mod, _sync_acc, SYMBOL)
-        _bl = _bpos.get('lots', 0)
-        if _bl != 0:
-            log.warning(f"STARTUP: broker has {_bl} lots (avg={_bpos.get('avg_price', 0):.0f}) but robot is FLAT. NOT entering — investigate manually.")
-            _mode = "stopped"
-            save_state()
+        if _bpos is None:
+            log.warning("STARTUP: broker position check failed (API) — skipping reconciliation, DESYNC monitor will verify")
+        else:
+            _bl = _bpos.get('lots', 0)
+            _bdir = _bpos.get('dir', 0)
+            if _bl != 0:
+                _side = "long" if _bdir > 0 else "short"
+                log.warning(f"STARTUP: broker has {_bl} {_side} lot(s) (avg={_bpos.get('avg_price', 0):.0f}) but robot is FLAT. NOT entering — investigate manually.")
+                _mode = "stopped"
+                save_state()
     except Exception as _e:
         log.warning(f"STARTUP: broker position check failed: {_e}")
 

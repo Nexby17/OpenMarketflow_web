@@ -136,7 +136,12 @@ class OrderManagerRest4:
             self._rest4.cancel_order(self._account, order_id)
             return True
         except Exception as e:
-            log.error("cancel REST failed: %s", str(e)[:120])
+            msg = str(e)[:160]
+            if "cannot be canceled" in msg.lower():
+                # ордер уже в терминальном статусе (исполнен/отменён) — не ошибка
+                log.info("cancel: order %s already terminal (filled/canceled)", order_id)
+                return True
+            log.error("cancel REST failed: %s", msg)
             return False
 
     def cancel_all(self, orders: list):
@@ -228,20 +233,80 @@ class OrderManagerRest4:
 
 # --- позиция для startup-reconciliation (замена DP /position) ---
 
-def get_broker_position(rest4, account_id: str, symbol: str) -> dict:
-    """{lots, avg_price} по символу из REST account info (совместимо с DP-ответом)."""
+_POSITION_AVG_KEYS = ("average_price", "avg_price", "weighted_average_price")
+
+
+def _parse_money(v) -> float:
+    """MoneyAmount {"value": ...} | число | None -> float."""
+    if isinstance(v, dict):
+        try:
+            return float(v.get("value", 0) or 0)
+        except (TypeError, ValueError):
+            return 0.0
     try:
-        acc = rest4.get_account_info(account_id)
-        sym = symbol.split("@")[0]
-        for p in acc.get("positions", []):
-            psym = str(p.get("symbol", "")).split("@")[0]
-            if psym == sym:
-                q = p.get("quantity", {})
-                qv = float(q.get("value", 0)) if isinstance(q, dict) else float(q or 0)
-                ap = p.get("average_price") or {}
-                apv = float(ap.get("value", 0)) if isinstance(ap, dict) else float(ap or 0)
-                return {"lots": int(qv), "avg_price": apv}
-        return {"lots": 0, "avg_price": 0.0}
-    except Exception as e:
-        log.error("get_broker_position failed: %s", str(e)[:120])
-        return {"lots": 0, "avg_price": 0.0}
+        return float(v or 0)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def get_broker_position(rest4, account_id: str, symbol: str):
+    """Позиция брокера -> {"lots": |lots|, "dir": +1/-1/0, "avg_price": float} | None.
+
+    Finam отдаёт quantity СО ЗНАКОМ (шорт = -1). Раньше знак попадал в lots:
+    DESYNC-монитор видел "robot=1 broker=-1" на исполненном шорте (ложная
+    раскорреляция 14.09), а close_all на шорте всегда выглядел исполненным
+    (-1 < 1). Теперь lots — модуль, dir — знак.
+    Transient-ошибки API (429 code=8 / токен code=16) ретраятся до 3 раз;
+    при неуспехе -> None: вызывающий обязан считать позицию НЕИЗВЕСТНОЙ,
+    а не нулевой.
+    """
+    last_err = ""
+    for attempt in range(3):
+        try:
+            acc = rest4.get_account_info(account_id)
+            sym = symbol.split("@")[0]
+            for p in acc.get("positions", []):
+                psym = str(p.get("symbol", "")).split("@")[0]
+                if psym != sym:
+                    continue
+                signed = int(_parse_money(p.get("quantity", {})))
+                avg = 0.0
+                for key in _POSITION_AVG_KEYS:
+                    if p.get(key):
+                        avg = _parse_money(p.get(key))
+                        if avg > 0:
+                            break
+                if signed != 0 and avg == 0.0:
+                    log.debug("get_broker_position: open pos without avg_price, raw=%s",
+                              json.dumps(p, default=str)[:300])
+                return {"lots": abs(signed),
+                        "dir": 1 if signed > 0 else (-1 if signed < 0 else 0),
+                        "avg_price": avg}
+            return {"lots": 0, "dir": 0, "avg_price": 0.0}
+        except Exception as e:
+            last_err = str(e)[:160]
+            transient = ("Too Many Requests" in last_err or "code=8" in last_err
+                         or "token could not be verified" in last_err or "code=16" in last_err)
+            if transient and attempt < 2:
+                time.sleep(1.0 + attempt * 1.2)
+                continue
+            break
+    log.error("get_broker_position failed: %s", last_err)
+    return None
+
+
+def positions_in_sync(robot_lots: int, robot_dir: int, broker_data):
+    """Честное сравнение позиций робота и брокера.
+
+    robot_lots — модуль лотов (>=0), robot_dir из {+1, -1, 0};
+    broker_data — dict из get_broker_position или None (брокер нечитабелен —
+    это НЕ desync, ложных тревог быть не должно).
+    Возвращает (synced, msg), msg = "robot=<signed> broker=<signed>".
+    """
+    if broker_data is None:
+        return True, ""
+    bl = int(broker_data.get("lots", 0) or 0)
+    bdir = int(broker_data.get("dir", 0) or 0)
+    rdir = 0 if robot_lots <= 0 else (1 if robot_dir > 0 else -1)
+    synced = (robot_lots == bl and rdir == bdir)
+    return synced, f"robot={rdir * robot_lots} broker={bdir * bl}"
