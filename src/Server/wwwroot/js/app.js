@@ -6978,7 +6978,7 @@ async function ofBrRobotSaveFromPanel() {
     // Always save to localStorage first
     localStorage.setItem('ofBrSavedParams', JSON.stringify(body));
     try {
-        const resp = await fetch(OF_BR_ROBOT_API + '/params', {
+        const resp = await fetch(ofBrApiBase() + '/params', {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
             body: JSON.stringify(body)
@@ -6992,14 +6992,23 @@ async function ofBrRobotSaveFromPanel() {
 }
 
 // === Order Flow BR base block (BRU6, порт 5082) ===
+// === Order Flow BR base block (BRV6) ===
+// Два инстанса: main 1225953 = :5082, edp 2049688 = :5083.
+// Дропдаун счёта в строке BR выбирает ИНСТАНС (данные/кнопки). Счёт робота НЕ переключается —
+// каждый инстанс торгует свой счёт постоянно, двойной торговли на одном счёте нет.
 const OF_BR_ROBOT_API = 'http://' + window.location.hostname + ':5082';
+const OF_BR_ROBOT_API_EDP = 'http://' + window.location.hostname + ':5083';
+function ofBrApiBase() {
+    return (localStorage.getItem('ofBrRobotAccount') || '1225953') === '2049688'
+        ? OF_BR_ROBOT_API_EDP : OF_BR_ROBOT_API;
+}
 let ofBrRobot = null;
 let _ofBrJournalTrades = [];
 let _ofBrWasOnline = false;
 
 async function ofBrRobotPoll() {
     try {
-        const resp = await fetch(OF_BR_ROBOT_API + '/status', {signal: AbortSignal.timeout(2000)});
+        const resp = await fetch(ofBrApiBase() + '/status', {signal: AbortSignal.timeout(2000)});
         ofBrRobot = await resp.json();
         // Robot just came online → sync pending params
         if (!_ofBrWasOnline) {
@@ -7008,7 +7017,7 @@ async function ofBrRobotPoll() {
             if (saved) {
                 try {
                     const params = JSON.parse(saved);
-                    await fetch(OF_BR_ROBOT_API + '/params', {
+                    await fetch(ofBrApiBase() + '/params', {
                         method: 'POST',
                         headers: {'Content-Type':'application/json'},
                         body: JSON.stringify(params)
@@ -7026,7 +7035,7 @@ async function ofBrRobotPoll() {
 
 async function ofBrSetDirection(value) {
     try {
-        await fetch(OF_BR_ROBOT_API + '/params', {
+        await fetch(ofBrApiBase() + '/params', {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
             body: JSON.stringify({direction_filter: value})
@@ -7037,6 +7046,10 @@ async function ofBrSetDirection(value) {
 
 async function onOfBrRobotAccountChange(val) {
     localStorage.setItem('ofBrRobotAccount', val);
+    // Смена счёта = смена инстанса (:5082/:5083) — сразу перезабрать данные
+    _ofBrWasOnline = false;
+    await ofBrRobotPoll();
+    renderRobots();
 }
 
 function onOfBrRobotInstrumentChange(val) {
@@ -7046,21 +7059,9 @@ function onOfBrRobotInstrumentChange(val) {
 
 async function ofBrRobotApi(action) {
     try {
-        if (action === 'start' || action === 'stop') {
-            const acctVal = localStorage.getItem('ofBrRobotAccount') || '1225953';
-            if (acctVal) {
-                const acctResp = await fetch(OF_BR_ROBOT_API + '/account', {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({account: acctVal})
-                });
-                const acctData = await acctResp.json();
-                if (acctData.ok) {
-                    addLog(nowTime(), 'INFO', '🛢 OF-BR счёт: ' + acctData.account + ' (' + acctData.id + ')');
-                }
-            }
-        }
-        const resp = await fetch(OF_BR_ROBOT_API + '/' + action, {method: 'POST'});
+        // Кнопки действуют на выбранный в дропдауне инстанс (:5082 main / :5083 edp).
+        // POST /account убран: переключение счёта одного робота вело бы к двойной торговле на счёте.
+        const resp = await fetch(ofBrApiBase() + '/' + action, {method: 'POST'});
         const data = await resp.json();
         addLog(nowTime(), 'INFO', 'OF-BR ' + action + ': ' + JSON.stringify(data));
         setTimeout(async () => { await ofBrRobotPoll(); renderRobots(); }, 500);
@@ -7069,12 +7070,12 @@ async function ofBrRobotApi(action) {
     }
 }
 
-function ofBrRobotRestart() { return ofRobotRestartCore(OF_BR_ROBOT_API, 'OF BRU6', v => { window._ofBrRestarting = v; }); }
+function ofBrRobotRestart() { return ofRobotRestartCore(ofBrApiBase(), 'OF BRV6', v => { window._ofBrRestarting = v; }); }
 
 // === Order Flow BR Trade Journal ===
 async function ofBrResetStats() {
     if (!confirm('Сбросить статистику BR? Realized PnL → 0, история сделок очищена.')) return;
-    const r = await fetch(OF_BR_ROBOT_API + '/reset-stats', {method:'POST'});
+    const r = await fetch(ofBrApiBase() + '/reset-stats', {method:'POST'});
     if (r && r.ok) {
         ofBrLoadJournal();
     }
@@ -7084,7 +7085,7 @@ async function ofBrLoadJournal() {
     const body = el('ofBrJournalBody');
     if (!body) return;
     try {
-        const resp = await fetch(OF_BR_ROBOT_API + '/status', {signal: AbortSignal.timeout(2000)});
+        const resp = await fetch(ofBrApiBase() + '/status', {signal: AbortSignal.timeout(2000)});
         const data = await resp.json();
         _ofBrJournalTrades = data.tradeHistory || data.trades || [];
         if (!_ofBrJournalTrades.length) {
@@ -7184,7 +7185,7 @@ async function ofBrPositionAdjust() {
         '\n\nРобот НЕ выставляет ордера — только принимает позицию в управление.\nСразу начнёт управлять: partial TP, стоп-лосс, усреднение.\n\nПодтверждаешь?';
     if (!confirm(msg)) return;
     try {
-        const r = await fetch(OF_BR_ROBOT_API + '/position/adjust', {
+        const r = await fetch(ofBrApiBase() + '/position/adjust', {
             method: 'POST', headers: {'Content-Type': 'application/json'},
             body: JSON.stringify({lots, price}), signal: AbortSignal.timeout(8000)
         });
