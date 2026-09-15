@@ -948,7 +948,12 @@ app.MapGet("/api/positions", async (TradingService svc) =>
                 var arr = new List<object>();
                 foreach (var p in positions.EnumerateArray())
                 {
-                    var qty = p.TryGetProperty("quantity", out var qEl) && qEl.TryGetProperty("value", out var qv) ? int.Parse(qv.GetString() ?? "0") : 0;
+                    // EDP/UNION отдаёт количество дробной строкой ("173.0") — парсим как double
+                    double qtyD = 0;
+                    var qtyOk = p.TryGetProperty("quantity", out var qEl) && qEl.TryGetProperty("value", out var qv)
+                                && double.TryParse(qv.GetString(), System.Globalization.NumberStyles.Any,
+                                                   System.Globalization.CultureInfo.InvariantCulture, out qtyD);
+                    var qty = qtyOk ? (int)Math.Round(qtyD) : 0;
                     if (qty == 0) continue;
                     arr.Add(new {
                         ticker = p.TryGetProperty("symbol", out var sym) ? sym.GetString()?.Split('@')[0] : "",
@@ -2294,7 +2299,44 @@ public static class RobotProcessManager
         }
     }
 
-    public static async System.Threading.Tasks.Task<object> StartAsync(string name)
+
+        // Python resolve: сервер может быть автостартован с урезанным PATH,
+        // где "python3" не находится — пробуем явные пути и PATH-поиск.
+        static string ResolvePython()
+        {
+            string[] candidates = {
+                System.Environment.GetEnvironmentVariable("PYTHON3_EXE"),
+                @"D:\AutoClaw\resources\python\python3.exe",
+                @"C:\Program Files\Python313\python3.exe",
+                @"C:\Program Files\Python312\python3.exe",
+                "python3.exe", "python.exe"
+            };
+            foreach (var c in candidates)
+            {
+                if (string.IsNullOrWhiteSpace(c)) continue;
+                if (c.Contains('\\'))
+                {
+                    if (System.IO.File.Exists(c)) return c;
+                }
+                else
+                {
+                    var pathEnv = System.Environment.GetEnvironmentVariable("PATH") ?? "";
+                    foreach (var d in pathEnv.Split(';'))
+                    {
+                        if (string.IsNullOrWhiteSpace(d)) continue;
+                        try
+                        {
+                            var full = System.IO.Path.Combine(d.Trim(), c);
+                            if (System.IO.File.Exists(full)) return full;
+                        }
+                        catch { }
+                    }
+                }
+            }
+            return "python3"; // прежнее поведение как last resort
+        }
+
+        public static async System.Threading.Tasks.Task<object> StartAsync(string name)
     {
         var (script, port, extraArgs) = Spec(name);
         lock (_lock)
@@ -2306,7 +2348,7 @@ public static class RobotProcessManager
         if (root == null) return new { ok = false, error = "robot dir not found" };
         var psi = new System.Diagnostics.ProcessStartInfo
         {
-            FileName = "python3",
+            FileName = ResolvePython(),
             Arguments = "\"" + System.IO.Path.Combine(root, script) + "\" " + extraArgs,
             WorkingDirectory = root,
             RedirectStandardOutput = true,
