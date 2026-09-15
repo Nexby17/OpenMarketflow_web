@@ -2493,51 +2493,7 @@ async function renderRobots() {
         </tr>`;
     }
 
-    let ofBrEdpRobotRow = '';
-    if (ofBrEdpRobot) {
-        const se = ofBrEdpRobot;
-        const modeE = se.mode || 'stopped';
-        const modeTextE = modeE === 'running' ? '🟢 Работает' : modeE === 'paused' ? '🟡 Пауза' : '🔴 Остановлен';
-        const modeClsE = modeE === 'running' ? 'green' : modeE === 'paused' ? 'yellow' : 'red';
-        const dirTextE = se.direction === 'LONG' ? 'Лонг' : se.direction === 'SHORT' ? 'Шорт' : 'Флат';
-        const dirClsE = se.direction === 'LONG' ? 'green' : se.direction === 'SHORT' ? 'red' : '';
-        const pnlE = se.realizedPnL || 0;
-        ofBrEdpRobotRow = `<tr>
-            <td>BRV6</td>
-            <td><strong>Order Flow</strong> <span class="badge" style="background:#007ACC">BR·edp</span></td>
-            <td>edp (2049688)</td>
-            <td class="${dirClsE}">${dirTextE}${se.avgPrice > 0 ? ' @ ' + se.avgPrice.toFixed(2) : ''}</td>
-            <td>—</td>
-            <td class="${pnlE >= 0 ? 'green' : 'red'}">${pnlE >= 0 ? '+' : ''}${pnlE.toFixed(0)} ₽</td>
-            <td>${se.totalLots || 0}</td>
-            <td>—</td>
-            <td>
-                <button class="btn btn-success btn-sm" onclick="ofBrEdpRobotApi('start')" ${modeE==='running'?'disabled':''}>▶</button>
-                <button class="btn btn-warning btn-sm" onclick="ofBrEdpRobotApi('pause')" ${modeE!=='running'?'disabled':''}>⏸</button>
-                <button class="btn btn-danger btn-sm" onclick="ofBrEdpRobotApi('stop')" ${modeE==='stopped'?'disabled':''}>⏹</button>
-                <button class="btn btn-sm" style="background:#2196F3;color:#fff" onclick="ofBrEdpRobotRestart()" ${window._ofBrEdpRestarting?'disabled':''}>${window._ofBrEdpRestarting?'⏳':'🔄'}</button>
-            </td>
-            <td class="${modeClsE}">${modeTextE}</td>
-        </tr>`;
-    } else {
-        ofBrEdpRobotRow = `<tr>
-            <td>BRV6</td>
-            <td><strong>Order Flow</strong> <span class="badge" style="background:#007ACC">BR·edp</span></td>
-            <td>edp (2049688)</td>
-            <td>—</td>
-            <td>—</td>
-            <td>—</td>
-            <td>0</td>
-            <td>—</td>
-            <td>
-                <button class="btn btn-success btn-sm" onclick="ofBrEdpRobotApi('start')">▶</button>
-                <button class="btn btn-sm" style="background:#2196F3;color:#fff" onclick="ofBrEdpRobotRestart()" ${window._ofBrEdpRestarting?'disabled':''}>${window._ofBrEdpRestarting?'⏳':'🔄'}</button>
-            </td>
-            <td class="red">🔴 Не запущен</td>
-        </tr>`;
-    }
-
-    const allRows = [...serverStrategies, ...localRows, pythonRobotRow, ofRobotRow, ofMxRobotRow, ofBrRobotRow, ofBrEdpRobotRow];
+    const allRows = [...serverStrategies, ...localRows, pythonRobotRow, ofRobotRow, ofMxRobotRow, ofBrRobotRow];
         if (!allRows.filter(r=>r).length) { tbody.innerHTML = ''; if (noMsg) noMsg.style.display = 'block'; return; }
     if (noMsg) noMsg.style.display = 'none';
     tbody.innerHTML = allRows.join('');
@@ -7115,30 +7071,6 @@ async function ofBrRobotApi(action) {
 
 function ofBrRobotRestart() { return ofRobotRestartCore(OF_BR_ROBOT_API, 'OF BRU6', v => { window._ofBrRestarting = v; }); }
 
-// === Order Flow BR EDP instance (BRV6, порт 5083, счёт edp 2049688) ===
-const OF_BR_EDP_ROBOT_API = 'http://' + window.location.hostname + ':5083';
-let ofBrEdpRobot = null;
-
-async function ofBrEdpRobotPoll() {
-    try {
-        const resp = await fetch(OF_BR_EDP_ROBOT_API + '/status', {signal: AbortSignal.timeout(2000)});
-        ofBrEdpRobot = await resp.json();
-    } catch(e) { ofBrEdpRobot = null; }
-}
-
-async function ofBrEdpRobotApi(action) {
-    try {
-        const resp = await fetch(OF_BR_EDP_ROBOT_API + '/' + action, {method: 'POST'});
-        const data = await resp.json();
-        addLog(nowTime(), 'INFO', '🛢 OF-BR-edp ' + action + ': ' + JSON.stringify(data));
-        setTimeout(async () => { await ofBrEdpRobotPoll(); renderRobots(); }, 500);
-    } catch(e) {
-        addLog(nowTime(), 'ERROR', '🛢 OF-BR-edp ' + action + ' failed: ' + e.message);
-    }
-}
-
-function ofBrEdpRobotRestart() { return ofRobotRestartCore(OF_BR_EDP_ROBOT_API, 'OF BRV6 edp', v => { window._ofBrEdpRestarting = v; }); }
-
 // === Order Flow BR Trade Journal ===
 async function ofBrResetStats() {
     if (!confirm('Сбросить статистику BR? Realized PnL → 0, история сделок очищена.')) return;
@@ -7269,9 +7201,8 @@ async function ofBrPositionAdjust() {
     } catch(e) { alert('Сеть: ' + e.message); }
 }
 
-// Auto-poll BR (main 5082 + edp 5083)
+// Auto-poll BR
 (function() {
     ofBrRobotPoll();
-    ofBrEdpRobotPoll();
-    setInterval(async () => { await ofBrRobotPoll(); await ofBrEdpRobotPoll(); renderRobots(); }, 2000);
+    setInterval(async () => { await ofBrRobotPoll(); renderRobots(); }, 2000);
 })();
