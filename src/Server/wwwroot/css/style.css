@@ -150,3 +150,6 @@ label { font-size: 12px; color: var(--text2); margin-bottom: 2px; display: block
 .pnl-negative { color: var(--red); }
 .pnl-zero { color: var(--text2); }
 .badge{display:inline-block;padding:1px 6px;font-size:10px;background:#3b82f6;color:#fff;border-radius:8px;vertical-align:middle;margin-left:4px}
+
+/* Fix: dropdown options invisible (white text on white popup) — force black-on-white in native option lists */
+option { color:#000; background:#fff; }

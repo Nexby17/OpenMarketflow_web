@@ -336,7 +336,7 @@ function loadOrders() {
                 <td><b>${ticker}</b></td>
                 <td class="${side.includes('BUY') || side === 'Buy' ? 'green' : 'red'}">${side.includes('BUY') || side === 'Buy' ? 'Покупка' : 'Продажа'}</td>
                 <td>${parseFloat(qty)}</td>
-                <td>${price ? parseFloat(price).toFixed(0) : 'MKT'}</td>
+                <td>${price ? (ticker.toUpperCase().startsWith('BR') ? parseFloat(price).toFixed(2) : parseFloat(price).toFixed(0)) : 'MKT'}</td>
                 <td>${parseFloat(filled)}/${parseFloat(qty)}</td>
                 <td>${status.replace('ORDER_STATUS_','')}</td>
             </tr>`;
@@ -366,7 +366,7 @@ function loadTrades() {
                 <td><b>${ticker}</b></td>
                 <td class="${side.includes('BUY') ? 'green' : 'red'}">${side.includes('BUY') ? 'Покупка' : 'Продажа'}</td>
                 <td>${parseFloat(size)}</td>
-                <td>${parseFloat(price).toFixed(0)}</td>
+                <td>${(ticker.toUpperCase().startsWith('BR') ? parseFloat(price).toFixed(2) : parseFloat(price).toFixed(0))}</td>
                 <td>${comment}</td>
             </tr>`;
         }).join('');
@@ -723,8 +723,8 @@ function addOrderLine(price, isBuy) {
         lineStyle: isBuy ? LightweightCharts.LineStyle.Dashed : LightweightCharts.LineStyle.Dotted,
         priceLineVisible: true,
         lastValueVisible: true,
-        priceFormat: { type: 'price', precision: 0, minMove: 1 },
-        title: (isBuy ? '🟢 B ' : '🔴 S ') + price.toFixed(0),
+        priceFormat: { type: 'price', precision: _obInstrument().startsWith('BR') ? 2 : 0, minMove: _obInstrument().startsWith('BR') ? 0.01 : 1 },
+        title: (isBuy ? '🟢 B ' : '🔴 S ') + obFmt(price),
         crosshairMarkerVisible: false,
     });
     const now = Math.floor(Date.now() / 1000);
@@ -1070,15 +1070,22 @@ function switchOrderBookInstrument() {
     }
 }
 
+// Instrument-aware price formatting: BR (Brent, tick 0.01) -> 2 decimals; others -> integer (as before)
+function _obInstrument() { return (el('obInstrument')?.value || '').toUpperCase(); }
+function obIsFrac() { return _obInstrument().startsWith('BR'); }
+function obFmt(v) { return obIsFrac() ? Number(v).toFixed(2) : String(Math.round(v)); }
+function obKey(v) { return obFmt(v); }
+function obNear(a, b) { return Math.abs(a - b) < (obIsFrac() ? 0.011 : 1); }
+
 function loadQuote(ticker) {
     if (!ticker) return;
     fetch(`/api/quote?ticker=${ticker}`)
         .then(r => r.json())
         .then(q => {
-            if (q.last > 0) el('obLast').textContent = Math.round(q.last);
-            if (q.bid > 0) el('obBid').textContent = Math.round(q.bid);
-            if (q.ask > 0) el('obAsk').textContent = Math.round(q.ask);
-            if (q.spread > 0) el('obSpread').textContent = q.spread.toFixed(0);
+            if (q.last > 0) el('obLast').textContent = obFmt(q.last);
+            if (q.bid > 0) el('obBid').textContent = obFmt(q.bid);
+            if (q.ask > 0) el('obAsk').textContent = obFmt(q.ask);
+            if (q.spread > 0) el('obSpread').textContent = obIsFrac() ? q.spread.toFixed(2) : q.spread.toFixed(0);
         })
         .catch(e => console.error("[ERROR]", e));
 }
@@ -1134,16 +1141,16 @@ function loadOrderBook(ticker) {
             const mySellPrices = myOrders.filter(o => o.order?.side === 'SELL' || o.order?.side === 'SIDE_SELL').map(o => parseFloat(o.order?.limit_price?.value || 0)).filter(p => p > 0);
             
             // Добавляем строки своих заявок если их цены не в стакане
-            const obPrices = new Set(visible.map(r => Math.round(r.price)));
+            const obPrices = new Set(visible.map(r => obKey(r.price)));
             for (const p of myBuyPrices) {
-                const rp = Math.round(p);
+                const rp = obKey(p);
                 if (!obPrices.has(rp)) {
                     visible.push({price: p, bid: 0, ask: 0, _myBuy: true});
                     obPrices.add(rp);
                 }
             }
             for (const p of mySellPrices) {
-                const rp = Math.round(p);
+                const rp = obKey(p);
                 if (!obPrices.has(rp)) {
                     visible.push({price: p, bid: 0, ask: 0, _mySell: true});
                     obPrices.add(rp);
@@ -1154,18 +1161,18 @@ function loadOrderBook(ticker) {
             for (const r of visible) {
                 const bidW = ((r.bid || 0) / maxVol * 100).toFixed(0);
                 const askW = ((r.ask || 0) / maxVol * 100).toFixed(0);
-                const isMyBuy = r._myBuy || myBuyPrices.some(p => Math.abs(p - r.price) < 1);
-                const isMySell = r._mySell || mySellPrices.some(p => Math.abs(p - r.price) < 1);
+                const isMyBuy = r._myBuy || myBuyPrices.some(p => obNear(p, r.price));
+                const isMySell = r._mySell || mySellPrices.some(p => obNear(p, r.price));
                 let cls = 'ob-row';
                 if (r.bid > 0) cls += ' ob-has-bid';
                 if (r.ask > 0) cls += ' ob-has-ask';
-                if (Math.abs(r.price - bestBid) < 1 && r.bid > 0) cls += ' ob-best-bid';
-                if (Math.abs(r.price - bestAsk) < 1 && r.ask > 0) cls += ' ob-best-ask';
+                if (obNear(r.price, bestBid) && r.bid > 0) cls += ' ob-best-bid';
+                if (obNear(r.price, bestAsk) && r.ask > 0) cls += ' ob-best-ask';
                 if (isMyBuy) cls += ' ob-my-buy';
                 if (isMySell) cls += ' ob-my-sell';
                 
                 // Позиция
-                const isPos = posPrice > 0 && Math.abs(r.price - posPrice) < 1;
+                const isPos = posPrice > 0 && obNear(r.price, posPrice);
                 if (isPos) cls += ' ob-position-row';
                 const posIcon = isPos ? (posDir > 0 ? '▲' : '▼') : '';
                 let posHtml = '';
@@ -1180,7 +1187,7 @@ function loadOrderBook(ticker) {
                 
                 html += `<div class="${cls}">
                     <div class="ob-bid"><div class="ob-bar-bid" style="width:${bidW}%"></div>${r.bid || ''}${isMyBuy ? ' ◄' : ''}</div>
-                    <div class="ob-price">${Math.round(r.price)}${posHtml}</div>
+                    <div class="ob-price">${obFmt(r.price)}${posHtml}</div>
                     <div class="ob-ask"><div class="ob-bar-ask" style="width:${askW}%"></div>${r.ask || ''}${isMySell ? '► ' : ''}</div>
                 </div>`;
             }
@@ -1210,30 +1217,30 @@ function _renderOrderBookCached() {
     const myOrders=(window._lastOrders||[]).filter(o=>o.status==='ORDER_STATUS_NEW');
     const myBuyPrices=myOrders.filter(o=>o.order?.side==='BUY'||o.order?.side==='SIDE_BUY').map(o=>parseFloat(o.order?.limit_price?.value||0)).filter(p=>p>0);
     const mySellPrices=myOrders.filter(o=>o.order?.side==='SELL'||o.order?.side==='SIDE_SELL').map(o=>parseFloat(o.order?.limit_price?.value||0)).filter(p=>p>0);
-    const obPrices=new Set(visible.map(r=>Math.round(r.price)));
-    for(const p of myBuyPrices){const rp=Math.round(p);if(!obPrices.has(rp)){visible.push({price:p,bid:0,ask:0,_myBuy:true});obPrices.add(rp);}}
-    for(const p of mySellPrices){const rp=Math.round(p);if(!obPrices.has(rp)){visible.push({price:p,bid:0,ask:0,_mySell:true});obPrices.add(rp);}}
+    const obPrices=new Set(visible.map(r=>obKey(r.price)));
+    for(const p of myBuyPrices){const rp=obKey(p);if(!obPrices.has(rp)){visible.push({price:p,bid:0,ask:0,_myBuy:true});obPrices.add(rp);}}
+    for(const p of mySellPrices){const rp=obKey(p);if(!obPrices.has(rp)){visible.push({price:p,bid:0,ask:0,_mySell:true});obPrices.add(rp);}}
     visible.sort((a,b)=>b.price-a.price);
     
     let html='';
     for(const r of visible){
         const bidW=((r.bid||0)/maxVol*100).toFixed(0);
         const askW=((r.ask||0)/maxVol*100).toFixed(0);
-        const isMyBuy=r._myBuy||myBuyPrices.some(p=>Math.abs(p-r.price)<1);
-        const isMySell=r._mySell||mySellPrices.some(p=>Math.abs(p-r.price)<1);
+        const isMyBuy=r._myBuy||myBuyPrices.some(p=>obNear(p,r.price));
+        const isMySell=r._mySell||mySellPrices.some(p=>obNear(p,r.price));
         let cls='ob-row';
         if(r.bid>0)cls+=' ob-has-bid';
         if(r.ask>0)cls+=' ob-has-ask';
-        if(Math.abs(r.price-bestBid)<1&&r.bid>0)cls+=' ob-best-bid';
-        if(Math.abs(r.price-bestAsk)<1&&r.ask>0)cls+=' ob-best-ask';
+        if(obNear(r.price,bestBid)&&r.bid>0)cls+=' ob-best-bid';
+        if(obNear(r.price,bestAsk)&&r.ask>0)cls+=' ob-best-ask';
         if(isMyBuy)cls+=' ob-my-buy';
         if(isMySell)cls+=' ob-my-sell';
-        const isPos=posPrice>0&&Math.abs(r.price-posPrice)<1;
+        const isPos=posPrice>0&&obNear(r.price,posPrice);
         if(isPos)cls+=' ob-position-row';
         const posIcon=isPos?(posDir>0?'▲':'▼'):'';
         let posHtml='';
         if(isPos){const lastPx=parseFloat(el('obLast')?.textContent||0);const pnl=posDir*(lastPx-posPrice)*posLots;const dirLabel=posDir>0?'▲L':'▼S';const pnlSign=pnl>=0?'+':'';posHtml=`<span class="ob-position-pnl"> ${dirLabel}${posLots} ${pnlSign}${pnl.toFixed(0)}₽</span>`;}
-        html+=`<div class="${cls}"><div class="ob-bid"><div class="ob-bar-bid" style="width:${bidW}%"></div>${r.bid||''}${isMyBuy?' ◄':''}</div><div class="ob-price">${Math.round(r.price)}${posHtml}</div><div class="ob-ask"><div class="ob-bar-ask" style="width:${askW}%"></div>${r.ask||''}${isMySell?'► ':''}</div></div>`;
+        html+=`<div class="${cls}"><div class="ob-bid"><div class="ob-bar-bid" style="width:${bidW}%"></div>${r.bid||''}${isMyBuy?' ◄':''}</div><div class="ob-price">${obFmt(r.price)}${posHtml}</div><div class="ob-ask"><div class="ob-bar-ask" style="width:${askW}%"></div>${r.ask||''}${isMySell?'► ':''}</div></div>`;
     }
     el('orderbookLadder').innerHTML=html;
     _renderTradeTape(visible);
@@ -1276,12 +1283,12 @@ function _renderTradeTape(visible) {
     // Entry horizontal line (QScalp style)
     if (posPrice >= minPrice && posPrice <= maxPrice) {
         html += `<div class="pnl-entry" style="top:${entryPct}%"></div>`;
-        html += `<div class="pnl-entry-label" style="top:${entryPct}%">${posDir > 0 ? '▲' : '▼'} ${Math.round(posPrice)}</div>`;
+        html += `<div class="pnl-entry-label" style="top:${entryPct}%">${posDir > 0 ? '▲' : '▼'} ${obFmt(posPrice)}</div>`;
     }
     
     // Vertical line from entry to current price
     if (heightPct > 0.1) {
-        const pts = Math.round(Math.abs(currentPrice - posPrice));
+        const pts = obIsFrac() ? (Math.abs(currentPrice - posPrice)).toFixed(2) : Math.round(Math.abs(currentPrice - posPrice));
         html += `<div class="pnl-line ${isProfit ? 'pnl-line-profit' : 'pnl-line-loss'}" style="top:${topPct}%;height:${Math.max(heightPct, 0.5)}%"></div>`;
         // Points label in the middle of the line
         const midPct = topPct + heightPct / 2;
@@ -2426,8 +2433,68 @@ async function renderRobots() {
         </tr>`;
     }
 
-    const allRows = [...serverStrategies, ...localRows, pythonRobotRow, ofRobotRow, ofMxRobotRow];
-    if (!allRows.filter(r=>r).length) { tbody.innerHTML = ''; if (noMsg) noMsg.style.display = 'block'; return; }
+    let ofBrRobotRow = '';
+    let _ofBrInstrument = localStorage.getItem('ofBrRobotInstrument') || 'BRV6';
+    let _ofBrAccount = localStorage.getItem('ofBrRobotAccount') || '1225953';
+    if (ofBrRobot) {
+        const s = ofBrRobot;
+        const mode = s.mode || 'stopped';
+        const modeText = mode === 'running' ? '🟢 Работает' : mode === 'paused' ? '🟡 Пауза' : '🔴 Остановлен';
+        const modeCls = mode === 'running' ? 'green' : mode === 'paused' ? 'yellow' : 'red';
+        const dirText = s.direction === 'LONG' ? 'Лонг' : s.direction === 'SHORT' ? 'Шорт' : 'Флат';
+        const dirCls = s.direction === 'LONG' ? 'green' : s.direction === 'SHORT' ? 'red' : '';
+        const pnlCls = v => v >= 0 ? 'green' : 'red';
+        const pnl = s.realizedPnL || 0;
+        const paper = s.paper ? ' <span class="badge" style="background:#ff9800">PAPER</span>' : '';
+        ofBrRobotRow = `<tr ondblclick="ofBrRobotEditPanel()" style="cursor:pointer" title="Двойной клик — настройки робота">
+            <td><select class="input" style="width:80px;font-size:11px" onchange="onOfBrRobotInstrumentChange(this.value)">
+              <option value="BRV6" ${_ofBrInstrument==='BRV6'?'selected':''}>BRV6</option>
+              <option value="BRX6" ${_ofBrInstrument==='BRX6'?'selected':''}>BRX6</option>
+              <option value="BRZ6" ${_ofBrInstrument==='BRZ6'?'selected':''}>BRZ6</option>
+              <option value="BRH7" ${_ofBrInstrument==='BRH7'?'selected':''}>BRH7</option>
+              <option value="BRM7" ${_ofBrInstrument==='BRM7'?'selected':''}>BRM7</option>
+            </select></td>
+            <td><strong>Order Flow</strong> <span class="badge" style="background:#007ACC">BR</span>${paper}</td>
+            <td>${accountDropdownHtml(_ofBrAccount, 'onOfBrRobotAccountChange(this.value)')}</td>
+            <td class="${dirCls}">${dirText}${s.avgPrice > 0 ? ' @ ' + s.avgPrice.toFixed(0) : ''}</td>
+            <td>—</td>
+            <td class="${pnlCls(pnl)}">${pnl >= 0 ? '+' : ''}${pnl.toFixed(0)} ₽</td>
+            <td>${s.totalLots || 0}</td>
+            <td>—</td>
+            <td>
+                <button class="btn btn-success btn-sm" onclick="ofBrRobotApi('start')" ${mode==='running'?'disabled':''}>▶</button>
+                <button class="btn btn-warning btn-sm" onclick="ofBrRobotApi('pause')" ${mode!=='running'?'disabled':''}>⏸</button>
+                <button class="btn btn-danger btn-sm" onclick="ofBrRobotApi('stop')" ${mode==='stopped'?'disabled':''}>⏹</button>
+                <button class="btn btn-sm" style="background:#2196F3;color:#fff" onclick="ofBrRobotRestart()" ${window._ofBrRestarting?'disabled':''}>${window._ofBrRestarting?'⏳':'🔄'}</button>
+            </td>
+            <td class="${modeCls}">${modeText}</td>
+        </tr>`;
+    } else {
+        ofBrRobotRow = `<tr ondblclick="ofBrRobotEditPanel()" style="cursor:pointer" title="Двойной клик — настройки робота">
+            <td><select class="input" style="width:80px;font-size:11px" onchange="onOfBrRobotInstrumentChange(this.value)">
+              <option value="BRV6" ${_ofBrInstrument==='BRV6'?'selected':''}>BRV6</option>
+              <option value="BRX6" ${_ofBrInstrument==='BRX6'?'selected':''}>BRX6</option>
+              <option value="BRZ6" ${_ofBrInstrument==='BRZ6'?'selected':''}>BRZ6</option>
+              <option value="BRH7" ${_ofBrInstrument==='BRH7'?'selected':''}>BRH7</option>
+              <option value="BRM7" ${_ofBrInstrument==='BRM7'?'selected':''}>BRM7</option>
+            </select></td>
+            <td><strong>Order Flow</strong> <span class="badge" style="background:#007ACC">BR</span></td>
+            <td>${accountDropdownHtml(_ofBrAccount, 'onOfBrRobotAccountChange(this.value)')}</td>
+            <td>—</td>
+            <td>—</td>
+            <td>—</td>
+            <td>0</td>
+            <td>—</td>
+            <td>
+                <button class="btn btn-success btn-sm" onclick="ofBrRobotApi('start')">▶</button>
+                <button class="btn btn-sm" style="background:#2196F3;color:#fff" onclick="ofBrRobotRestart()" ${window._ofBrRestarting?'disabled':''}>${window._ofBrRestarting?'⏳':'🔄'}</button>
+            </td>
+            <td class="red">🔴 Не запущен</td>
+        </tr>`;
+    }
+
+    const allRows = [...serverStrategies, ...localRows, pythonRobotRow, ofRobotRow, ofMxRobotRow, ofBrRobotRow];
+        if (!allRows.filter(r=>r).length) { tbody.innerHTML = ''; if (noMsg) noMsg.style.display = 'block'; return; }
     if (noMsg) noMsg.style.display = 'none';
     tbody.innerHTML = allRows.join('');
 }
@@ -6093,7 +6160,7 @@ function ofToast(msg, ok) {
 }
 
 async function ofRobotRestartCore(api, service, setBusy) {
-    if ((service === 'OF SiU6' && window._ofRestarting) || (service === 'OF MXU6' && window._ofMxRestarting)) return;
+    if ((service === 'OF SiU6' && window._ofRestarting) || (service === 'OF MXU6' && window._ofMxRestarting) || (service === 'OF BRU6' && window._ofBrRestarting)) return;
     // 1. Remember current mode before restart
     let mode = 'stopped', lots = 0;
     try {
@@ -6628,3 +6695,514 @@ async function ofPositionAdjust() {
         ofRobotPoll();
     } catch(e) { alert('Сеть: ' + e.message); }
 }
+
+// === ORDER FLOW MX EDIT PANEL ===
+function ofBrRobotEditPanel() {
+    const existing = el('ofBrRobotEditPanel');
+    if (existing) { existing.remove(); return; }
+
+    const s = ofBrRobot || {};
+    const p = s.params || JSON.parse(localStorage.getItem('ofBrSavedParams') || '{}');
+    // Fallback defaults for BRU6 if no params anywhere
+    if (!p.step_average) p.step_average = 150;
+    if (!p.step_pyramid) p.step_pyramid = 80;
+    if (!p.spread) p.spread = 120;
+    if (!p.stop_loss_value) p.stop_loss_value = 10000;
+    if (!p.min_profit_per_lot) p.min_profit_per_lot = 100;
+    if (!p.max_pyramid_levels) p.max_pyramid_levels = 3;
+    if (!p.max_average_levels) p.max_average_levels = 50;
+
+    const div = document.createElement('div');
+    div.id = 'ofBrRobotEditPanel';
+    div.className = 'card';
+    div.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);z-index:1000;width:900px;max-height:90vh;overflow-y:auto;box-shadow:0 8px 32px rgba(0,0,0,.5)';
+    div.innerHTML = `
+        <div class="card-header row gap-8">
+            📊 BRU6 Order Flow (PYTHON)
+            <button class="btn btn-primary btn-sm" onclick="ofBrRobotSaveFromPanel()">💾 Сохранить</button>
+            <button class="btn btn-secondary btn-sm" onclick="if(window._ofBrVpTimer){clearInterval(window._ofBrVpTimer);window._ofBrVpTimer=null;}el('ofBrRobotEditPanel')?.remove()">✕</button>
+        </div>
+        <div style="padding:12px">
+            <!-- OF индикаторы -->
+            <div class="metrics-row" style="flex-wrap:wrap;margin-bottom:12px">
+                <div class="metric-card" style="background:#1a2332;border:1px solid #007ACC;display:flex;flex-direction:column;align-items:center;gap:2px"><div style="display:flex;align-items:center;gap:4px"><input id="toggleBrCvd" type="checkbox" checked style="width:14px;height:14px;cursor:pointer" onchange="toggleOfBrSignal('use_cvd', this.checked)"><div class="metric-label" style="color:#CE93D8">CVD Trend</div></div><div id="ofBrCvd" style="font-size:18px;font-weight:bold;color:#CE93D8">—</div></div>
+                <div class="metric-card" style="background:#1a2332;border:1px solid #007ACC;display:flex;flex-direction:column;align-items:center;gap:2px"><div style="display:flex;align-items:center;gap:4px"><input id="toggleBrDmWall" type="checkbox" style="width:14px;height:14px;cursor:pointer" onchange="toggleOfBrSignal('use_dm_wall', this.checked)"><div class="metric-label" style="color:#FF7043">dm_wall</div></div><div id="ofBrDelta" style="font-size:18px;font-weight:bold;color:#FF7043">—</div></div>
+                <div class="metric-card" style="background:#1a2332;border:1px solid #007ACC;display:flex;flex-direction:column;align-items:center;gap:2px"><div style="display:flex;align-items:center;gap:4px"><input id="toggleBrCvdAccel" type="checkbox" checked style="width:14px;height:14px;cursor:pointer" onchange="toggleOfBrSignal('use_cvd_accel', this.checked)"><div class="metric-label" style="color:#66BB6A">CVD Accel</div></div><div id="ofBrCvdAccel" style="font-size:18px;font-weight:bold;color:#66BB6A">—</div></div>
+
+                <div class="metric-card" style="display:flex;flex-direction:column;align-items:center;gap:2px"><div style="display:flex;align-items:center;gap:4px"><input id="toggleBrVp" type="checkbox" style="width:14px;height:14px;cursor:pointer" onchange="toggleOfBrSignal('use_vah_val', this.checked)"><div class="metric-label" style="color:#42A5F5">VAH</div></div><div id="ofBrVah" style="font-size:18px;font-weight:bold;color:#42A5F5">—</div></div>
+                <div class="metric-card" style="display:flex;flex-direction:column;align-items:center;gap:2px"><div style="display:flex;align-items:center;gap:4px"><div class="metric-label" style="color:#FFB74D">POC</div></div><div id="ofBrPoc" style="font-size:18px;font-weight:bold;color:#FFB74D">—</div></div>
+                <div class="metric-card" style="display:flex;flex-direction:column;align-items:center;gap:2px"><div style="display:flex;align-items:center;gap:4px"><div class="metric-label" style="color:#42A5F5">VAL</div></div><div id="ofBrVal" style="font-size:18px;font-weight:bold;color:#42A5F5">—</div></div>
+
+                <div class="metric-card" style="background:#1a2332;border:1px solid #607D8B;display:flex;flex-direction:column;align-items:center;gap:2px"><div class="metric-label" style="color:#B0BEC5">Фильтр</div><select id="ofBrDirFilter" class="input" style="width:80px;font-size:13px;font-weight:bold;background:transparent;color:#fff;border:1px solid #607D8B;text-align:center;cursor:pointer" onchange="ofBrSetDirection(this.value)"><option value="both" style="color:#000">ОБА</option><option value="long" style="color:#000">LONG</option><option value="short" style="color:#000">SHORT</option></select></div>
+
+                <div class="metric-card"><div class="metric-label">Цена</div><div id="ofBrPrice" style="font-size:18px;font-weight:bold">—</div></div>
+                <div class="metric-card"><div class="metric-label">Позиция</div><div id="ofBrDir" style="font-size:18px;font-weight:bold">—</div></div>
+                <div class="metric-card"><div class="metric-label">Лоты</div><div id="ofBrLots" style="font-size:18px;font-weight:bold">0</div></div>
+                <div class="metric-card"><div class="metric-label">Ср. цена</div><div id="ofBrAvgPrice" style="font-size:18px;font-weight:bold">—</div></div>
+                <div class="metric-card"><div class="metric-label">PnL/лот</div><div id="ofBrPnlPerLot" style="font-size:18px;font-weight:bold">—</div></div>
+                <div class="metric-card"><div class="metric-label">PnL нереал.</div><div id="ofBrPnlUnreal" style="font-size:18px;font-weight:bold">—</div></div>
+                <div class="metric-card"><div class="metric-label">Realized</div><div id="ofBrRealized" style="font-size:18px;font-weight:bold">0₽</div></div>
+                <div class="metric-card"><div class="metric-label">Сигнал</div><div id="ofBrSignal" style="font-size:16px;font-weight:bold">—</div></div>
+                <div class="metric-card"><div class="metric-label">Hold</div><div id="ofBrHold" style="font-size:18px;font-weight:bold">0 мин</div></div>
+                <div class="metric-card"><div class="metric-label">Avg Levels</div><div id="ofBrAvgLvl" style="font-size:18px;font-weight:bold">0</div></div>
+                <div class="metric-card"><div class="metric-label">Pyr Levels</div><div id="ofBrPyrLvl" style="font-size:18px;font-weight:bold">0</div></div>
+                <div class="metric-card"><div class="metric-label">RT</div><div id="ofBrRt" style="font-size:18px;font-weight:bold">0</div></div>
+                <div class="metric-card"><div class="metric-label">Брокер лоты</div><div id="ofBrBrokerLots" style="font-size:18px;font-weight:bold">—</div></div>
+            </div>
+            <!-- Ручная корректировка позиции (state-only) -->
+            <div class="metrics-row" style="flex-wrap:wrap;margin-bottom:12px;align-items:center;border:1px dashed #FF7043;border-radius:8px;padding:8px">
+                <div style="font-size:13px;color:#FF7043;font-weight:bold">✏️ Ручная корректировка (без ордеров — принять позицию в управление):</div>
+                <input id="ofBrAdjLots" class="input" type="number" placeholder="+3 / -3" style="width:90px" title="+N = добавить лонг, -N = шорт/закрытие">
+                <input id="ofBrAdjPrice" class="input" type="number" placeholder="Цена 215100" style="width:120px">
+                <button class="btn btn-primary btn-sm" onclick="ofBrPositionAdjust()">Корректировать</button>
+            </div>
+            <hr style="border-color:#2D2D44;margin:12px 0">
+            <!-- Параметры -->
+            <div class="metrics-row" style="flex-wrap:wrap;margin-bottom:16px">
+                <div class="metric-card"><div class="metric-label">Lots</div><input id="editOfBrLots" class="input" type="number" value="${p.lots||1}" style="width:60px"></div>
+                <div class="metric-card"><div class="metric-label">Max Pyramid</div><input id="editOfBrMaxPyr" class="input" type="number" value="${p.max_pyramid_levels||5}" style="width:60px"></div>
+                <div class="metric-card"><div class="metric-label">Max Average</div><input id="editOfBrMaxAvg" class="input" type="number" value="${p.max_average_levels||100}" style="width:60px"></div>
+                <div class="metric-card"><div class="metric-label">Step Avg (пт)</div><input id="editOfBrStepAvg" class="input" type="number" step="0.01" min="0.01" value="${p.step_average||0.35}" style="width:70px"></div>
+                <div class="metric-card"><div class="metric-label">Step Pyr (пт)</div><input id="editOfBrStepPyr" class="input" type="number" value="${p.step_pyramid||35}" style="width:70px"></div>
+                <div class="metric-card"><div class="metric-label">Spread (пт)</div><input id="editOfBrSpread" class="input" type="number" step="0.01" min="0.01" value="${p.spread||0.15}" style="width:60px"></div>
+                <div class="metric-card"><div class="metric-label">SL Mode</div><select id="editOfBrSlMode" class="input" style="width:70px"><option value="rub" ${(p.stop_loss_mode||'rub')==='rub'?'selected':''}>₽</option><option value="pct" ${p.stop_loss_mode==='pct'?'selected':''}>%</option><option value="pts" ${p.stop_loss_mode==='pts'?'selected':''}>пт</option></select></div>
+                <div class="metric-card"><div class="metric-label">SL Value</div><input id="editOfBrSlValue" class="input" type="number" step="0.01" min="0" value="${p.stop_loss_value||12.82}" style="width:80px"></div>
+                <div class="metric-card"><div class="metric-label">Min Profit/Lot</div><input id="editOfBrMinProfit" class="input" type="number" step="0.01" min="0.01" value="${p.min_profit_per_lot||0.3}" style="width:60px"></div>
+                <div class="metric-card"><div class="metric-label">Close % All</div><select id="editOfBrCloseHalfPct" class="input" style="width:70px"><option value="0" ${(!p.close_half_pct)?'selected':''}>OFF</option><option value="50" ${p.close_half_pct===50?'selected':''}>50%</option><option value="40" ${p.close_half_pct===40?'selected':''}>40%</option><option value="30" ${p.close_half_pct===30?'selected':''}>30%</option><option value="20" ${p.close_half_pct===20?'selected':''}>20%</option><option value="10" ${p.close_half_pct===10?'selected':''}>10%</option></select></div>
+                <div class="metric-card"><div class="metric-label">Close price All</div><input id="editOfBrClosePriceAll" class="input" type="number" placeholder="None" value="${p.close_price_all||''}" style="width:90px"></div>
+                <div class="metric-card"><div class="metric-label">Max Hold (мин)</div><input id="editOfBrMaxHold" class="input" type="number" value="${p.max_hold_minutes||999}" style="width:80px"></div>
+                <div class="metric-card"><div class="metric-label">CVD EMA Fast</div><input id="editOfBrCvdEmaF" class="input" type="number" value="${p.cvd_ema_fast||5}" style="width:60px"></div>
+                <div class="metric-card"><div class="metric-label">CVD EMA Slow</div><input id="editOfBrCvdEmaS" class="input" type="number" value="${p.cvd_ema_slow||15}" style="width:60px"></div>
+                <div class="metric-card"><div class="metric-label">DM Lookback</div><input id="editOfBrDmLb" class="input" type="number" value="${p.dm_lookback||5}" style="width:60px"></div>
+                <div class="metric-card"><div class="metric-label">Wall Window (с)</div><input id="editOfBrWallWin" class="input" type="number" value="${p.wall_window||120}" style="width:60px"></div>
+                <div class="metric-card"><div class="metric-label">Wall Mult</div><input id="editOfBrWallMult" class="input" type="number" step="0.5" value="${p.wall_multiplier||3.0}" style="width:60px"></div>
+                <div class="metric-card"><div class="metric-label">CVD Accel Thresh</div><input id="editOfBrCvdAccelThresh" class="input" type="number" step="100" value="${p.cvd_accel_threshold||1000}" style="width:80px"></div>
+                <div class="metric-card"><div class="metric-label">Agg Window</div><input id="editOfBrAggWindow" class="input" type="number" value="${p.agg_window||3}" style="width:60px"></div>
+                <div class="metric-card"><div class="metric-label">Agg Ratio Thr</div><input id="editOfBrAggRatioThresh" class="input" type="number" step="0.1" value="${p.agg_ratio_threshold||1.0}" style="width:60px"></div>
+                <div class="metric-card" style="display:flex;align-items:center;gap:8px"><label style="display:flex;align-items:center;gap:6px;cursor:pointer"><input id="editOfBrUseAggRatio" type="checkbox" ${(p.use_agg_ratio!==false)?'checked':''} style="width:18px;height:18px;cursor:pointer"><span style="font-size:13px;color:#66BB6A">Agg Ratio Filter</span></label></div>
+                <div class="metric-card"><div class="metric-label">Confirm In</div><input id="editOfBrConfirm" class="input" type="number" min="1" max="3" value="${p.signal_confirm_count||1}" style="width:50px"></div>
+                <div class="metric-card"><div class="metric-label">Confirm Out</div><input id="editOfBrConfirmOut" class="input" type="number" min="1" max="3" value="${p.signal_confirm_exit||1}" style="width:50px"></div>
+                <div class="metric-card"><div class="metric-label">Timeframe</div><select id="editOfBrTf" class="input" style="width:70px"><option value="M1" ${p.timeframe==='M1'?'selected':''}>1 мин</option><option value="M5" ${(p.timeframe||'M5')==='M5'?'selected':''}>5 мин</option><option value="M15" ${p.timeframe==='M15'?'selected':''}>15 мин</option><option value="M30" ${p.timeframe==='M30'?'selected':''}>30 мин</option><option value="H1" ${p.timeframe==='H1'?'selected':''}>1 час</option></select></div>
+            </div>
+            <hr style="border-color:#2D2D44;margin:12px 0">
+            <!-- VWEMA Filter -->
+            <div class="metrics-row" style="flex-wrap:wrap;margin-bottom:16px;align-items:center">
+                <div class="metric-card" style="display:flex;align-items:center;gap:8px">
+                    <label style="display:flex;align-items:center;gap:6px;cursor:pointer">
+                        <input id="editOfBrUseVwema" type="checkbox" ${(p.use_vwema)?'checked':''} style="width:18px;height:18px;cursor:pointer">
+                        <span style="font-weight:bold;color:#FF9800">VWEMA Filter</span>
+                    </label>
+                </div>
+                <div class="metric-card"><div class="metric-label">VWEMA Fast</div><input id="editOfBrVwemaFast" class="input" type="number" value="${p.vwema_fast||20}" style="width:60px"></div>
+                <div class="metric-card"><div class="metric-label">VWEMA Slow</div><input id="editOfBrVwemaSlow" class="input" type="number" value="${p.vwema_slow||40}" style="width:60px"></div>
+                <div class="metric-card"><div class="metric-label">Flat Threshold</div><input id="editOfBrVwemaFlat" class="input" type="number" step="0.1" value="${p.vwema_flat_th||1.0}" style="width:60px"></div>
+                <div class="metric-card" style="display:flex;align-items:center;gap:8px">
+                    <label style="display:flex;align-items:center;gap:6px;cursor:pointer">
+                        <input id="editOfBrVwemaBlock" type="checkbox" ${(p.vwema_block_counter!==false)?'checked':''} style="width:18px;height:18px;cursor:pointer">
+                        <span style="font-size:13px">Block counter-trend</span>
+                    </label>
+                </div>
+                <div class="metric-card" style="display:flex;align-items:center;gap:8px">
+                    <label style="display:flex;align-items:center;gap:6px;cursor:pointer" title="Не усреднять против VWEMA + закрыть усреднённую позицию при развороте VWEMA">
+                        <input id="editOfBrVwemaAvgExit" type="checkbox" ${(p.vwema_avg_exit)?'checked':''} style="width:18px;height:18px;cursor:pointer">
+                        <span style="font-size:13px">VWEMA Avg Exit</span>
+                    </label>
+                </div>
+                <div class="metric-card" style="min-width:120px"><div class="metric-label">VWEMA Trend</div><div id="ofBrVwemaTrend" style="font-size:16px;font-weight:bold;color:#9CA3AF">—</div></div>
+            </div>
+            <hr style="border-color:#2D2D44;margin:12px 0">
+            <!-- VAH/VAL Volume Profile Filter -->
+            <div class="metrics-row" style="flex-wrap:wrap;margin-bottom:16px;align-items:center">
+                <div class="metric-card" style="display:flex;align-items:center;gap:8px">
+                    <label style="display:flex;align-items:center;gap:6px;cursor:pointer">
+                        <input id="editOfBrUseVahVal" type="checkbox" ${(p.use_vah_val)?'checked':''} style="width:18px;height:18px;cursor:pointer">
+                        <span style="font-weight:bold;color:#42A5F5">VAH/VAL Filter</span>
+                    </label>
+                </div>
+                <div class="metric-card"><div class="metric-label">Value Area %</div><input id="editOfBrVahValPct" class="input" type="number" min="50" max="99" value="${p.vah_val_pct||95}" style="width:60px"></div>
+                <div class="metric-card"><div class="metric-label">VP Bin Size</div><input id="editOfBrVahValBin" class="input" type="number" step="0.01" min="0.01" max="500" value="${p.vah_val_bin_size||0.35}" style="width:60px"></div>
+                <div class="metric-card"><div class="metric-label">VP Mode</div><select id="editOfBrVahValMode" class="input" style="width:90px;font-size:12px;background:transparent;color:#fff;border:1px solid #2D4A6D"><option value="fade" ${(p.vah_val_mode||'range')==='fade'?'selected':''}>Fade</option><option value="breakout" ${(p.vah_val_mode||'range')==='breakout'?'selected':''}>Breakout</option><option value="range" ${(p.vah_val_mode||'range')==='range'?'selected':''}>Range</option></select></div>
+                <div class="metric-card" style="min-width:80px"><div class="metric-label">VAH</div><div id="ofBrVpVah" style="font-size:16px;font-weight:bold;color:#42A5F5">—</div></div>
+                <div class="metric-card" style="min-width:80px"><div class="metric-label">POC</div><div id="ofBrVpPoc" style="font-size:16px;font-weight:bold;color:#FFB74D">—</div></div>
+                <div class="metric-card" style="min-width:80px"><div class="metric-label">VAL</div><div id="ofBrVpVal" style="font-size:16px;font-weight:bold;color:#42A5F5">—</div></div>
+            </div>
+            <hr style="border-color:#2D2D44;margin:12px 0">
+            <!-- Торговый журнал -->
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+                <strong>📋 Торговый журнал</strong>
+            </div>
+            <div id="ofBrJournalSummary" class="metrics-row" style="flex-wrap:wrap;margin-bottom:12px"></div>
+            <div style="display:flex;gap:8px;margin-bottom:12px;align-items:center">
+                <select id="ofBrJournalFilter" class="input" style="width:120px" onchange="ofBrRenderJournal()">
+                    <option value="all">Все позиции</option>
+                    <option value="LONG">Лонги</option>
+                    <option value="SHORT">Шорты</option>
+                    <option value="win">Прибыльные</option>
+                    <option value="loss">Убыточные</option>
+                </select>
+                <span style="color:#9CA3AF;font-size:13px">с</span>
+                <input id="ofBrJournalDateFrom" class="input" type="date" style="width:130px" onchange="ofBrRenderJournal()">
+                <span style="color:#9CA3AF;font-size:13px">по</span>
+                <input id="ofBrJournalDateTo" class="input" type="date" style="width:130px" onchange="ofBrRenderJournal()">
+                <button class="btn btn-secondary btn-sm" onclick="ofBrLoadJournal()">🔄 Обновить</button>
+            </div>
+            <table class="data-table" style="font-size:13px">
+                <thead><tr><th>Дата</th><th>Вход</th><th>Выход</th><th>Напр.</th><th>Цена вх.</th><th>Цена вых.</th><th>Лоты</th><th>PnL</th><th>Σ</th></tr></thead>
+                <tbody id="ofBrJournalBody"></tbody>
+            </table>
+        </div>
+    `;
+    document.body.appendChild(div);
+
+    // Initialize direction filter dropdown
+    if (p.direction_filter) {
+        const sel = el('ofBrDirFilter');
+        if (sel) sel.value = p.direction_filter;
+    }
+    // Initialize signal toggles from params
+    const tCvd = el('toggleBrCvd'); if (tCvd) tCvd.checked = p.use_cvd !== false;
+    const tDm = el('toggleBrDmWall'); if (tDm) tDm.checked = p.use_dm_wall === true;
+    const tAcc = el('toggleBrCvdAccel'); if (tAcc) tAcc.checked = p.use_cvd_accel !== false;
+
+    ofBrLoadJournal();
+    ofBrUpdateLive();
+    if (window._ofBrVpTimer) clearInterval(window._ofBrVpTimer);
+    window._ofBrVpTimer = setInterval(ofBrUpdateLive, 1000);
+}
+
+function ofBrUpdateLive() {
+    const s = ofBrRobot;
+    if (!s) return;
+    const setText = (id, val) => { const e = el(id); if (e) e.textContent = val; };
+    const setColor = (id, val) => {
+        const e = el(id); if (!e) return;
+        e.textContent = val >= 0 ? '+' + val.toFixed(0) : val.toFixed(0);
+        e.className = val >= 0 ? 'green' : 'red';
+    };
+    const price = s.currentPrice || 0;
+    setText('ofBrPrice', price > 0 ? price.toFixed(2) : '—');
+    const dirText = s.direction === 'LONG' ? '🟢 LONG' : s.direction === 'SHORT' ? '🔴 SHORT' : 'FLAT';
+    setText('ofBrDir', dirText);
+    setText('ofBrLots', s.totalLots || 0);
+    setText('ofBrAvgPrice', s.avgPrice > 0 ? s.avgPrice.toFixed(2) : '—');
+    const pnlPerLot = price > 0 && s.avgPrice > 0 ? (price - s.avgPrice) * (s.dir || 0) : 0;
+    setText('ofBrPnlPerLot', pnlPerLot !== 0 ? (pnlPerLot > 0 ? '+' : '') + pnlPerLot.toFixed(2) + ' пт' : '—');
+    setColor('ofBrPnlUnreal', s.unrealizedPnL || 0);
+    setText('ofBrRealized', (s.realizedPnL || 0).toFixed(0) + '₽');
+    setText('ofBrSignal', s.signalType || '—');
+    setText('ofBrHold', s.holdMinutes ? s.holdMinutes + ' мин' : '0 мин');
+    setText('ofBrAvgLvl', s.averageLevels || 0);
+    setText('ofBrPyrLvl', s.pyramidLevels || 0);
+    setText('ofBrRt', s.roundTrips || 0);
+    if (el('ofBrBrokerLots')) {
+        const bl = s.brokerLots;
+        const be = el('ofBrBrokerLots');
+        be.textContent = (bl === null || bl === undefined) ? '—' : (bl + (s.brokerMismatch ? ' ⚠️' : ''));
+        be.style.color = s.brokerMismatch ? 'var(--red)' : '';
+    }
+    // VAH/POC/VAL (Volume Profile)
+    if (s.vp) {
+        setText('ofBrVah', s.vp.vah ? s.vp.vah.toFixed(2) : '—');
+        setText('ofBrPoc', s.vp.poc ? s.vp.poc.toFixed(2) : '—');
+        setText('ofBrVal', s.vp.val ? s.vp.val.toFixed(2) : '—');
+        setText('ofBrVpVah', s.vp.vah ? s.vp.vah.toFixed(2) : '—');
+        setText('ofBrVpPoc', s.vp.poc ? s.vp.poc.toFixed(2) : '—');
+        setText('ofBrVpVal', s.vp.val ? s.vp.val.toFixed(2) : '—');
+    } else {
+        setText('ofBrVah', '—');
+        setText('ofBrPoc', '—');
+        setText('ofBrVal', '—');
+        setText('ofBrVpVah', '—');
+        setText('ofBrVpPoc', '—');
+        setText('ofBrVpVal', '—');
+    }
+    const p = s.params || {};
+    const vpToggle = el('toggleMxVp');
+    if (vpToggle) vpToggle.checked = (p.use_vah_val === true);
+    if (s.cvdTrend) {
+        const cvdDir = s.cvdTrend.direction > 0 ? '↑' : s.cvdTrend.direction < 0 ? '↓' : '→';
+        const cvdVal = s.cvdTrend.emaFast !== null ? cvdDir + ' ' + s.cvdTrend.emaFast.toFixed(0) : '—';
+        setText('ofBrCvd', cvdVal);
+    }
+    if (s.cvdAccel) {
+        const accelVal = s.cvdAccel.value !== null ? s.cvdAccel.value.toFixed(0) + ' (' + (s.cvdAccel.aggRatio || '—') + ')' : '—';
+        setText('ofBrCvdAccel', accelVal);
+    }
+    if (s.vwema) {
+        const vwDir = s.vwema.direction > 0 ? '↑ UP' : s.vwema.direction < 0 ? '↓ DOWN' : '→ FLAT';
+        setText('ofBrVwemaTrend', vwDir + ' (f=' + (s.vwema.ema_f ? s.vwema.ema_f.toFixed(0) : '—') + ' s=' + (s.vwema.ema_s ? s.vwema.ema_s.toFixed(0) : '—') + ')');
+    }
+}
+
+async function ofBrRobotSaveFromPanel() {
+    const body = {
+        lots: parseInt(el('editOfBrLots')?.value) || 1,
+        max_pyramid_levels: parseInt(el('editOfBrMaxPyr')?.value) || 5,
+        max_average_levels: parseInt(el('editOfBrMaxAvg')?.value) || 100,
+        step_average: parseFloat(el('editOfBrStepAvg')?.value) || 0.35,
+        step_pyramid: parseInt(el('editOfBrStepPyr')?.value) || 35,
+        spread: parseFloat(el('editOfBrSpread')?.value) || 0.15,
+        stop_loss_mode: el('editOfBrSlMode')?.value || 'rub',
+        stop_loss_value: parseFloat(el('editOfBrSlValue')?.value) || 12.82,
+        min_profit_per_lot: parseFloat(el('editOfBrMinProfit')?.value) || 0.3,
+        close_half_pct: parseInt(el('editOfBrCloseHalfPct')?.value) || 0,
+        close_price_all: parseFloat(el('editOfBrClosePriceAll')?.value) || 0,
+        max_hold_minutes: parseInt(el('editOfBrMaxHold')?.value) || 999,
+        cvd_lookback: parseInt(el('editOfBrCvdLb')?.value) || 10,
+        cvd_ema_fast: parseInt(el('editOfBrCvdEmaF')?.value) || 5,
+        cvd_ema_slow: parseInt(el('editOfBrCvdEmaS')?.value) || 15,
+        dm_lookback: parseInt(el('editOfBrDmLb')?.value) || 5,
+        wall_window: parseFloat(el('editOfBrWallWin')?.value) || 120,
+        wall_multiplier: parseFloat(el('editOfBrWallMult')?.value) || 3.0,
+        cvd_accel_threshold: parseFloat(el('editOfBrCvdAccelThresh')?.value) || 1000,
+        agg_window: parseInt(el('editOfBrAggWindow')?.value) || 3,
+        agg_ratio_threshold: parseFloat(el('editOfBrAggRatioThresh')?.value) || 1.0,
+        use_agg_ratio: el('editOfBrUseAggRatio')?.checked !== false,
+        signal_confirm_count: parseInt(el('editOfBrConfirm')?.value) || 1,
+        signal_confirm_exit: parseInt(el('editOfBrConfirmOut')?.value) || 1,
+        timeframe: el('editOfBrTf')?.value || 'M5',
+        use_dm_wall: el('toggleBrDmWall')?.checked === true,
+        use_cvd: el('toggleBrCvd')?.checked !== false,
+        use_cvd_accel: el('toggleBrCvdAccel')?.checked !== false,
+        use_vwema: el('editOfBrUseVwema')?.checked || false,
+        vwema_fast: parseInt(el('editOfBrVwemaFast')?.value) || 20,
+        vwema_slow: parseInt(el('editOfBrVwemaSlow')?.value) || 40,
+        vwema_flat_th: parseFloat(el('editOfBrVwemaFlat')?.value) || 1.0,
+        vwema_block_counter: el('editOfBrVwemaBlock')?.checked !== false,
+        vwema_avg_exit: el('editOfBrVwemaAvgExit')?.checked || false,
+        vah_val_pct: parseInt(el('editOfBrVahValPct')?.value) || 95,
+        vah_val_bin_size: parseFloat(el('editOfBrVahValBin')?.value) || 0.35,
+        vah_val_mode: el('editOfBrVahValMode')?.value || 'range',
+        use_vah_val: el('editOfBrUseVahVal')?.checked || el('toggleBrVp')?.checked || false,
+    };
+    // Always save to localStorage first
+    localStorage.setItem('ofBrSavedParams', JSON.stringify(body));
+    try {
+        const resp = await fetch(OF_BR_ROBOT_API + '/params', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(body)
+        });
+        const data = await resp.json();
+        localStorage.removeItem('ofBrSavedParams');
+        addLog(nowTime(), 'INFO', '💾 OF-BR конфиг сохранён');
+    } catch(e) {
+        addLog(nowTime(), 'INFO', '💾 OF-BR конфиг сохранён локально (робот offline — применится при старте)');
+    }
+}
+
+// === Order Flow BR base block (BRU6, порт 5082) ===
+const OF_BR_ROBOT_API = 'http://' + window.location.hostname + ':5082';
+let ofBrRobot = null;
+let _ofBrJournalTrades = [];
+let _ofBrWasOnline = false;
+
+async function ofBrRobotPoll() {
+    try {
+        const resp = await fetch(OF_BR_ROBOT_API + '/status', {signal: AbortSignal.timeout(2000)});
+        ofBrRobot = await resp.json();
+        // Robot just came online → sync pending params
+        if (!_ofBrWasOnline) {
+            _ofBrWasOnline = true;
+            const saved = localStorage.getItem('ofBrSavedParams');
+            if (saved) {
+                try {
+                    const params = JSON.parse(saved);
+                    await fetch(OF_BR_ROBOT_API + '/params', {
+                        method: 'POST',
+                        headers: {'Content-Type':'application/json'},
+                        body: JSON.stringify(params)
+                    });
+                    addLog(nowTime(), 'INFO', '🛢 OF-BR: параметры синхронизированы из localStorage');
+                    localStorage.removeItem('ofBrSavedParams');
+                } catch(e) {}
+            }
+        }
+    } catch(e) {
+        ofBrRobot = null;
+        _ofBrWasOnline = false;
+    }
+}
+
+async function ofBrSetDirection(value) {
+    try {
+        await fetch(OF_BR_ROBOT_API + '/params', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({direction_filter: value})
+        });
+        await ofBrRobotPoll();
+    } catch(e) {}
+}
+
+async function onOfBrRobotAccountChange(val) {
+    localStorage.setItem('ofBrRobotAccount', val);
+}
+
+function onOfBrRobotInstrumentChange(val) {
+    localStorage.setItem('ofBrRobotInstrument', val);
+    renderRobots();
+}
+
+async function ofBrRobotApi(action) {
+    try {
+        if (action === 'start' || action === 'stop') {
+            const acctVal = localStorage.getItem('ofBrRobotAccount') || '1225953';
+            if (acctVal) {
+                const acctResp = await fetch(OF_BR_ROBOT_API + '/account', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({account: acctVal})
+                });
+                const acctData = await acctResp.json();
+                if (acctData.ok) {
+                    addLog(nowTime(), 'INFO', '🛢 OF-BR счёт: ' + acctData.account + ' (' + acctData.id + ')');
+                }
+            }
+        }
+        const resp = await fetch(OF_BR_ROBOT_API + '/' + action, {method: 'POST'});
+        const data = await resp.json();
+        addLog(nowTime(), 'INFO', 'OF-BR ' + action + ': ' + JSON.stringify(data));
+        setTimeout(async () => { await ofBrRobotPoll(); renderRobots(); }, 500);
+    } catch(e) {
+        addLog(nowTime(), 'ERROR', 'OF-BR ' + action + ' failed: ' + e.message);
+    }
+}
+
+function ofBrRobotRestart() { return ofRobotRestartCore(OF_BR_ROBOT_API, 'OF BRU6', v => { window._ofBrRestarting = v; }); }
+
+// === Order Flow BR Trade Journal ===
+async function ofBrResetStats() {
+    if (!confirm('Сбросить статистику BR? Realized PnL → 0, история сделок очищена.')) return;
+    const r = await fetch(OF_BR_ROBOT_API + '/reset-stats', {method:'POST'});
+    if (r && r.ok) {
+        ofBrLoadJournal();
+    }
+}
+
+async function ofBrLoadJournal() {
+    const body = el('ofBrJournalBody');
+    if (!body) return;
+    try {
+        const resp = await fetch(OF_BR_ROBOT_API + '/status', {signal: AbortSignal.timeout(2000)});
+        const data = await resp.json();
+        _ofBrJournalTrades = data.tradeHistory || data.trades || [];
+        if (!_ofBrJournalTrades.length) {
+            body.innerHTML = '<tr><td colspan="9" style="text-align:center;padding:24px;color:#9CA3AF">Нет закрытых сделок</td></tr>';
+            ofBrRenderJournalSummary(0, 0, 0, 0);
+            return;
+        }
+        ofBrRenderJournal();
+    } catch(e) {
+        body.innerHTML = '<tr><td colspan="9" style="text-align:center;padding:24px;color:#9CA3AF">Робот недоступен</td></tr>';
+    }
+}
+
+function ofBrRenderJournal() {
+    const body = el('ofBrJournalBody');
+    if (!body) return;
+    const filter = el('ofBrJournalFilter')?.value || 'all';
+    const dateFrom = el('ofBrJournalDateFrom')?.value;
+    const dateTo = el('ofBrJournalDateTo')?.value;
+    let trades = [..._ofBrJournalTrades];
+    if (dateFrom || dateTo) {
+        trades = trades.filter(t => {
+            const dEntry = t.entryTime ? t.entryTime.slice(0,10) : null;
+            const dExit = t.exitTime ? t.exitTime.slice(0,10) : null;
+            const afterStart = !dateFrom || (dEntry && dEntry >= dateFrom) || (dExit && dExit >= dateFrom);
+            const beforeEnd = !dateTo || (dEntry && dEntry <= dateTo) || (dExit && dExit <= dateTo);
+            return afterStart && beforeEnd;
+        });
+    }
+    if (filter === 'LONG') trades = trades.filter(t => t.direction === 'LONG' || t.direction > 0);
+    else if (filter === 'SHORT') trades = trades.filter(t => t.direction === 'SHORT' || t.direction < 0);
+    else if (filter === 'win') trades = trades.filter(t => t.pnl > 0);
+    else if (filter === 'loss') trades = trades.filter(t => t.pnl < 0);
+    if (!trades.length) {
+        body.innerHTML = '<tr><td colspan="9" style="text-align:center;padding:16px;color:#9CA3AF">Нет сделок по фильтру</td></tr>';
+        return;
+    }
+    let cumulative = 0;
+    const rows = trades.map(t => {
+        cumulative += (t.pnl || 0);
+        const dtOut = t.exitTime ? new Date(t.exitTime) : null;
+        const dateStr = dtOut ? dtOut.toLocaleDateString('ru-RU') : '—';
+        const timeIn = t.entryTime ? new Date(t.entryTime).toLocaleTimeString('ru-RU', {hour:'2-digit',minute:'2-digit'}) : '—';
+        const timeOut = dtOut ? dtOut.toLocaleTimeString('ru-RU', {hour:'2-digit',minute:'2-digit'}) : '—';
+        const dir = t.direction === 'LONG' || t.direction > 0 ? '🟢 L' : '🔴 S';
+        const pnlCls = (t.pnl || 0) >= 0 ? 'green' : 'red';
+        const cumCls = cumulative >= 0 ? 'green' : 'red';
+        return '<tr style="border-bottom:1px solid var(--border-color)">' +
+            '<td style="padding:6px">' + dateStr + '</td>' +
+            '<td style="padding:6px">' + timeIn + '</td>' +
+            '<td style="padding:6px">' + timeOut + '</td>' +
+            '<td style="padding:6px;text-align:center">' + dir + '</td>' +
+            '<td style="padding:6px;text-align:right">' + (t.entryPrice||0).toFixed(2) + '</td>' +
+            '<td style="padding:6px;text-align:right">' + (t.exitPrice||0).toFixed(2) + '</td>' +
+            '<td style="padding:6px;text-align:right">' + (t.lots||1) + '</td>' +
+            '<td style="padding:6px;text-align:right" class="' + pnlCls + '">' + ((t.pnl||0) >= 0 ? '+' : '') + (t.pnl||0).toFixed(0) + '₽</td>' +
+            '<td style="padding:6px;text-align:right" class="' + cumCls + '">' + (cumulative >= 0 ? '+' : '') + cumulative.toFixed(0) + '₽</td>' +
+        '</tr>';
+    });
+    body.innerHTML = rows.join('');
+    const totalPnl = trades.reduce((s, t) => s + (t.pnl || 0), 0);
+    const wins = trades.filter(t => (t.pnl || 0) > 0).length;
+    const losses = trades.filter(t => (t.pnl || 0) < 0).length;
+    ofBrRenderJournalSummary(trades.length, wins, losses, totalPnl);
+}
+
+function ofBrRenderJournalSummary(total, wins, losses, totalPnl) {
+    const el2 = el('ofBrJournalSummary');
+    if (!el2) return;
+    const wr = total > 0 ? ((wins / total) * 100).toFixed(0) + '%' : '—';
+    const winPnl = _ofBrJournalTrades.filter(t => (t.pnl||0) > 0).reduce((s,t) => s+(t.pnl||0), 0);
+    const lossPnl = _ofBrJournalTrades.filter(t => (t.pnl||0) < 0).reduce((s,t) => s+(t.pnl||0), 0);
+    const avgWin = wins > 0 ? (winPnl / wins).toFixed(0) : '—';
+    const avgLoss = losses > 0 ? (lossPnl / losses).toFixed(0) : '—';
+    const cls = totalPnl >= 0 ? 'green' : 'red';
+    el2.innerHTML = '' +
+        '<div class="metric-card"><div class="metric-label">Всего сделок</div><div style="font-size:16px;font-weight:bold">' + total + '</div></div>' +
+        '<div class="metric-card"><div class="metric-label">Win Rate</div><div style="font-size:16px;font-weight:bold">' + wr + '</div></div>' +
+        '<div class="metric-card"><div class="metric-label">Wins / Loss</div><div style="font-size:16px;font-weight:bold"><span class="green">' + wins + '</span> / <span class="red">' + losses + '</span></div></div>' +
+        '<div class="metric-card"><div class="metric-label">Avg Win</div><div style="font-size:16px;font-weight:bold" class="green">' + (avgWin !== '—' ? '+' + avgWin + '₽' : '—') + '</div></div>' +
+        '<div class="metric-card"><div class="metric-label">Avg Loss</div><div style="font-size:16px;font-weight:bold" class="red">' + (avgLoss !== '—' ? avgLoss + '₽' : '—') + '</div></div>' +
+        '<div class="metric-card"><div class="metric-label">Итог PnL</div><div style="font-size:16px;font-weight:bold" class="' + cls + '">' + (totalPnl >= 0 ? '+' : '') + totalPnl.toFixed(0) + '₽</div></div>' +
+        '<div class="metric-card" style="border:1px solid var(--border-color)"><div class="metric-label">&nbsp;</div><button class="btn btn-danger btn-sm" onclick="ofBrResetStats()" style="font-size:12px">🗑 Сбросить</button></div>';
+}
+
+// === Ручная корректировка позиции (state-only) ===
+async function ofBrPositionAdjust() {
+    const lots = parseInt(el('ofBrAdjLots')?.value);
+    const price = parseFloat(el('ofBrAdjPrice')?.value);
+    if (!lots || !price) { alert('Заполни: лоты (±N) и цену'); return; }
+    const s = ofBrRobot || {};
+    const wasDir = s.direction === 'LONG' ? 'LONG' : s.direction === 'SHORT' ? 'SHORT' : 'FLAT';
+    const msg = 'Ручная корректировка BRU6\n\n' +
+        'Было: ' + wasDir + ' ' + (s.totalLots || 0) + ' лот. @ ' + (s.avgPrice > 0 ? s.avgPrice.toFixed(0) : '—') +
+        (s.brokerMismatch ? '\n⚠️ ВНИМАНИЕ: сейчас рассинхрон с брокером (робот: ' + (s.totalLots||0) + ', брокер: ' + s.brokerLots + ')' : '') +
+        '\nКоманда: ' + (lots > 0 ? '+' : '') + lots + ' @ ' + price +
+        '\n\nРобот НЕ выставляет ордера — только принимает позицию в управление.\nСразу начнёт управлять: partial TP, стоп-лосс, усреднение.\n\nПодтверждаешь?';
+    if (!confirm(msg)) return;
+    try {
+        const r = await fetch(OF_BR_ROBOT_API + '/position/adjust', {
+            method: 'POST', headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({lots, price}), signal: AbortSignal.timeout(8000)
+        });
+        const j = await r.json();
+        if (!r.ok) { alert('Ошибка: ' + (j.error || r.status)); return; }
+        const d = v => v > 0 ? 'LONG' : v < 0 ? 'SHORT' : 'FLAT';
+        addLog(nowTime(), j.brokerMismatch ? 'WARN' : 'INFO',
+            '✏️ BR коррекция: ' + d(j.before.dir) + ' ' + j.before.lots + ' → ' + d(j.after.dir) + ' ' + j.after.lots +
+            (j.recordedPnL ? ' | PnL ' + j.recordedPnL.toFixed(1) + '₽' : '') +
+            (j.brokerMismatch ? ' | ⚠️ ДЕСИНК: брокер ' + j.brokerLots : ''));
+        if (j.brokerMismatch) alert('⚠️ Рассинхрон с брокером: робот ' + j.after.lots + ', брокер ' + j.brokerLots + '. Проверь терминал!');
+        el('ofBrAdjLots').value = ''; el('ofBrAdjPrice').value = '';
+        ofBrRobotPoll();
+    } catch(e) { alert('Сеть: ' + e.message); }
+}
+
+// Auto-poll BR
+(function() {
+    ofBrRobotPoll();
+    setInterval(async () => { await ofBrRobotPoll(); renderRobots(); }, 2000);
+})();

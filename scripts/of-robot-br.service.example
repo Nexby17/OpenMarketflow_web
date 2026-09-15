@@ -1,0 +1,26 @@
+[Unit]
+Description=Order Flow Robot BR (BRU6 — Live Trading)
+After=network-online.target dataprovider.service 
+Wants=network-online.target
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+WorkingDirectory=/root/.openclaw/workspace/HedgeFund/robot
+ExecStart=/usr/bin/python3 /root/.openclaw/workspace/HedgeFund/robot/main_of_br.py --port 5082
+Restart=always
+RestartSec=10
+TimeoutStopSec=30
+KillMode=mixed
+KillSignal=SIGTERM
+StandardOutput=journal
+StandardError=journal
+
+ExecStartPre=/bin/bash -c 'PID=$(ss -tlnp "sport = :5082" | grep -oP "pid=\\K[0-9]+"); if [ -n "$PID" ]; then kill -9 $PID 2>/dev/null; sleep 2; fi'
+ExecStopPost=/bin/bash -c 'sleep 2; PID=$(ss -tlnp "sport = :5082" | grep -oP "pid=\\K[0-9]+"); if [ -n "$PID" ]; then kill -9 $PID; fi'
+
+EnvironmentFile=/root/.openclaw/workspace/HedgeFund/.env
+Environment=PYTHONPATH=/root/.openclaw/workspace/HedgeFund/robot:/root/.openclaw/workspace/HedgeFund/DataProvider
+
+[Install]
+WantedBy=multi-user.target

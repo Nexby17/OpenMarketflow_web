@@ -23,6 +23,16 @@ MSK = timezone(timedelta(hours=3))
 
 log = logging.getLogger("strategy_of")
 
+def fmt_price(p) -> str:
+    """Format price with up to 2 decimals, trailing zeros stripped.
+    Si/MX (integer ticks): 86397.0 -> '86397'. BR (0.01 ticks): 97.51 -> '97.51'."""
+    try:
+        s = f"{float(p):.2f}"
+        return s.rstrip("0").rstrip(".") if "." in s else s
+    except Exception:
+        return str(p)
+
+
 MSK = timezone(timedelta(hours=3))
 
 LONG = 1
@@ -621,7 +631,7 @@ class OrderFlowStrategy:
                     hit = True
                 if hit:
                     self.p.close_price_all = 0.0  # reset after trigger
-                    log.info(f"CLOSE_PRICE_ALL triggered: price={current_price:.0f} dir={self._dir}")
+                    log.info(f"CLOSE_PRICE_ALL triggered: price={fmt_price(current_price)} dir={self._dir}")
                     action = self._close_all(current_price, "close_price_all")
                     actions.append(action)
                     self._last_action_time = time.time()
@@ -691,12 +701,12 @@ class OrderFlowStrategy:
             if action == "entry":
                 self._entry_price = fill_price
                 self._avg_price = fill_price
-                log.info(f"ENTRY price updated from broker: {fill_price:.0f}")
+                log.info(f"ENTRY price updated from broker: {fmt_price(fill_price)}")
             else:
                 old_cost = self._avg_price * (self._total_lots - self.p.lots)
                 added = fill_price * self.p.lots
                 self._avg_price = (old_cost + added) / self._total_lots if self._total_lots > 0 else fill_price
-                log.info(f"{action.upper()} price updated from broker: {fill_price:.0f} → avg={self._avg_price:.0f}")
+                log.info(f"{action.upper()} price updated from broker: {fmt_price(fill_price)} → avg={fmt_price(self._avg_price)}")
             if self._lot_queue:
                 self._lot_queue[-1] = LotEntry(price=fill_price, side=self._lot_queue[-1].side, lots=self._lot_queue[-1].lots)
 
@@ -726,26 +736,26 @@ class OrderFlowStrategy:
                 if self.p.vah_val_mode == "range":
                     # RANGE mode: trade ONLY inside VA, block outside
                     if val <= price <= vah:
-                        log.info(f"VAH/VAL RANGE: price={price:.0f} inside VA (VAL={val:.0f}..VAH={vah:.0f}) → PASS")
+                        log.info(f"VAH/VAL RANGE: price={fmt_price(price)} inside VA (VAL={fmt_price(val)}..VAH={fmt_price(vah)}) → PASS")
                     else:
-                        log.info(f"VAH/VAL RANGE: price={price:.0f} OUTSIDE VA (VAL={val:.0f}..VAH={vah:.0f}) → BLOCK")
+                        log.info(f"VAH/VAL RANGE: price={fmt_price(price)} OUTSIDE VA (VAL={fmt_price(val)}..VAH={fmt_price(vah)}) → BLOCK")
                         return None
                 else:
                     # FADE / BREAKOUT mode (original logic): entry at VAH/VAL edges
                     if price >= vah:
                         entry_zone = "VAH"
-                        log.info(f"VAH/VAL GATE: price={price:.0f} >= VAH={vah:.0f} (VAL={val:.0f}) → zone=VAH → PASS")
+                        log.info(f"VAH/VAL GATE: price={fmt_price(price)} >= VAH={fmt_price(vah)} (VAL={fmt_price(val)}) → zone=VAH → PASS")
                     elif price <= val:
                         entry_zone = "VAL"
-                        log.info(f"VAH/VAL GATE: price={price:.0f} <= VAL={val:.0f} (VAH={vah:.0f}) → zone=VAL → PASS")
+                        log.info(f"VAH/VAL GATE: price={fmt_price(price)} <= VAL={fmt_price(val)} (VAH={fmt_price(vah)}) → zone=VAL → PASS")
                     else:
-                        log.info(f"VAH/VAL GATE: price={price:.0f} inside VA (VAL={val:.0f}..VAH={vah:.0f}) → BLOCK")
+                        log.info(f"VAH/VAL GATE: price={fmt_price(price)} inside VA (VAL={fmt_price(val)}..VAH={fmt_price(vah)}) → BLOCK")
                         return None  # inside Value Area → no entry
                     if self.p.vah_val_mode == "breakout":
                         pass  # Breakout: already past edge — always pass
                     # fade mode: touch of edge is enough — already pass
             else:
-                log.info(f"VAH/VAL GATE: VP vah={vah:.0f} val={val:.0f} — zero values → BLOCK")
+                log.info(f"VAH/VAL GATE: VP vah={fmt_price(vah)} val={fmt_price(val)} — zero values → BLOCK")
                 return None
         elif self.p.use_vah_val:
             vp_ready = self.vp.ready if self.vp else False
@@ -808,7 +818,7 @@ class OrderFlowStrategy:
 
         self._lock_entry(10.0)  # 10 sec entry lock
 
-        log.info(f"ENTRY {side} {self.p.lots} @ {price:.0f} | signals: {signal_types}")
+        log.info(f"ENTRY {side} {self.p.lots} @ {fmt_price(price)} | signals: {signal_types}")
 
         return {
             'action': 'entry',
@@ -875,7 +885,7 @@ class OrderFlowStrategy:
         # штатный catch-up доберёт ВСЕ пропущенные уровни по текущей цене.
         if self.is_outside_va(price):
             if not self._avg_va_block_logged:
-                log.info(f"AVG VA BLOCK: price={price:.0f} outside VA — averaging paused, missed levels accumulate for catch-up")
+                log.info(f"AVG VA BLOCK: price={fmt_price(price)} outside VA — averaging paused, missed levels accumulate for catch-up")
                 self._avg_va_block_logged = True
             return []
         elif self._avg_va_block_logged:
@@ -943,9 +953,9 @@ class OrderFlowStrategy:
             })
 
         if missed > 1:
-            log.info(f"AVERAGE CATCHUP {side} {missed}×{self.p.lots} @ {price:.0f} | missed={missed} levels | lvl={self._average_levels}/{self.p.max_average_levels} | avg={self._avg_price:.0f} lots={self._total_lots}")
+            log.info(f"AVERAGE CATCHUP {side} {missed}×{self.p.lots} @ {fmt_price(price)} | missed={missed} levels | lvl={self._average_levels}/{self.p.max_average_levels} | avg={fmt_price(self._avg_price)} lots={self._total_lots}")
         else:
-            log.info(f"AVERAGE {side} {self.p.lots} @ {price:.0f} | lvl {self._average_levels}/{self.p.max_average_levels} | avg={self._avg_price:.0f} lots={self._total_lots}")
+            log.info(f"AVERAGE {side} {self.p.lots} @ {fmt_price(price)} | lvl {self._average_levels}/{self.p.max_average_levels} | avg={fmt_price(self._avg_price)} lots={self._total_lots}")
 
         return actions
 
@@ -963,7 +973,7 @@ class OrderFlowStrategy:
         # Remove oldest entries (FIFO) to match broker
         while len(self._lot_queue) > 0 and diff > 0:
             removed = self._lot_queue.popleft()
-            log.info(f"SYNC: removed lot @ {removed.price:.0f} (broker has fewer lots)")
+            log.info(f"SYNC: removed lot @ {fmt_price(removed.price)} (broker has fewer lots)")
             diff -= 1
         # Recalculate avg and total from remaining queue
         self._total_lots = sum(e.lots for e in self._lot_queue)
@@ -978,7 +988,7 @@ class OrderFlowStrategy:
             self._average_levels = min(self._average_levels, max(0, self._total_lots - 1))
         else:
             self._reset_position()
-        log.info(f"SYNC complete: broker={broker_lots} internal={self._total_lots} avg={self._avg_price:.0f} levels={self._average_levels}")
+        log.info(f"SYNC complete: broker={broker_lots} internal={self._total_lots} avg={fmt_price(self._avg_price)} levels={self._average_levels}")
 
     def _pos_snapshot(self) -> dict:
         """Compact position snapshot for adjust reports."""
@@ -1058,7 +1068,7 @@ class OrderFlowStrategy:
 
         after = self._pos_snapshot()
         log.info(f"ADJUST: {before} -> {after} "
-                 f"(add {lots:+d} @ {price:.0f}, closed {sum(c.lots for c in closed)} lots)")
+                 f"(add {lots:+d} @ {fmt_price(price)}, closed {sum(c.lots for c in closed)} lots)")
         return {"closed": [{"price": c.price, "side": c.side, "lots": c.lots} for c in closed],
                 "before": before, "after": after}
 
@@ -1093,7 +1103,7 @@ class OrderFlowStrategy:
         self._last_pyramid_price = price
         self._lot_queue.append(LotEntry(price=price, side=self._dir, lots=self.p.lots, added_ts=time.monotonic()))
 
-        log.info(f"PYRAMID {side} {self.p.lots} @ {price:.0f} | lvl {self._pyramid_levels}/{self.p.max_pyramid_levels} | avg={self._avg_price:.0f} lots={self._total_lots}")
+        log.info(f"PYRAMID {side} {self.p.lots} @ {fmt_price(price)} | lvl {self._pyramid_levels}/{self.p.max_pyramid_levels} | avg={fmt_price(self._avg_price)} lots={self._total_lots}")
 
         return {
             'action': 'pyramid',
@@ -1131,7 +1141,7 @@ class OrderFlowStrategy:
                 if pnl_pts >= self.p.spread:
                     side = "sell" if self._dir == LONG else "buy"
                     qty = self._total_lots
-                    log.info(f"CLOSE_HALF_PCT({pct}%) {side} {qty} @ {price:.0f} | peak={self._peak_lots} threshold={threshold}")
+                    log.info(f"CLOSE_HALF_PCT({pct}%) {side} {qty} @ {fmt_price(price)} | peak={self._peak_lots} threshold={threshold}")
                     return [self._close_all(price, f"close_half_{pct}pct")]
                 else:
                     return []
@@ -1187,10 +1197,10 @@ class OrderFlowStrategy:
             self._round_trips += 1
 
         if len(actions) > 1:
-            log.info(f"PARTIAL_TP CATCHUP {len(actions)} lots @ {price:.0f} | remaining={self._total_lots}")
+            log.info(f"PARTIAL_TP CATCHUP {len(actions)} lots @ {fmt_price(price)} | remaining={self._total_lots}")
         else:
             a = actions[0]
-            log.info(f"PARTIAL_TP {a['side']} {a['qty']} @ {price:.0f} | remaining={self._total_lots}")
+            log.info(f"PARTIAL_TP {a['side']} {a['qty']} @ {fmt_price(price)} | remaining={self._total_lots}")
 
         return actions
 
@@ -1200,7 +1210,7 @@ class OrderFlowStrategy:
         qty = self._total_lots
         self._round_trips += 1
 
-        log.info(f"CLOSE_ALL {side} {qty} @ {price:.0f} | reason={reason}")
+        log.info(f"CLOSE_ALL {side} {qty} @ {fmt_price(price)} | reason={reason}")
 
         # Reset happens in main_of._execute_action AFTER order fill
         self._lock_entry(10.0)
@@ -1321,7 +1331,7 @@ class OrderFlowStrategy:
                     lots=e.get("lots", 0),
                     added_ts=0.0,  # No grace for restored lots
                 ))
-            log.info(f"Restored position: dir={self._dir} lots={self._total_lots} avg={self._avg_price:.0f} lotEntries={len(self._lot_queue)}")
+            log.info(f"Restored position: dir={self._dir} lots={self._total_lots} avg={fmt_price(self._avg_price)} lotEntries={len(self._lot_queue)}")
         elif self._total_lots > 0 and self._avg_price > 0:
             # Fallback for old state files without lotQueue
             self._lot_queue.append(LotEntry(

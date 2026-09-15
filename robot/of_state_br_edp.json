@@ -1,0 +1,28 @@
+{
+  "dir": -1,
+  "entryPrice": 107.88,
+  "avgPrice": 107.88,
+  "totalLots": 1,
+  "averageLevels": 0,
+  "pyramidLevels": 0,
+  "lastAveragePrice": 107.86500000000001,
+  "lastPyramidPrice": 107.86500000000001,
+  "peakLots": 1,
+  "lotQueue": [
+    {
+      "price": 107.88,
+      "side": -1,
+      "lots": 1
+    }
+  ],
+  "roundTrips": 0,
+  "realizedPnL": 0.0,
+  "dailyPnL": 0.0,
+  "dailyPnLDate": "2026-09-15",
+  "entryTime": "2026-09-15T12:50:01.915126+03:00",
+  "signalType": "cvd_accel",
+  "tradeHistory": [],
+  "mode": "running",
+  "activeAccount": "edp",
+  "direction_filter": "short"
+}
