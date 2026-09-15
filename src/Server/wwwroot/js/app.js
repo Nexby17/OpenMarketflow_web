@@ -346,12 +346,18 @@ function loadOrders() {
                 <td><b>${ticker}</b></td>
                 <td class="${side.includes('BUY') || side === 'Buy' ? 'green' : 'red'}">${side.includes('BUY') || side === 'Buy' ? 'Покупка' : 'Продажа'}</td>
                 <td>${parseFloat(qty)}</td>
-                <td>${price ? parseFloat(price).toFixed(0) : 'MKT'}</td>
+                <td>${price ? fmtPriceDyn(parseFloat(price)) : 'MKT'}</td>
                 <td>${parseFloat(filled)}/${parseFloat(qty)}</td>
                 <td>${status.replace('ORDER_STATUS_','')}</td>
             </tr>`;
         }).join('');
     }).catch(e => console.error("[ERROR]", e));
+}
+
+// Дробные контракты (BR и др., тик 0,01) показываем с 2 знаками; целые — как раньше.
+function fmtPriceDyn(p) {
+    if (!isFinite(p)) return '-';
+    return Math.abs(p - Math.round(p)) > 0.005 ? p.toFixed(2) : String(Math.round(p));
 }
 
 function loadTrades() {
@@ -376,7 +382,7 @@ function loadTrades() {
                 <td><b>${ticker}</b></td>
                 <td class="${side.includes('BUY') ? 'green' : 'red'}">${side.includes('BUY') ? 'Покупка' : 'Продажа'}</td>
                 <td>${parseFloat(size)}</td>
-                <td>${parseFloat(price).toFixed(0)}</td>
+                <td>${fmtPriceDyn(parseFloat(price))}</td>
                 <td>${comment}</td>
             </tr>`;
         }).join('');
@@ -397,9 +403,9 @@ function loadQuotes() {
             const row = el(`q_${q.ticker}`);
             if (!row) return;
             const cells = row.children;
-            if (q.last) cells[1].textContent = q.last.toFixed(0);
-            if (q.bid) cells[2].textContent = q.bid.toFixed(0);
-            if (q.ask) cells[3].textContent = q.ask.toFixed(0);
+            if (q.last) cells[1].textContent = fmtPriceDyn(q.last);
+            if (q.bid) cells[2].textContent = fmtPriceDyn(q.bid);
+            if (q.ask) cells[3].textContent = fmtPriceDyn(q.ask);
             cells[4].textContent = q.volume ? (q.volume >= 1e6 ? (q.volume/1e6).toFixed(1)+'M' : q.volume >= 1e3 ? (q.volume/1e3).toFixed(0)+'K' : q.volume.toFixed(0)) : '—';
         });
     }).catch(() => {});
