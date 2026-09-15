@@ -367,6 +367,14 @@ class SignalEngine:
         period = min(self._atr_period, len(ranges))
         return float(np.mean(ranges[-period:])) if ranges else 50.0
 
+    def get_hl_window(self, window: int):
+        """High/Low of last N closed bars (for HL filter).
+        Returns (win_high, win_low) or None if not enough bars."""
+        n = min(window, len(self._high_history))
+        if n < 2:
+            return None
+        return max(list(self._high_history)[-n:]), min(list(self._low_history)[-n:])
+
     def set_agg_window(self, window: int):
         """Update aggression tracking window."""
         self._agg_window = window

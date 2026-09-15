@@ -5727,6 +5727,19 @@ function ofRobotEditPanel() {
                 <div class="metric-card" style="min-width:120px"><div class="metric-label">VWEMA Trend</div><div id="ofVwemaTrend" style="font-size:16px;font-weight:bold;color:#9CA3AF">—</div></div>
             </div>
             <hr style="border-color:#2D2D44;margin:12px 0">
+            <!-- HL Filter (only_strict): вход лонгом только у лоу окна, шортом только у хая -->
+            <div class="metrics-row" style="flex-wrap:wrap;margin-bottom:16px;align-items:center">
+                <div class="metric-card" style="display:flex;align-items:center;gap:8px">
+                    <label style="display:flex;align-items:center;gap:6px;cursor:pointer" title="Вход лонгом только у лоу окна, шортом только у хая. Середина диапазона — блок. Выкл = как раньше">
+                        <input id="editOfUseHl" type="checkbox" ${(p.hl_filter)?'checked':''} style="width:18px;height:18px;cursor:pointer">
+                        <span style="font-weight:bold;color:#66BB6A">HL Filter</span>
+                    </label>
+                </div>
+                <div class="metric-card"><div class="metric-label">Окно (баров M5)</div><input id="editOfHlWindow" class="input" type="number" min="2" max="30" value="${p.hl_window||24}" style="width:60px" title="24 = 2 часа"></div>
+                <div class="metric-card"><div class="metric-label">Δ близости (пт)</div><input id="editOfHlDelta" class="input" type="number" value="${p.hl_delta||150}" style="width:70px"></div>
+                <div class="metric-card" style="min-width:150px"><div class="metric-label">HL вердикт</div><div id="ofHlVerdict" style="font-size:14px;font-weight:bold;color:#9CA3AF">—</div></div>
+            </div>
+            <hr style="border-color:#2D2D44;margin:12px 0">
             <!-- VAH/VAL Volume Profile Filter -->
             <div class="metrics-row" style="flex-wrap:wrap;margin-bottom:16px;align-items:center">
                 <div class="metric-card" style="display:flex;align-items:center;gap:8px">
@@ -5891,6 +5904,17 @@ function ofUpdatePanel() {
             el('ofVwemaTrend').style.color = '#6B7280';
         }
     }
+
+    // HL filter state
+    if (el('ofHlVerdict')) {
+        const hl = s.hl;
+        const v = el('ofHlVerdict');
+        if (!hl || !hl.enabled) { v.textContent = 'OFF'; v.style.color = '#6B7280'; }
+        else if (!hl.ready) { v.textContent = '⏳ прогрев окна'; v.style.color = '#9CA3AF'; }
+        else if (hl.verdict === 'short_only') { v.textContent = `🔴 SHORT only (${(hl.winHigh||0).toFixed(0)})`; v.style.color = '#F44336'; }
+        else if (hl.verdict === 'long_only') { v.textContent = `🟢 LONG only (${(hl.winLow||0).toFixed(0)})`; v.style.color = '#4CAF50'; }
+        else { v.textContent = `⛔ блок ${Math.round(hl.winLow||0)}–${Math.round(hl.winHigh||0)}`; v.style.color = '#FF9800'; }
+    }
 }
 
 async function ofRobotSaveFromPanel() {
@@ -5930,6 +5954,10 @@ async function ofRobotSaveFromPanel() {
         vwema_flat_th: parseFloat(el('editOfVwemaFlat')?.value) || 1.0,
         vwema_block_counter: el('editOfVwemaBlock')?.checked !== false,
         vwema_avg_exit: el('editOfVwemaAvgExit')?.checked || false,
+
+        hl_filter: el('editOfUseHl')?.checked || false,
+        hl_window: Math.min(parseInt(el('editOfHlWindow')?.value) || 24, 30),
+        hl_delta: parseFloat(el('editOfHlDelta')?.value) || 150,
 
         use_vah_val: el('editOfUseVahVal')?.checked || false,
         vah_val_pct: parseInt(el('editOfVaPct')?.value) || 70,
