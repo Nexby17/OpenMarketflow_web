@@ -2026,7 +2026,53 @@ let _mainRobotInstrument = localStorage.getItem('mainRobotInstrument') || 'SiU6'
 // === Order Flow robot instrument/account ===
 function onOfRobotInstrumentChange(val) {
     localStorage.setItem('ofRobotInstrument', val);
-    addLog(nowTime(), 'INFO', `📊 OF контракта изменена на ${val} (применится при следующем старте)`);
+    applyInstrument('of', val);
+}
+function onOfMxRobotInstrumentChange(val) {
+    localStorage.setItem('ofMxRobotInstrument', val);
+    applyInstrument('of_mx', val);
+}
+// F-017: смена контракта OF-робота: живой /instrument (stopped+FLAT) или .env для следующего старта
+async function applyInstrument(robot, val) {
+    const api = robot === 'of_mx' ? OF_MX_ROBOT_API : OF_ROBOT_API;
+    const label = robot === 'of_mx' ? 'OF-MX' : 'OF';
+    try {
+        // робот жив? пробуем живую смену (работает только stopped+FLAT)
+        const st = await fetch(api + '/status', {signal: AbortSignal.timeout(2500)}).then(r => r.json()).catch(() => null);
+        if (st && st.mode) {
+            const resp = await fetch(api + '/instrument', {
+                method: 'POST', headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({instrument: val}), signal: AbortSignal.timeout(20000)
+            });
+            const data = await resp.json();
+            if (data.ok) {
+                showToast('📊 Контракт переключён на ' + data.symbol, 'ok');
+                addLog(nowTime(), 'INFO', `${label} контракт -> ${data.symbol}` + (data.unchanged ? ' (без изменений)' : ''));
+                localStorage.setItem(robot === 'of_mx' ? 'ofMxRobotInstrument' : 'ofRobotInstrument', (data.ticker || val));
+            } else {
+                showToast('⚠ ' + (data.error || 'робот не в stopped/FLAT — контракт применится при следующем старте'), 'info');
+                addLog(nowTime(), 'WARN', `${label} live switch отклонён: ${data.error || '?'}`);
+            }
+        } else {
+            // процесс не поднят — пишем в robot/.env через сервер
+            const resp = await fetch('/api/robot/update-instrument', {
+                method: 'POST', headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({instrument: val, robot: robot}), signal: AbortSignal.timeout(10000)
+            });
+            const data = await resp.json();
+            if (data.ok) {
+                showToast('📊 Контракт ' + val + ' сохранён (применится при старте)', 'ok');
+                addLog(nowTime(), 'INFO', `${label} контракт -> ${data.symbol} (env)`);
+            } else {
+                showToast('❌ Не удалось сохранить контракт: ' + (data.error || '?'), 'error');
+                addLog(nowTime(), 'ERROR', `${label} env switch failed: ${data.error || '?'}`);
+            }
+        }
+    } catch(e) {
+        addLog(nowTime(), 'ERROR', `${label} контракт не изменён: ${e.message}`);
+        showToast('❌ Смена контракта не удалась: ' + e.message, 'error');
+    }
+    renderRobots();
 }
 function onOfRobotAccountChange(val) {
     localStorage.setItem('ofRobotAccount', val);
@@ -2164,7 +2210,7 @@ async function renderRobots() {
 
     // Order Flow Robot row
     let ofRobotRow = '';
-    let _ofInstrument = localStorage.getItem('ofRobotInstrument') || 'SiU6';
+    let _ofInstrument = (ofRobot && ofRobot.symbol ? ofRobot.symbol.split('@')[0] : (localStorage.getItem('ofRobotInstrument') || 'SiU6'));
     let _ofAccount = localStorage.getItem('ofRobotAccount') || '1225953';
     if (ofRobot) {
         const s = ofRobot;
@@ -2221,7 +2267,7 @@ async function renderRobots() {
 
     // Order Flow MX Robot row
     let ofMxRobotRow = '';
-    let _ofMxInstrument = localStorage.getItem('ofMxRobotInstrument') || 'MXU6';
+    let _ofMxInstrument = (ofMxRobot && ofMxRobot.symbol ? ofMxRobot.symbol.split('@')[0] : (localStorage.getItem('ofMxRobotInstrument') || 'MXU6'));
     let _ofMxAccount = localStorage.getItem('ofMxRobotAccount') || '1225953';
     if (ofMxRobot) {
         const s = ofMxRobot;
@@ -5880,10 +5926,6 @@ async function onOfMxRobotAccountChange(val) {
     localStorage.setItem('ofMxRobotAccount', val);
 }
 
-function onOfMxRobotInstrumentChange(val) {
-    localStorage.setItem('ofMxRobotInstrument', val);
-    renderRobots();
-}
 
 async function ofRobotApi(action) {
     try {

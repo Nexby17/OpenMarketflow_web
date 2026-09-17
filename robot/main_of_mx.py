@@ -48,6 +48,7 @@ import finam_rest4 as _rest4mod  # PORT-B1: REST 4.3.3 (probe only for now)
 
 import config_of_mx as config
 from strategy_of import OrderFlowStrategy, OFParams, LONG, SHORT, FLAT, LotEntry
+import instrument_switch  # F-017: live instrument switch
 from orders_rest4 import OrderManagerRest4, get_broker_position, positions_in_sync, BUY, SELL  # PORT-B1
 
 log = logging.getLogger("robot_of_mx")
@@ -866,7 +867,7 @@ class APIHandler(BaseHTTPRequestHandler):
             self._json(404, {"error": "not found"})
 
     def do_POST(self):
-        global _mode, orders, ACTIVE_ACCOUNT_KEY
+        global _mode, orders, ACTIVE_ACCOUNT_KEY, SYMBOL, TICKER, _hub_adapter
         path = self.path.split("?")[0]
 
         if path == "/start":
@@ -1070,6 +1071,90 @@ class APIHandler(BaseHTTPRequestHandler):
                     self._json(400, {"error": str(e)[:200]})
             else:
                 self._json(400, {"error": "Missing request body"})
+
+
+
+        elif path == "/instrument":
+            # F-017: LIVE instrument switch (only stopped + FLAT)
+            length = int(self.headers.get("Content-Length", 0))
+            if length <= 0:
+                self._json(400, {"error": "Missing request body"})
+            else:
+                try:
+                    data = json.loads(self.rfile.read(length))
+                    ticker = str(data.get("instrument", "")).strip()  # регистр важен: SiU6, MXU6, BRV6
+                    if not ticker:
+                        self._json(400, {"error": "instrument required"})
+                    elif _mode != "stopped":
+                        self._json(409, {"error": f"robot is {_mode} — stop it first"})
+                    elif strategy.in_position or strategy.total_lots != 0:
+                        self._json(409, {"error": "position must be FLAT to switch instrument"})
+                    else:
+                        new_symbol = ticker + "@RTSX"
+                        if new_symbol == SYMBOL:
+                            self._json(200, {"ok": True, "symbol": SYMBOL, "unchanged": True})
+                        else:
+                            if _hub_adapter is not None:
+                                try:
+                                    _hub_adapter.stop()
+                                except Exception:
+                                    pass
+                            SYMBOL = new_symbol
+                            TICKER = ticker
+                            params.symbol = SYMBOL  # type: ignore[attr-defined]
+                            params.ticker = TICKER  # type: ignore[attr-defined]
+
+                            def _build_strategy(p):
+                                return OrderFlowStrategy(p)
+
+                            def _build_orders():
+                                return OrderManagerRest4(
+                                    account=ACCOUNTS[ACTIVE_ACCOUNT_KEY], symbol=SYMBOL,
+                                    paper=PAPER_MODE, rest4=_rest4mod,
+                                    quote_provider=lambda: getattr(strategy, '_current_price', 0) or 0,
+                                )
+
+                            def _resubscribe():
+                                globals()['_hub_adapter'] = FinamHubAdapter(SYMBOL)
+                                globals()['_hub_adapter'].start(
+                                    on_trades=_on_latest_trades,
+                                    on_order_book=_on_order_book,
+                                    on_quote=_on_quote,
+                                    on_bar=_on_new_bar,
+                                    timeframe=params.timeframe,
+                                )
+                            def _reset_global(name, value):
+                                if name == "strategy":
+                                    globals()['strategy'] = value
+                                elif name == "orders":
+                                    globals()['orders'] = value
+
+                            instrument_switch.post_instrument_switch(
+                                strategy, params,
+                                STATE_FILE, _build_strategy, _build_orders,
+                                _resubscribe, _reset_global,
+                            )
+                            _warmup_vwema()
+                            # persist choice for next process start
+                            try:
+                                _env_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env")
+                                _lines = []
+                                if os.path.exists(_env_path):
+                                    with open(_env_path, encoding="utf-8") as _f:
+                                        _lines = [l for l in _f.read().splitlines()
+                                                  if not l.startswith("ROBOT_SYMBOL_MX=") and not l.startswith("ROBOT_TICKER_MX=")]
+                                _lines.append(f"ROBOT_SYMBOL_MX={SYMBOL}")
+                                _lines.append(f"ROBOT_TICKER_MX={TICKER}")
+                                with open(_env_path, "w", encoding="utf-8") as _f:
+                                    _f.write("\n".join(_lines) + "\n")
+                            except Exception as _e:
+                                log.warning(f"env persist failed: {_e}")
+                            save_state()
+                            log.info(f"INSTRUMENT SWITCH -> {SYMBOL}")
+                            self._json(200, {"ok": True, "symbol": SYMBOL, "ticker": TICKER})
+                except Exception as e:
+                    log.error(f"/instrument error: {e}")
+                    self._json(500, {"error": str(e)[:200]})
 
         else:
             self._json(404, {"error": "not found"})

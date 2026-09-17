@@ -2195,7 +2195,7 @@ app.MapPost("/api/instance/delete", (HttpRequest req) => {
     } catch (Exception ex) { return Results.Json(new { error = ex.Message }); }
 }).AllowAnonymous();
 
-// Update robot instrument (SI contract) in .env
+// Update robot instrument in robot/.env (persists across restarts; robot may also be switched live via POST :5080/:5081/instrument)
 app.MapPost("/api/robot/update-instrument", async (HttpRequest req) =>
 {
     try
@@ -2203,22 +2203,45 @@ app.MapPost("/api/robot/update-instrument", async (HttpRequest req) =>
         using var reader = new StreamReader(req.Body);
         var body = await reader.ReadToEndAsync();
         var json = System.Text.Json.JsonDocument.Parse(body);
-        var instrument = json.RootElement.GetProperty("instrument").GetString() ?? "SiU6";
+        var instrument = (json.RootElement.GetProperty("instrument").GetString() ?? "SiU6").Trim();
+        // robot=of (Si, env ROBOT_TICKER/ROBOT_SYMBOL) | robot=of_mx (MX, env ROBOT_TICKER_MX/ROBOT_SYMBOL_MX)
+        var robot = "of";
+        if (json.RootElement.TryGetProperty("robot", out var rEl)) robot = rEl.GetString() ?? "of";
+        var tickerKey = robot == "of_mx" ? "ROBOT_TICKER_MX" : "ROBOT_TICKER";
+        var symbolKey = robot == "of_mx" ? "ROBOT_SYMBOL_MX" : "ROBOT_SYMBOL";
         var symbol = $"{instrument}@RTSX";
-        var envPath = "/root/.openclaw/workspace/HedgeFund/robot/.env";
-        var lines = System.IO.File.ReadAllLines(envPath);
+        // resolve robot/.env relative to server location (..\..\..\..\robot\.env) — works from bin and from repo layout
+        var envPath = System.IO.Path.Combine(AppContext.BaseDirectory, "robot", ".env");
+        if (!System.IO.File.Exists(envPath))
+        {
+            var dir = new System.IO.DirectoryInfo(AppContext.BaseDirectory);
+            for (int i = 0; i < 8 && dir != null && !System.IO.File.Exists(envPath); i++)
+            {
+                dir = dir.Parent;
+                if (dir != null) envPath = System.IO.Path.Combine(dir.FullName, "robot", ".env");
+            }
+        }
+        if (!System.IO.File.Exists(envPath))
+        {
+            // create next to robot scripts
+            var dir2 = new System.IO.DirectoryInfo(AppContext.BaseDirectory);
+            while (dir2 != null && !System.IO.File.Exists(System.IO.Path.Combine(dir2.FullName, "robot", "main_of_mx.py"))) dir2 = dir2.Parent;
+            if (dir2 == null) return Results.Json(new { ok = false, error = "robot dir not found" });
+            envPath = System.IO.Path.Combine(dir2.FullName, "robot", ".env");
+        }
+        var lines = System.IO.File.Exists(envPath) ? System.IO.File.ReadAllLines(envPath) : new string[0];
         var newLines = new List<string>();
         bool foundTicker = false, foundSymbol = false;
         foreach (var line in lines)
         {
-            if (line.StartsWith("ROBOT_TICKER=")) { newLines.Add($"ROBOT_TICKER={instrument}"); foundTicker = true; }
-            else if (line.StartsWith("ROBOT_SYMBOL=")) { newLines.Add($"ROBOT_SYMBOL={symbol}"); foundSymbol = true; }
+            if (line.StartsWith(tickerKey + "=")) { newLines.Add($"{tickerKey}={instrument}"); foundTicker = true; }
+            else if (line.StartsWith(symbolKey + "=")) { newLines.Add($"{symbolKey}={symbol}"); foundSymbol = true; }
             else newLines.Add(line);
         }
-        if (!foundTicker) newLines.Add($"ROBOT_TICKER={instrument}");
-        if (!foundSymbol) newLines.Add($"ROBOT_SYMBOL={symbol}");
+        if (!foundTicker) newLines.Add($"{tickerKey}={instrument}");
+        if (!foundSymbol) newLines.Add($"{symbolKey}={symbol}");
         System.IO.File.WriteAllLines(envPath, newLines);
-        return Results.Json(new { ok = true, instrument, symbol });
+        return Results.Json(new { ok = true, robot, instrument, symbol, envPath });
     }
     catch (Exception ex) { return Results.Json(new { error = ex.Message }); }
 }).AllowAnonymous();
