@@ -44,17 +44,19 @@ class _Trade:
 
 
 class _TradesEvent:
-    __slots__ = ("trades",)
+    __slots__ = ("trades", "symbol")
 
     def __init__(self, payload, hub):
+        self.symbol = payload.get("symbol") if isinstance(payload, dict) else None
         trades = payload.get("trades", payload.get("trade", [])) if isinstance(payload, dict) else []
         self.trades = [_Trade(t, hub) for t in trades]
 
 
 class _Quote:
-    __slots__ = ("bid", "ask", "last")
+    __slots__ = ("bid", "ask", "last", "symbol")
 
     def __init__(self, q):
+        self.symbol = q.get("symbol")  # guard: робот игнорирует чужие котировки
         self.bid = _D(q.get("bid", {}).get("value"))
         self.ask = _D(q.get("ask", {}).get("value"))
         self.last = _D(q.get("last", {}).get("value"))

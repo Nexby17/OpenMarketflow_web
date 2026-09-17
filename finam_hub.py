@@ -343,9 +343,25 @@ class FinamHub:
             # точные подписчики по ключу
             cbs = set()
             if sub_type == SUB_QUOTES:
-                # все QUOTES-подписчики (мульти-символьные ключи)
+                # QUOTES: рассылать только тем подписчикам, чей список символов содержит
+                # символ(ы) из payload (иначе после живой смены контракта робот получает
+                # котировки старого инструмента — цена «телепортируется» на 3000+ пунктов)
+                pl_syms = set()
+                if isinstance(payload, dict):
+                    q = payload.get("quote")
+                    if isinstance(q, list):
+                        pl_syms |= {e.get("symbol", "") for e in q if isinstance(e, dict)}
+                    elif isinstance(q, dict):
+                        pl_syms.add(q.get("symbol", ""))
+                pl_syms.discard("")
                 for (st, k), callbacks in self._subs.items():
-                    if st == SUB_QUOTES:
+                    if st != SUB_QUOTES:
+                        continue
+                    try:
+                        sub_syms = set(json.loads(k))
+                    except Exception:
+                        sub_syms = {k}
+                    if not pl_syms or (pl_syms & sub_syms):
                         cbs |= callbacks
             else:
                 cbs = self._subs.get((sub_type, key), set())

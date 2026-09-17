@@ -252,6 +252,8 @@ def connect_finam():
 def _on_latest_trades(event):
     """Callback from SubscribeLatestTrades."""
     try:
+        if getattr(event, "symbol", None) and event.symbol != SYMBOL:
+            return  # чужие сделки (старый контракт) — не кормим CVD/VP
         from orderflow_engine import Trade, SIDE_BUY, SIDE_SELL
         for trade in event.trades:
             price = float(trade.price.value) if hasattr(trade.price, "value") else float(trade.price)
@@ -351,6 +353,10 @@ def _on_quote(event):
     """Callback from SubscribeQuote — update current price."""
     try:
         for q in event.quote:
+            qs = getattr(q, "symbol", None) or (q.raw.get("symbol") if hasattr(q, "raw") and isinstance(q.raw, dict) else None)
+            if qs and qs != SYMBOL:
+                log.warning(f"Quote for wrong symbol {qs} (trading {SYMBOL}) — ignored")
+                continue
             bid = _to_float(q.bid)
             ask = _to_float(q.ask)
             last = (bid + ask) / 2 if bid > 0 and ask > 0 else (bid or ask)
