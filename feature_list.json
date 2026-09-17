@@ -420,6 +420,49 @@
         "app.js: +ofRobotPoll, 2с-цикл",
         "index.html: v=86"
       ]
+    },
+    {
+      "id": "F-015",
+      "name": "Суточная ротация лог-файлов роботов (DailyFileHandler)",
+      "area": "robot/logging",
+      "status": "done",
+      "owner": "main",
+      "commits": [
+        "4978f58"
+      ],
+      "summary": "Процессы, живущие через полночь, писали в файл с датой старта; теперь DailyFileHandler создаёт of[_mx]_<дата>.log за текущие сутки",
+      "tests": [
+        "живой MX-процесс через полночь: новый файл за следующие сутки"
+      ],
+      "changes": [
+        "robot/main_of.py, main_of_mx.py: DailyFileHandler вместо FileHandler"
+      ]
+    },
+    {
+      "id": "F-017",
+      "name": "Живая смена контракта OF-роботов (UI селект -> робот)",
+      "area": "robots/instrument-switch",
+      "status": "done",
+      "owner": "main",
+      "commits": [
+        "55ff947",
+        "85193d8"
+      ],
+      "summary": "Смена контракта из UI работает: живой POST /instrument (guarded stopped+FLAT, 409 иначе) с пересозданием стратегии/ордеров/hub-подписок и прогревом VWEMA; fallback в robot/.env при остановленном роботе; селект отражает живой symbol из /status",
+      "logic": "applyInstrument(): робот поднят -> POST :5080/:5081/instrument; running -> 409 -> сохранить в .env для следующего старта; робот не поднят -> /api/robot/update-instrument (пишет robot/.env, robot=of|of_mx). Общая логика пересборки в robot/instrument_switch.py",
+      "tests": [
+        "live: MXU6->MXZ6->MXU6 (подписки+VWEMA прогрев, история сохранена)",
+        "рестарт процесса: MXZ6 сохранился (env)",
+        "409 на running-роботе",
+        "Si unchanged path + регистр SiU6 сохранён",
+        "py_compile + node --check OK"
+      ],
+      "changes": [
+        "robot/main_of.py, main_of_mx.py: POST /instrument",
+        "robot/instrument_switch.py: общий rebuild",
+        "Program.cs: /api/robot/update-instrument -> robot/.env (был /root/... Linux-путь), robot=of|of_mx",
+        "app.js: applyInstrument + живой symbol в селекте, v=89..90"
+      ]
     }
   ]
 }
