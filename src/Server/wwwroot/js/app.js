@@ -2050,8 +2050,19 @@ async function applyInstrument(robot, val) {
                 addLog(nowTime(), 'INFO', `${label} контракт -> ${data.symbol}` + (data.unchanged ? ' (без изменений)' : ''));
                 localStorage.setItem(robot === 'of_mx' ? 'ofMxRobotInstrument' : 'ofRobotInstrument', (data.ticker || val));
             } else {
-                showToast('⚠ ' + (data.error || 'робот не в stopped/FLAT — контракт применится при следующем старте'), 'info');
-                addLog(nowTime(), 'WARN', `${label} live switch отклонён: ${data.error || '?'}`);
+                // робот работает (409) — сохраняем выбор в .env, применится при следующем ⏹/▶
+                const envResp = await fetch('/api/robot/update-instrument', {
+                    method: 'POST', headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({instrument: val, robot: robot}), signal: AbortSignal.timeout(10000)
+                });
+                const envData = await envResp.json();
+                if (envData.ok) {
+                    showToast('📊 Робот работает — ' + val + ' сохранён и применится после ⏹/▶', 'ok');
+                    addLog(nowTime(), 'INFO', `${label} контракт ${val} сохранён в env (робот ${st.mode})`);
+                } else {
+                    showToast('⚠ ' + (data.error || 'не удалось сохранить контракт'), 'error');
+                    addLog(nowTime(), 'WARN', `${label} switch отклонён: ${data.error || '?'}, env тоже: ${envData.error || '?'}`);
+                }
             }
         } else {
             // процесс не поднят — пишем в robot/.env через сервер

@@ -1125,9 +1125,9 @@ class APIHandler(BaseHTTPRequestHandler):
                                 if os.path.exists(_env_path):
                                     with open(_env_path, encoding="utf-8") as _f:
                                         _lines = [l for l in _f.read().splitlines()
-                                                  if not l.startswith("ROBOT_SYMBOL_=") and not l.startswith("ROBOT_TICKER_=")]
-                                _lines.append(f"ROBOT_SYMBOL_={SYMBOL}")
-                                _lines.append(f"ROBOT_TICKER_={TICKER}")
+                                                  if not l.startswith("ROBOT_SYMBOL=") and not l.startswith("ROBOT_TICKER=")]
+                                _lines.append(f"ROBOT_SYMBOL={SYMBOL}")
+                                _lines.append(f"ROBOT_TICKER={TICKER}")
                                 with open(_env_path, "w", encoding="utf-8") as _f:
                                     _f.write("\n".join(_lines) + "\n")
                             except Exception as _e:
