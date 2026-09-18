@@ -11,12 +11,40 @@ from datetime import datetime, timezone, timedelta
 from http.server import HTTPServer, BaseHTTPRequestHandler
 import socket
 
+# bootstrap: py4 (SDK+protos), arb_common (strategy v2: fair/dev_ann — ВАЖНО: перед robot/),
+# robot/ (orders/config), project root (finam_compat)
+_HERE = os.path.dirname(os.path.abspath(__file__))
+_PROJ = os.path.dirname(_HERE)
+for _p in (_PROJ, _HERE, os.path.join(_HERE, "arb_common"), os.path.join(_HERE, "py4")):
+    if os.path.isdir(_p) and _p not in sys.path:
+        sys.path.insert(0, _p)
+
+def _load_env():
+    for _base in (_HERE, _PROJ, os.path.join(_PROJ, "src")):
+        _p = os.path.join(_base, ".env")
+        if os.path.exists(_p):
+            with open(_p) as _f:
+                for _line in _f:
+                    _line = _line.strip()
+                    if _line and not _line.startswith("#") and "=" in _line:
+                        _k, _, _v = _line.partition("=")
+                        os.environ.setdefault(_k.strip(), _v.strip())
+
+_load_env()
+
 from finam_compat import FinamPyCompat as FinamPy
 from finam_trade_api.proto.grpc.tradeapi.v1.accounts.accounts_service_pb2 import GetAccountRequest
 
 import config_arb as config
 from strategy_arb import ArbitrageStrategy, ArbParams, LONG_BASIS, SHORT_BASIS, FLAT
-from orders_arb import ArbOrderManager, BUY, SELL
+# orders_arb берём строго из robot/ (в arb_common устаревшая копия без cancel_pending_orders)
+import importlib.util as _ilu
+_spec_oa = _ilu.spec_from_file_location("_orders_arb_robot", os.path.join(_HERE, "orders_arb.py"))
+_mod_oa = _ilu.module_from_spec(_spec_oa)
+_spec_oa.loader.exec_module(_mod_oa)
+ArbOrderManager = _mod_oa.ArbOrderManager
+BUY = _mod_oa.BUY
+SELL = _mod_oa.SELL
 from arb_engine import BasisCalculator, OrderBookTracker
 
 log = logging.getLogger("robot_arb")

@@ -392,7 +392,8 @@ class _CompatRpcMethod:
         Returns (response, None) to match old gRPC API.
         New SDK returns just the response, so we add None as call_metadata."""
         timeout = kwargs.pop("timeout", None)
-        # gRPC auth: Finam требует Authorization: <jwt> — берём из замыкания клиента
+        kwargs.pop("metadata", None)  # старый код передаёт (fp.metadata,) — заменяем нашим auth
+        # gRPC auth: Finam требует authorization: <jwt> — берём из замыкания клиента
         metadata = [("authorization", self._jwt_provider())] if self._jwt_provider else None
         if timeout is not None:
             response = self._method(*args, timeout=timeout, metadata=metadata, **kwargs)
