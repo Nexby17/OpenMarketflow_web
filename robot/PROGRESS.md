@@ -114,3 +114,31 @@
   выбранное значение берётся из живого /status.symbol. app.js?v=89.
 - Проверено живьём: MXU6->MXZ6->MXU6, рестарт с сохранением MXZ6, 409 на running, Si unchanged, регистр SiU6 сохранён.
 - Коммит 55ff947 запушен. robot/.env в git не входит (gitignore) — это правильно.
+
+### 12:59 — коррекция state MX (вариант б, одобрен Дмитрием)
+- Удалены 16 призрачных сделок 17.09 (cross-symbol инцидент), realizedPnL 81611.20 -> 33606.68 (-48004.52),
+  dailyPnL -> 0. roundTrips не тронут. История сделок 200 -> 184.
+- Брокерская истина: MXZ6 32 сделки = -725 руб (спред), MXU6 2 = 0. Позиции флэт.
+- Процедура: kill процесса (чтобы save_state не перезаписал) -> правка of_state_mx.json -> старт.
+  MX снова stopped/MXZ6/edp, цена своя (229150).
+
+## 2026-09-18 — Арб-роботы подключены к Finam gRPC (БЕЗ запуска, команда Дмитрия)
+
+- Состояние было: арб-роботы (5090-5092) мёртвый код — SDK 4.3.3 не содержит FinamClient, proto grpc пак
+  в py4 отсутствовал физически.
+- Сделано (коммит fa1fe72):
+  1. Сгенерированы python gRPC стабы из C# protos -> robot/py4 (proto namespace finam_trade_api.proto.*;
+     google api/type top-level; абсолютные импорты protoc переписаны; version-check запатчен под grpcio 1.84).
+  2. finam_compat: FinamClient shim = TokenManager + gRPC стабы api.finam.ru:443 c authorization metadata
+     (lowercase ключ!). REST SDK клиенты через композицию. Двойная обёртка stubs устранена.
+  3. config_arb: GZM6 -> GZZ6 (июньский истёк, GZZ6 ликвиден); env FINAM_ACCOUNT_ID тоже читается.
+- Живые проверки: gRPC LastQuote MXZ6 (bid/ask/last OK), стрим котировок GAZP@MISX + GZM6@RTSX OK,
+  main_arb импортируется и резолвит пару GAZP/GZZ6 на счёте 2049688.
+- Не сделано (осознанно): роботы НЕ запущены (закон: старт только Дмитрием через UI ▶).
+- Следующий шаг перед запуском: дивидендный календарь GAZP (GZZ6 до 18.12.26) в arb_config.json.
+
+### 14:53 — F-018: арб-роботы в UI (репорт «статус не подключен»)
+- UI показывал «Не подключён» т.к. опрашивал порты 5090-5092 напрямую, а процессы никто не стартовал (закон).
+- RobotProcessManager: +arb_gazp(:5090 GAZP/GZZ6), arb_sber(:5091 SBER/SRZ6), arb_br(:5092 BRU6/BRV6) с env пар.
+- UI: ▶ поднимает процесс через сервер, ⏹ убивает; offline = «⚪ Процесс не поднят» (не «Не подключён»). v=91.
+- Endpoint /api/of/process/{arb_*}/status -> {alive:false} проверен живьём. Коммит 33e6726 запушен.
