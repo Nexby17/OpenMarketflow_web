@@ -2309,6 +2309,10 @@ public static class RobotProcessManager
     {
         "of" => ("main_of.py", 5080, ""),
         "of_mx" => ("main_of_mx.py", 5081, ""),
+        // Arb robots: pair set via env ARB_SYMBOL_A/B per instance (start = Dmitry only, via UI)
+        "arb_gazp" => ("main_arb.py", 5090, ""),
+        "arb_sber" => ("main_arb.py", 5091, ""),
+        "arb_br" => ("main_arb.py", 5092, ""),
         _ => throw new ArgumentException("unknown robot")
     };
 
@@ -2383,11 +2387,19 @@ public static class RobotProcessManager
         var logsDir = System.IO.Path.Combine(root, "logs");
         System.IO.Directory.CreateDirectory(logsDir);
         var stamp = DateTime.Now.ToString("yyyyMMdd");
-        var prefix = name == "of" ? "of" : "of_mx";
+        var prefix = name == "of" ? "of" : name == "of_mx" ? "of_mx" : name;
         psi.StandardOutputEncoding = System.Text.Encoding.UTF8;
         psi.StandardErrorEncoding = System.Text.Encoding.UTF8;
         psi.EnvironmentVariables["PYTHONIOENCODING"] = "utf-8";
         psi.EnvironmentVariables["PYTHONUTF8"] = "1";
+        if (name.StartsWith("arb_"))
+        {
+            // pair per instance (env wins over config_arb defaults)
+            psi.EnvironmentVariables["FINAM_ACCOUNT"] = "2049688";
+            if (name == "arb_gazp") { psi.EnvironmentVariables["ARB_SYMBOL_A"] = "GAZP@MISX"; psi.EnvironmentVariables["ARB_TICKER_A"] = "GAZP"; psi.EnvironmentVariables["ARB_SYMBOL_B"] = "GZZ6@RTSX"; psi.EnvironmentVariables["ARB_TICKER_B"] = "GZZ6"; }
+            else if (name == "arb_sber") { psi.EnvironmentVariables["ARB_SYMBOL_A"] = "SBER@MISX"; psi.EnvironmentVariables["ARB_TICKER_A"] = "SBER"; psi.EnvironmentVariables["ARB_SYMBOL_B"] = "SRZ6@RTSX"; psi.EnvironmentVariables["ARB_TICKER_B"] = "SRZ6"; }
+            else if (name == "arb_br") { psi.EnvironmentVariables["ARB_SYMBOL_A"] = "BRU6@RTSX"; psi.EnvironmentVariables["ARB_TICKER_A"] = "BRU6"; psi.EnvironmentVariables["ARB_SYMBOL_B"] = "BRV6@RTSX"; psi.EnvironmentVariables["ARB_TICKER_B"] = "BRV6"; }
+        }
         var proc = System.Diagnostics.Process.Start(psi);
         if (proc == null) return new { ok = false, error = "process failed to start" };
         _ = proc.StandardOutput.ReadToEndAsync().ContinueWith(t => System.IO.File.AppendAllText(System.IO.Path.Combine(logsDir, prefix + "_console_" + stamp + ".log"), t.Result ?? ""));

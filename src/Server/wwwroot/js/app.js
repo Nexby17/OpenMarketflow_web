@@ -3475,6 +3475,8 @@ function fmtPnl(n) {
 }
 
 // === Arbitrage Python Robot — factory ===
+const ARB_PROC_NAMES = { arbPy: 'arb_gazp', sber: 'arb_sber', brCal: 'arb_br' };
+
 function createArbInstance(prefix, port) {
     const baseUrl = 'http://' + (window.location.hostname || 'localhost') + ':' + port;
     let data = null;
@@ -3492,7 +3494,7 @@ function createArbInstance(prefix, port) {
         const d = await fetch2('/status');
         if (!d) {
             const s = el(prefix+'Status');
-            if (s) { s.textContent = '❌ Не подключён'; s.style.color = 'var(--red)'; }
+            if (s) { s.textContent = '⚪ Процесс не поднят'; s.style.color = 'var(--text-muted)'; }
             return;
         }
         data = d;
@@ -3551,7 +3553,26 @@ function createArbInstance(prefix, port) {
     async function pause() { await fetch2('/pause','POST'); refresh(); }
     async function stop()  { await fetch2('/stop','POST'); refresh(); }
 
-    return { refresh, start, pause, stop, fetch: fetch2, getData: () => data };
+    // F-018: старт/стоп процесса через серверный RobotProcessManager (start = Dmitry only)
+    async function startViaServer() {
+        const name = ARB_PROC_NAMES[prefix];
+        if (!name) { await fetch2('/start', 'POST'); return; }
+        try {
+            const r = await fetch(`/api/of/process/${name}/start`, {method: 'POST', signal: AbortSignal.timeout(45000)});
+            const pd = await r.json();
+            if (pd.ok) arbPyLog(`🟢 Процесс ${name} поднят (pid ${pd.pid || '?'})`, 'INFO');
+            else { arbPyLog(`❌ Процесс ${name} не поднялся: ${pd.error || '?'}`, 'ERROR'); showToast('❌ Процесс не поднялся: ' + (pd.error || '?'), 'error'); }
+        } catch(e) { arbPyLog(`❌ process start error: ${e.message}`, 'ERROR'); }
+    }
+    async function stopViaServer() {
+        const name = ARB_PROC_NAMES[prefix];
+        if (!name) { await fetch2('/stop', 'POST'); return; }
+        try {
+            await fetch(`/api/of/process/${name}/stop`, {method: 'POST', signal: AbortSignal.timeout(15000)});
+            arbPyLog(`⏹ Процесс ${name} остановлен`, 'INFO');
+        } catch(e) { arbPyLog(`❌ process stop error: ${e.message}`, 'ERROR'); }
+    }
+    return { refresh, start: startViaServer, pause: async () => await fetch2('/pause', 'POST'), stop: stopViaServer, fetch: fetch2, getData: () => data };
 }
 
 // === Create arb robot instances ===
