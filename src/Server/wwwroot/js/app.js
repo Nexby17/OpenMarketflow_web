@@ -3581,12 +3581,12 @@ const sber = createArbInstance('sber', 5091);
 const brCal = createArbInstance('brCal', 5092);
 
 // Expose as global functions for onclick handlers
-async function arbPyStart() { arbPy.start(); arbPyLog('▶️ Запуск GAZP/GZU6...'); }
-async function arbPyPause() { arbPy.pause(); arbPyLog('⏸ Пауза GAZP/GZU6...'); }
-async function arbPyStop()  { arbPy.stop();  arbPyLog('⏹ Стоп GAZP/GZU6...'); }
-async function sberStart()  { sber.start(); arbPyLog('▶️ Запуск SBER/SRU6...'); }
-async function sberPause()  { sber.pause(); arbPyLog('⏸ Пауза SBER/SRU6...'); }
-async function sberStop()   { if (!confirm('Остановить SBER/SRU6?')) return; sber.stop(); arbPyLog('⏹ Стоп SBER/SRU6...'); }
+async function arbPyStart() { arbPy.start(); arbPyLog('▶️ Запуск GAZP/GZZ6...'); }
+async function arbPyPause() { arbPy.pause(); arbPyLog('⏸ Пауза GAZP/GZZ6...'); }
+async function arbPyStop()  { arbPy.stop();  arbPyLog('⏹ Стоп GAZP/GZZ6...'); }
+async function sberStart()  { sber.start(); arbPyLog('▶️ Запуск SBER/SRZ6...'); }
+async function sberPause()  { sber.pause(); arbPyLog('⏸ Пауза SBER/SRZ6...'); }
+async function sberStop()   { if (!confirm('Остановить SBER/SRZ6?')) return; sber.stop(); arbPyLog('⏹ Стоп SBER/SRZ6...'); }
 async function brCalStart() { brCal.start(); arbPyLog('▶️ Запуск BR Calendar...'); }
 async function brCalPause() { brCal.pause(); arbPyLog('⏸ Пауза BR Calendar...'); }
 async function brCalStop()  { if (!confirm('Остановить BR Calendar?')) return; brCal.stop(); arbPyLog('⏹ Стоп BR Calendar...'); }
@@ -3660,8 +3660,8 @@ function arbPyEditPanel() {
                         <option value="VTBR" ${p.ticker_a==='VTBR'?'selected':''}>VTBR (ВТБ)</option>
                         <option value="MTSS" ${p.ticker_a==='MTSS'?'selected':''}>MTSS (МТС)</option>
                         <option value="NVTK" ${p.ticker_a==='NVTK'?'selected':''}>NVTK (Новатэк)</option>
-                        <option value="BRQ6" ${p.ticker_a==='BRQ6'?'selected':''}>BRQ6 (Brent Aug)</option>
-                        <option value="BRU6" ${p.ticker_a==='BRU6'?'selected':''}>BRU6 (Brent Sep)</option>
+                        <option value="BRQ6" ${p.ticker_a==='BRQ6'?'selected':''}>BRQ6 (Brent Aug, истёк)</option>
+                        <option value="BRU6" ${p.ticker_a==='BRU6'?'selected':''}>BRU6 (Brent Sep, истёк)</option>
                         <option value="BRZ6" ${p.ticker_a==='BRZ6'?'selected':''}>BRZ6 (Brent Dec)</option>
                         <option value="BRK6" ${p.ticker_a==='BRK6'?'selected':''}>BRK6 (Brent Jun)</option>
                     </select>
@@ -3669,9 +3669,11 @@ function arbPyEditPanel() {
                 <div class="metric-card" style="min-width:160px"><div class="metric-label">📉 Инструмент B</div>
                     <select id="arbSymB" class="input" style="width:140px">
                         <option value="GZM6" ${(p.ticker_b||'GZM6')==='GZM6'?'selected':''}>GZM6 (Газпром фьюч)</option>
-                        <option value="GZU6" ${p.ticker_b==='GZU6'?'selected':''}>GZU6 (Газпром фьюч)</option>
+                        <option value="GZU6" ${p.ticker_b==='GZU6'?'selected':''}>GZU6 (Газпром фьюч, истёк)</option>
+                        <option value="GZZ6" ${p.ticker_b==='GZZ6'?'selected':''}>GZZ6 (Газпром декабрь)</option>
                         <option value="SRM6" ${p.ticker_b==='SRM6'?'selected':''}>SRM6 (Сбер фьюч)</option>
-                        <option value="SRU6" ${p.ticker_b==='SRU6'?'selected':''}>SRU6 (Сбер фьюч)</option>
+                        <option value="SRU6" ${p.ticker_b==='SRU6'?'selected':''}>SRU6 (Сбер фьюч, истёк)</option>
+                        <option value="SRZ6" ${p.ticker_b==='SRZ6'?'selected':''}>SRZ6 (Сбер декабрь)</option>
                         <option value="LKM6" ${p.ticker_b==='LKM6'?'selected':''}>LKM6 (Лукойл фьюч)</option>
                         <option value="RNM6" ${p.ticker_b==='RNM6'?'selected':''}>RNM6 (Роснефть фьюч)</option>
                         <option value="TTM6" ${p.ticker_b==='TTM6'?'selected':''}>TTM6 (Татнефть фьюч)</option>
@@ -3901,7 +3903,7 @@ function sberEditPanel() {
         panel.id = 'sberEditPanel';
         // Update header to show SBER
         const header = panel.querySelector('.card-header');
-        if (header) header.innerHTML = header.innerHTML.replace('Арбитражный робот (PYTHON)', 'Арбитражный робот — SBER/SRU6');
+        if (header) header.innerHTML = header.innerHTML.replace('Арбитражный робот (PYTHON)', 'Арбитражный робот — SBER/SRZ6');
         // Override save button to save to SBER
         const saveBtn = panel.querySelector('button[onclick*="arbPySaveFromPanel"]');
         if (saveBtn) saveBtn.setAttribute('onclick', 'sberSaveFromPanel()');
@@ -3952,11 +3954,11 @@ async function sberSaveFromPanel() {
     }
     const r = await sber.fetch('/params', 'POST', body);
     if (r && r.ok) {
-        arbPyLog('✅ SBER/SRU6 параметры сохранены');
+        arbPyLog('✅ SBER/SRZ6 параметры сохранены');
         sber.refresh();
         el('sberEditPanel')?.remove();
     } else {
-        arbPyLog('Ошибка сохранения SBER/SRU6', 'ERROR');
+        arbPyLog('Ошибка сохранения SBER/SRZ6', 'ERROR');
     }
 }
 
@@ -4302,7 +4304,7 @@ async function arbResetStats() {
     const inst = _arbJournalInstance === 'sber' ? sber : _arbJournalInstance === 'brCal' ? brCal : arbPy;
     const r = await inst.fetch('/reset-stats', 'POST');
     if (r && r.ok) {
-        const name = _arbJournalInstance === 'sber' ? 'SBER/SRU6' : _arbJournalInstance === 'brCal' ? 'BR Calendar' : 'GAZP/GZU6';
+        const name = _arbJournalInstance === 'sber' ? 'SBER/SRZ6' : _arbJournalInstance === 'brCal' ? 'BR Calendar' : 'GAZP/GZZ6';
         arbPyLog(`🗑 Статистика ${name} сброшена`);
         arbLoadJournal();
         arbPyRefresh();

@@ -2398,7 +2398,7 @@ public static class RobotProcessManager
             psi.EnvironmentVariables["FINAM_ACCOUNT"] = "2049688";
             if (name == "arb_gazp") { psi.EnvironmentVariables["ARB_SYMBOL_A"] = "GAZP@MISX"; psi.EnvironmentVariables["ARB_TICKER_A"] = "GAZP"; psi.EnvironmentVariables["ARB_SYMBOL_B"] = "GZZ6@RTSX"; psi.EnvironmentVariables["ARB_TICKER_B"] = "GZZ6"; }
             else if (name == "arb_sber") { psi.EnvironmentVariables["ARB_SYMBOL_A"] = "SBER@MISX"; psi.EnvironmentVariables["ARB_TICKER_A"] = "SBER"; psi.EnvironmentVariables["ARB_SYMBOL_B"] = "SRZ6@RTSX"; psi.EnvironmentVariables["ARB_TICKER_B"] = "SRZ6"; }
-            else if (name == "arb_br") { psi.EnvironmentVariables["ARB_SYMBOL_A"] = "BRU6@RTSX"; psi.EnvironmentVariables["ARB_TICKER_A"] = "BRU6"; psi.EnvironmentVariables["ARB_SYMBOL_B"] = "BRV6@RTSX"; psi.EnvironmentVariables["ARB_TICKER_B"] = "BRV6"; }
+            else if (name == "arb_br") { psi.EnvironmentVariables["ARB_SYMBOL_A"] = "BRV6@RTSX"; psi.EnvironmentVariables["ARB_TICKER_A"] = "BRV6"; psi.EnvironmentVariables["ARB_SYMBOL_B"] = "BRZ6@RTSX"; psi.EnvironmentVariables["ARB_TICKER_B"] = "BRZ6"; }
         }
         var proc = System.Diagnostics.Process.Start(psi);
         if (proc == null) return new { ok = false, error = "process failed to start" };
