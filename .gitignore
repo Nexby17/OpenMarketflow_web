@@ -65,3 +65,11 @@ robot/paper_lab/logs/
 robot/paper_lab/.env
 
 robot/py4/
+
+# generated gRPC protos for arb robots (finam_compat shim) — keep in repo
+!robot/py4/
+robot/py4/*
+!robot/py4/finam_trade_api
+robot/py4/finam_trade_api/*
+!robot/py4/finam_trade_api/proto
+!robot/py4/google

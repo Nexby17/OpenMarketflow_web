@@ -13,7 +13,56 @@ The shim wraps FinamClient (new official SDK) and exposes:
 - timeframe_to_finam_timeframe() helper
 """
 
-from finam_trade_api import FinamClient
+import grpc as _grpc
+from finam_trade_api import Client as _SdkClient
+from finam_trade_api.base_client.token_manager import TokenManager
+from finam_trade_api.proto.grpc.tradeapi.v1.marketdata import marketdata_service_pb2_grpc as _md_grpc
+from finam_trade_api.proto.grpc.tradeapi.v1.orders import orders_service_pb2_grpc as _ord_grpc
+from finam_trade_api.proto.grpc.tradeapi.v1.accounts import accounts_service_pb2_grpc as _acc_grpc
+
+_GRPC_TARGET = "api.finam.ru:443"
+
+
+class FinamClient(_SdkClient):
+    """Compat shim over SDK 4.3.3 Client.
+
+    gRPC market/orders/accounts stubs live here (SDK 4.x is REST-only).
+    REST sub-clients (account/instruments/orders REST) come from SDK via
+    composition, not inheritance (SDK sets self.orders etc in __init__)."""
+
+    def __init__(self, token: str):
+        # SDK Client не наследуем: его __init__ перезаписывает self.orders/orders_stub
+        self._sdk = _SdkClient(TokenManager(token), auto_refresh_tokens=True)
+        self._token_manager = TokenManager(token)
+        # JWT для gRPC: сразу получаем (не ждём REST-цикла)
+        try:
+            import asyncio
+            from finam_trade_api.access.access_token import TokenClient as _TC
+            tc = _TC(self._token_manager)
+            asyncio.get_event_loop().run_until_complete(tc.set_jwt_token())
+        except Exception:
+            pass
+        creds = _grpc.ssl_channel_credentials()
+        self._grpc_channel = _grpc.secure_channel(_GRPC_TARGET, creds)
+        self._grpc_md = _md_grpc.MarketDataServiceStub(self._grpc_channel)
+        self._grpc_ord = _ord_grpc.OrdersServiceStub(self._grpc_channel)
+        self._grpc_acc = _acc_grpc.AccountsServiceStub(self._grpc_channel)
+
+    @property
+    def market_data(self):
+        return self._grpc_md  # сырой stub; _CompatStub добавляется в FinamPyCompat.marketdata_stub
+
+    @property
+    def orders(self):
+        return self._grpc_ord
+
+    @property
+    def accounts(self):
+        return self._grpc_acc
+
+    def get_token(self) -> str:
+        """Return current JWT (old FinamClient API)."""
+        return self._token_manager.jwt_token or self._token_manager.token
 from finam_trade_api.proto.grpc.tradeapi.v1.marketdata import marketdata_service_pb2 as md
 from finam_trade_api.proto.grpc.tradeapi.v1.orders import orders_service_pb2 as ord_pb
 from finam_trade_api.proto.grpc.tradeapi.v1.accounts import accounts_service_pb2 as accts_pb
@@ -125,22 +174,22 @@ class FinamPyCompat:
         """Returns MarketDataServiceStub from new SDK.
         Note: new SDK uses .Bars(request=...) not .Bars.with_call(request=..., metadata=...).
         For compatibility, old code should use call_function() or we wrap with_call."""
-        return _CompatStub(self.client.market_data)
+        return _CompatStub(self.client.market_data, self.client.get_token)
 
     @property
     def orders_stub(self):
-        return _CompatStub(self.client.orders)
+        return _CompatStub(self.client.orders, self.client.get_token)
 
     @property
     def accounts_stub(self):
-        return _CompatStub(self.client.accounts)
+        return _CompatStub(self.client.accounts, self.client.get_token)
 
     def connect(self) -> None:
         """Create FinamClient and discover account IDs."""
         self._client = FinamClient(self._token)
         # Fetch account IDs from environment (new SDK doesn't auto-discover)
         try:
-            acc = os.environ.get("FINAM_ACCOUNT")
+            acc = os.environ.get("FINAM_ACCOUNT") or os.environ.get("FINAM_ACCOUNT_ID")
             if acc:
                 self._account_ids = [acc]
             stock = os.environ.get("FINAM_STOCK_ACCOUNT")
@@ -312,8 +361,9 @@ class _CompatStub:
     This wrapper makes both styles work by intercepting .with_call().
     """
 
-    def __init__(self, real_stub):
+    def __init__(self, real_stub, jwt_provider=None):
         self._stub = real_stub
+        self._jwt_provider = jwt_provider
 
     def __getattr__(self, name):
         """Return a callable that supports both direct call and .with_call()."""
@@ -321,29 +371,33 @@ class _CompatStub:
 
         # If it's a callable (RPC method), wrap it
         if callable(attr):
-            return _CompatRpcMethod(attr)
+            return _CompatRpcMethod(attr, self._jwt_provider)
         return attr
 
 
 class _CompatRpcMethod:
     """Wraps a single gRPC unary method to support .with_call() syntax."""
 
-    def __init__(self, rpc_method):
+    def __init__(self, rpc_method, jwt_provider=None):
         self._method = rpc_method
+        self._jwt_provider = jwt_provider
 
     def __call__(self, *args, **kwargs):
         """Direct call: stub.Method(request=req) or stub.Method(req)."""
-        # Strip metadata kwarg if present (new SDK handles auth via interceptor)
-        kwargs.pop("metadata", None)
-        return self._method(*args, **kwargs)
+        return self.with_call(*args, **kwargs)[0]
 
     def with_call(self, *args, **kwargs):
         """Compatibility: stub.Method.with_call(request=req, metadata=..., timeout=...).
 
         Returns (response, None) to match old gRPC API.
         New SDK returns just the response, so we add None as call_metadata."""
-        kwargs.pop("metadata", None)
-        response = self._method(*args, **kwargs)
+        timeout = kwargs.pop("timeout", None)
+        # gRPC auth: Finam требует Authorization: <jwt> — берём из замыкания клиента
+        metadata = [("authorization", self._jwt_provider())] if self._jwt_provider else None
+        if timeout is not None:
+            response = self._method(*args, timeout=timeout, metadata=metadata, **kwargs)
+        else:
+            response = self._method(*args, metadata=metadata, **kwargs)
         return response, None
 
 

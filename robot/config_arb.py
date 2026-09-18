@@ -9,8 +9,8 @@ ACCOUNT_ID = os.environ.get("FINAM_ACCOUNT", "2049688")
 # NOTE: stocks on Finam Trade API use @MISX (RTSX is futures-only) — fixed 2026-09-10
 SYMBOL_A = os.environ.get("ARB_SYMBOL_A", "GAZP@MISX")   # spot (MISX)
 TICKER_A = os.environ.get("ARB_TICKER_A", "GAZP")
-SYMBOL_B = os.environ.get("ARB_SYMBOL_B", "GZM6@RTSX")   # futures (RTSX)
-TICKER_B = os.environ.get("ARB_TICKER_B", "GZM6")
+SYMBOL_B = os.environ.get("ARB_SYMBOL_B", "GZZ6@RTSX")   # futures (RTSX) - GZZ6 декабрь-26, ликвиден
+TICKER_B = os.environ.get("ARB_TICKER_B", "GZZ6")
 
 # Board codes for FinamPy subscriptions
 BOARD_A = os.environ.get("ARB_BOARD_A", "MISX")    # MISX for stocks
