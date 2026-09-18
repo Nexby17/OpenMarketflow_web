@@ -149,3 +149,12 @@
 - Program.cs env, UI заголовки/пары/опции селектов/логи обновлены; истёкшие помечены «(истёк)», декабрьские добавлены. v=92.
 - Сервер пересобран/перезапущен; MX (running, MXZ6) пережил рестарт. Коммит 0da0d33 запушен.
 - Верифицировано: /api/of/process/{arb_*}/status POST → {alive:false} — UI корректно покажет «Процесс не поднят».
+
+### 15:29-15:47 — Фикс стартовой цепочки арб-роботов (репорт: arb_sber не поднялся)
+- 3 блокера: (1) finam_compat не импортировался из robot/ (нет bootstrap); (2) две версии strategy_arb
+  затеняли друг друга (robot/ июльская без dev_ann vs arb_common сентябрьская с Fix#1-4) — sys.path порядок
+  arb_common > robot; orders_arb берётся из robot/ явно (в arb_common копия без cancel_pending_orders);
+  (3) gRPC auth: metadata ключ lowercase 'authorization', старый (fp.metadata,) подменяется шимом;
+  RobotProcessManager теперь передаёт --port (arb_* иначе все стартовали бы на 5090).
+- arb_sber жив на :5091 (paper): basis стримится (price_a=276.7, price_b=28633), mode=stopped, ждёт ▶.
+- Коммит 324dfda запушен.
