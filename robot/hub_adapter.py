@@ -156,8 +156,13 @@ class FinamHubAdapter:
 
     # --- подписки ---
 
-    def start(self, on_trades, on_order_book, on_quote, on_bar=None, timeframe: str = None):
-        """Подключить все каналы данных робота к хабу."""
+    def start(self, on_trades, on_order_book, on_quote, on_bar=None, timeframe: str = None,
+              on_my_trade=None, account_id: str = None):
+        """Подключить все каналы данных робота к хабу.
+
+        F-019: on_my_trade — колбэк филлов СВОИХ ордеров (WS ORDERS-канал счёта).
+        payload ORDERS: {'orders': [{'order_id','status','symbol','average_price'/'price',...}]}
+        Вызываем callback на каждый переход в FILLED/PARTIALLY с фактической ценой."""
         self._bar_tf = timeframe
 
         def w_trades(payload):
@@ -182,6 +187,39 @@ class FinamHubAdapter:
         self.hub.subscribe_trades(self.symbol, w_trades)
         self.hub.subscribe_order_book(self.symbol, w_ob)
         self.hub.subscribe_quotes([self.symbol], w_quote)
+
+        # F-019: WS ORDERS — филлы своих ордеров событием (не poll)
+        if on_my_trade and account_id:
+            def w_orders(payload):
+                try:
+                    orders_list = payload.get("orders", []) if isinstance(payload, dict) else []
+                    if isinstance(payload, list):
+                        orders_list = payload
+                    for o in orders_list:
+                        if not isinstance(o, dict):
+                            continue
+                        st = str(o.get("status", "")).upper()
+                        if "FILLED" not in st and "PARTIALLY" not in st:
+                            continue
+                        sym = str(o.get("symbol", ""))
+                        if sym and sym != self.symbol:
+                            continue
+                        avg = o.get("average_price") or o.get("avg_price") or o.get("price") or {}
+                        price = avg.get("value") if isinstance(avg, dict) else avg
+                        on_my_trade({
+                            "order_id": str(o.get("order_id", "")),
+                            "symbol": sym,
+                            "status": st,
+                            "price": float(price) if price else 0.0,
+                            "qty": int(float(o.get("quantity", {}).get("value", 0)) if isinstance(o.get("quantity"), dict) else o.get("quantity", 0) or 0),
+                        })
+                except Exception as e:
+                    log.error("orders bridge: %s", str(e)[:120])
+            try:
+                self.hub.subscribe_orders(account_id, w_orders)
+                log.info(f"ORDERS subscription ok ({account_id})")
+            except Exception as e:
+                log.error("orders subscribe: %s", str(e)[:120])
 
         if on_bar and timeframe:
             tf_map = {"M1": "TIME_FRAME_M1", "M5": "TIME_FRAME_M5",

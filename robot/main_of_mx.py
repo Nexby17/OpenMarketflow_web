@@ -244,23 +244,38 @@ def connect_finam():
         on_quote=_on_quote,
         on_bar=_on_new_bar,
         timeframe=params.timeframe,
+        on_my_trade=_on_my_trade,
+        account_id=ACCOUNTS[ACTIVE_ACCOUNT_KEY],
     )
     log.info(f"HubAdapter: subscriptions started ({SYMBOL}, TF={params.timeframe})")
     return True
 
 
 def _on_my_trade(trade):
-    """Fill callback for real-mode WS ORDERS (post-F decision); unused in paper. Captures REAL fill price."""
+    """F-019: филл СВОЕГО ордера через WS ORDERS-канал. trade = dict из hub_adapter
+    (или объект с атрибутами — совместимо). Ставит _last_fill_price фактической цены."""
     global _last_fill_price, _last_fill_time, _last_fill_qty
     try:
-        if str(trade.symbol) != SYMBOL:
+        if isinstance(trade, dict):
+            sym = str(trade.get("symbol", ""))
+            if sym and sym != SYMBOL:
+                return
+            price = float(trade.get("price", 0) or 0)
+            qty = int(trade.get("qty", 0) or 0)
+            oid = str(trade.get("order_id", ""))
+        else:
+            sym = str(trade.symbol)
+            if sym != SYMBOL:
+                return
+            price = float(str(trade.price.value)) if hasattr(trade.price, 'value') else float(str(trade.price))
+            qty = int(float(str(trade.size.value))) if hasattr(trade.size, 'value') else int(float(str(trade.size)))
+            oid = str(trade.order_id)
+        if price <= 0:
             return
-        price = float(str(trade.price.value)) if hasattr(trade.price, 'value') else float(str(trade.price))
-        qty = int(float(str(trade.size.value))) if hasattr(trade.size, 'value') else int(float(str(trade.size)))
         _last_fill_price = price
         _last_fill_time = time.time()
         _last_fill_qty = qty
-        log.info(f"FILL {trade.order_id}: price={price} qty={qty} symbol={trade.symbol}")
+        log.info(f"FILL {oid}: price={price} qty={qty} symbol={sym}")
     except Exception as e:
         log.error(f"on_my_trade error: {e}")
 
@@ -649,10 +664,9 @@ def _execute_action(action: dict):
         # First cancel all orders
         active = orders.get_active_orders(symbol=SYMBOL)
         if active:
-            for o in active:
-                oid = o.get("order_id", "") if isinstance(o, dict) else str(o)
-                orders.cancel(oid)
-            time.sleep(0.5)
+            ids = [o.get("order_id", "") if isinstance(o, dict) else str(o) for o in active]
+            ok_n, failed = orders.cancel_many([i for i in ids if i])
+            log.info(f"cancel_many: {ok_n} cancelled, {len(failed)} failed")
 
         # Save avgPrice BEFORE strategy modifies it
         avg_for_record = strategy._avg_price
@@ -663,8 +677,8 @@ def _execute_action(action: dict):
         _last_fill_time = 0.0
         result = orders.place_market(side_int, qty, tag=f"of_close_{action.get('reason', '')}")
         if result:
-            time.sleep(0.3)  # wait for fill callback
-            fill_price = _consume_fill_price()
+            time.sleep(0.05)  # даём WS ORDERS колбэку доехать
+            fill_price = _consume_fill_price() or orders.wait_fill(result.order_id, timeout=1.2) or 0.0
             if fill_price > 0:
                 action["fill_price"] = fill_price
                 action['avgPrice'] = avg_for_record
@@ -698,7 +712,8 @@ def _execute_action(action: dict):
         lots_before = strategy._total_lots - qty  # lots BEFORE this action added them
         result = orders.place_market(side_int, qty, tag=tag)
         if result:
-            fill_price = _consume_fill_price()
+            time.sleep(0.05)  # F-019: WS ORDERS колбэк успевает за 50 мс
+            fill_price = _consume_fill_price() or orders.wait_fill(result.order_id, timeout=1.2) or 0.0
             if fill_price > 0:
                 action["fill_price"] = fill_price
                 log.info(f"Executed {act.upper()}: {side_str} {qty} @ {fill_price:.0f}")
@@ -722,8 +737,8 @@ def _execute_action(action: dict):
         _last_fill_time = 0.0
         result = orders.place_market(side_int, qty, tag="of_partial_tp")
         if result:
-            time.sleep(0.3)  # wait for fill callback
-            fill_price = _consume_fill_price()
+            time.sleep(0.05)
+            fill_price = _consume_fill_price() or orders.wait_fill(result.order_id, timeout=1.2) or 0.0
             if fill_price > 0:
                 action["fill_price"] = fill_price
                 log.info(f"Executed PARTIAL_TP: {side_str} {qty} @ {fill_price:.0f}")
@@ -888,9 +903,8 @@ class APIHandler(BaseHTTPRequestHandler):
             if not PAPER_MODE:
                 active = orders.get_active_orders(symbol=SYMBOL)
                 if active:
-                    for o in active:
-                        oid = o.get("order_id", "") if isinstance(o, dict) else str(o)
-                        orders.cancel(oid)
+                    ids = [o.get("order_id", "") if isinstance(o, dict) else str(o) for o in active]
+                    orders.cancel_many([i for i in ids if i])
             # Close position if any
             if strategy.in_position:
                 with _price_lock:
@@ -911,9 +925,8 @@ class APIHandler(BaseHTTPRequestHandler):
             if not PAPER_MODE:
                 active = orders.get_active_orders(symbol=SYMBOL)
                 if active:
-                    for o in active:
-                        oid = o.get("order_id", "") if isinstance(o, dict) else str(o)
-                        orders.cancel(oid)
+                    ids = [o.get("order_id", "") if isinstance(o, dict) else str(o) for o in active]
+                    orders.cancel_many([i for i in ids if i])
             save_state()
             self._json(200, {"ok": True, "mode": _mode, "paper": PAPER_MODE})
 

@@ -242,6 +242,8 @@ def connect_finam():
         on_quote=_on_quote,
         on_bar=_on_new_bar,
         timeframe=params.timeframe,
+        on_my_trade=_on_my_trade,
+        account_id=ACCOUNTS[ACTIVE_ACCOUNT_KEY],
     )
     log.info(f"HubAdapter: subscriptions started ({SYMBOL}, TF={params.timeframe})")
     return True
@@ -629,10 +631,9 @@ def _execute_action(action: dict):
         # First cancel all orders
         active = orders.get_active_orders(symbol=SYMBOL)
         if active:
-            for o in active:
-                oid = o.get("order_id", "") if isinstance(o, dict) else str(o)
-                orders.cancel(oid)
-            time.sleep(0.5)
+            ids = [o.get("order_id", "") if isinstance(o, dict) else str(o) for o in active]
+            ok_n, failed = orders.cancel_many([i for i in ids if i])
+            log.info(f"cancel_many: {ok_n} cancelled, {len(failed)} failed")
 
         # Save avgPrice BEFORE strategy modifies it
         avg_for_record = strategy._avg_price
@@ -640,7 +641,7 @@ def _execute_action(action: dict):
         side_int = SELL if side_str == "sell" else BUY
         result = orders.place_market(side_int, qty, tag=f"of_close_{action.get('reason', '')}")
         if result:
-            fill_price = orders.wait_fill(result.order_id, timeout=3.0) or 0.0
+            fill_price = orders.wait_fill(result.order_id, timeout=1.2) or 0.0
             if fill_price > 0:
                 action["fill_price"] = fill_price
                 action['avgPrice'] = avg_for_record
@@ -672,7 +673,7 @@ def _execute_action(action: dict):
         lots_before = strategy._total_lots - qty  # lots BEFORE this action added them
         result = orders.place_market(side_int, qty, tag=tag)
         if result:
-            fill_price = orders.wait_fill(result.order_id, timeout=3.0) or 0.0
+            fill_price = orders.wait_fill(result.order_id, timeout=1.2) or 0.0
             if fill_price > 0:
                 action["fill_price"] = fill_price
                 log.info(f"Executed {act.upper()}: {side_str} {qty} @ {fill_price:.0f}")
@@ -694,7 +695,7 @@ def _execute_action(action: dict):
         side_int = SELL if side_str == "sell" else BUY
         result = orders.place_market(side_int, qty, tag="of_partial_tp")
         if result:
-            fill_price = orders.wait_fill(result.order_id, timeout=3.0) or 0.0
+            fill_price = orders.wait_fill(result.order_id, timeout=1.2) or 0.0
             if fill_price > 0:
                 action["fill_price"] = fill_price
                 log.info(f"Executed PARTIAL_TP: {side_str} {qty} @ {fill_price:.0f}")
@@ -859,9 +860,8 @@ class APIHandler(BaseHTTPRequestHandler):
             if not PAPER_MODE:
                 active = orders.get_active_orders(symbol=SYMBOL)
                 if active:
-                    for o in active:
-                        oid = o.get("order_id", "") if isinstance(o, dict) else str(o)
-                        orders.cancel(oid)
+                    ids = [o.get("order_id", "") if isinstance(o, dict) else str(o) for o in active]
+                    orders.cancel_many([i for i in ids if i])
             # Close position if any
             if strategy.in_position:
                 with _price_lock:
@@ -882,9 +882,8 @@ class APIHandler(BaseHTTPRequestHandler):
             if not PAPER_MODE:
                 active = orders.get_active_orders(symbol=SYMBOL)
                 if active:
-                    for o in active:
-                        oid = o.get("order_id", "") if isinstance(o, dict) else str(o)
-                        orders.cancel(oid)
+                    ids = [o.get("order_id", "") if isinstance(o, dict) else str(o) for o in active]
+                    orders.cancel_many([i for i in ids if i])
             save_state()
             self._json(200, {"ok": True, "mode": _mode, "paper": PAPER_MODE})
 

@@ -150,7 +150,12 @@ class OrderManagerRest4:
             if oid:
                 self.cancel(oid)
 
+    _ACTIVE_STATUSES = ("NEW", "PENDING_NEW", "FORWARDING", "WAIT", "LINK_WAIT",
+                        "WATCHING", "SUSPENDED", "PARTIALLY")
+
     def get_active_orders(self, symbol: str = None) -> list:
+        """F-019: только АКТИВНЫЕ ордера НАШЕГО символа (было: все ордера счёта —
+        cancel-цепочка уносила чужие/ручные лимитки и жгла rate-limit)."""
         if self._paper:
             return []  # paper: лимиты исполняются мгновенно — активных нет
         try:
@@ -160,10 +165,50 @@ class OrderManagerRest4:
             req = OrdersRequest(account_id=self._account)
             resp = r4.call(r4.client.orders.get_orders(req))
             d = resp.model_dump(mode="json") if hasattr(resp, "model_dump") else dict(resp)
-            return d.get("orders", [])
+            raw = d.get("orders", []) or []
+            out = []
+            for o in raw:
+                if not isinstance(o, dict):
+                    continue
+                st = str(o.get("status", "")).upper()
+                if not any(a in st for a in self._ACTIVE_STATUSES):
+                    continue
+                if symbol:
+                    osym = str(o.get("symbol", ""))
+                    if osym and osym != symbol:
+                        continue
+                out.append(o)
+            return out
         except Exception as e:
             log.error("get_active_orders failed: %s", str(e)[:120])
             return []
+
+    def cancel_many(self, order_ids: list, max_per_min: int = 180) -> tuple:
+        """F-019: пакетная отмена БЕЗ sleep(0.5) после каждой. Соблюдает rate-limit
+        (Finam 200 rpm): держит не более max_per_min запросов в минуту.
+        Возвращает (ok_count, failed_ids)."""
+        ok = 0
+        failed = []
+        window_start = time.time()
+        sent_in_window = 0
+        for oid in order_ids:
+            if sent_in_window >= max_per_min:
+                elapsed = time.time() - window_start
+                if elapsed < 60.0:
+                    time.sleep(60.0 - elapsed)
+                window_start = time.time()
+                sent_in_window = 0
+            try:
+                res = self.cancel(oid)
+                if res:
+                    ok += 1
+                else:
+                    failed.append(oid)
+            except Exception as e:
+                log.warning("cancel_many %s: %s", oid, str(e)[:80])
+                failed.append(oid)
+            sent_in_window += 1
+        return ok, failed
 
     def get_recent_fills(self, since_sec: float = 30) -> list:
         cutoff = time.time() - since_sec
@@ -174,7 +219,7 @@ class OrderManagerRest4:
         with self._fills_lock:
             self._recent_fills.append(fill)
 
-    def wait_fill(self, order_id: str, timeout: float = 3.0, poll: float = 0.3) -> Optional[float]:
+    def wait_fill(self, order_id: str, timeout: float = 3.0, poll: float = 0.06) -> Optional[float]:
         """PORT-B2: wait for order fill. Returns fill price or None.
 
         Paper: look up simulated fill in _recent_fills (no REST).
