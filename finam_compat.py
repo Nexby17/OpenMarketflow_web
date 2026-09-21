@@ -254,7 +254,7 @@ class FinamPyCompat:
         req = md.SubscribeQuoteRequest(symbols=symbols_field)
         while True:
             try:
-                stream = self.client.market_data.SubscribeQuote(req)
+                stream = self.client.market_data.SubscribeQuote(req, metadata=[("authorization", self._token_manager.jwt_token or self._token_manager.token)])
                 for response in stream:
                     self.on_quote.emit(response)
             except Exception as e:
@@ -292,7 +292,7 @@ class FinamPyCompat:
         req = md.SubscribeLatestTradesRequest(symbol=symbol)
         while True:
             try:
-                stream = self.client.market_data.SubscribeLatestTrades(req)
+                stream = self.client.market_data.SubscribeLatestTrades(req, metadata=[("authorization", self._token_manager.jwt_token or self._token_manager.token)])
                 for response in stream:
                     self.on_latest_trades.emit(response)
             except Exception as e:

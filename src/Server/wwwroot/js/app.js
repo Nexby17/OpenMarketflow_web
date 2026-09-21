@@ -3554,19 +3554,33 @@ function createArbInstance(prefix, port) {
     async function stop()  { await fetch2('/stop','POST'); refresh(); }
 
     // F-018: старт/стоп процесса через серверный RobotProcessManager (start = Dmitry only)
+    // F-019-fix: после подъёма процесса шлём роботу POST /start — торговля включается сразу,
+    // как это делала старая кнопка (fetch2('/start')) при живом процессе
     async function startViaServer() {
         const name = ARB_PROC_NAMES[prefix];
         if (!name) { await fetch2('/start', 'POST'); return; }
         try {
             const r = await fetch(`/api/of/process/${name}/start`, {method: 'POST', signal: AbortSignal.timeout(45000)});
             const pd = await r.json();
-            if (pd.ok) arbPyLog(`🟢 Процесс ${name} поднят (pid ${pd.pid || '?'})`, 'INFO');
+            if (pd.ok) {
+                arbPyLog(`🟢 Процесс ${name} поднят (pid ${pd.pid || '?'})`, 'INFO');
+                // процесс поднят: ждём подъёма API и включаем торговлю
+                await new Promise(res => setTimeout(res, 2500));
+                try {
+                    await fetch2('/start', 'POST');
+                    arbPyLog('▶️ Торговля включена (mode=running)', 'INFO');
+                } catch(e2) {
+                    arbPyLog(`⚠️ Процесс поднят, но /start не прошёл: ${e2.message}`, 'WARN');
+                }
+            }
             else { arbPyLog(`❌ Процесс ${name} не поднялся: ${pd.error || '?'}`, 'ERROR'); showToast('❌ Процесс не поднялся: ' + (pd.error || '?'), 'error'); }
         } catch(e) { arbPyLog(`❌ process start error: ${e.message}`, 'ERROR'); }
     }
     async function stopViaServer() {
         const name = ARB_PROC_NAMES[prefix];
         if (!name) { await fetch2('/stop', 'POST'); return; }
+        // если робот жив — сначала остановить торговлю, потом убить процесс
+        try { await fetch2('/stop', 'POST'); } catch(e) { /* процесс не поднят — ок */ }
         try {
             await fetch(`/api/of/process/${name}/stop`, {method: 'POST', signal: AbortSignal.timeout(15000)});
             arbPyLog(`⏹ Процесс ${name} остановлен`, 'INFO');
