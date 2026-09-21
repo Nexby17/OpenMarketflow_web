@@ -3780,7 +3780,7 @@ function arbPyEditPanel() {
                 <div class="metric-card"><div class="metric-label">Deviation (₽)</div><div id="arbDeviation" style="font-size:18px;font-weight:bold">—</div></div>
                 <div class="metric-card"><div class="metric-label">Раздвижка (%)</div><div id="arbSpreadPct" style="font-size:18px;font-weight:bold">—</div></div>
                 <div class="metric-card"><div class="metric-label">GAZP × 100</div><div id="arbSpotValue" style="font-size:18px;font-weight:bold">—</div></div>
-                <div class="metric-card"><div class="metric-label" id="arbFutLabel">GZM6 (фьюч)</div><div id="arbFutValue" style="font-size:18px;font-weight:bold">—</div></div>
+                <div class="metric-card"><div class="metric-label" id="arbFutLabel">GZZ6 (фьюч)</div><div id="arbFutValue" style="font-size:18px;font-weight:bold">—</div></div>
                 <div class="metric-card"><div class="metric-label">Basis (Z-score base)</div><div id="arbBasisVal" style="font-size:18px;font-weight:bold">—</div></div>
                 <div class="metric-card"><div class="metric-label">Z-score (dev)</div><div id="arbZVal" style="font-size:18px;font-weight:bold">—</div></div>
                 <div class="metric-card"><div class="metric-label">Dev годовых %</div><div id="arbDevAnn" style="font-size:18px;font-weight:bold">—</div></div>
@@ -4218,6 +4218,7 @@ function arbPyShowCopyDialog() {
             <div class="metric-card"><div class="metric-label">Новый инструмент B (фьючерс)</div>
                 <select id="copySymB" class="input" style="width:180px">
                     <option value="GZM6">GZM6</option>
+                      <option value="GZZ6">GZZ6</option>
                     <option value="GZU6">GZU6</option>
                     <option value="SRM6">SRM6</option>
                     <option value="SRU6">SRU6</option>
