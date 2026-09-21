@@ -3563,9 +3563,10 @@ function createArbInstance(prefix, port) {
             const r = await fetch(`/api/of/process/${name}/start`, {method: 'POST', signal: AbortSignal.timeout(45000)});
             const pd = await r.json();
             if (pd.ok) {
-                arbPyLog(`🟢 Процесс ${name} поднят (pid ${pd.pid || '?'})`, 'INFO');
-                // процесс поднят: ждём подъёма API и включаем торговлю
-                await new Promise(res => setTimeout(res, 2500));
+                if (pd.alreadyRunning) arbPyLog(`ℹ️ Процесс ${name} уже жив — включаю торговлю`, 'INFO');
+                else arbPyLog(`🟢 Процесс ${name} поднят (pid ${pd.pid || '?'})`, 'INFO');
+                // процесс поднят (или уже жил): ждём подъёма API и включаем торговлю
+                await new Promise(res => setTimeout(res, pd.alreadyRunning ? 300 : 2500));
                 try {
                     await fetch2('/start', 'POST');
                     arbPyLog('▶️ Торговля включена (mode=running)', 'INFO');

@@ -98,7 +98,7 @@ def load_params() -> ArbParams:
             if hasattr(p, key):
                 setattr(p, key, val)
     # override from arb_config.json
-    cfg_path = os.path.join(os.getcwd(), "arb_config.json")
+    cfg_path = os.environ.get("ARB_CONFIG_FILE") or os.path.join(os.getcwd(), "arb_config.json")
     if os.path.exists(cfg_path):
         with open(cfg_path) as f:
             data = json.load(f)
@@ -137,7 +137,7 @@ _accounts_cache = None
 _accounts_cache_ts = 0
 
 # Load saved account from config
-cfg_path = os.path.join(os.getcwd(), "arb_config.json")
+cfg_path = os.environ.get("ARB_CONFIG_FILE") or os.path.join(os.getcwd(), "arb_config.json")
 if os.path.exists(cfg_path):
     try:
         with open(cfg_path) as f:
@@ -215,7 +215,7 @@ def load_state_from_disk():
 
 
 def save_config():
-    cfg_path = os.path.join(os.getcwd(), "arb_config.json")
+    cfg_path = os.environ.get("ARB_CONFIG_FILE") or os.path.join(os.getcwd(), "arb_config.json")
     data = {k: getattr(params, k) for k in dir(params) if not k.startswith("_") and not callable(getattr(params, k))}
     with open(cfg_path, "w") as f:
         json.dump(data, f, indent=2)
@@ -1017,7 +1017,7 @@ class APIHandler(BaseHTTPRequestHandler):
                     orders_mgr._account = new_acc
                     # Persist to config
                     try:
-                        cfg_path = os.path.join(os.getcwd(), "arb_config.json")
+                        cfg_path = os.environ.get("ARB_CONFIG_FILE") or os.path.join(os.getcwd(), "arb_config.json")
                         with open(cfg_path) as f:
                             cfg = json.load(f)
                         cfg["active_account"] = new_acc
@@ -1077,7 +1077,7 @@ class APIHandler(BaseHTTPRequestHandler):
             
             # Create new config
             new_config = {}
-            cfg_path = os.path.join(base, "arb_config.json")
+            cfg_path = os.environ.get("ARB_CONFIG_FILE") or os.path.join(base, "arb_config.json")
             if os.path.exists(cfg_path):
                 with open(cfg_path) as cf:
                     new_config = json.load(cf)
@@ -1085,7 +1085,7 @@ class APIHandler(BaseHTTPRequestHandler):
             new_config["symbol_a"] = new_ticker_a + "@RTSX"
             new_config["ticker_b"] = new_ticker_b
             new_config["symbol_b"] = new_ticker_b + "@RTSX"
-            with open(os.path.join(new_dir, "arb_config.json"), "w") as cf:
+            with open(os.path.join(new_dir, os.environ.get("ARB_CONFIG_FILE") or "arb_config.json"), "w") as cf:
                 json.dump(new_config, cf, indent=2)
             
             log.info(f"Robot copied: {new_dir} ({new_ticker_a}/{new_ticker_b})")

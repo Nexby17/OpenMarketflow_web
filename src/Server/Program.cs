@@ -2376,7 +2376,7 @@ public static class RobotProcessManager
         var psi = new System.Diagnostics.ProcessStartInfo
         {
             FileName = ResolvePython(),
-            Arguments = "\"" + System.IO.Path.Combine(root, script) + "\" " + extraArgs,
+            Arguments = "\"" + System.IO.Path.Combine(root, script) + "\" --port " + port + " " + extraArgs,
             WorkingDirectory = root,
             RedirectStandardOutput = true,
             RedirectStandardError = true,
@@ -2394,7 +2394,8 @@ public static class RobotProcessManager
         psi.EnvironmentVariables["PYTHONUTF8"] = "1";
         if (name.StartsWith("arb_"))
         {
-            // pair per instance (env wins over config_arb defaults)
+            // F-020: per-instance config file (pair + params live in UI-saved JSON per instance)
+            psi.EnvironmentVariables["ARB_CONFIG_FILE"] = System.IO.Path.Combine(root, $"arb_config_{name.Substring(4)}.json");
             psi.EnvironmentVariables["FINAM_ACCOUNT"] = "2049688";
             if (name == "arb_gazp") { psi.EnvironmentVariables["ARB_SYMBOL_A"] = "GAZP@MISX"; psi.EnvironmentVariables["ARB_TICKER_A"] = "GAZP"; psi.EnvironmentVariables["ARB_SYMBOL_B"] = "GZZ6@RTSX"; psi.EnvironmentVariables["ARB_TICKER_B"] = "GZZ6"; }
             else if (name == "arb_sber") { psi.EnvironmentVariables["ARB_SYMBOL_A"] = "SBER@MISX"; psi.EnvironmentVariables["ARB_TICKER_A"] = "SBER"; psi.EnvironmentVariables["ARB_SYMBOL_B"] = "SRZ6@RTSX"; psi.EnvironmentVariables["ARB_TICKER_B"] = "SRZ6"; }
