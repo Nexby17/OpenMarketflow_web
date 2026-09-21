@@ -158,3 +158,19 @@
   RobotProcessManager теперь передаёт --port (arb_* иначе все стартовали бы на 5090).
 - arb_sber жив на :5091 (paper): basis стримится (price_a=276.7, price_b=28633), mode=stopped, ждёт ▶.
 - Коммит 324dfda запушен.
+
+## 2026-09-21 — F-019: быстрое исполнение OF (1+3+5, по выбору Дмитрия)
+
+- Замер 18.09: сигнал→исполнение p50=1с, p90=24с. Хвост — close_all: cancel-кластеры 30..149 ордеров
+  по (REST ~200мс + sleep(0.5)) на ордер = до 31с слепого времени в main_loop.
+- 1) cancel_many() без per-order sleep (rate-limit ≤180/мин); close_all/stop/pause используют;
+     get_active_orders фильтрует по symbol+активным статусам (было: все ордера счёта —
+     cancel цепочка задевала бы ручные лимитки Дмитрия на ЕДП).
+- 3) fill из REST: sleep(0.3)+надежда → orders.wait_fill(oid, 1.2с, poll 0.06) — фактическая
+     average_price от брокера; журнальные «стратегийные» филлы уходят.
+- 5) WS ORDERS-канал: hub_adapter.start(on_my_trade=..., account_id=...) — свои филлы событием;
+     _on_my_trade (был мёртвым кодом) принимает dict-филлы и мгновенно ставит _last_fill_price.
+- Ожидаемый эффект: close_all 26с → 2-3с; журнал PnL по фактическим ценам; main_loop слепнет на 0.
+- Тесты: robot/test_fast_exec.py 15/15 PASS (мок-брокер: фильтры, скорость cancel_many, wait_fill,
+  парсинг ORDERS payload, чужие символы).
+- Коммит 8438b60 запушен. Роботы НЕ перезапускались — подхватят при следующем ▶ Дмитрия.
