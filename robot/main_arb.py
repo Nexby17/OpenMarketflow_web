@@ -1033,11 +1033,43 @@ class APIHandler(BaseHTTPRequestHandler):
             if length > 0:
                 body = self.rfile.read(length)
                 data = json.loads(body)
+                # F-021: validate - UI может прислать null (NaN); None в конфиге ломает математику
+                _num_fields = {"lots_a", "lots_b", "hedge_ratio", "capital", "entry_z", "entry_z_long",
+                               "spread_rub_high", "spread_rub_low", "risk_free_rate", "contract_size",
+                               "lookback", "leg_a_timeout", "min_fill_ratio", "min_profit_value",
+                               "risk_value", "commission_stock_pct", "commission_futures_rt",
+                               "slippage_bps", "mult_a", "mult_b", "dev_ann_high", "dev_ann_low",
+                               "dev_lookback", "dev_push_interval", "go_per_contract_b"}
+                _str_fields = {"ticker_a", "ticker_b", "symbol_a", "symbol_b", "entry_mode",
+                               "min_profit_type", "risk_type", "expiration_date"}
+                rejected = []
                 for k, v in data.items():
-                    if hasattr(params, k):
-                        old_val = getattr(params, k)
-                        setattr(params, k, v)
-                        log.info(f"Param updated: {k} = {v} (was {old_val})")
+                    if not hasattr(params, k):
+                        continue
+                    if v is None:
+                        rejected.append(k)
+                        continue
+                    if k in _num_fields:
+                        try:
+                            v = float(v)
+                            if v != v:  # NaN
+                                rejected.append(k)
+                                continue
+                            if k in {"lots_a", "lots_b", "contract_size", "lookback", "leg_a_timeout", "dev_lookback"}:
+                                v = int(round(v))
+                        except (TypeError, ValueError):
+                            rejected.append(k)
+                            continue
+                    elif k in _str_fields:
+                        v = str(v)
+                        if not v.strip():
+                            rejected.append(k)
+                            continue
+                    old_val = getattr(params, k)
+                    setattr(params, k, v)
+                    log.info(f"Param updated: {k} = {v} (was {old_val})")
+                if rejected:
+                    log.warning(f"/params rejected fields: {rejected}")
                 # Update strategy references
                 strategy.p = params
                 strategy.basis_calc.lookback = params.lookback
@@ -1051,7 +1083,9 @@ class APIHandler(BaseHTTPRequestHandler):
                 strategy.basis_calc.dev_push_interval = params.dev_push_interval
                 strategy.basis_calc.set_dividends(getattr(params, "dividends", []) or [])
                 save_config()
-            self._json(200, {"ok": True})
+                self._json(200, {"ok": True, "rejected": rejected})
+            else:
+                self._json(200, {"ok": True})
 
         elif path == "/copy":
             # Clone config for a new robot instance

@@ -3965,7 +3965,7 @@ async function sberSaveFromPanel() {
     // If leg A is futures, use its commission value too
     const symA = el('arbSymA')?.value || '';
     if (/\d/.test(symA)) {
-        body.commission_futures_rt = parseFloat(el('arbCommStock')?.value || body.commission_futures_rt);
+        body.commission_futures_rt = arbNum(el('arbCommStock')?.value, body.commission_futures_rt);
     }
     const r = await sber.fetch('/params', 'POST', body);
     if (r && r.ok) {
@@ -4183,7 +4183,7 @@ async function arbPySaveFromPanel() {
     // If leg A is futures, use its commission value too
     const symA = el('arbSymA')?.value || '';
     if (/\d/.test(symA)) {
-        body.commission_futures_rt = parseFloat(el('arbCommStock')?.value || body.commission_futures_rt);
+        body.commission_futures_rt = arbNum(el('arbCommStock')?.value, body.commission_futures_rt);
     }
     // Save account to server and refresh data
     if (chosenAccount) {
