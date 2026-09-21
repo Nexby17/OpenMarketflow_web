@@ -179,3 +179,12 @@
 - Базис обоих арб-роботов считался завышенным ×30 (спред +25777₽ вместо +940₽ на SBER): в arb_config.json
   стоял hedge_ratio=10 (наследие старого конфига), при том что 1 фьючерс = 100 акций.
 - Верификация после фикса (GAZP/GZZ6): spread=+335₽, fair=+335.2₽, dev=-0.22₽ — рынок около fair.
+
+### 11:29 — Фикс ▶ арб-робота (репорт: «нажал старт — не запустился»)
+- Причина: startViaServer (F-018) только поднимал процесс, а POST /start на робота (включение mode=running)
+  потерялся при переносе кнопки на серверный process manager.
+- Фикс: startViaServer после подъёма процесса ждёт 2.5с и шлёт POST /start роботу; stopViaServer сначала
+  останавливает торговлю, потом убивает процесс. v=93.
+- Попутно: SubscribeQuote/SubscribeLatestTrades стримы finam_compat ходили без auth-metadata
+  (UNAUTHENTICATED цикл в err) — jwt добавлен.
+- Верификация: arb_gazp перезапущен → robot /start → mode=running, basis стримится, UNAUTH=0. Коммит 637cf06.
