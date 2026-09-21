@@ -19,7 +19,7 @@ BOARD_B = os.environ.get("ARB_BOARD_B", "RTSSTD")  # RTSSTD for futures
 # === Strategy Defaults (override in arb_config.json) ===
 LOTS_A = 10         # lots for instrument A (GAZP: 10 lots × 10 shares = 100)
 LOTS_B = 1          # lots for instrument B (GZM6: 1 contract × 100 shares = 100)
-HEDGE_RATIO = 10.0  # price_A × ratio = comparable price_B (GAZP×10 = GZ)
+HEDGE_RATIO = 100.0  # price_A × ratio = comparable price_B (GAZP×10 = GZ)
 
 # Z-score / deviation entry (Fix #1, 2026-09-10)
 # Default mode: annualized deviation-from-fair % (see ArbParams docs)
