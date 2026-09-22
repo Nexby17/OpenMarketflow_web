@@ -24,6 +24,8 @@ let arbPanelInstanceObj = null;
 function arbLog(instance, msg, level) {
     const inst = ARB_INSTANCE_MAP[instance] || ARB_INSTANCE_MAP.gazp;
     arbPyLog(msg, level, inst.logId);
+    // F-036: дублировать в общий «Лог событий» (кроме GAZP — его личный лог и есть общий)
+    if (inst.logId !== 'arbPyLogContainer') arbPyLog(msg, level);
 }
 
 // ДЕЛЕГИРОВАННЫЙ обработчик: кнопка сохранения внутри панелиarb
