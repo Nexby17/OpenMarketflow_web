@@ -3628,6 +3628,7 @@ function arbPyLog(msg, level='INFO') {
     while (c.children.length > 50) c.removeChild(c.lastChild);
 }
 function arbPyEditPanel() {
+    ['arbPyEditPanel','sberEditPanel','brCalEditPanel'].forEach(pid => { if (pid !== 'arbPyEditPanel') el(pid)?.remove(); });
     const existing = el('arbPyEditPanel');
     if (existing) { existing.remove(); _arbJournalInstance = null; return; }
     // Set journal instance to GAZP (null=arbPy) only if not already set by sber/brCal caller
@@ -3866,6 +3867,7 @@ function arbPyEditPanel() {
 }
 
 async function sberEditPanel() {
+    ['arbPyEditPanel','sberEditPanel','brCalEditPanel'].forEach(pid => { if (pid !== 'sberEditPanel') el(pid)?.remove(); });
     const existing = el('sberEditPanel');
     if (existing) { existing.remove(); _arbJournalInstance = null; return; }
     _arbJournalInstance = 'sber';
@@ -3952,6 +3954,7 @@ async function sberSaveFromPanel() {
 }
 
 async function brCalEditPanel() {
+    ['arbPyEditPanel','sberEditPanel','brCalEditPanel'].forEach(pid => { if (pid !== 'brCalEditPanel') el(pid)?.remove(); });
     const existing = el('brCalEditPanel');
     if (existing) { existing.remove(); _arbJournalInstance = null; return; }
     _arbJournalInstance = 'brCal';
