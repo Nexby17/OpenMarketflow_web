@@ -109,10 +109,14 @@ def load_params() -> ArbParams:
 
 params = load_params()
 
-# F-022: пара инстанса — жёсткая из env (сервер передаёт ARB_TICKER_A/B),
-# поверх любых значений из конфиг-файла. Панель параметров пару не меняет.
+# F-031: пара из конфига (UI select'ы сохраняют её в конфиг инстанса).
+# Env-пара применяется ТОЛЬКО если конфиг-файла не было (первый старт инстанса).
 _env_ticker_a = os.environ.get("ARB_TICKER_A")
 _env_ticker_b = os.environ.get("ARB_TICKER_B")
+_cfg_path_check = os.environ.get("ARB_CONFIG_FILE") or os.path.join(os.getcwd(), "arb_config.json")
+_cfg_existed = os.path.exists(_cfg_path_check)
+if _cfg_existed:
+    _env_ticker_a = _env_ticker_b = None
 if _env_ticker_a:
     params.ticker_a = _env_ticker_a
     params.symbol_a = os.environ.get("ARB_SYMBOL_A", _env_ticker_a + "@MISX")
@@ -1082,8 +1086,11 @@ class APIHandler(BaseHTTPRequestHandler):
                     if v is None:
                         rejected.append(k)
                         continue
+                    # F-031: пара снова выбирается в UI — применяется live
                     if k in {"ticker_a", "ticker_b", "symbol_a", "symbol_b"}:
-                        rejected.append(k)  # F-022: пара меняется только перезапуском инстанса
+                        old_val = getattr(params, k)
+                        setattr(params, k, str(v).strip())
+                        log.info(f"Pair field updated: {k} = {v} (was {old_val})")
                         continue
                     if k in _num_fields:
                         try:

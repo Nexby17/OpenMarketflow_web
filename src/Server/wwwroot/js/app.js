@@ -3951,7 +3951,12 @@ async function sberSaveFromPanel() {
         dev_ann_low: arbNum(el('arbDevAnnLow')?.value, -1),
         dev_lookback: arbNum(el('arbDevLookback')?.value, 2500),
         dev_push_interval: arbNum(el('arbDevPush')?.value, 60),
-        dividends: (arbPyData && arbPyData.params && arbPyData.params.dividends) || [],
+        dividends: (sber.getData() && sber.getData().params && sber.getData().params.dividends) || [],
+        // F-031: пара снова выбирается в панели (select'ы возвращены)
+        ticker_a: el('arbSymA').value,
+        ticker_b: el('arbSymB').value,
+        symbol_a: ((el('arbSymA').value === 'SBER' || el('arbSymA').value === 'GAZP') ? el('arbSymA').value + '@MISX' : el('arbSymA').value + '@RTSX'),
+        symbol_b: el('arbSymB').value + '@RTSX',
     };
     // If leg A is futures, use its commission value too
     const symA = el('arbSymA')?.value || '';
@@ -4031,6 +4036,10 @@ async function brCalSaveFromPanel() {
         dev_lookback: arbNum(el('arbDevLookback')?.value, 2500),
         dev_push_interval: arbNum(el('arbDevPush')?.value, 60),
         dividends: (brCal.getData() && brCal.getData().params && brCal.getData().params.dividends) || [],
+        ticker_a: el('arbSymA').value,
+        ticker_b: el('arbSymB').value,
+        symbol_a: el('arbSymA').value + '@RTSX',
+        symbol_b: el('arbSymB').value + '@RTSX',
     };
     const symA = el('arbSymA')?.value || '';
     if (/\d/.test(symA)) {
@@ -4063,23 +4072,23 @@ async function arbPySaveFromPanel() {
         dev_ann_high: arbNum(el('arbDevAnnHigh')?.value, 2.5),
         dev_ann_low: arbNum(el('arbDevAnnLow')?.value, -1),
         dev_lookback: parseInt(el('arbDevLookback')?.value || 2500),
-        dev_push_interval: parseFloat(el('arbDevPush')?.value || 60),
-        spread_rub_high: parseFloat(el('arbSpreadRubHigh')?.value || 400),
-        spread_rub_low: parseFloat(el('arbSpreadRubLow')?.value || 200),
-        risk_free_rate: parseFloat(el('arbRate').value) / 100,
+        dev_push_interval: arbNum(el('arbDevPush')?.value, 60),
+        spread_rub_high: arbNum(el('arbSpreadRubHigh')?.value, 400),
+        spread_rub_low: arbNum(el('arbSpreadRubLow')?.value, 200),
+        risk_free_rate: arbNum(el('arbRate')?.value, 16) / 100,
         expiration_date: el('arbExpiration').value,
-        contract_size: parseInt(el('arbContractSize').value),
-        lookback: parseInt(el('arbLookback').value),
-        leg_a_timeout: parseInt(el('arbLegTimeout').value),
-        min_fill_ratio: parseFloat(el('arbMinFill').value),
+        contract_size: arbNum(el('arbContractSize')?.value, 100),
+        lookback: arbNum(el('arbLookback')?.value, 50),
+        leg_a_timeout: arbNum(el('arbLegTimeout')?.value, 5),
+        min_fill_ratio: arbNum(el('arbMinFill')?.value, 0.5),
         min_profit_type: el('arbMinProfitType').value,
-        min_profit_value: parseFloat(el('arbMinProfitVal').value),
+        min_profit_value: arbNum(el('arbMinProfitVal')?.value, 30),
         risk_type: el('arbRiskType').value,
-        risk_value: parseFloat(el('arbRiskVal').value),
+        risk_value: arbNum(el('arbRiskVal')?.value, 5000),
         allow_long_basis: el('arbAllowLong')?.checked || false,
         use_commission: el('arbUseCommission')?.checked ?? true,
-        commission_stock_pct: parseFloat(el('arbCommStock')?.value || 0.04),
-        commission_futures_rt: parseFloat(el('arbCommFut')?.value || 0.9),
+        commission_stock_pct: arbNum(el('arbCommStock')?.value, 0.04),
+        commission_futures_rt: arbNum(el('arbCommFut')?.value, 0.9),
     };
     // If leg A is futures, use its commission value too
     const symA = el('arbSymA')?.value || '';
