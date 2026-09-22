@@ -88,8 +88,11 @@ app.UseStaticFiles(new StaticFileOptions
 {
     OnPrepareResponse = ctx =>
     {
-        // No-cache для HTML — чтобы бампы версий <script> всегда подхватывались
-        if (ctx.File.Name.EndsWith(".html", StringComparison.OrdinalIgnoreCase))
+        // No-cache для HTML и JS — чтобы UI фиксы применялись сразу (F-024),
+        // без ручных Ctrl+F5 и бампов версий
+        var fname = ctx.File.Name ?? "";
+        if (fname.EndsWith(".html", StringComparison.OrdinalIgnoreCase) ||
+            fname.EndsWith(".js", StringComparison.OrdinalIgnoreCase))
         {
             ctx.Context.Response.Headers["Cache-Control"] = "no-cache, no-store, must-revalidate";
             ctx.Context.Response.Headers["Pragma"] = "no-cache";
