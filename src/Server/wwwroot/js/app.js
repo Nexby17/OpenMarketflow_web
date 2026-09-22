@@ -1,4 +1,13 @@
 // === Auth Check ===
+// F-021 helper: decimal-comma tolerant number parse.
+// parseFloat('0,02') = 0 — Russian locale inputs were silently zeroed;
+// empty/NaN -> fallback. Defined ONCE at file top (was lost in refactor).
+function arbNum(v, fallback) {
+    if (v === null || v === undefined) return fallback;
+    const n = parseFloat(String(v).replace(',', '.'));
+    return isFinite(n) ? n : fallback;
+}
+
 (function() {
     // Check if authenticated
     fetch('/api/me', { credentials: 'include' })
