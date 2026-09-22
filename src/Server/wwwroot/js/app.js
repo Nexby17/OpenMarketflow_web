@@ -3880,6 +3880,9 @@ async function sberEditPanel() {
     const savedInstance = _arbJournalInstance;
     // Call the same render logic
     arbPyEditPanel();
+    // F-022b: restore global data IMMEDIATELY after render — panel DOM holds its own
+    // input values now; leaving arbPyData swapped caused cross-instance saves
+    arbPyData = savedArbPyData;
     // Restore journal instance (arbPyEditPanel may have reset it)
     _arbJournalInstance = savedInstance;
     // Rename the panel
@@ -3963,6 +3966,7 @@ async function brCalEditPanel() {
     arbPyData = brCal.getData();
     const savedInstance = _arbJournalInstance;
     arbPyEditPanel();
+    arbPyData = savedArbPyData;  // F-022b: restore global immediately
     setTimeout(arbUpdateCommissionLabels, 50);
     _arbJournalInstance = savedInstance;
     const panel = el('arbPyEditPanel');
@@ -4010,7 +4014,7 @@ async function brCalSaveFromPanel() {
         dev_ann_low: arbNum(el('arbDevAnnLow')?.value, -1),
         dev_lookback: arbNum(el('arbDevLookback')?.value, 2500),
         dev_push_interval: arbNum(el('arbDevPush')?.value, 60),
-        dividends: (arbPyData && arbPyData.params && arbPyData.params.dividends) || [],
+        dividends: (brCal.getData() && brCal.getData().params && brCal.getData().params.dividends) || [],
     };
     const symA = el('arbSymA')?.value || '';
     if (/\d/.test(symA)) {
