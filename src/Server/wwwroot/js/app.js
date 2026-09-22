@@ -3901,9 +3901,13 @@ async function sberEditPanel() {
         // Update header to show SBER
         const header = panel.querySelector('.card-header');
         if (header) header.innerHTML = header.innerHTML.replace('Арбитражный робот (PYTHON)', 'Арбитражный робот — SBER/SRZ6');
-        // Override save button to save to SBER
+        // Override save button to save to SBER (F-032: addEventListener — надёжнее rebind
+        // inline onclick, который мог быть перезаписан повторным рендером)
         const saveBtn = panel.querySelector('button[onclick*="arbPySaveFromPanel"]');
-        if (saveBtn) saveBtn.setAttribute('onclick', 'sberSaveFromPanel()');
+        if (saveBtn) {
+            saveBtn.removeAttribute('onclick');
+            saveBtn.addEventListener('click', function(ev) { ev.preventDefault(); sberSaveFromPanel(); });
+        }
         // Override copy button
         const copyBtn = panel.querySelector('button[onclick*="arbPyShowCopyDialog"]');
         if (copyBtn) copyBtn.remove();
@@ -3992,8 +3996,11 @@ async function brCalEditPanel() {
         panel.id = 'brCalEditPanel';
         const header = panel.querySelector('.card-header');
         if (header) header.innerHTML = header.innerHTML.replace('Арбитражный робот (PYTHON)', 'Арбитражный робот — BR Calendar');
-        const saveBtn = panel.querySelector('button[onclick*="arbPySaveFromPanel"]');
-        if (saveBtn) saveBtn.setAttribute('onclick', 'brCalSaveFromPanel()');
+                const saveBtn = panel.querySelector('button[onclick*="arbPySaveFromPanel"]');
+        if (saveBtn) {
+            saveBtn.removeAttribute('onclick');
+            saveBtn.addEventListener('click', function(ev) { ev.preventDefault(); brCalSaveFromPanel(); });
+        }
         const copyBtn = panel.querySelector('button[onclick*="arbPyShowCopyDialog"]');
         if (copyBtn) copyBtn.remove();
         const closeBtn = panel.querySelector('button[onclick*="arbPyEditPanel"]');
