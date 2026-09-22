@@ -70,6 +70,24 @@ header { display: flex; justify-content: space-between; align-items: center; pad
 
 /* Inputs */
 .select, .input { background: var(--surface2); color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 6px 10px; font-size: 13px; }
+
+/* F-034: явная стрелка выпадения для select (иначе в тёмной теме выглядит как кнопка) */
+select.input {
+    appearance: auto;
+    -webkit-appearance: menulist-button;
+    background-image: url("data:image/svg+xml;charset=UTF-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%239aa3b2' stroke-width='2' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 8px center;
+    padding-right: 26px;
+    cursor: pointer;
+}
+select.input:focus {
+    border-color: var(--accent, #5b9cf5);
+    outline: none;
+}
+/* опции выпадающего списка читаемы в тёмной теме */
+select.input option { background: var(--surface2, #1d212b); color: var(--text, #e8eaf0); padding: 4px; }
+
 .select-sm { padding: 3px 6px; font-size: 12px; }
 label { font-size: 12px; color: var(--text2); margin-bottom: 2px; display: block; }
 
