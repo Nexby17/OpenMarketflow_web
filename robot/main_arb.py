@@ -203,7 +203,7 @@ def _update_data_ts():
     global _last_data_ts
     _last_data_ts = time.time()
 
-STATE_FILE = os.path.join(os.getcwd(), "arb_state.json")
+STATE_FILE = os.environ.get("ARB_STATE_FILE") or os.path.join(os.getcwd(), "arb_state.json")
 
 
 def save_state():
