@@ -14,18 +14,16 @@ const ARB_INSTANCE_MAP = {
     gazp: { port: 5090, procName: 'arb_gazp', label: 'GAZP/GZZ6', symA: 'GAZP', symB: 'GZZ6',
             sufA: '@MISX', sufB: '@RTSX', logId: 'arbPyLogContainer' },
     sber: { port: 5091, procName: 'arb_sber', label: 'SBER/SRZ6', symA: 'SBER', symB: 'SRZ6',
-            sufA: '@MISX', sufB: '@RTSX', logId: 'sberLogContainer' },
+            sufA: '@MISX', sufB: '@RTSX', logId: 'arbPyLogContainer' },
     br:   { port: 5092, procName: 'arb_br', label: 'BRV6/BRZ6', symA: 'BRV6', symB: 'BRZ6',
-            sufA: '@RTSX', sufB: '@RTSX', logId: 'brCalLogContainer' },
+            sufA: '@RTSX', sufB: '@RTSX', logId: 'arbPyLogContainer' },
 };
 let arbPanelInstance = null;
 let arbPanelInstanceObj = null;
 
 function arbLog(instance, msg, level) {
-    const inst = ARB_INSTANCE_MAP[instance] || ARB_INSTANCE_MAP.gazp;
-    arbPyLog(msg, level, inst.logId);
-    // F-036: дублировать в общий «Лог событий» (кроме GAZP — его личный лог и есть общий)
-    if (inst.logId !== 'arbPyLogContainer') arbPyLog(msg, level);
+    // F-037: все арб-роботы пишут только в общий «Лог событий»
+    arbPyLog(msg, level, 'arbPyLogContainer');
 }
 
 // ДЕЛЕГИРОВАННЫЙ обработчик: кнопка сохранения внутри панелиarb
