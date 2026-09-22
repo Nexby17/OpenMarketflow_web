@@ -3899,10 +3899,12 @@ function arbPyEditPanel() {
     setTimeout(() => arbLoadJournal(), 300);
 }
 
-function sberEditPanel() {
+async function sberEditPanel() {
     const existing = el('sberEditPanel');
     if (existing) { existing.remove(); _arbJournalInstance = null; return; }
     _arbJournalInstance = 'sber';
+    // F-021b: свежие данные робота ДО рендера панели (иначе кеш со старыми порогами)
+    await sber.refresh();
     // Temporarily swap arbPyData so arbPyEditPanel renders with SBER params
     const savedArbPyData = arbPyData;
     arbPyData = sber.getData();
@@ -4015,142 +4017,50 @@ async function brCalSaveFromPanel() {
         symbol_a: el('arbSymA').value + '@RTSX',
         ticker_b: el('arbSymB').value,
         symbol_b: el('arbSymB').value + '@RTSX',
-        lots_a: parseInt(el('arbLotsA').value),
-        lots_b: parseInt(el('arbLotsB').value),
-        hedge_ratio: parseFloat(el('arbHedgeRatio').value),
-        capital: parseFloat(el('arbCapital')?.value || 100000),
-        entry_z: parseFloat(el('arbEntryZ').value),
-        entry_z_long: parseFloat(el('arbEntryZLong').value),
+        lots_a: arbNum(el('arbLotsA')?.value, 1),
+        lots_b: arbNum(el('arbLotsB')?.value, 1),
+        hedge_ratio: arbNum(el('arbHedgeRatio')?.value, 1),
+        capital: arbNum(el('arbCapital')?.value, 100000),
+        entry_z: arbNum(el('arbEntryZ')?.value, 2),
+        entry_z_long: arbNum(el('arbEntryZLong')?.value, -5),
         entry_mode: el('arbEntryModeRub')?.checked ? 'spread_rub' : 'zscore',
-        spread_rub_high: parseFloat(el('arbSpreadRubHigh')?.value || 5),
-        spread_rub_low: parseFloat(el('arbSpreadRubLow')?.value || -5),
-        risk_free_rate: parseFloat(el('arbRate')?.value || 14.25) / 100,
-        expiration_date: el('arbExpiration')?.value || '2026-09-18',
-        contract_size: parseInt(el('arbContractSize')?.value || 1),
-        lookback: parseInt(el('arbLookback').value),
-        leg_a_timeout: parseInt(el('arbLegTimeout').value),
-        min_fill_ratio: parseFloat(el('arbMinFill').value),
-        min_profit_type: el('arbMinProfitType').value,
-        min_profit_value: parseFloat(el('arbMinProfitVal').value),
-        risk_type: el('arbRiskType').value,
-        risk_value: parseFloat(el('arbRiskVal').value),
+        spread_rub_high: arbNum(el('arbSpreadRubHigh')?.value, 400),
+        spread_rub_low: arbNum(el('arbSpreadRubLow')?.value, 200),
+        risk_free_rate: arbNum(el('arbRate')?.value, 16) / 100,
+        expiration_date: el('arbExpiration')?.value || '2026-12-30',
+        contract_size: arbNum(el('arbContractSize')?.value, 1),
+        lookback: arbNum(el('arbLookback')?.value, 50),
+        leg_a_timeout: arbNum(el('arbLegTimeout')?.value, 5),
+        min_fill_ratio: arbNum(el('arbMinFill')?.value, 0.5),
+        min_profit_type: el('arbMinProfitType')?.value || 'rub',
+        min_profit_value: arbNum(el('arbMinProfitVal')?.value, 30),
+        risk_type: el('arbRiskType')?.value || 'stop_loss_rub',
+        risk_value: arbNum(el('arbRiskVal')?.value, 5000),
         allow_long_basis: el('arbAllowLong')?.checked || false,
         use_commission: el('arbUseCommission')?.checked ?? true,
-        commission_stock_pct: parseFloat(el('arbCommStock')?.value || 0.035),
-        commission_futures_rt: parseFloat(el('arbCommFut')?.value || 7.5),
-        slippage_bps: parseFloat(el('arbSlippage')?.value || 10),
+        commission_stock_pct: arbNum(el('arbCommStock')?.value, 15),
+        commission_futures_rt: arbNum(el('arbCommFut')?.value, 15),
+        slippage_bps: arbNum(el('arbSlippage')?.value, 5),
+        dev_ann_high: arbNum(el('arbDevAnnHigh')?.value, 2.5),
+        dev_ann_low: arbNum(el('arbDevAnnLow')?.value, -1),
+        dev_lookback: arbNum(el('arbDevLookback')?.value, 2500),
+        dev_push_interval: arbNum(el('arbDevPush')?.value, 60),
+        dividends: (arbPyData && arbPyData.params && arbPyData.params.dividends) || [],
     };
-    // If leg A is futures, use its value as commission_futures_rt too (both legs same fee)
     const symA = el('arbSymA')?.value || '';
     if (/\d/.test(symA)) {
-        body.commission_futures_rt = parseFloat(el('arbCommStock')?.value || 15);
+        body.commission_futures_rt = arbNum(el('arbCommStock')?.value, body.commission_futures_rt);
     }
     const r = await brCal.fetch('/params', 'POST', body);
     if (r && r.ok) {
-        arbPyLog('✅ BR Calendar параметры сохранены');
-        brCal.refresh();
+        const rej = (r && r.rejected || []).join(', ');
+        arbPyLog('✅ BR Calendar параметры сохранены' + (rej ? ' (отклонены: ' + rej + ')' : ''), rej ? 'WARN' : 'INFO');
+        await brCal.refresh();
         el('brCalEditPanel')?.remove();
     } else {
         arbPyLog('Ошибка сохранения BR Calendar', 'ERROR');
     }
 }
-
-function arbEntryModeToggle() {
-    const checked = el('arbEntryModeRub')?.checked;
-    const inputs = el('arbRubInputs');
-    if (inputs) inputs.style.display = checked ? 'block' : 'none';
-    // Grey out Z-score inputs when Variant 1 active
-    const zShort = el('arbEntryZ');
-    const zLong = el('arbEntryZLong');
-    if (zShort) { zShort.disabled = checked; zShort.style.opacity = checked ? 0.4 : 1; }
-    if (zLong) { zLong.disabled = checked; zLong.style.opacity = checked ? 0.4 : 1; }
-}
-
-function arbUpdateCommissionLabels() {
-    // Update commission labels based on selected instruments
-    const symA = el('arbSymA')?.value || '';
-    const isFutA = /\d/.test(symA);
-    const labelA = el('arbCommALabel');
-    const warnBoth = el('arbCommBothFut');
-    if (labelA) {
-        labelA.textContent = isFutA ? 'Фьючерс A (₽ за контракт RT)' : 'Акция A (% за сторону)';
-    }
-    if (warnBoth) {
-        warnBoth.style.display = isFutA ? 'block' : 'none';
-    }
-}
-
-function arbPyUpdateL2() {
-    if (!el('arbL2A')) return;
-    if (!arbPyData) return;
-    const obA = arbPyData.obA || {};
-    const obB = arbPyData.obB || {};
-    const basis = arbPyData.basis || {};
-    if (el('arbL2A')) el('arbL2A').textContent = `${obA.bestBid||'—'} / ${obA.bestAsk||'—'} (${obA.totalVol||0})`;
-    if (el('arbL2B')) el('arbL2B').textContent = `${obB.bestBid||'—'} / ${obB.bestAsk||'—'} (${obB.totalVol||0})`;
-    if (el('arbDataPts')) el('arbDataPts').textContent = basis.data_points || 0;
-    // Spread metrics
-    const pa = basis.price_a || 0;
-    const pb = basis.price_b || 0;
-    const spread = basis.spread_rub || 0;
-    const spreadPct = basis.spread_pct || 0;
-    if (el('arbSpreadRub')) {
-        el('arbSpreadRub').textContent = (spread >= 0 ? '+' : '') + spread.toFixed(2) + ' ₽';
-        el('arbSpreadRub').style.color = spread > 0 ? 'var(--green)' : spread < 0 ? 'var(--red)' : 'var(--accent)';
-    }
-    if (el('arbSpreadPct')) el('arbSpreadPct').textContent = (spreadPct >= 0 ? '+' : '') + spreadPct.toFixed(3) + '%';
-    if (el('arbFairSpread')) el('arbFairSpread').textContent = basis.fair_spread != null ? basis.fair_spread.toFixed(1) + ' ₽' : '—';
-    if (el('arbDeviation')) {
-        const dev = basis.deviation || 0;
-        el('arbDeviation').textContent = (dev >= 0 ? '+' : '') + dev.toFixed(1) + ' ₽';
-        el('arbDeviation').style.color = dev > 0 ? 'var(--green)' : dev < 0 ? 'var(--red)' : '';
-    }
-    if (el('arbSpotValue')) {
-        el('arbSpotValue').textContent = pa > 0 ? (pa * 100).toFixed(0) + ' ₽' : '—';
-        const spotLabel = el('arbSpotValue').parentElement.querySelector('.metric-label');
-        if (spotLabel) spotLabel.textContent = (arbPyData?.tickerA || 'Spot') + (parseInt(arbPyData?.params?.contract_size)>1 ? ' × ' + arbPyData?.params?.contract_size : '');
-    }
-    if (el('arbFutValue')) el('arbFutValue').textContent = pb > 0 ? pb.toFixed(0) + ' ₽' : '—';
-    const futLabel = el('arbFutLabel');
-    if (futLabel) futLabel.textContent = (arbPyData?.tickerB || 'Фьюч') + ' (фьюч)';
-    if (el('arbBasisVal')) el('arbBasisVal').textContent = basis.basis != null ? basis.basis.toFixed(1) : '—';
-    if (el('arbZVal')) {
-        const z = basis.zscore_dev != null ? basis.zscore_dev : (basis.zscore || 0);
-        el('arbZVal').textContent = z.toFixed(3);
-        el('arbZVal').style.color = Math.abs(z) >= 2 ? 'var(--accent)' : '';
-    }
-    if (el('arbDevAnn')) {
-        const da = basis.dev_ann_pct || 0;
-        el('arbDevAnn').textContent = (da >= 0 ? '+' : '') + da.toFixed(2) + '%';
-        el('arbDevAnn').style.color = da > 0 ? 'var(--green)' : da < 0 ? 'var(--red)' : '';
-    }
-    if (el('arbMeanVal')) el('arbMeanVal').textContent = (basis.dev_mean != null ? basis.dev_mean : (basis.basis_mean || 0)).toFixed(1);
-    if (el('arbStdVal')) el('arbStdVal').textContent = (basis.dev_std != null ? basis.dev_std : (basis.basis_std || 0)).toFixed(1);
-    if (el('arbDaysExp')) el('arbDaysExp').textContent = basis.days_to_exp || '—';
-    // Spread calculator (always visible)
-    if (el('arbCalcSpread')) {
-        el('arbCalcSpread').textContent = (spread >= 0 ? '+' : '') + spread.toFixed(2) + ' ₽';
-        el('arbCalcSpread').style.color = spread > 0 ? 'var(--green)' : spread < 0 ? 'var(--red)' : '';
-    }
-    if (el('arbCalcFair')) el('arbCalcFair').textContent = (basis.fair_spread != null ? basis.fair_spread.toFixed(1) + ' ₽' : '—');
-    if (el('arbCalcDev')) {
-        const dev = basis.deviation || 0;
-        el('arbCalcDev').textContent = (dev >= 0 ? '+' : '') + dev.toFixed(1) + ' ₽';
-        el('arbCalcDev').style.color = dev > 0 ? 'var(--green)' : dev < 0 ? 'var(--red)' : '';
-    }
-    if (el('arbCalcZ')) {
-        const z = basis.zscore_dev != null ? basis.zscore_dev : (basis.zscore || 0);
-        el('arbCalcZ').textContent = z.toFixed(3);
-        el('arbCalcZ').style.color = Math.abs(z) >= 2 ? 'var(--accent)' : '';
-    }
-    const ext = basis.dev_extremes || {};
-    if (el('arbCalcMax')) el('arbCalcMax').textContent = '+' + (ext.dev_max || 0).toFixed(1) + '₽';
-    if (el('arbCalcMin')) el('arbCalcMin').textContent = (ext.dev_min || 0).toFixed(1) + '₽';
-    if (el('arbCalcMean')) el('arbCalcMean').textContent = (((ext.avg_max || 0) + (ext.avg_min || 0)) / 2).toFixed(1) + '₽';
-    if (el('arbCalcSH')) el('arbCalcSH').textContent = (basis.suggested_high || 0).toFixed(0) + '₽';
-    if (el('arbCalcSL')) el('arbCalcSL').textContent = (basis.suggested_low || 0).toFixed(0) + '₽';
-}
-
 async function arbPySaveFromPanel() {
     const chosenAccount = el('arbAccount')?.value;
     const body = {
@@ -4198,8 +4108,9 @@ async function arbPySaveFromPanel() {
     }
     const r = await arbPyFetch('/params', 'POST', body);
     if (r && r.ok) {
-        arbPyLog('✅ Параметры сохранены');
-        arbPyRefresh();
+        const rej = (r && r.rejected || []).join(', ');
+        arbPyLog('✅ Параметры сохранены' + (rej ? ' (отклонены: ' + rej + ')' : ''), rej ? 'WARN' : 'INFO');
+        await arbPyRefresh();  // F-021b: свежие данные до закрытия панели
     } else {
         arbPyLog('Ошибка сохранения параметров', 'ERROR');
     }
