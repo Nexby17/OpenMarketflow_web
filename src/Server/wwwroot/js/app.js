@@ -3628,8 +3628,8 @@ async function arbPyFetch(path, method='GET', body=null) {
     return arbPy.fetch(path, method, body);
 }
 
-function arbPyLog(msg, level='INFO') {
-    const c = el('arbPyLogContainer');
+function arbPyLog(msg, level='INFO', containerId='arbPyLogContainer') {
+    const c = el(containerId) || el('arbPyLogContainer');
     if (!c) return;
     const t = new Date().toLocaleTimeString('ru-RU');
     const color = level === 'ERROR' ? '#F44336' : level === 'WARN' ? '#FF9800' : '#4CAF50';
@@ -3960,11 +3960,11 @@ async function sberSaveFromPanel() {
     }
     const r = await sber.fetch('/params', 'POST', body);
     if (r && r.ok) {
-        arbPyLog('✅ SBER/SRZ6 параметры сохранены');
+        arbPyLog('✅ SBER/SRZ6 параметры сохранены', 'INFO', 'sberLogContainer');
         sber.refresh();
         el('sberEditPanel')?.remove();
     } else {
-        arbPyLog('Ошибка сохранения SBER/SRZ6', 'ERROR');
+        arbPyLog('Ошибка сохранения SBER/SRZ6', 'ERROR', 'sberLogContainer');
     }
     } catch(e) { arbPyLog('\u274c \u041e\u0448\u0438\u0431\u043a\u0430 JS: ' + e.message + ' \u2014 \u043e\u0431\u043d\u043e\u0432\u0438\u0442\u0435 \u0441\u0442\u0440\u0430\u043d\u0438\u0446\u0443 Ctrl+F5', 'ERROR'); }
 }
@@ -4043,7 +4043,7 @@ async function brCalSaveFromPanel() {
         await brCal.refresh();
         el('brCalEditPanel')?.remove();
     } else {
-        arbPyLog('Ошибка сохранения BR Calendar', 'ERROR');
+        arbPyLog('Ошибка сохранения BR Calendar', 'ERROR', 'brCalLogContainer');
     }
     } catch(e) { arbPyLog('\u274c \u041e\u0448\u0438\u0431\u043a\u0430 JS: ' + e.message + ' \u2014 \u043e\u0431\u043d\u043e\u0432\u0438\u0442\u0435 \u0441\u0442\u0440\u0430\u043d\u0438\u0446\u0443 Ctrl+F5', 'ERROR'); }
 }
