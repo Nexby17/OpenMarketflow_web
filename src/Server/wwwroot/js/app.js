@@ -3914,6 +3914,9 @@ async function sberEditPanel() {
 }
 
 async function sberSaveFromPanel() {
+    arbPyLog('\ud83d\udcbe \u0421\u043e\u0445\u0440\u0430\u043d\u0438\u0442\u044c \u043d\u0430\u0436\u0430\u0442\u043e (SBER/SRZ6)', 'INFO');
+    try {
+    if (typeof arbNum !== 'function') { arbPyLog('\u274c \u0421\u043a\u0440\u0438\u043f\u0442 \u0443\u0441\u0442\u0430\u0440\u0435\u043b \u2014 \u043e\u0431\u043d\u043e\u0432\u0438\u0442\u0435 \u0441\u0442\u0440\u0430\u043d\u0438\u0446\u0443 (Ctrl+F5)', 'ERROR'); return; }
     const body = {
         ticker_a: el('arbSymA').value,
         symbol_a: el('arbSymA').value + '@MISX',
@@ -3963,6 +3966,7 @@ async function sberSaveFromPanel() {
     } else {
         arbPyLog('Ошибка сохранения SBER/SRZ6', 'ERROR');
     }
+    } catch(e) { arbPyLog('\u274c \u041e\u0448\u0438\u0431\u043a\u0430 JS: ' + e.message + ' \u2014 \u043e\u0431\u043d\u043e\u0432\u0438\u0442\u0435 \u0441\u0442\u0440\u0430\u043d\u0438\u0446\u0443 Ctrl+F5', 'ERROR'); }
 }
 
 async function brCalEditPanel() {
@@ -3994,6 +3998,9 @@ async function brCalEditPanel() {
 // NOTE: brCal = Brent calendar spread (both legs futures @RTSX) — symbol_a stays @RTSX there.
 
 async function brCalSaveFromPanel() {
+    arbPyLog('\ud83d\udcbe \u0421\u043e\u0445\u0440\u0430\u043d\u0438\u0442\u044c \u043d\u0430\u0436\u0430\u0442\u043e (BR Calendar)', 'INFO');
+    try {
+    if (typeof arbNum !== 'function') { arbPyLog('\u274c \u0421\u043a\u0440\u0438\u043f\u0442 \u0443\u0441\u0442\u0430\u0440\u0435\u043b \u2014 \u043e\u0431\u043d\u043e\u0432\u0438\u0442\u0435 \u0441\u0442\u0440\u0430\u043d\u0438\u0446\u0443 (Ctrl+F5)', 'ERROR'); return; }
     const body = {
         lots_a: arbNum(el('arbLotsA')?.value, 1),
         lots_b: arbNum(el('arbLotsB')?.value, 1),
@@ -4038,8 +4045,12 @@ async function brCalSaveFromPanel() {
     } else {
         arbPyLog('Ошибка сохранения BR Calendar', 'ERROR');
     }
+    } catch(e) { arbPyLog('\u274c \u041e\u0448\u0438\u0431\u043a\u0430 JS: ' + e.message + ' \u2014 \u043e\u0431\u043d\u043e\u0432\u0438\u0442\u0435 \u0441\u0442\u0440\u0430\u043d\u0438\u0446\u0443 Ctrl+F5', 'ERROR'); }
 }
 async function arbPySaveFromPanel() {
+    arbPyLog('\ud83d\udcbe \u0421\u043e\u0445\u0440\u0430\u043d\u0438\u0442\u044c \u043d\u0430\u0436\u0430\u0442\u043e (GAZP/GZZ6)', 'INFO');
+    try {
+    if (typeof arbNum !== 'function') { arbPyLog('\u274c \u0421\u043a\u0440\u0438\u043f\u0442 \u0443\u0441\u0442\u0430\u0440\u0435\u043b \u2014 \u043e\u0431\u043d\u043e\u0432\u0438\u0442\u0435 \u0441\u0442\u0440\u0430\u043d\u0438\u0446\u0443 (Ctrl+F5)', 'ERROR'); return; }
     const chosenAccount = el('arbAccount')?.value;
     const body = {
         lots_a: arbNum(el('arbLotsA')?.value, 10),
@@ -4088,6 +4099,7 @@ async function arbPySaveFromPanel() {
     } else {
         arbPyLog('Ошибка сохранения параметров', 'ERROR');
     }
+    } catch(e) { arbPyLog('\u274c \u041e\u0448\u0438\u0431\u043a\u0430 JS: ' + e.message + ' \u2014 \u043e\u0431\u043d\u043e\u0432\u0438\u0442\u0435 \u0441\u0442\u0440\u0430\u043d\u0438\u0446\u0443 Ctrl+F5', 'ERROR'); }
 }
 
 function arbPyShowCopyDialog() {
