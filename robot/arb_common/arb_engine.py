@@ -386,6 +386,68 @@ class BasisCalculator:
         if d != 0.0:
             self._deviation_history.append(d)
 
+    def warmup_dev_history(self, spot_bars: list, fut_bars: list) -> int:
+        """F-025: pre-fill deviation history from historical H1 bars so the
+        robot can trade right after restart (instead of 50 minutes of
+        collection). spot/fut_bars: [{close: float, time: iso}, ...] aligned
+        by timestamp (intersects). Deviation per bar uses the same fair calc
+        with days_to_expiration computed at that bar time."""
+        from datetime import datetime
+        import math
+
+        def _bar_close(b):
+            """Finam REST bar: close = {'value': '95.08'} or raw number."""
+            c = b.get("close")
+            if isinstance(c, dict):
+                c = c.get("value")
+            try:
+                return float(c)
+            except (TypeError, ValueError):
+                return 0.0
+
+        def _bar_min(b):
+            """bar timestamp -> minute string normalized to 'YYYY-MM-DD HH:MM'."""
+            t = b.get("timestamp") or b.get("time") or b.get("begin") or ""
+            t = str(t).replace("T", " ")[:16]
+            return t
+
+        if not spot_bars or not fut_bars:
+            return 0
+        fmap = {}
+        for b in fut_bars:
+            t = _bar_min(b)
+            c = _bar_close(b)
+            if t and c:
+                fmap[t] = c
+        pushes = 0
+        for b in spot_bars:
+            t = _bar_min(b)
+            pa = _bar_close(b)
+            if not t or not pa or t not in fmap:
+                continue
+            pb = fmap[t]
+            if pa <= 0 or pb <= 0:
+                continue
+            spread = pb - pa * self._hedge_ratio
+            # fair at that moment: T from bar time to expiration
+            try:
+                bt = datetime.strptime(t, "%Y-%m-%d %H:%M")
+                exp = datetime.strptime(self._expiration_date, "%Y-%m-%d")
+                days = max((exp - bt).days, 0)
+            except Exception:
+                days = 0
+            carry = pa * self._contract_size * self._rate * days / 365.0
+            div_part = self._dividends_before_expiration() * self._contract_size
+            fair = carry - div_part
+            dev = spread - fair
+            if dev != 0.0 and not math.isnan(dev):
+                self._deviation_history.append(dev)
+                pushes += 1
+        # simulate: interval respected (backfill counts as history)
+        if pushes:
+            self._last_dev_push = __import__("time").time()
+        return pushes
+
     def _deviation_stats(self) -> tuple[float, float]:
         """Returns (mean, std) of deviation from fair value over dev_lookback pushes."""
         if len(self._deviation_history) < self._dev_lookback:

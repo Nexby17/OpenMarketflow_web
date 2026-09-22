@@ -134,6 +134,24 @@ ACCOUNT = config.ACCOUNT_ID
 PORT = args.port
 
 strategy = ArbitrageStrategy(params)
+
+# F-025: dev-history warmup from H1 bars (robot tradable right after start)
+def _warmup_dev_history():
+    try:
+        import finam_rest4 as _r4mod
+        from datetime import datetime, timedelta, timezone
+        end = datetime.now(timezone.utc)
+        start = end - timedelta(days=3)
+        bars_a = _r4mod.get_bars(params.symbol_a, "TIME_FRAME_H1",
+                                 start.isoformat(), end.isoformat()).get("bars", [])
+        bars_b = _r4mod.get_bars(params.symbol_b, "TIME_FRAME_H1",
+                                 start.isoformat(), end.isoformat()).get("bars", [])
+        n = strategy.basis_calc.warmup_dev_history(bars_a, bars_b)
+        log.info(f"Dev-history warmup: {n} points from H1 bars (tradable now)")
+    except Exception as e:
+        log.warning(f"dev warmup failed (non-fatal): {str(e)[:120]}")
+
+_warmup_dev_history()
 orders_mgr = ArbOrderManager(dp_url=DP_URL, account=ACCOUNT)
 execution_lock = threading.Lock()  # prevents concurrent entry/exit from different threads
 
