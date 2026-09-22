@@ -8,6 +8,191 @@ function arbNum(v, fallback) {
     return isFinite(n) ? n : fallback;
 }
 
+// ==================== F-033: единая система панелей арб-роботов ====================
+// arbArbInstances: пары инстансов (identity), arbPanelInstance — какой робот сейчас редактируется
+const ARB_INSTANCE_MAP = {
+    gazp: { port: 5090, procName: 'arb_gazp', label: 'GAZP/GZZ6', symA: 'GAZP', symB: 'GZZ6',
+            sufA: '@MISX', sufB: '@RTSX', logId: 'arbPyLogContainer' },
+    sber: { port: 5091, procName: 'arb_sber', label: 'SBER/SRZ6', symA: 'SBER', symB: 'SRZ6',
+            sufA: '@MISX', sufB: '@RTSX', logId: 'sberLogContainer' },
+    br:   { port: 5092, procName: 'arb_br', label: 'BRV6/BRZ6', symA: 'BRV6', symB: 'BRZ6',
+            sufA: '@RTSX', sufB: '@RTSX', logId: 'brCalLogContainer' },
+};
+let arbPanelInstance = null;
+let arbPanelInstanceObj = null;
+
+function arbLog(instance, msg, level) {
+    const inst = ARB_INSTANCE_MAP[instance] || ARB_INSTANCE_MAP.gazp;
+    arbPyLog(msg, level, inst.logId);
+}
+
+// ДЕЛЕГИРОВАННЫЙ обработчик: кнопка сохранения внутри панелиarb
+document.addEventListener('click', function(ev) {
+    const btn = ev.target.closest('#arbPanelSaveBtn');
+    if (!btn) return;
+    const inst = arbPanelInstance;
+    const instObj = ARB_INSTANCE_MAP[inst] || ARB_INSTANCE_MAP.gazp;
+    const api = window['arbApi_' + inst];
+    arbLog(inst, '💾 Сохранить нажато (' + instObj.label + ')', 'INFO');
+    try {
+        if (typeof arbNum !== 'function') {
+            arbLog(inst, '❌ Скрипт устарел — обновите страницу (Ctrl+F5)', 'ERROR');
+            return;
+        }
+        const body = {
+            lots_a: arbNum(el('arbLotsA')?.value, 10),
+            lots_b: arbNum(el('arbLotsB')?.value, 1),
+            hedge_ratio: arbNum(el('arbHedgeRatio')?.value, 100),
+            capital: arbNum(el('arbCapital')?.value, 100000),
+            entry_z: arbNum(el('arbEntryZ')?.value, 2),
+            entry_z_long: arbNum(el('arbEntryZLong')?.value, -5),
+            spread_rub_high: arbNum(el('arbSpreadRubHigh')?.value, 400),
+            spread_rub_low: arbNum(el('arbSpreadRubLow')?.value, 200),
+            risk_free_rate: arbNum(el('arbRate')?.value, 16) / 100,
+            expiration_date: el('arbExpiration')?.value || '2026-12-17',
+            contract_size: arbNum(el('arbContractSize')?.value, 100),
+            lookback: arbNum(el('arbLookback')?.value, 50),
+            leg_a_timeout: arbNum(el('arbLegTimeout')?.value, 5),
+            min_fill_ratio: arbNum(el('arbMinFill')?.value, 0.5),
+            min_profit_type: el('arbMinProfitType')?.value || 'rub',
+            min_profit_value: arbNum(el('arbMinProfitVal')?.value, 30),
+            risk_type: el('arbRiskType')?.value || 'stop_loss_rub',
+            risk_value: arbNum(el('arbRiskVal')?.value, 5000),
+            use_commission: el('arbUseCommission')?.checked ?? true,
+            commission_stock_pct: arbNum(el('arbCommStock')?.value, 0.035),
+            commission_futures_rt: arbNum(el('arbCommFut')?.value, 0.9),
+            slippage_bps: arbNum(el('arbSlippage')?.value, 5),
+            dev_ann_high: arbNum(el('arbDevAnnHigh')?.value, 2.5),
+            dev_ann_low: arbNum(el('arbDevAnnLow')?.value, -1),
+            dev_lookback: arbNum(el('arbDevLookback')?.value, 2500),
+            dev_push_interval: arbNum(el('arbDevPush')?.value, 60),
+            // F-033: пара сохраняется для ЭТОГО инстанса
+            ticker_a: instObj.symA,
+            ticker_b: instObj.symB,
+            symbol_a: instObj.symA + instObj.sufA,
+            symbol_b: instObj.symB + instObj.sufB,
+        };
+        fetch(`${api.baseUrl}/params`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(body)
+        }).then(r => r.json()).then(resp => {
+            if (resp && resp.ok) {
+                const rej = (resp.rejected || []).join(', ');
+                arbLog(inst, '✅ Параметры сохранены' + (rej ? ' (отклонены: ' + rej + ')' : ''), rej ? 'WARN' : 'INFO');
+                if (window['arbApi_' + inst]) window['arbApi_' + inst].refresh();
+            } else {
+                arbLog(inst, '❌ Сохранение не принято сервером', 'ERROR');
+            }
+        }).catch(e => {
+            arbLog(inst, '❌ Ошибка сети при сохранении: ' + e.message, 'ERROR');
+        });
+    } catch(e) {
+        arbLog(inst, '❌ Ошибка JS: ' + e.message, 'ERROR');
+    }
+});
+
+function arbInstancePanel(inst) {
+    const cfg = ARB_INSTANCE_MAP[inst] || ARB_INSTANCE_MAP.gazp;
+    // закрыть все панели
+    ['arbPyEditPanel','sberEditPanel','brCalEditPanel','arbInstanceEditPanel'].forEach(pid => el(pid)?.remove());
+    if (arbPanelInstance === inst) { arbPanelInstance = null; return; }
+    arbPanelInstance = inst;
+    const api = window['arbApi_' + inst];
+    if (!api) { return; }
+    api.refresh().then(() => {
+        const data = api.getData();
+        const p = (data && data.params) || {};
+        arbPanelInstanceObj = api;
+        const div = document.createElement('div');
+        div.id = 'arbInstanceEditPanel';
+        div.className = 'card';
+        div.style.cssText = 'position:fixed;top:60px;right:16px;width:560px;max-height:85vh;overflow:auto;z-index:10000;margin:0';
+        div.innerHTML = `
+            <div class="card-header row gap-8">
+                🔄 Арбитражный робот — ${cfg.label}
+                <span style="flex:1"></span>
+                <button class="btn btn-secondary btn-sm" id="arbPanelCloseBtn">✕</button>
+            </div>
+            <div class="card-body" style="display:flex;flex-direction:column;gap:10px">
+                <div class="metrics-row" style="flex-wrap:wrap">
+                    <div class="metric-card"><div class="metric-label">📋 Счёт</div><div class="metric-value">2049688 (EDP)</div></div>
+                    <div class="metric-card"><div class="metric-label">💰 Капитал (₽)</div><input id="arbCapital" class="input" type="number" value="${arbNum(p.capital, 100000)}" style="width:100px"></div>
+                </div>
+                <div class="metrics-row" style="flex-wrap:wrap">
+                    <div class="metric-card" style="min-width:160px"><div class="metric-label">📈 Инструмент A</div>
+                        <select id="arbSymA" class="input" style="width:140px">
+                            <option value="GAZP" ${(p.ticker_a||'')==='GAZP'?'selected':''}>GAZP (Газпром)</option>
+                            <option value="SBER" ${(p.ticker_a||'')==='SBER'?'selected':''}>SBER (Сбербанк)</option>
+                            <option value="BRV6" ${(p.ticker_a||'')==='BRV6'?'selected':''}>BRV6 (Brent окт)</option>
+                        </select>
+                    </div>
+                    <div class="metric-card" style="min-width:160px"><div class="metric-label">📉 Инструмент B (фьючерс)</div>
+                        <select id="arbSymB" class="input" style="width:140px">
+                            <option value="GZZ6" ${(p.ticker_b||'')==='GZZ6'?'selected':''}>GZZ6 (Газпром дек)</option>
+                            <option value="SRZ6" ${(p.ticker_b||'')==='SRZ6'?'selected':''}>SRZ6 (Сбер дек)</option>
+                            <option value="BRZ6" ${(p.ticker_b||'')==='BRZ6'?'selected':''}>BRZ6 (Brent дек)</option>
+                        </select>
+                    </div>
+                    <div class="metric-card"><div class="metric-label">Лоты A</div><input id="arbLotsA" class="input" type="number" value="${arbNum(p.lots_a, 10)}" style="width:70px"></div>
+                    <div class="metric-card"><div class="metric-label">Лоты B</div><input id="arbLotsB" class="input" type="number" value="${arbNum(p.lots_b, 1)}" style="width:70px"></div>
+                    <div class="metric-card"><div class="metric-label">Hedge Ratio</div><input id="arbHedgeRatio" class="input" type="number" step="0.1" value="${arbNum(p.hedge_ratio, 100)}" style="width:80px"></div>
+                </div>
+                <div class="metrics-row" style="flex-wrap:wrap">
+                    <div class="metric-card" style="min-width:160px"><div class="metric-label">💰 Комиссия</div>
+                        <label style="display:flex;align-items:center;gap:6px;font-size:12px"><input type="checkbox" id="arbUseCommission" ${p.use_commission!==false?'checked':''} style="width:16px"> Включить в расчёт PnL</label>
+                    </div>
+                    <div class="metric-card"><div class="metric-label">Акция A (%/сторона)</div><input id="arbCommStock" class="input" type="text" value="${String(p.commission_stock_pct ?? 0.02).replace('.', ',')}" style="width:70px"></div>
+                    <div class="metric-card"><div class="metric-label">Фьючерс B (₽/контракт)</div><input id="arbCommFut" class="input" type="text" value="${String(p.commission_futures_rt ?? 0.9).replace('.', ',')}" style="width:70px"></div>
+                </div>
+                <div class="metrics-row" style="flex-wrap:wrap">
+                    <div class="metric-card"><div class="metric-label">Dev-порог SHORT (% год.)</div><input id="arbDevAnnHigh" class="input" type="text" value="${String(p.dev_ann_high ?? 2.5).replace('.', ',')}" style="width:70px"></div>
+                    <div class="metric-card"><div class="metric-label">Dev-порог LONG (% год.)</div><input id="arbDevAnnLow" class="input" type="text" value="${String(p.dev_ann_low ?? -1).replace('.', ',')}" style="width:70px"></div>
+                    <div class="metric-card"><div class="metric-label">Dev-окно (пушей)</div><input id="arbDevLookback" class="input" type="number" value="${arbNum(p.dev_lookback, 2500)}" style="width:80px"></div>
+                    <div class="metric-card"><div class="metric-label">Dev-пуш (сек)</div><input id="arbDevPush" class="input" type="number" value="${arbNum(p.dev_push_interval, 60)}" style="width:70px"></div>
+                </div>
+                <div class="metrics-row" style="flex-wrap:wrap">
+                    <div class="metric-card"><div class="metric-label">Entry Z (SHORT) — устар.</div><input id="arbEntryZ" class="input" type="number" value="${arbNum(p.entry_z, 2)}" style="width:70px"></div>
+                    <div class="metric-card"><div class="metric-label">Entry Z (LONG) — устар.</div><input id="arbEntryZLong" class="input" type="number" value="${arbNum(p.entry_z_long, -5)}" style="width:70px"></div>
+                    <div class="metric-card"><div class="metric-label">Lookback (режим ₽)</div><input id="arbLookback" class="input" type="number" value="${arbNum(p.lookback, 50)}" style="width:70px"></div>
+                    <div class="metric-card"><div class="metric-label">Leg A Timeout (сек)</div><input id="arbLegTimeout" class="input" type="number" value="${arbNum(p.leg_a_timeout, 5)}" style="width:70px"></div>
+                    <div class="metric-card"><div class="metric-label">Min Fill Ratio</div><input id="arbMinFill" class="input" type="text" value="${String(p.min_fill_ratio ?? 0.5).replace('.', ',')}" style="width:70px"></div>
+                </div>
+                <div class="metrics-row" style="flex-wrap:wrap">
+                    <div class="metric-card"><div class="metric-label">Ставка (годовые %)</div><input id="arbRate" class="input" type="text" value="${String((p.risk_free_rate ?? 0.16) * 100).replace('.', ',')}" style="width:80px"></div>
+                    <div class="metric-card"><div class="metric-label">Экспирация</div><input id="arbExpiration" class="input" type="date" value="${p.expiration_date || '2026-12-17'}" style="width:150px"></div>
+                    <div class="metric-card"><div class="metric-label">Размер контракта</div><input id="arbContractSize" class="input" type="number" value="${arbNum(p.contract_size, 100)}" style="width:70px"></div>
+                </div>
+                <div class="metrics-row" style="flex-wrap:wrap">
+                    <div class="metric-card"><div class="metric-label">Мин. профит — тип</div>
+                        <select id="arbMinProfitType" class="input" style="width:130px">
+                            <option value="rub" ${(p.min_profit_type||'rub')==='rub'?'selected':''}>Рубли (₽)</option>
+                            <option value="pct" ${(p.min_profit_type||'rub')==='pct'?'selected':''}>% от входа</option>
+                        </select>
+                    </div>
+                    <div class="metric-card"><div class="metric-label">Мин. профит — значение</div><input id="arbMinProfitVal" class="input" type="text" value="${String(p.min_profit_value ?? 30).replace('.', ',')}" style="width:80px"></div>
+                    <div class="metric-card"><div class="metric-label">Риск — тип</div>
+                        <select id="arbRiskType" class="input" style="width:130px">
+                            <option value="stop_loss_rub" ${(p.risk_type||'')==='stop_loss_rub'?'selected':''}>Стоп-лосс (₽)</option>
+                            <option value="stop_loss_pct" ${(p.risk_type||'')==='stop_loss_pct'?'selected':''}>Стоп-лосс (%)</option>
+                        </select>
+                    </div>
+                    <div class="metric-card"><div class="metric-label">Риск — значение</div><input id="arbRiskVal" class="input" type="text" value="${String(p.risk_value ?? 5000).replace('.', ',')}" style="width:90px"></div>
+                </div>
+                <div style="display:flex;gap:8px">
+                    <button class="btn btn-primary btn-sm" id="arbPanelSaveBtn">💾 Сохранить</button>
+                    <span class="text-secondary" style="align-self:center;font-size:12px">Параметры применяются на лету и сохраняются в конфиг этого робота</span>
+                </div>
+            </div>`;
+        document.body.appendChild(div);
+        el('arbPanelCloseBtn').onclick = () => { div.remove(); arbPanelInstance = null; };
+    }).catch(e => { console.error('panel open failed', e); });
+}
+
+function arbPyEditPanel() { arbInstancePanel('gazp'); }
+function sberEditPanel() { arbInstancePanel('sber'); }
+function brCalEditPanel() { arbInstancePanel('br'); }
+
 (function() {
     // Check if authenticated
     fetch('/api/me', { credentials: 'include' })
@@ -3596,13 +3781,16 @@ function createArbInstance(prefix, port) {
             arbPyLog(`⏹ Процесс ${name} остановлен`, 'INFO');
         } catch(e) { arbPyLog(`❌ process stop error: ${e.message}`, 'ERROR'); }
     }
-    return { refresh, start: startViaServer, pause: async () => await fetch2('/pause', 'POST'), stop: stopViaServer, fetch: fetch2, getData: () => data };
+    return { refresh, start: startViaServer, pause: async () => await fetch2('/pause', 'POST'), stop: stopViaServer, fetch: fetch2, getData: () => data, baseUrl: baseUrl };
 }
 
 // === Create arb robot instances ===
 const arbPy = createArbInstance('arbPy', 5090);
 const sber = createArbInstance('sber', 5091);
 const brCal = createArbInstance('brCal', 5092);
+window['arbApi_gazp'] = arbPy;
+window['arbApi_sber'] = sber;
+window['arbApi_br'] = brCal;
 
 // Expose as global functions for onclick handlers
 async function arbPyStart() { arbPy.start(); arbPyLog('▶️ Запуск GAZP/GZZ6...'); }
@@ -3636,487 +3824,17 @@ function arbPyLog(msg, level='INFO', containerId='arbPyLogContainer') {
     c.innerHTML = `<div style="padding:2px 0;color:${color}">[${t}] ${level}: ${msg}</div>` + c.innerHTML;
     while (c.children.length > 50) c.removeChild(c.lastChild);
 }
-function arbPyEditPanel() {
-    ['arbPyEditPanel','sberEditPanel','brCalEditPanel'].forEach(pid => { if (pid !== 'arbPyEditPanel') el(pid)?.remove(); });
-    const existing = el('arbPyEditPanel');
-    if (existing) { existing.remove(); _arbJournalInstance = null; return; }
-    // Set journal instance to GAZP (null=arbPy) only if not already set by sber/brCal caller
-    // Always reset for GAZP panel — sber/brCal panels set their own instance AFTER this call
-    _arbJournalInstance = null;
 
-    const p = (arbPyData && arbPyData.params) || {};
-    const div = document.createElement('div');
-    div.id = 'arbPyEditPanel';
-    div.className = 'card';
-    div.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);z-index:1000;width:750px;max-height:90vh;overflow-y:auto;box-shadow:0 8px 32px rgba(0,0,0,.5)';
-    div.innerHTML = `
-        <div class="card-header row gap-8">
-            🔄 Арбитражный робот (PYTHON)
-            <span style="flex:1"></span>
-            <button class="btn btn-primary btn-sm" onclick="arbPyShowCopyDialog()">📋 Копировать</button>
-            <button class="btn btn-primary btn-sm" onclick="arbPySaveFromPanel()">💾 Сохранить</button>
-            <button class="btn btn-secondary btn-sm" onclick="el('arbPyEditPanel')?.remove()">✕</button>
-        </div>
-        <div style="padding:16px;display:flex;flex-direction:column;gap:16px">
-            <!-- Счёт + Капитал -->
-            <div class="metrics-row" style="flex-wrap:wrap">
-                <div class="metric-card" style="min-width:180px"><div class="metric-label">📋 Счёт</div>
-                    <select id="arbAccount" class="input" style="width:200px">
-                        <option value="2049688" selected>2049688 (EDP)</option>
-                    </select>
-                    <input type="hidden" id="arbAccountSaved" value="2049688">
-                </div>
-                <div class="metric-card" style="min-width:140px"><div class="metric-label">Капитал (₽)</div><input id="arbCapital" class="input" type="number" value="${p.capital||1000000}" style="width:120px"></div>
-            </div>
 
-            <hr style="border-color:var(--border-color)">
 
-            <!-- Инструменты -->
-            <div class="metrics-row" style="flex-wrap:wrap">
-                <div class="metric-card" style="min-width:160px"><div class="metric-label">📈 Инструмент A</div>
-                    <div class="input" style="width:140px;align-self:center;font-weight:600">${p.ticker_a||''}</div>
-                </div>
-                <div class="metric-card" style="min-width:160px"><div class="metric-label">📉 Инструмент B (фьючерс)</div>
-                    <div class="input" style="width:140px;align-self:center;font-weight:600">${p.ticker_b||''}</div>
-                </div>
-                <div class="metric-card"><div class="metric-label">Лоты A</div><input id="arbLotsA" class="input" type="number" value="${p.lots_a||10}" style="width:70px"></div>
-                <div class="metric-card"><div class="metric-label">Лоты B</div><input id="arbLotsB" class="input" type="number" value="${p.lots_b||1}" style="width:70px"></div>
-                <div class="metric-card"><div class="metric-label">Hedge Ratio</div><input id="arbHedgeRatio" class="input" type="number" step="0.1" value="${p.hedge_ratio||10}" style="width:70px"></div>
-            </div>
 
-            <!-- Комиссия -->
-            <div class="metrics-row" style="flex-wrap:wrap">
-                <div class="metric-card" style="min-width:280px;border:1px solid var(--border-color)">
-                    <div class="metric-label">💰 Комиссия</div>
-                    <label style="display:flex;align-items:center;gap:8px;cursor:pointer;padding:4px 0">
-                        <input type="checkbox" id="arbUseCommission" ${p.use_commission!==false?'checked':''} style="width:18px;height:18px;cursor:pointer">
-                        <span style="font-size:13px">Включить комиссию в расчёт PnL</span>
-                    </label>
-                </div>
-                <div class="metric-card"><div class="metric-label" id="arbCommALabel">${/\d/.test(p.ticker_a||'') ? 'Фьючерс A (₽ за контракт RT)' : 'Акция A (% за сторону)'}</div><input id="arbCommStock" class="input" type="number" step="0.01" value="${/\d/.test(p.ticker_a||'') ? (p.commission_futures_rt||15) : (p.commission_stock_pct||0.04)}" style="width:80px"></div>
-                <div class="metric-card"><div class="metric-label">Фьючерс B (₽ за контракт RT)</div><input id="arbCommFut" class="input" type="number" step="0.1" value="${p.commission_futures_rt||0.9}" style="width:80px"></div>
-            </div>
-            <div id="arbCommBothFut" style="font-size:12px;color:var(--yellow);padding:4px 0;display:${/\d/.test(p.ticker_a||'')?'block':'none'}">⚠️ Обе ноги — фьючерсы. Комиссия B (₽ RT) применяется к обеим ногам.</div>
-            </div>
 
-            <hr style="border-color:var(--border-color)">
 
-            <!-- Вход -->
-            <div class="metrics-row" style="flex-wrap:wrap">
-                <div class="metric-card"><div class="metric-label">Dev-порог SHORT (% год.)</div><input id="arbDevAnnHigh" class="input" type="number" step="0.1" value="${p.dev_ann_high!=null?p.dev_ann_high:2.5}" style="width:70px"></div>
-                <div class="metric-card"><div class="metric-label">Dev-порог LONG (% год.)</div><input id="arbDevAnnLow" class="input" type="number" step="0.1" value="${p.dev_ann_low!=null?p.dev_ann_low:-1}" style="width:70px"></div>
-                <div class="metric-card"><div class="metric-label">Dev-окно (пушей)</div><input id="arbDevLookback" class="input" type="number" step="100" value="${p.dev_lookback||2500}" style="width:90px"></div>
-                <div class="metric-card"><div class="metric-label">Dev-пуш (сек)</div><input id="arbDevPush" class="input" type="number" step="10" value="${p.dev_push_interval||60}" style="width:70px"></div>
-                <div class="metric-card"><div class="metric-label">Entry Z (SHORT) — устар. режим ₽</div><input id="arbEntryZ" class="input" type="number" step="0.1" value="${p.entry_z||2.0}" style="width:70px"></div>
-                <div class="metric-card"><div class="metric-label">Entry Z (LONG) — устар. режим ₽</div><input id="arbEntryZLong" class="input" type="number" step="0.1" value="${p.entry_z_long||-2.0}" style="width:70px"></div>
-                <div class="metric-card"><div class="metric-label">Lookback (режим ₽)</div><input id="arbLookback" class="input" type="number" value="${p.lookback||50}" style="width:70px"></div>
-                <div class="metric-card"><div class="metric-label">Leg A Timeout (сек)</div><input id="arbLegTimeout" class="input" type="number" value="${p.leg_a_timeout||5}" style="width:70px"></div>
-                <div class="metric-card"><div class="metric-label">Min Fill Ratio</div><input id="arbMinFill" class="input" type="number" step="0.05" value="${p.min_fill_ratio||0.5}" style="width:70px"></div>
-            </div>
 
-            <!-- Fair value -->
-            <div class="metrics-row" style="flex-wrap:wrap">
-                <div class="metric-card"><div class="metric-label">Ставка (годовые %)</div><input id="arbRate" class="input" type="number" step="0.1" value="${(p.risk_free_rate||0.16)*100}" style="width:70px"></div>
-                <div class="metric-card"><div class="metric-label">Экспирация</div><input id="arbExpiration" class="input" type="date" value="${p.expiration_date||'2026-09-18'}" style="width:130px"></div>
-                <div class="metric-card"><div class="metric-label">Размер контракта</div><input id="arbContractSize" class="input" type="number" value="${p.contract_size||100}" style="width:70px"></div>
-            </div>
-
-            <hr style="border-color:var(--border-color)">
-
-            <!-- Мин. профит (dropdown + значение) -->
-            <div class="metrics-row" style="flex-wrap:wrap;align-items:flex-end">
-                <div class="metric-card"><div class="metric-label">Мин. профит — тип</div>
-                    <select id="arbMinProfitType" class="input" style="width:110px">
-                        <option value="rub" ${(p.min_profit_type||'rub')==='rub'?'selected':''}>Рубли (₽)</option>
-                        <option value="pts" ${p.min_profit_type==='pts'?'selected':''}>Пункты</option>
-                        <option value="pct" ${p.min_profit_type==='pct'?'selected':''}>Проценты (%)</option>
-                    </select>
-                </div>
-                <div class="metric-card"><div class="metric-label">Значение</div><input id="arbMinProfitVal" class="input" type="number" step="0.1" value="${p.min_profit_value||20}" style="width:90px"></div>
-            </div>
-
-            <hr style="border-color:var(--border-color)">
-
-            <!-- Риск (dropdown + значение) -->
-            <div class="metrics-row" style="flex-wrap:wrap;align-items:flex-end">
-                <div class="metric-card"><div class="metric-label">Риск — тип</div>
-                    <select id="arbRiskType" class="input" style="width:150px">
-                        <option value="stop_loss_rub" ${(p.risk_type||'stop_loss_rub')==='stop_loss_rub'?'selected':''}>Стоп-лосс (₽)</option>
-                        <option value="time_stop_min" ${p.risk_type==='time_stop_min'?'selected':''}>Тайм-стоп (мин)</option>
-                        <option value="max_dd_pct" ${p.risk_type==='max_dd_pct'?'selected':''}>Max DD (%)</option>
-                        <option value="kill_switch" ${p.risk_type==='kill_switch'?'selected':''}>Kill Switch</option>
-                    </select>
-                </div>
-                <div class="metric-card"><div class="metric-label">Значение</div><input id="arbRiskVal" class="input" type="number" value="${p.risk_value||5000}" style="width:90px"></div>
-            </div>
-
-            <!-- Направление -->
-            <div class="metrics-row" style="flex-wrap:wrap">
-                <div class="metric-card" style="min-width:300px">
-                    <div class="metric-label">Направление</div>
-                    <label style="display:flex;align-items:center;gap:8px;cursor:pointer;padding:4px 0">
-                        <input type="checkbox" id="arbAllowLong" ${p.allow_long_basis?'checked':''} style="width:18px;height:18px;cursor:pointer">
-                        <span>Разрешить лонг (шорт акции + лонг фьючерса)</span>
-                    </label>
-                </div>
-            </div>
-
-            <hr style="border-color:var(--border-color)">
-
-            <!-- Раздвижка -->
-            <hr style="border-color:var(--border-color);margin:12px 0">
-            <div class="metrics-row" style="flex-wrap:wrap">
-                <div class="metric-card" style="background:#1a2332;border:1px solid var(--accent)"><div class="metric-label" style="color:var(--accent)">Раздвижка (₽)</div><div id="arbSpreadRub" style="font-size:22px;font-weight:bold;color:var(--accent)">—</div></div>
-                <div class="metric-card"><div class="metric-label">Fair Spread (₽)</div><div id="arbFairSpread" style="font-size:18px;font-weight:bold">—</div></div>
-                <div class="metric-card"><div class="metric-label">Deviation (₽)</div><div id="arbDeviation" style="font-size:18px;font-weight:bold">—</div></div>
-                <div class="metric-card"><div class="metric-label">Раздвижка (%)</div><div id="arbSpreadPct" style="font-size:18px;font-weight:bold">—</div></div>
-                <div class="metric-card"><div class="metric-label">GAZP × 100</div><div id="arbSpotValue" style="font-size:18px;font-weight:bold">—</div></div>
-                <div class="metric-card"><div class="metric-label" id="arbFutLabel">GZZ6 (фьюч)</div><div id="arbFutValue" style="font-size:18px;font-weight:bold">—</div></div>
-                <div class="metric-card"><div class="metric-label">Basis (Z-score base)</div><div id="arbBasisVal" style="font-size:18px;font-weight:bold">—</div></div>
-                <div class="metric-card"><div class="metric-label">Z-score (dev)</div><div id="arbZVal" style="font-size:18px;font-weight:bold">—</div></div>
-                <div class="metric-card"><div class="metric-label">Dev годовых %</div><div id="arbDevAnn" style="font-size:18px;font-weight:bold">—</div></div>
-                <div class="metric-card"><div class="metric-label">Basis Mean</div><div id="arbMeanVal" style="font-size:14px">—</div></div>
-                <div class="metric-card"><div class="metric-label">Basis Std</div><div id="arbStdVal" style="font-size:14px">—</div></div>
-                <div class="metric-card"><div class="metric-label">Days to Exp</div><div id="arbDaysExp" style="font-size:18px;font-weight:bold">—</div></div>
-                <!-- Variant 1: absolute thresholds toggle + inputs + reference -->
-                <div class="metric-card" style="min-width:320px;border:1px solid #e90"><div class="metric-label" style="color:#e90">📊 Калькулятор спреда</div>
-                    <label style="display:flex;align-items:center;gap:8px;cursor:pointer;padding:4px 0">
-                        <input type="checkbox" id="arbEntryModeRub" ${p.entry_mode==='spread_rub'?'checked':''} style="width:18px;height:18px;cursor:pointer" onchange="arbEntryModeToggle()">
-                        <span style="font-size:13px">Торговать по абсолютным порогам (₽)</span>
-                    </label>
-                    <div id="arbRubInputs" style="display:none;margin-top:6px">
-                        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-                            <div style="flex:1;min-width:100px"><label style="font-size:11px;color:#9CA3AF">Short (₽ &gt;)</label><input id="arbSpreadRubHigh" class="input" type="number" step="1" style="width:80px;font-size:14px;padding:4px" value="${p.spread_rub_high||400}"></div>
-                            <div style="flex:1;min-width:100px"><label style="font-size:11px;color:#9CA3AF">Long (₽ &lt;)</label><input id="arbSpreadRubLow" class="input" type="number" step="1" style="width:80px;font-size:14px;padding:4px" value="${p.spread_rub_low||200}"></div>
-                        </div>
-                    </div>
-                    <div style="margin-top:8px;padding-top:8px;border-top:1px solid #333">
-                        <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px 12px;font-size:12px">
-                            <div style="color:#9CA3AF">Текущий спред:</div><div id="arbCalcSpread" style="font-weight:bold;text-align:right">—</div>
-                            <div style="color:#9CA3AF">Fair value (cost of carry):</div><div id="arbCalcFair" style="font-weight:bold;text-align:right">—</div>
-                            <div style="color:#9CA3AF">Deviation:</div><div id="arbCalcDev" style="font-weight:bold;text-align:right">—</div>
-                            <div style="color:#9CA3AF">Z-score:</div><div id="arbCalcZ" style="font-weight:bold;text-align:right">—</div>
-                        </div>
-                        <div style="margin-top:8px;padding-top:6px;border-top:1px dashed #444">
-                            <div style="font-size:11px;color:#9CA3AF;margin-bottom:4px">Исторический диапазон (lookback):</div>
-                            <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:4px 12px;font-size:12px">
-                                <div style="color:#9CA3AF">Max:</div><div id="arbCalcMax" style="font-weight:bold;text-align:center;color:var(--green)">—</div>
-                                <div style="color:#9CA3AF">Min:</div><div id="arbCalcMin" style="font-weight:bold;text-align:center;color:var(--red)">—</div>
-                                <div style="color:#9CA3AF">Mean:</div><div id="arbCalcMean" style="font-weight:bold;text-align:center">—</div>
-                            </div>
-                            <div style="margin-top:4px;font-size:11px;color:#9CA3AF">Suggested: High <span id="arbCalcSH" style="color:var(--green);font-weight:bold">—</span> | Low <span id="arbCalcSL" style="color:var(--red);font-weight:bold">—</span></div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <hr style="border-color:var(--border-color);margin:12px 0">
-
-            <!-- Стакан L2 инфо -->
-            <div class="metrics-row" style="flex-wrap:wrap">
-                <div class="metric-card"><div class="metric-label">L2 A: Bid/Ask</div><div id="arbL2A" style="font-size:14px">—</div></div>
-                <div class="metric-card"><div class="metric-label">L2 B: Bid/Ask</div><div id="arbL2B" style="font-size:14px">—</div></div>
-                <div class="metric-card"><div class="metric-label">Data Points</div><div id="arbDataPts" style="font-size:14px">—</div></div>
-            </div>
-
-            <hr style="border-color:var(--border-color);margin:12px 0">
-
-            <!-- Торговый журнал -->
-            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
-                <strong>📋 Торговый журнал</strong>
-            </div>
-            <div id="arbJournalSummary" class="metrics-row" style="flex-wrap:wrap;margin-bottom:12px"></div>
-            <div style="display:flex;gap:8px;margin-bottom:12px;align-items:center">
-                <select id="arbJournalFilter" class="input" style="width:120px" onchange="arbRenderJournal()">
-                    <option value="all">Все позиции</option>
-                    <option value="LONG">Лонги</option>
-                    <option value="SHORT">Шорты</option>
-                    <option value="win">Прибыльные</option>
-                    <option value="loss">Убыточные</option>
-                </select>
-                <span style="color:#9CA3AF;font-size:13px">с</span>
-                <input id="arbJournalDateFrom" class="input" type="date" style="width:130px" onchange="arbRenderJournal()">
-                <span style="color:#9CA3AF;font-size:13px">по</span>
-                <input id="arbJournalDateTo" class="input" type="date" style="width:130px" onchange="arbRenderJournal()">
-                <button class="btn btn-secondary btn-sm" onclick="arbJournalSetYesterday()">Вчера</button>
-                <button class="btn btn-secondary btn-sm" onclick="arbLoadJournal()">🔄</button>
-            </div>
-            <div style="max-height:350px;overflow-y:auto;border:1px solid var(--border-color);border-radius:8px">
-                <table style="width:100%;border-collapse:collapse;font-size:13px">
-                    <thead style="position:sticky;top:0;z-index:1">
-                        <tr style="background:var(--card);border-bottom:2px solid var(--accent)">
-                            <th style="padding:6px;text-align:left">📅 Дата</th>
-                            <th style="padding:6px;text-align:left">⏰ Вход</th>
-                            <th style="padding:6px;text-align:left">⏰ Выход</th>
-                            <th style="padding:6px;text-align:center">↔️</th>
-                            <th style="padding:6px;text-align:right">Вход A/B</th>
-                            <th style="padding:6px;text-align:right">Выход A/B</th>
-                            <th style="padding:6px;text-align:right">Basis вх.</th>
-                            <th style="padding:6px;text-align:right">Basis вых.</th>
-                            <th style="padding:6px;text-align:right">Z</th>
-                            <th style="padding:6px;text-align:right">Лоты</th>
-                            <th style="padding:6px;text-align:right">Холд</th>
-                            <th style="padding:6px;text-align:right">Комиссия</th>
-                            <th style="padding:6px;text-align:right">PnL</th>
-                            <th style="padding:6px;text-align:right">Кумул.</th>
-                        </tr>
-                    </thead>
-                    <tbody id="arbJournalBody" style="background:var(--bg)"><tr><td colspan="14" style="text-align:center;padding:24px;color:#9CA3AF">Нет данных</td></tr></tbody>
-                </table>
-            </div>
-            <div id="arbJournalInfo" style="font-size:12px;color:#9CA3AF;margin-top:8px"></div>
-        </div>
-    `;
-    document.body.appendChild(div);
-    arbPyUpdateL2();
-    arbPyLoadAccounts();
-    // Init Variant 1 toggle state
-    arbEntryModeToggle();
-    setTimeout(() => arbLoadJournal(), 300);
-}
-
-async function sberEditPanel() {
-    ['arbPyEditPanel','sberEditPanel','brCalEditPanel'].forEach(pid => { if (pid !== 'sberEditPanel') el(pid)?.remove(); });
-    const existing = el('sberEditPanel');
-    if (existing) { existing.remove(); _arbJournalInstance = null; return; }
-    _arbJournalInstance = 'sber';
-    // F-021b: свежие данные робота ДО рендера панели (иначе кеш со старыми порогами)
-    await sber.refresh();
-    // Temporarily swap arbPyData so arbPyEditPanel renders with SBER params
-    const savedArbPyData = arbPyData;
-    arbPyData = sber.getData();
-    // Save current instance before calling arbPyEditPanel (which would reset it)
-    const savedInstance = _arbJournalInstance;
-    // Call the same render logic
-    arbPyEditPanel();
-    // F-022b: restore global data IMMEDIATELY after render — panel DOM holds its own
-    // input values now; leaving arbPyData swapped caused cross-instance saves
-    arbPyData = savedArbPyData;
-    // Restore journal instance (arbPyEditPanel may have reset it)
-    _arbJournalInstance = savedInstance;
-    // Rename the panel
-    const panel = el('arbPyEditPanel');
-    if (panel) {
-        panel.id = 'sberEditPanel';
-        // Update header to show SBER
-        const header = panel.querySelector('.card-header');
-        if (header) header.innerHTML = header.innerHTML.replace('Арбитражный робот (PYTHON)', 'Арбитражный робот — SBER/SRZ6');
-        // Override save button to save to SBER (F-032: addEventListener — надёжнее rebind
-        // inline onclick, который мог быть перезаписан повторным рендером)
-        const saveBtn = panel.querySelector('button[onclick*="arbPySaveFromPanel"]');
-        if (saveBtn) {
-            saveBtn.removeAttribute('onclick');
-            saveBtn.addEventListener('click', function(ev) { ev.preventDefault(); sberSaveFromPanel(); });
-        }
-        // Override copy button
-        const copyBtn = panel.querySelector('button[onclick*="arbPyShowCopyDialog"]');
-        if (copyBtn) copyBtn.remove();
-        // Override close button
-        const closeBtn = panel.querySelector('button[onclick*="arbPyEditPanel"]');
-        if (closeBtn) closeBtn.setAttribute('onclick', 'el(\'sberEditPanel\')?.remove(); _arbJournalInstance=null;');
-    }
-}
-
-async function sberSaveFromPanel() {
-    arbPyLog('\ud83d\udcbe \u0421\u043e\u0445\u0440\u0430\u043d\u0438\u0442\u044c \u043d\u0430\u0436\u0430\u0442\u043e (SBER/SRZ6)', 'INFO');
-    try {
-    if (typeof arbNum !== 'function') { arbPyLog('\u274c \u0421\u043a\u0440\u0438\u043f\u0442 \u0443\u0441\u0442\u0430\u0440\u0435\u043b \u2014 \u043e\u0431\u043d\u043e\u0432\u0438\u0442\u0435 \u0441\u0442\u0440\u0430\u043d\u0438\u0446\u0443 (Ctrl+F5)', 'ERROR'); return; }
-    const body = {
-        ticker_a: el('arbSymA').value,
-        symbol_a: el('arbSymA').value + '@MISX',
-        ticker_b: el('arbSymB').value,
-        symbol_b: el('arbSymB').value + '@RTSX',
-        lots_a: arbNum(el('arbLotsA')?.value, 10),
-        lots_b: arbNum(el('arbLotsB')?.value, 1),
-        hedge_ratio: arbNum(el('arbHedgeRatio')?.value, 100),
-        capital: arbNum(el('arbCapital')?.value, 100000),
-        entry_z: arbNum(el('arbEntryZ')?.value, 2),
-        entry_z_long: arbNum(el('arbEntryZLong')?.value, -5),
-        entry_mode: el('arbEntryModeRub')?.checked ? 'spread_rub' : 'zscore',
-        spread_rub_high: arbNum(el('arbSpreadRubHigh')?.value, 400),
-        spread_rub_low: arbNum(el('arbSpreadRubLow')?.value, 200),
-        risk_free_rate: arbNum(el('arbRate')?.value, 16) / 100,
-        expiration_date: el('arbExpiration')?.value || '2026-12-17',
-        contract_size: arbNum(el('arbContractSize')?.value, 100),
-        lookback: arbNum(el('arbLookback')?.value, 50),
-        leg_a_timeout: arbNum(el('arbLegTimeout')?.value, 5),
-        min_fill_ratio: arbNum(el('arbMinFill')?.value, 0.5),
-        min_profit_type: el('arbMinProfitType')?.value || 'rub',
-        min_profit_value: arbNum(el('arbMinProfitVal')?.value, 30),
-        risk_type: el('arbRiskType')?.value || 'stop_loss_rub',
-        risk_value: arbNum(el('arbRiskVal')?.value, 5000),
-        allow_long_basis: el('arbAllowLong')?.checked || false,
-        use_commission: el('arbUseCommission')?.checked ?? true,
-        commission_stock_pct: arbNum(el('arbCommStock')?.value, 0.035),
-        commission_futures_rt: arbNum(el('arbCommFut')?.value, 0.9),
-        slippage_bps: arbNum(el('arbSlippage')?.value, 5),
-        // F-021b: dev-поля — вчера пропустили, поэтому пороги не сохранялись
-        dev_ann_high: arbNum(el('arbDevAnnHigh')?.value, 2.5),
-        dev_ann_low: arbNum(el('arbDevAnnLow')?.value, -1),
-        dev_lookback: arbNum(el('arbDevLookback')?.value, 2500),
-        dev_push_interval: arbNum(el('arbDevPush')?.value, 60),
-        dividends: (sber.getData() && sber.getData().params && sber.getData().params.dividends) || [],
-        // F-031: пара снова выбирается в панели (select'ы возвращены)
-        ticker_a: el('arbSymA').value,
-        ticker_b: el('arbSymB').value,
-        symbol_a: ((el('arbSymA').value === 'SBER' || el('arbSymA').value === 'GAZP') ? el('arbSymA').value + '@MISX' : el('arbSymA').value + '@RTSX'),
-        symbol_b: el('arbSymB').value + '@RTSX',
-    };
-    // If leg A is futures, use its commission value too
-    const symA = el('arbSymA')?.value || '';
-    if (/\d/.test(symA)) {
-        body.commission_futures_rt = arbNum(el('arbCommStock')?.value, body.commission_futures_rt);
-    }
-    const r = await sber.fetch('/params', 'POST', body);
-    if (r && r.ok) {
-        arbPyLog('✅ SBER/SRZ6 параметры сохранены', 'INFO', 'sberLogContainer');
-        sber.refresh();
-        el('sberEditPanel')?.remove();
-    } else {
-        arbPyLog('Ошибка сохранения SBER/SRZ6', 'ERROR', 'sberLogContainer');
-    }
-    } catch(e) { arbPyLog('\u274c \u041e\u0448\u0438\u0431\u043a\u0430 JS: ' + e.message + ' \u2014 \u043e\u0431\u043d\u043e\u0432\u0438\u0442\u0435 \u0441\u0442\u0440\u0430\u043d\u0438\u0446\u0443 Ctrl+F5', 'ERROR'); }
-}
-
-async function brCalEditPanel() {
-    ['arbPyEditPanel','sberEditPanel','brCalEditPanel'].forEach(pid => { if (pid !== 'brCalEditPanel') el(pid)?.remove(); });
-    const existing = el('brCalEditPanel');
-    if (existing) { existing.remove(); _arbJournalInstance = null; return; }
-    _arbJournalInstance = 'brCal';
-    const savedArbPyData = arbPyData;
-    await brCal.refresh();
-    arbPyData = brCal.getData();
-    const savedInstance = _arbJournalInstance;
-    arbPyEditPanel();
-    arbPyData = savedArbPyData;  // F-022b: restore global immediately
-    setTimeout(arbUpdateCommissionLabels, 50);
-    _arbJournalInstance = savedInstance;
-    const panel = el('arbPyEditPanel');
-    if (panel) {
-        panel.id = 'brCalEditPanel';
-        const header = panel.querySelector('.card-header');
-        if (header) header.innerHTML = header.innerHTML.replace('Арбитражный робот (PYTHON)', 'Арбитражный робот — BR Calendar');
-                const saveBtn = panel.querySelector('button[onclick*="arbPySaveFromPanel"]');
-        if (saveBtn) {
-            saveBtn.removeAttribute('onclick');
-            saveBtn.addEventListener('click', function(ev) { ev.preventDefault(); brCalSaveFromPanel(); });
-        }
-        const copyBtn = panel.querySelector('button[onclick*="arbPyShowCopyDialog"]');
-        if (copyBtn) copyBtn.remove();
-        const closeBtn = panel.querySelector('button[onclick*="arbPyEditPanel"]');
-        if (closeBtn) closeBtn.setAttribute('onclick', 'el(\'brCalEditPanel\')?.remove(); _arbJournalInstance=null;');
-    }
-}
 // NOTE: brCal = Brent calendar spread (both legs futures @RTSX) — symbol_a stays @RTSX there.
 
-async function brCalSaveFromPanel() {
-    arbPyLog('\ud83d\udcbe \u0421\u043e\u0445\u0440\u0430\u043d\u0438\u0442\u044c \u043d\u0430\u0436\u0430\u0442\u043e (BR Calendar)', 'INFO');
-    try {
-    if (typeof arbNum !== 'function') { arbPyLog('\u274c \u0421\u043a\u0440\u0438\u043f\u0442 \u0443\u0441\u0442\u0430\u0440\u0435\u043b \u2014 \u043e\u0431\u043d\u043e\u0432\u0438\u0442\u0435 \u0441\u0442\u0440\u0430\u043d\u0438\u0446\u0443 (Ctrl+F5)', 'ERROR'); return; }
-    const body = {
-        lots_a: arbNum(el('arbLotsA')?.value, 1),
-        lots_b: arbNum(el('arbLotsB')?.value, 1),
-        hedge_ratio: arbNum(el('arbHedgeRatio')?.value, 1),
-        capital: arbNum(el('arbCapital')?.value, 100000),
-        entry_z: arbNum(el('arbEntryZ')?.value, 2),
-        entry_z_long: arbNum(el('arbEntryZLong')?.value, -5),
-        entry_mode: el('arbEntryModeRub')?.checked ? 'spread_rub' : 'zscore',
-        spread_rub_high: arbNum(el('arbSpreadRubHigh')?.value, 400),
-        spread_rub_low: arbNum(el('arbSpreadRubLow')?.value, 200),
-        risk_free_rate: arbNum(el('arbRate')?.value, 16) / 100,
-        expiration_date: el('arbExpiration')?.value || '2026-12-30',
-        contract_size: arbNum(el('arbContractSize')?.value, 1),
-        lookback: arbNum(el('arbLookback')?.value, 50),
-        leg_a_timeout: arbNum(el('arbLegTimeout')?.value, 5),
-        min_fill_ratio: arbNum(el('arbMinFill')?.value, 0.5),
-        min_profit_type: el('arbMinProfitType')?.value || 'rub',
-        min_profit_value: arbNum(el('arbMinProfitVal')?.value, 30),
-        risk_type: el('arbRiskType')?.value || 'stop_loss_rub',
-        risk_value: arbNum(el('arbRiskVal')?.value, 5000),
-        allow_long_basis: el('arbAllowLong')?.checked || false,
-        use_commission: el('arbUseCommission')?.checked ?? true,
-        commission_stock_pct: arbNum(el('arbCommStock')?.value, 15),
-        commission_futures_rt: arbNum(el('arbCommFut')?.value, 15),
-        slippage_bps: arbNum(el('arbSlippage')?.value, 5),
-        dev_ann_high: arbNum(el('arbDevAnnHigh')?.value, 2.5),
-        dev_ann_low: arbNum(el('arbDevAnnLow')?.value, -1),
-        dev_lookback: arbNum(el('arbDevLookback')?.value, 2500),
-        dev_push_interval: arbNum(el('arbDevPush')?.value, 60),
-        dividends: (brCal.getData() && brCal.getData().params && brCal.getData().params.dividends) || [],
-        ticker_a: el('arbSymA').value,
-        ticker_b: el('arbSymB').value,
-        symbol_a: el('arbSymA').value + '@RTSX',
-        symbol_b: el('arbSymB').value + '@RTSX',
-    };
-    const symA = el('arbSymA')?.value || '';
-    if (/\d/.test(symA)) {
-        body.commission_futures_rt = arbNum(el('arbCommStock')?.value, body.commission_futures_rt);
-    }
-    const r = await brCal.fetch('/params', 'POST', body);
-    if (r && r.ok) {
-        const rej = (r && r.rejected || []).join(', ');
-        arbPyLog('✅ BR Calendar параметры сохранены' + (rej ? ' (отклонены: ' + rej + ')' : ''), rej ? 'WARN' : 'INFO');
-        await brCal.refresh();
-        el('brCalEditPanel')?.remove();
-    } else {
-        arbPyLog('Ошибка сохранения BR Calendar', 'ERROR', 'brCalLogContainer');
-    }
-    } catch(e) { arbPyLog('\u274c \u041e\u0448\u0438\u0431\u043a\u0430 JS: ' + e.message + ' \u2014 \u043e\u0431\u043d\u043e\u0432\u0438\u0442\u0435 \u0441\u0442\u0440\u0430\u043d\u0438\u0446\u0443 Ctrl+F5', 'ERROR'); }
-}
-async function arbPySaveFromPanel() {
-    arbPyLog('\ud83d\udcbe \u0421\u043e\u0445\u0440\u0430\u043d\u0438\u0442\u044c \u043d\u0430\u0436\u0430\u0442\u043e (GAZP/GZZ6)', 'INFO');
-    try {
-    if (typeof arbNum !== 'function') { arbPyLog('\u274c \u0421\u043a\u0440\u0438\u043f\u0442 \u0443\u0441\u0442\u0430\u0440\u0435\u043b \u2014 \u043e\u0431\u043d\u043e\u0432\u0438\u0442\u0435 \u0441\u0442\u0440\u0430\u043d\u0438\u0446\u0443 (Ctrl+F5)', 'ERROR'); return; }
-    const chosenAccount = el('arbAccount')?.value;
-    const body = {
-        lots_a: arbNum(el('arbLotsA')?.value, 10),
-        lots_b: arbNum(el('arbLotsB')?.value, 1),
-        hedge_ratio: arbNum(el('arbHedgeRatio')?.value, 100),
-        capital: arbNum(el('arbCapital')?.value, 100000),
-        entry_z: arbNum(el('arbEntryZ')?.value, 2),
-        entry_z_long: arbNum(el('arbEntryZLong')?.value, -5),
-        entry_mode: el('arbEntryModeRub')?.checked ? 'spread_rub' : 'zscore',
-        dev_ann_high: arbNum(el('arbDevAnnHigh')?.value, 2.5),
-        dev_ann_low: arbNum(el('arbDevAnnLow')?.value, -1),
-        dev_lookback: parseInt(el('arbDevLookback')?.value || 2500),
-        dev_push_interval: arbNum(el('arbDevPush')?.value, 60),
-        spread_rub_high: arbNum(el('arbSpreadRubHigh')?.value, 400),
-        spread_rub_low: arbNum(el('arbSpreadRubLow')?.value, 200),
-        risk_free_rate: arbNum(el('arbRate')?.value, 16) / 100,
-        expiration_date: el('arbExpiration').value,
-        contract_size: arbNum(el('arbContractSize')?.value, 100),
-        lookback: arbNum(el('arbLookback')?.value, 50),
-        leg_a_timeout: arbNum(el('arbLegTimeout')?.value, 5),
-        min_fill_ratio: arbNum(el('arbMinFill')?.value, 0.5),
-        min_profit_type: el('arbMinProfitType').value,
-        min_profit_value: arbNum(el('arbMinProfitVal')?.value, 30),
-        risk_type: el('arbRiskType').value,
-        risk_value: arbNum(el('arbRiskVal')?.value, 5000),
-        allow_long_basis: el('arbAllowLong')?.checked || false,
-        use_commission: el('arbUseCommission')?.checked ?? true,
-        commission_stock_pct: arbNum(el('arbCommStock')?.value, 0.04),
-        commission_futures_rt: arbNum(el('arbCommFut')?.value, 0.9),
-    };
-    // If leg A is futures, use its commission value too
-    const symA = el('arbSymA')?.value || '';
-    if (/\d/.test(symA)) {
-        body.commission_futures_rt = arbNum(el('arbCommStock')?.value, body.commission_futures_rt);
-    }
-    // Save account to server and refresh data
-    if (chosenAccount) {
-        await arbPyFetch('/account', 'POST', {account: chosenAccount});
-        if (arbPyData) arbPyData.account = chosenAccount;
-    }
-    const r = await arbPyFetch('/params', 'POST', body);
-    if (r && r.ok) {
-        const rej = (r && r.rejected || []).join(', ');
-        arbPyLog('✅ Параметры сохранены' + (rej ? ' (отклонены: ' + rej + ')' : ''), rej ? 'WARN' : 'INFO');
-        await arbPyRefresh();  // F-021b: свежие данные до закрытия панели
-    } else {
-        arbPyLog('Ошибка сохранения параметров', 'ERROR');
-    }
-    } catch(e) { arbPyLog('\u274c \u041e\u0448\u0438\u0431\u043a\u0430 JS: ' + e.message + ' \u2014 \u043e\u0431\u043d\u043e\u0432\u0438\u0442\u0435 \u0441\u0442\u0440\u0430\u043d\u0438\u0446\u0443 Ctrl+F5', 'ERROR'); }
-}
+
+
 
 function arbPyShowCopyDialog() {
     const existing = el('arbCopyDialog');
