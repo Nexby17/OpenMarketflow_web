@@ -285,6 +285,11 @@ class ArbitrageStrategy:
         }
 
     def load_state(self, state: dict):
+        # F-028: дневной стоп не переживает рестарт (залипший True из state/config
+        # превращал рестарт в цикл убытков: вход -> daily_stop_blocked -> выход)
+        if state.get("daily_stop_active"):
+            state["daily_stop_active"] = False
+            logging.info("F-028: daily_stop_active сброшен при загрузке state")
         self.trade_history = state.get("trade_history", [])
         # Recalculate realized_pnl from trade history
         if self.trade_history:
@@ -337,6 +342,11 @@ class ArbitrageStrategy:
     def check_entry(self) -> Optional[dict]:
         """Check for entry signal — can open new layer if signal persists."""
         if self.entry_lock or self.entry_active:
+            return None
+
+        # F-028: после дневного стопа НОВЫЕ входы запрещены до авто-сброса (07:00 МСК).
+        # Без этого робот входил и тут же закрывался по daily_stop_blocked — цикл убытков.
+        if self.p.daily_stop_active:
             return None
 
         if not self.basis_calc.has_enough_data:
