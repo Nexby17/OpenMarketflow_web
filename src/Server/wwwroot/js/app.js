@@ -3676,8 +3676,8 @@ function arbPyEditPanel() {
                 <div class="metric-card" style="min-width:160px"><div class="metric-label">📈 Инструмент A</div>
                     <div class="input" style="width:140px;align-self:center;font-weight:600">${p.ticker_a||''}</div>
                 </div>
-                <div class="metric-card" style="min-width:160px"><div class="metric-label">📉 Инструмент B</div>
-                    
+                <div class="metric-card" style="min-width:160px"><div class="metric-label">📉 Инструмент B (фьючерс)</div>
+                    <div class="input" style="width:140px;align-self:center;font-weight:600">${p.ticker_b||''}</div>
                 </div>
                 <div class="metric-card"><div class="metric-label">Лоты A</div><input id="arbLotsA" class="input" type="number" value="${p.lots_a||10}" style="width:70px"></div>
                 <div class="metric-card"><div class="metric-label">Лоты B</div><input id="arbLotsB" class="input" type="number" value="${p.lots_b||1}" style="width:70px"></div>
