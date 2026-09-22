@@ -3664,44 +3664,10 @@ function arbPyEditPanel() {
             <!-- Инструменты -->
             <div class="metrics-row" style="flex-wrap:wrap">
                 <div class="metric-card" style="min-width:160px"><div class="metric-label">📈 Инструмент A</div>
-                    <select id="arbSymA" class="input" style="width:140px" onchange="arbUpdateCommissionLabels()">
-                        <option value="GAZP" ${(p.ticker_a||'GAZP')==='GAZP'?'selected':''}>GAZP (Газпром)</option>
-                        <option value="SBER" ${p.ticker_a==='SBER'?'selected':''}>SBER (Сбербанк)</option>
-                        <option value="LKOH" ${p.ticker_a==='LKOH'?'selected':''}>LKOH (Лукойл)</option>
-                        <option value="ROSN" ${p.ticker_a==='ROSN'?'selected':''}>ROSN (Роснефть)</option>
-                        <option value="TATN" ${p.ticker_a==='TATN'?'selected':''}>TATN (Татнефть)</option>
-                        <option value="GMKN" ${p.ticker_a==='GMKN'?'selected':''}>GMKN (Норникель)</option>
-                        <option value="ALRS" ${p.ticker_a==='ALRS'?'selected':''}>ALRS (Алроса)</option>
-                        <option value="VTBR" ${p.ticker_a==='VTBR'?'selected':''}>VTBR (ВТБ)</option>
-                        <option value="MTSS" ${p.ticker_a==='MTSS'?'selected':''}>MTSS (МТС)</option>
-                        <option value="NVTK" ${p.ticker_a==='NVTK'?'selected':''}>NVTK (Новатэк)</option>
-                        <option value="BRQ6" ${p.ticker_a==='BRQ6'?'selected':''}>BRQ6 (Brent Aug, истёк)</option>
-                        <option value="BRU6" ${p.ticker_a==='BRU6'?'selected':''}>BRU6 (Brent Sep, истёк)</option>
-                        <option value="BRZ6" ${p.ticker_a==='BRZ6'?'selected':''}>BRZ6 (Brent Dec)</option>
-                        <option value="BRK6" ${p.ticker_a==='BRK6'?'selected':''}>BRK6 (Brent Jun)</option>
-                    </select>
+                    <div class="input" style="width:140px;align-self:center;font-weight:600">${p.ticker_a||''}</div>
                 </div>
                 <div class="metric-card" style="min-width:160px"><div class="metric-label">📉 Инструмент B</div>
-                    <select id="arbSymB" class="input" style="width:140px">
-                        <option value="GZM6" ${(p.ticker_b||'GZM6')==='GZM6'?'selected':''}>GZM6 (Газпром фьюч)</option>
-                        <option value="GZU6" ${p.ticker_b==='GZU6'?'selected':''}>GZU6 (Газпром фьюч, истёк)</option>
-                        <option value="GZZ6" ${p.ticker_b==='GZZ6'?'selected':''}>GZZ6 (Газпром декабрь)</option>
-                        <option value="SRM6" ${p.ticker_b==='SRM6'?'selected':''}>SRM6 (Сбер фьюч)</option>
-                        <option value="SRU6" ${p.ticker_b==='SRU6'?'selected':''}>SRU6 (Сбер фьюч, истёк)</option>
-                        <option value="SRZ6" ${p.ticker_b==='SRZ6'?'selected':''}>SRZ6 (Сбер декабрь)</option>
-                        <option value="LKM6" ${p.ticker_b==='LKM6'?'selected':''}>LKM6 (Лукойл фьюч)</option>
-                        <option value="RNM6" ${p.ticker_b==='RNM6'?'selected':''}>RNM6 (Роснефть фьюч)</option>
-                        <option value="TTM6" ${p.ticker_b==='TTM6'?'selected':''}>TTM6 (Татнефть фьюч)</option>
-                        <option value="MXM6" ${p.ticker_b==='MXM6'?'selected':''}>MXM6 (Мосбиржа фьюч)</option>
-                        <option value="SiU6" ${p.ticker_b==='SiU6'?'selected':''}>SiU6 (Доллар/руб)</option>
-                        <option value="RIM6" ${p.ticker_b==='RIM6'?'selected':''}>RIM6 (RTS фьюч)</option>
-                        <option value="RIU6" ${p.ticker_b==='RIU6'?'selected':''}>RIU6 (RTS фьюч)</option>
-                        <option value="GDM6" ${p.ticker_b==='GDM6'?'selected':''}>GDM6 (Золото фьюч)</option>
-                        <option value="BRQ6" ${p.ticker_b==='BRQ6'?'selected':''}>BRQ6 (Brent Aug фьюч)</option>
-                        <option value="BRU6" ${p.ticker_b==='BRU6'?'selected':''}>BRU6 (Brent Sep фьюч)</option>
-                        <option value="BRZ6" ${p.ticker_b==='BRZ6'?'selected':''}>BRZ6 (Brent Dec фьюч)</option>
-                        <option value="BRK6" ${p.ticker_b==='BRK6'?'selected':''}>BRK6 (Brent Jun фьюч)</option>
-                    </select>
+                    
                 </div>
                 <div class="metric-card"><div class="metric-label">Лоты A</div><input id="arbLotsA" class="input" type="number" value="${p.lots_a||10}" style="width:70px"></div>
                 <div class="metric-card"><div class="metric-label">Лоты B</div><input id="arbLotsB" class="input" type="number" value="${p.lots_b||1}" style="width:70px"></div>
@@ -4013,10 +3979,6 @@ async function brCalEditPanel() {
 
 async function brCalSaveFromPanel() {
     const body = {
-        ticker_a: el('arbSymA').value,
-        symbol_a: el('arbSymA').value + '@RTSX',
-        ticker_b: el('arbSymB').value,
-        symbol_b: el('arbSymB').value + '@RTSX',
         lots_a: arbNum(el('arbLotsA')?.value, 1),
         lots_b: arbNum(el('arbLotsB')?.value, 1),
         hedge_ratio: arbNum(el('arbHedgeRatio')?.value, 1),
@@ -4064,19 +4026,15 @@ async function brCalSaveFromPanel() {
 async function arbPySaveFromPanel() {
     const chosenAccount = el('arbAccount')?.value;
     const body = {
-        ticker_a: el('arbSymA').value,
-        symbol_a: el('arbSymA').value + '@MISX',
-        ticker_b: el('arbSymB').value,
-        symbol_b: el('arbSymB').value + '@RTSX',
-        lots_a: parseInt(el('arbLotsA').value),
-        lots_b: parseInt(el('arbLotsB').value),
-        hedge_ratio: parseFloat(el('arbHedgeRatio').value),
-        capital: parseFloat(el('arbCapital').value),
-        entry_z: parseFloat(el('arbEntryZ').value),
-        entry_z_long: parseFloat(el('arbEntryZLong').value),
+        lots_a: arbNum(el('arbLotsA')?.value, 10),
+        lots_b: arbNum(el('arbLotsB')?.value, 1),
+        hedge_ratio: arbNum(el('arbHedgeRatio')?.value, 100),
+        capital: arbNum(el('arbCapital')?.value, 100000),
+        entry_z: arbNum(el('arbEntryZ')?.value, 2),
+        entry_z_long: arbNum(el('arbEntryZLong')?.value, -5),
         entry_mode: el('arbEntryModeRub')?.checked ? 'spread_rub' : 'zscore',
-        dev_ann_high: parseFloat(el('arbDevAnnHigh')?.value ?? 2.5),
-        dev_ann_low: parseFloat(el('arbDevAnnLow')?.value ?? -1),
+        dev_ann_high: arbNum(el('arbDevAnnHigh')?.value, 2.5),
+        dev_ann_low: arbNum(el('arbDevAnnLow')?.value, -1),
         dev_lookback: parseInt(el('arbDevLookback')?.value || 2500),
         dev_push_interval: parseFloat(el('arbDevPush')?.value || 60),
         spread_rub_high: parseFloat(el('arbSpreadRubHigh')?.value || 400),

@@ -108,6 +108,21 @@ def load_params() -> ArbParams:
     return p
 
 params = load_params()
+
+# F-022: пара инстанса — жёсткая из env (сервер передаёт ARB_TICKER_A/B),
+# поверх любых значений из конфиг-файла. Панель параметров пару не меняет.
+_env_ticker_a = os.environ.get("ARB_TICKER_A")
+_env_ticker_b = os.environ.get("ARB_TICKER_B")
+if _env_ticker_a:
+    params.ticker_a = _env_ticker_a
+    params.symbol_a = os.environ.get("ARB_SYMBOL_A", _env_ticker_a + "@MISX")
+if _env_ticker_b:
+    params.ticker_b = _env_ticker_b
+    params.symbol_b = os.environ.get("ARB_SYMBOL_B", _env_ticker_b + "@RTSX")
+_env_exp = os.environ.get("ARB_EXPIRATION")
+if _env_exp:
+    params.expiration_date = _env_exp
+log.info(f"Instance pair (env-locked): {params.ticker_a}/{params.ticker_b} exp={params.expiration_date}")
 PAPER_MODE = args.paper or params.capital <= 0  # default paper for safety
 
 # Override with arg if explicitly set
@@ -1040,14 +1055,17 @@ class APIHandler(BaseHTTPRequestHandler):
                                "risk_value", "commission_stock_pct", "commission_futures_rt",
                                "slippage_bps", "mult_a", "mult_b", "dev_ann_high", "dev_ann_low",
                                "dev_lookback", "dev_push_interval", "go_per_contract_b"}
-                _str_fields = {"ticker_a", "ticker_b", "symbol_a", "symbol_b", "entry_mode",
-                               "min_profit_type", "risk_type", "expiration_date"}
+                # F-022: пару через /params менять НЕЛЬЗЯ — она личность инстанса (env при старте)
+                _str_fields = {"entry_mode", "min_profit_type", "risk_type", "expiration_date"}
                 rejected = []
                 for k, v in data.items():
                     if not hasattr(params, k):
                         continue
                     if v is None:
                         rejected.append(k)
+                        continue
+                    if k in {"ticker_a", "ticker_b", "symbol_a", "symbol_b"}:
+                        rejected.append(k)  # F-022: пара меняется только перезапуском инстанса
                         continue
                     if k in _num_fields:
                         try:
