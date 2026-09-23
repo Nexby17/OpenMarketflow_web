@@ -41,6 +41,7 @@ robot/of_config.json
 robot/arb_config.json
 robot/arb_config.json
 robot/arb_state.json
+robot/arb_state_*.json
 robot/arb_*/arb_config.json
 robot/arb_*/arb_state.json
 robot/arb_*/logs/

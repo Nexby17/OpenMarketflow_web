@@ -355,6 +355,10 @@ def _ob_poller():
                     _stale_count = 0
         except Exception as e:
             log.warning(f"OB poll outer error: {e}")
+        # F-032 (2026-09-23): ВАЖНО — basis_calc.update_market() здесь НЕ вызываем.
+        # Входная математика (spread_rub/dev_ann) обязана остаться на last-ценах,
+        # как работала вчера (решение Дмитрия: входы не трогать). Реализуемый PnL
+        # тейка (_layer_realizable_pnl) читает стакан напрямую из strategy.ob_a/ob_b.
         time.sleep(1)
     log.warning("OB poller thread exited!")
 
@@ -776,8 +780,9 @@ def _execute_exit(signal: dict, force_market: bool = False):
             return
         log.info(f"EXIT ALL {len(strategy.layers)} layers — reason={signal['reason']}")
         if PAPER_MODE:
-            pa = strategy.basis_calc.price_a
-            pb = strategy.basis_calc.price_b
+            # F-032: цены закрытия — из живого стакана (как в реализуемом PnL), last только fallback
+            pa = strategy.ob_a.best_bid or strategy.basis_calc.price_a
+            pb = strategy.ob_b.best_ask or strategy.basis_calc.price_b
             if pa > 0 and pb > 0:
                 strategy.close_all_layers(pa, pb, signal["reason"])
         else:
@@ -836,12 +841,17 @@ def _execute_single_exit(layer, reason: str, force_market: bool = False):
         return
 
     # Limit exit: normal profit-taking exit
-    limit_price = strategy.ob_a.best_ask
+    # F-032: лимитная цена ноги A — по стороне выхода:
+    #   SELL A (закрытие SHORT) → лимит на bid (реализуемая цена продажи),
+    #   BUY A (закрытие LONG)  → лимит на ask. Раньше всегда был ask —
+    #   для SELL это завышало факт закрытия относительно предсказанного realizable PnL.
+    if side_a == SELL:
+        limit_price = strategy.ob_a.best_bid or strategy.basis_calc.price_a
+    else:
+        limit_price = strategy.ob_a.best_ask or strategy.basis_calc.price_a
     if limit_price <= 0:
-        limit_price = strategy.basis_calc.price_a
-        if limit_price <= 0:
-            log.error(f"Cannot exit layer #{layer.layer_id} — no price data")
-            return
+        log.error(f"Cannot exit layer #{layer.layer_id} — no A price data")
+        return
 
     market_price_b = _market_fill_price(side_b)
     if market_price_b <= 0:
@@ -869,6 +879,9 @@ def _execute_single_exit(layer, reason: str, force_market: bool = False):
     if result["success"]:
         fill_a = result["leg_a"]
         fill_b = result["leg_b"]
+        # F-032: факт закрытия логируем рядом с предсказанием — расхождение означает,
+        # что стакан ушёл между проверкой и исполнением (норма: единицы рублей)
+        log.info(f"EXIT layer #{layer.layer_id} filled: A@{fill_a.price:.2f} B@{fill_b.price:.2f} (paper est. limit {limit_price:.2f} / mkt {market_price_b:.2f}) reason={reason}")
         strategy.close_layer(layer, fill_a.price, fill_b.price, reason)
     else:
         log.error(f"Exit failed layer #{layer.layer_id}: {result['error']} — retrying next tick")

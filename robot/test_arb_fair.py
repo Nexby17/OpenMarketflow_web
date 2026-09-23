@@ -252,5 +252,92 @@ for k in ("spread_long_rub", "dev_ann_pct", "zscore_dev", "dev_mean", "dev_std",
           "dev_points", "dev_lookback", "dividends", "div_sum"):
     check(f"state[{k}]", k in state)
 
+print("=== F-032: realizable PnL exit (стакан вместо last) ===")
+# F-032-1: реализуемый PnL считается по стакану, а не по last
+cfg = dict(symbol_a="GAZP@MISX", ticker_a="GAZP", symbol_b="GZU6@RTSX", ticker_b="GZU6",
+           lots_a=10, lots_b=1, hedge_ratio=10.0, mult_a=10.0, mult_b=1.0,
+           entry_mode="zscore", dev_ann_high=2.5, dev_ann_low=-1.0,
+           dev_lookback=100, dev_push_interval=0.05,
+           risk_free_rate=0.16,
+           expiration_date=(datetime.now() + timedelta(days=98)).strftime("%Y-%m-%d"),
+           contract_size=100, capital=1_000_000, allow_long_basis=False,
+           min_profit_type="rub", min_profit_value=25.0,
+           slippage_bps=5.0, use_commission=False)
+
+stX = ArbitrageStrategy(ArbParams(**cfg))
+stX.ob_a.update([(99.80, 10, 0, 1), (99.82, 0, 10, 1)])   # bid_a=99.80 ask_a=99.82
+stX.ob_b.update([(10319.0, 10, 0, 1), (10320.0, 0, 10, 1)])  # bid_b=10319 ask_b=10320
+# SHORT слой: вошли buy A@99.75, sell B@10350.0
+lay = stX.layers[0] if False else None
+stX.open_layer(SHORT_BASIS, 99.75, 10350.0, 10, 1, z=2.0)
+lay = stX.layers[0]
+rl = stX._layer_realizable_pnl(lay)
+# ожидаем: pnl_a = (99.80-99.75)*10*10 = 5.0; pnl_b = (10350 - (10320+5.16))*1 = 24.84; gross 29.84
+exp = (99.80-99.75)*10*10 + (10350.0 - (10320.0 + 10320.0*5.0/10000.0))
+check("F-032 realizable math (short)", rl is not None and abs(rl - exp) < 0.01, f"rl={rl} exp={exp}")
+# last-путь даёт другое значение (проверяем что стакан реально приоритетен)
+check("F-032 realizable differs from last-path",
+      abs(rl - stX._layer_unrealized_pnl(lay)) > 0.01,
+      f"rl={rl:.2f} last={stX._layer_unrealized_pnl(lay):.2f}")
+
+# F-032-2: протухший стакан -> realizable None -> тейк НЕ квалифицируется
+stX.ob_a._ts = time.time() - 10
+stX.ob_b._ts = time.time() - 10
+check("F-032 stale OB -> None", stX._layer_realizable_pnl(lay) is None)
+check("F-032 stale OB -> no exit", stX.check_exit() is None)
+stX.ob_a.update([(99.80, 10, 0, 1), (99.82, 0, 10, 1)])
+stX.ob_b.update([(10319.0, 10, 0, 1), (10320.0, 0, 10, 1)])
+
+# F-032-3: подтверждение N тиков — один тик не закрывает
+stX2 = ArbitrageStrategy(ArbParams(**{**cfg, "min_profit_value": 25.0}))
+stX2.ob_a.update([(99.80, 10, 0, 1), (99.82, 0, 10, 1)])
+stX2.ob_b.update([(10450.0, 10, 0, 1), (10451.0, 0, 10, 1)])  # большой профит по B
+stX2.open_layer(SHORT_BASIS, 99.75, 10500.0, 10, 1, z=2.0)
+sig1 = stX2.check_exit()
+check("F-032 tick 1 no exit", sig1 is None, f"sig={sig1}")
+sig2 = stX2.check_exit()
+check("F-032 tick 2 no exit", sig2 is None)
+sig3 = stX2.check_exit()
+check("F-032 tick 3 fires exit", sig3 is not None and sig3["reason"] == "profit_target" and sig3["layer_id"] == stX2.layers[0].layer_id,
+      f"sig={sig3}")
+
+# F-032-4: фантомный выброс (один тик стакана) не закрывает — реальный сценарий утечки
+stX3 = ArbitrageStrategy(ArbParams(**cfg))
+stX3.ob_a.update([(99.80, 10, 0, 1), (99.82, 0, 10, 1)])
+stX3.ob_b.update([(10319.0, 10, 0, 1), (10320.0, 0, 10, 1)])  # стакан стоит на месте
+stX3.open_layer(SHORT_BASIS, 99.75, 10345.0, 10, 1, z=2.0)
+# last дёргается в пользу SHORT (как GZZ6 утром): одиночный принт A вверх, B вниз —
+# last-математика рисует ~+60 ₽, но стакан стоит: реализуемый всего ~20,65 ₽ < 25
+stX3.basis_calc.update_price_a(99.95)
+stX3.basis_calc.update_price_b(10300.0)
+un_ph = stX3._layer_unrealized_pnl(stX3.layers[0])
+rl_ph = stX3._layer_realizable_pnl(stX3.layers[0])
+check("F-032 phantom last-profit exists", un_ph >= 25.0,
+      f"unreal={un_ph:.2f}")
+check("F-032 phantom below threshold by OB", rl_ph is not None and rl_ph < 25.0,
+      f"realizable={rl_ph:.2f}")
+check("F-032 phantom not qualifying by OB", stX3.check_exit() is None,
+      "стакан стоит — realizable < порога, тейк не должен сработать (старый код закрыл бы в минус)")
+
+# F-032-5: FIFO — при двух qualifying слоях закрывается старейший
+stX4 = ArbitrageStrategy(ArbParams(**cfg))
+stX4.ob_a.update([(99.80, 10, 0, 1), (99.82, 0, 10, 1)])
+stX4.ob_b.update([(10450.0, 10, 0, 1), (10451.0, 0, 10, 1)])
+stX4.open_layer(SHORT_BASIS, 99.75, 10500.0, 10, 1, z=2.0)   # старейший
+stX4.open_layer(SHORT_BASIS, 99.75, 10510.0, 10, 1, z=2.1)   # новее
+for _ in range(3):
+    sigF = stX4.check_exit()
+check("F-032 FIFO oldest first", sigF is not None and sigF["layer_id"] == stX4.layers[0].layer_id,
+      f"sig={sigF} layers={[l.layer_id for l in stX4.layers]}")
+
+# F-032-6: LONG-слой — симметричная математика
+stX5 = ArbitrageStrategy(ArbParams(**{**cfg, "allow_long_basis": True}))
+stX5.ob_a.update([(99.80, 10, 0, 1), (99.82, 0, 10, 1)])
+stX5.ob_b.update([(10319.0, 10, 0, 1), (10320.0, 0, 10, 1)])
+stX5.open_layer(LONG_BASIS, 99.90, 10290.0, 10, 1, z=-2.0)  # вошли sell A@99.90, buy B@10290
+rlL = stX5._layer_realizable_pnl(stX5.layers[0])
+expL = (99.90-99.82)*10*10 + ((10319.0 - 10319.0*5.0/10000.0) - 10290.0)
+check("F-032 realizable math (long)", rlL is not None and abs(rlL - expL) < 0.01, f"rl={rlL} exp={expL}")
+
 print(f"\n===== RESULTS: PASS={PASS} FAIL={FAIL} =====")
 sys.exit(0 if FAIL == 0 else 1)

@@ -117,6 +117,10 @@ class ArbLayer:
 class ArbitrageStrategy:
     """Arbitrage strategy logic — signals, position tracking, PnL."""
 
+    # F-032 (2026-09-23): тейк-профит подтверждается N тиков подряд (цикл ~0.5с),
+    # чтобы одиночный выброс стакана не открывал фантомный выход.
+    _EXIT_CONFIRM_TICKS = 3
+
     def __init__(self, params: ArbParams):
         self.p = params
         self.basis_calc = BasisCalculator(
@@ -143,6 +147,9 @@ class ArbitrageStrategy:
         self.trade_history: list[dict] = []
         self.entry_lock: bool = False
         self._lock_time: float = 0.0
+        # F-032: счётчики подтверждения тейка (условие должно держаться N тиков подряд)
+        self._exit_confirm: dict = {}   # layer_id -> consecutive qualifying ticks
+        self._exit_total_confirm: int = 0
 
         # Broker sync (updated from FinamPy every 30s)
         self.broker_equity: float = 0.0
@@ -322,6 +329,9 @@ class ArbitrageStrategy:
                 layer_id=ld.get("layer_id", self._next_layer_id),
             ))
             self._next_layer_id = max(self._next_layer_id, ld.get("layer_id", 0) + 1)
+        # F-032: счётчики подтверждения не персистятся — после рестарта копятся заново
+        self._exit_confirm = {}
+        self._exit_total_confirm = 0
 
     # === Signals ===
 
@@ -481,48 +491,95 @@ class ArbitrageStrategy:
         return None
 
     def check_exit(self) -> Optional[dict]:
-        """Check for exit signal across all layers. Returns first exit or None."""
+        """F-032 (2026-09-23): Exit signal — FIFO по слоям (закрываем так же, как набирали).
+
+        Правила:
+          - Тейк-профит считается по РЕАЛИЗУЕМОМУ PnL (стакан bid/ask − slippage − комиссии);
+            при отсутствии/протухании стакана решение НЕ принимается (ждём свежий стакан).
+          - Тейк требует подтверждения: условие должно держаться _EXIT_CONFIRM_TICKS тиков
+            подряд (~1.5 c при цикле 0.5 c) — фильтр одиночных выбросов стакана.
+          - Риск-выходы (stop_loss, daily_stop, time_stop, max_dd) — без подтверждения,
+            считаются по прежней last-математике (защита от падения фида).
+        """
         if not self.layers:
+            self._exit_confirm.clear()
+            self._exit_total_confirm = 0
             return None
 
-        # Check each layer for min_profit exit
-        per_layer_pnls = []
-        for layer in self.layers:
-            unrealized = self._layer_unrealized_pnl(layer)
+        # ---- 1) Тейк по одному слою, FIFO от старейшего ----
+        alive_ids = {l.layer_id for l in self.layers}
+        for k in [k for k in self._exit_confirm if k not in alive_ids]:
+            del self._exit_confirm[k]
+
+        for layer in sorted(self.layers, key=lambda l: (l.entry_time, l.layer_id)):
+            unrealized = self._layer_unrealized_pnl(layer)          # для логов/UI
+            realizable = self._layer_realizable_pnl(layer)          # для решения
             hold_min = (time.time() - layer.entry_time) / 60
-            per_layer_pnls.append((layer, unrealized, hold_min))
 
-            if self._meets_min_profit(unrealized, layer):
-                return {
-                    "action": "exit",
-                    "reason": "profit_target",
-                    "pnl": unrealized,
-                    "hold_min": hold_min,
-                    "layer_id": layer.layer_id,
-                }
+            qualifies = self._exit_qualifies(realizable, layer)
+            if not qualifies:
+                self._exit_confirm.pop(layer.layer_id, None)
+                continue
 
-        # Also close ALL layers if total unrealized >= min_profit and ALL profitable
-        if len(per_layer_pnls) > 1 and all(pnl > 0 for _, pnl, _ in per_layer_pnls):
-            total = sum(pnl for _, pnl, _ in per_layer_pnls)
-            if total >= self.p.min_profit_value:
-                max_hold = max(hold for _, _, hold in per_layer_pnls)
-                log.info(f"EXIT ALL (total profit target): total={total:.2f} >= {self.p.min_profit_value}, layers={len(per_layer_pnls)}")
-                return {
-                    "action": "exit_all",
-                    "reason": "profit_target_total",
-                    "pnl": total,
-                    "hold_min": max_hold,
-                    "layer_id": None,
-                }
+            n = self._exit_confirm.get(layer.layer_id, 0) + 1
+            if n < self._EXIT_CONFIRM_TICKS:
+                self._exit_confirm[layer.layer_id] = n
+                log.debug(f"EXIT confirm {n}/{self._EXIT_CONFIRM_TICKS} layer #{layer.layer_id} realizable={realizable:.2f}")
+                continue
 
-        # Check risk on total portfolio PnL
+            self._exit_confirm.pop(layer.layer_id, None)
+            log.info(f"EXIT layer #{layer.layer_id} (FIFO) confirmed: realizable={realizable:.2f} >= {self.p.min_profit_value} (last-unreal={unrealized:.2f}) hold={hold_min:.1f}min")
+            return {
+                "action": "exit",
+                "reason": "profit_target",
+                "pnl": realizable,
+                "hold_min": hold_min,
+                "layer_id": layer.layer_id,
+            }
+
+        # ---- 2) Групповой выход: все слои в плюсе и сумма >= порога (тип-порога rub/pct) ----
+        if len(self.layers) > 1 and self.p.min_profit_type != "pts":
+            reals = [(l, self._layer_realizable_pnl(l)) for l in self.layers]
+            if all(r is not None and r > 0 for _, r in reals):
+                total_r = sum(r for _, r in reals)
+                ok = True
+                if self.p.min_profit_type == "pct":
+                    cost = sum(abs(l.entry_price_a * l.lots_a * self.p.mult_a) +
+                               abs(l.entry_price_b * l.lots_b * self.p.go_per_contract_b())
+                               for l, _ in reals)
+                    ok = cost > 0 and (total_r / cost * 100) >= self.p.min_profit_value
+                else:
+                    ok = total_r >= self.p.min_profit_value
+                if ok:
+                    n = self._exit_total_confirm + 1
+                    if n < self._EXIT_CONFIRM_TICKS:
+                        self._exit_total_confirm = n
+                    else:
+                        self._exit_total_confirm = 0
+                        max_hold = max((time.time() - l.entry_time) / 60 for l, _ in reals)
+                        log.info(f"EXIT ALL confirmed: realizable_total={total_r:.2f} >= {self.p.min_profit_value}, layers={len(reals)}")
+                        return {
+                            "action": "exit_all",
+                            "reason": "profit_target_total",
+                            "pnl": total_r,
+                            "hold_min": max_hold,
+                            "layer_id": None,
+                        }
+                else:
+                    self._exit_total_confirm = 0
+            else:
+                self._exit_total_confirm = 0
+        else:
+            self._exit_total_confirm = 0
+
+        # ---- 3) Риск по тотальному PnL (без подтверждения — прежняя логика) ----
         total_unrealized = sum(self._layer_unrealized_pnl(l) for l in self.layers)
         total_pnl = self.realized_pnl + total_unrealized
-        # Use max hold time across all open layers for time_stop
         max_hold = max((time.time() - l.entry_time) / 60 for l in self.layers) if self.layers else 0
         risk_hit = self._check_risk(total_unrealized, max_hold)
         if risk_hit:
-            # Risk hit — close ALL layers
+            self._exit_confirm.clear()
+            self._exit_total_confirm = 0
             return {
                 "action": "exit_all",
                 "reason": risk_hit,
@@ -532,6 +589,25 @@ class ArbitrageStrategy:
             }
 
         return None
+
+    def _exit_qualifies(self, realizable, layer: ArbLayer) -> bool:
+        """F-032: квалификация тейка с учётом типа порога.
+        rub  → реализуемый PnL (стакан − slippage − комиссии) >= v
+        pct  → реализуемый PnL / стоимость слоя * 100 >= v
+        pts  → легаси-путь по last (старая _meets_min_profit, никем из живых инстансов не используется)
+        realizable is None (стакан протух) → тейк не квалифицируется.
+        """
+        t = self.p.min_profit_type
+        v = self.p.min_profit_value
+        if t == "pts":
+            return self._meets_min_profit(self._layer_unrealized_pnl(layer), layer)
+        if realizable is None:
+            return False
+        if t == "pct":
+            cost = abs(layer.entry_price_a * layer.lots_a * self.p.mult_a) + \
+                   abs(layer.entry_price_b * layer.lots_b * self.p.go_per_contract_b())
+            return cost > 0 and (realizable / cost * 100) >= v
+        return realizable >= v  # rub
 
     def _meets_min_profit(self, unrealized: float, layer: ArbLayer = None) -> bool:
         """Check if unrealized PnL meets the configured min profit threshold."""
@@ -678,6 +754,41 @@ class ArbitrageStrategy:
     def _calc_unrealized_pnl(self) -> float:
         """Total unrealized across all layers."""
         return sum(self._layer_unrealized_pnl(l) for l in self.layers)
+
+    def _layer_realizable_pnl(self, layer: ArbLayer) -> float:
+        """F-032 (2026-09-23): Realizable net PnL — что реально получим при закрытии СЕЙЧАС.
+
+        Отличие от _layer_unrealized_pnl:
+          - цены только из живого стакана (best bid/ask), last не используется;
+          - slippage добавляется к цене закрытия ноги B (как при исполнении);
+          - если стакана нет или он несвежий (> ob_stale_sec) — возвращает None
+            (решение о тейке в этом случае НЕ принимается, а не падает на last).
+        """
+        ob_stale_sec = 3.0
+        bb_a, ba_a = self.ob_a.best_bid, self.ob_a.best_ask
+        bb_b, ba_b = self.ob_b.best_bid, self.ob_b.best_ask
+        if self.ob_a.ts <= 0 or self.ob_b.ts <= 0:
+            return None
+        if time.time() - self.ob_a.ts > ob_stale_sec or time.time() - self.ob_b.ts > ob_stale_sec:
+            return None
+        if bb_a <= 0 or ba_a <= 0 or bb_b <= 0 or ba_b <= 0:
+            return None
+
+        slip_b = ba_b * self.p.slippage_bps / 10000.0  # 5 bps по ноге B, как в исполнении
+
+        if layer.side == LONG_BASIS:
+            # Закрытие LONG: купить A по аску, продать B по биду − slippage (агрессивный выход)
+            pnl_a = (layer.entry_price_a - ba_a) * layer.lots_a * self.p.mult_a
+            pnl_b = ((bb_b - slip_b) - layer.entry_price_b) * layer.lots_b * self.p.mult_b
+        else:
+            # Закрытие SHORT: продать A по биду, откупить B по аску + slippage
+            pnl_a = (bb_a - layer.entry_price_a) * layer.lots_a * self.p.mult_a
+            pnl_b = (layer.entry_price_b - (ba_b + slip_b)) * layer.lots_b * self.p.mult_b
+
+        gross = pnl_a + pnl_b
+        comm = self._calc_commission(layer.entry_price_a, bb_a if layer.side == SHORT_BASIS else ba_a,
+                                     layer.lots_a, layer.lots_b)
+        return gross - comm
 
     # === Layer Management ===
 
