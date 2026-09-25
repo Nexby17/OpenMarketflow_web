@@ -294,6 +294,41 @@ def _on_latest_trades(event):
         log.error(f"Trades callback error: {e}")
 
 
+_last_fill_price = 0.0
+_last_fill_time = 0.0
+_last_fill_qty = 0
+
+
+def _on_my_trade(trade):
+    """F-019 (восстановлено 25.09): филл СВОЕГО ордера через WS ORDERS-канал.
+    trade = dict из hub_adapter (или объект с атрибутами — совместимо).
+    Ставит _last_fill_price фактической цене исполнения."""
+    global _last_fill_price, _last_fill_time, _last_fill_qty
+    try:
+        if isinstance(trade, dict):
+            sym = str(trade.get("symbol", ""))
+            if sym and sym != SYMBOL:
+                return
+            price = float(trade.get("price", 0) or 0)
+            qty = int(trade.get("qty", 0) or 0)
+            oid = str(trade.get("order_id", ""))
+        else:
+            sym = str(trade.symbol)
+            if sym != SYMBOL:
+                return
+            price = float(str(trade.price.value)) if hasattr(trade.price, 'value') else float(str(trade.price))
+            qty = int(float(str(trade.size.value))) if hasattr(trade.size, 'value') else int(float(str(trade.size)))
+            oid = str(trade.order_id)
+        if price <= 0:
+            return
+        _last_fill_price = price
+        _last_fill_time = time.time()
+        _last_fill_qty = qty
+        log.info(f"FILL {oid}: price={price} qty={qty} symbol={sym}")
+    except Exception as e:
+        log.error(f"on_my_trade error: {e}")
+
+
 def _on_order_book(event):
     """Callback from SubscribeOrderBook."""
     try:
