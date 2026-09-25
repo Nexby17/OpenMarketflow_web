@@ -1,7 +1,7 @@
 {
   "meta": {
     "version": "1.0",
-    "updated": "2026-09-23",
+    "updated": "2026-09-25",
     "description": "Реестр фич OpenMarketflow: контроль, статусы, история логики. Дополнение к коммитам: фича шире коммита (несколько коммитов, тесты, решения).",
     "rules": {
       "statuses": [
@@ -817,6 +817,33 @@
         ".gitignore: robot/arb_state_*.json"
       ],
       "note": "Решение согласовано с Дмитрием 23.09: входы не трогать, закрывать слоями, доверять стакану, min_hold заменён подтверждением 3 тика."
+    },
+    {
+      "id": "F-039",
+      "name": "Честные фиды для механизма мин. профита (BR-календарь)",
+      "area": "robots/arb",
+      "status": "done",
+      "owner": "main",
+      "commits": [
+        "SEE-COMMIT"
+      ],
+      "summary": "BRV6/BRZ6: механизм тейка F-032 (закрытие слоями при реализуемом ≥ 25 ₽) не имел данных для работы: финамовский quote-стрим в цикле UNAUTHENTICATED, ISS-fallback подпитывал только фьючерсную ногу B, а маршрутизация «last < 1000 → нога A» на календарном спреде лила BRZ6-принты в price_a BRV6 (last 95,3 vs OB 105,6) → фантомный Unrealized +47 ₽ при реализуемом −0,8 ₽/слой. Фиксы: (1) route_quote — тикер, затем ближайший OB mid ±2%, двусмысленные котировки отбрасываются; (2) ISS-подпитка фьючерсной ноги A; (3) last доверяется только при согласии со стаканом ±2% (обновление mid при расхождении); (4) карточка Unrealized показывает реализуемый PnL (те же цены, что решают тейк), last-вариант в localUnrealizedPnl. Входы не тронуты. Тесты: 53 PASS / 0 FAIL (11 новых F-039).",
+      "logic": "route_quote() в strategy_arb: ticker match → nearest OB mid ±2% → drop; _total_realizable() для карточки; main_arb: _moex_poller ветка futures-A + last-guard ±2% для обеих ног",
+      "tests": [
+        "route by ticker A/B",
+        "unknown symbol → nearest OB mid",
+        "ambiguous quote (между ног) → drop",
+        "empty OB → legacy magnitude heuristic",
+        "total_realizable = сумма слоёв / None при протухшем OB",
+        "card unrealizedPnl == realizableUnrealizedPnl",
+        "53/53 test_arb_fair"
+      ],
+      "changes": [
+        "robot/arb_common/strategy_arb.py: route_quote, _total_realizable, get_status card",
+        "robot/main_arb.py: _on_quote routing, _moex_poller futures-A + last-guard",
+        "robot/test_arb_fair.py: +11 кейсов F-039"
+      ],
+      "note": "Решение Дмитрия 25.09: «Робот должен закрывать позицию слоями при мин профит 25 руб — это единственный выход. Сделать»."
     }
   ]
 }

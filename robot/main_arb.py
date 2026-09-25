@@ -440,18 +440,16 @@ def _on_quote(event):
             last = (bid + ask) / 2 if bid > 0 and ask > 0 else (bid or ask)
             if last <= 0:
                 continue
-            # Route by symbol or price magnitude
+            # F-039: маршрутизация по тикеру, затем по близости к OB mid (±2%).
+            # Старый fallback «<1000 ₽ → нога A» на календарных спредах (BRV6/BRZ6)
+            # лил BRZ6-принты в price_a BRV6 и рисовал фантомный PnL.
             symbol = q.secsi.secsym if hasattr(q, 'secsi') else ""
-            if symbol and (params.ticker_a in symbol or symbol in params.ticker_a):
+            leg = strategy.route_quote(symbol, last)
+            if leg == "A":
                 strategy.basis_calc.update_price_a(last)
-            elif symbol and (params.ticker_b in symbol or symbol in params.ticker_b):
+            elif leg == "B":
                 strategy.basis_calc.update_price_b(last)
-            else:
-                # Fallback: GAZP ~98, GZM6 ~980
-                if last < 1000:
-                    strategy.basis_calc.update_price_a(last)
-                else:
-                    strategy.basis_calc.update_price_b(last)
+            # leg is None → unknown quote, отбрасываем
     except Exception as e:
         log.error(f"Quote callback error: {e}")
 
@@ -461,6 +459,9 @@ def _on_quote(event):
 def _moex_poller():
     """Poll MOEX ISS API for prices + L2 orderbook (bid/ask).
     Stocks: TQBR board. Futures: FORTS engine.
+    F-039: фьючерсная нога A тоже подпитывается ISS (календарные спреды BRV6/BRZ6:
+    обе ноги фьючерсы, а финамовский quote-стрим по auth нестабилен — без ISS
+    price_a отравлялся и рисовал фантомный PnL).
     """
     import urllib.request
     last_log_a = 0.0
@@ -470,7 +471,7 @@ def _moex_poller():
             # Always poll (even when stopped) so UI shows live data
             import json as _json
 
-            # --- Stock (instrument A) ---
+            # --- Instrument A: stock (TQBR) or futures (FORTS) ---
             ticker_a = params.ticker_a
             if not any(c.isdigit() for c in ticker_a):  # stock
                 url_a = (f"https://iss.moex.com/iss/engines/stock/markets/shares/boards/TQBR/securities/{ticker_a}.json"
@@ -503,6 +504,39 @@ def _moex_poller():
                                     log.debug(f"MOEX {ticker_a}: {last:.2f} bid={bid:.2f} ask={ask:.2f}")
                 except Exception as e:
                     log.debug(f"MOEX stock poll error: {e}")
+            elif any(c.isdigit() for c in ticker_a):  # F-039: futures as leg A (calendar spread)
+                url_a = (f"https://iss.moex.com/iss/engines/futures/markets/forts/securities/{ticker_a}/marketdata.json"
+                         f"?iss.meta=off&iss.only=marketdata&marketdata.columns=LAST,BID,OFFER,BIDDEPTH,OFFERDEPTH")
+                try:
+                    req = urllib.request.Request(url_a)
+                    with urllib.request.urlopen(req, timeout=5) as resp:
+                        data = _json.loads(resp.read())
+                        md = data.get("marketdata", {})
+                        if md.get("data") and len(md["data"]) > 0:
+                            rowdict = dict(zip(md["columns"], md["data"][0]))
+                            last = float(rowdict.get("LAST") or 0)
+                            bid = float(rowdict.get("BID") or 0)
+                            ask = float(rowdict.get("OFFER") or 0)
+                            bid_vol = int(rowdict.get("BIDDEPTH") or 0)
+                            ask_vol = int(rowdict.get("OFFERDEPTH") or 0)
+                            if last > 0:
+                                _update_data_ts()
+                                # F-039: last ноги A доверяем только если он согласен со стаканом (±2%);
+                                # одиночные принты на неликвиде рисуют фантомный базис (BRV6: last 95.3 vs OB 105.6)
+                                ob_mid = strategy.ob_a.mid
+                                if ob_mid <= 0 or abs(last - ob_mid) / ob_mid <= 0.02:
+                                    strategy.basis_calc.update_price_a(last)
+                                eff_bid = bid if bid > 0 else last
+                                eff_ask = ask if ask > 0 else last
+                                rows = []
+                                rows.append((eff_bid, max(bid_vol, 1), 0, 1))
+                                rows.append((eff_ask, 0, max(ask_vol, 1), 1))
+                                strategy.ob_a.update(rows)
+                                if last != last_log_a:
+                                    last_log_a = last
+                                    log.debug(f"MOEX {ticker_a}: {last:.2f} bid={bid:.2f} ask={ask:.2f}")
+                except Exception as e:
+                    log.debug(f"MOEX futures A poll error: {e}")
 
             # --- Futures (instrument B) ---
             ticker_b = params.ticker_b
@@ -535,6 +569,17 @@ def _moex_poller():
                                     log.debug(f"MOEX {ticker_b}: {last:.2f} bid={bid:.2f} ask={ask:.2f}")
                 except Exception as e:
                     log.debug(f"MOEX futures poll error: {e}")
+
+            # F-039: last ноги A доверяем только при согласии со стаканом —
+            # защита от фантомных принтов при расчёте базиса/показа UI
+            ob_mid_b = strategy.ob_b.mid
+            p_a = strategy.basis_calc.price_a
+            p_b = strategy.basis_calc.price_b
+            if ob_mid_b > 0 and p_b > 0 and abs(p_b - ob_mid_b) / ob_mid_b > 0.02:
+                strategy.basis_calc.update_price_b(ob_mid_b)
+            mid_a_now = strategy.ob_a.mid
+            if mid_a_now > 0 and p_a > 0 and abs(p_a - mid_a_now) / mid_a_now > 0.02:
+                strategy.basis_calc.update_price_a(mid_a_now)
 
         except Exception as e:
             log.debug(f"MOEX poll error: {e}")

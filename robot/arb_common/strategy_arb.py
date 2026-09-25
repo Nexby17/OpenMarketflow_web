@@ -252,8 +252,17 @@ class ArbitrageStrategy:
         state = self.get_state()
         unrealized_local = sum(self._layer_unrealized_pnl(l) for l in self.layers)
         state["localUnrealizedPnl"] = round(unrealized_local, 2)
-        # For UI: use broker pair PnL if available, else local
-        state["unrealizedPnl"] = round(self.broker_pair_pnl, 2) if self.broker_pair_pnl != 0 or self.broker_sync_time else round(unrealized_local, 2)
+        # F-039: карточка показывает РЕАЛИЗУЕМЫЙ PnL — те же цены, по которым
+        # принимается решение о тейке (стакан − slippage − комиссии).
+        # last-вариант остаётся в localUnrealizedPnl для диагностики расхождения.
+        real_total = self._total_realizable()
+        if real_total is not None:
+            state["realizableUnrealizedPnl"] = round(real_total, 2)
+            state["unrealizedPnl"] = round(real_total, 2)
+        else:
+            state["realizableUnrealizedPnl"] = None
+            # For UI: use broker pair PnL if available, else local
+            state["unrealizedPnl"] = round(self.broker_pair_pnl, 2) if self.broker_pair_pnl != 0 or self.broker_sync_time else round(unrealized_local, 2)
         state["totalPnl"] = round(self.realized_pnl + (state["unrealizedPnl"] or 0), 2)
         state["tradeHistory"] = self.trade_history[-200:]
         # Broker sync data
@@ -789,6 +798,43 @@ class ArbitrageStrategy:
         comm = self._calc_commission(layer.entry_price_a, bb_a if layer.side == SHORT_BASIS else ba_a,
                                      layer.lots_a, layer.lots_b)
         return gross - comm
+
+    def _total_realizable(self) -> Optional[float]:
+        """F-039: суммарный реализуемый PnL по всем слоям; None если стакан хоть одной ноги протух."""
+        total = 0.0
+        for l in self.layers:
+            r = self._layer_realizable_pnl(l)
+            if r is None:
+                return None
+            total += r
+        return total
+
+    def route_quote(self, symbol: str, last: float) -> Optional[str]:
+        """F-039 (2026-09-25): маршрут котировки в ногу A/B. Возвращает 'A'/'B'/None.
+
+        1) Совпадение по тикеру (substring в обе стороны).
+        2) Fallback: ближайший OB mid в пределах 2% — эвристика «last < 1000 → нога A»
+           ломается на календарных спредах (обе ноги ~95–105 ₽: BRZ6-принты отравляли
+           price_a BRV6 и рисовали фантомный PnL).
+        3) Иначе None — котировка отбрасывается (не знаю, куда — не мажу).
+        """
+        if symbol:
+            if self.p.ticker_a in symbol or symbol in self.p.ticker_a:
+                return "A"
+            if self.p.ticker_b in symbol or symbol in self.p.ticker_b:
+                return "B"
+        mid_a = self.ob_a.mid
+        mid_b = self.ob_b.mid
+        cand = []
+        if mid_a > 0:
+            cand.append(("A", abs(last - mid_a) / mid_a))
+        if mid_b > 0:
+            cand.append(("B", abs(last - mid_b) / mid_b))
+        if not cand:
+            # Оба стакана пусты — легаси-эвристика по порядку величины
+            return "A" if last < 1000 else "B"
+        leg, rel = min(cand, key=lambda x: x[1])
+        return leg if rel <= 0.02 else None
 
     # === Layer Management ===
 

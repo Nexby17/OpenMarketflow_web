@@ -339,5 +339,49 @@ rlL = stX5._layer_realizable_pnl(stX5.layers[0])
 expL = (99.90-99.82)*10*10 + ((10319.0 - 10319.0*5.0/10000.0) - 10290.0)
 check("F-032 realizable math (long)", rlL is not None and abs(rlL - expL) < 0.01, f"rl={rlL} exp={expL}")
 
+print("=== F-039: quote routing + last guard + realizable card ===")
+# F-039-1: маршрутизация по тикеру
+stR = ArbitrageStrategy(ArbParams(symbol_a="BRV6@RTSX", ticker_a="BRV6",
+                                  symbol_b="BRZ6@RTSX", ticker_b="BRZ6",
+                                  risk_free_rate=0.16, contract_size=1))
+check("F-039 route by ticker A", stR.route_quote("BRV6", 105.5) == "A")
+check("F-039 route by ticker B", stR.route_quote("BRZ6", 95.7) == "B")
+# F-039-2: неизвестный тикер — по близости к OB mid ±2%; близко к обеим? выбираем ближайшую
+stR.ob_a.update([(105.60, 5, 0, 1), (105.62, 0, 5, 1)])   # mid 105.61
+stR.ob_b.update([(95.70, 5, 0, 1), (95.74, 0, 5, 1)])     # mid 95.72
+check("F-039 route unknown -> nearest", stR.route_quote("???", 95.73) == "B", f"got {stR.route_quote('???', 95.73)}")
+check("F-039 route unknown -> nearest A", stR.route_quote("???", 105.60) == "A")
+# F-039-3: last между ног (midway ~100.6, 4.7% от обеих) — отбрасывается
+check("F-039 ambiguous quote dropped", stR.route_quote("???", 100.6) is None,
+      f"got {stR.route_quote('???', 100.6)}")
+# F-039-4: пустые стаканы — легаси-эвристика по порядку величины
+stR2 = ArbitrageStrategy(ArbParams(symbol_a="BRV6@RTSX", ticker_a="BRV6",
+                                   symbol_b="BRZ6@RTSX", ticker_b="BRZ6",
+                                   risk_free_rate=0.16, contract_size=1))
+check("F-039 empty OB legacy <1000 -> A", stR2.route_quote("", 95.0) == "A")
+check("F-039 empty OB legacy >1000 -> B", stR2.route_quote("", 5000.0) == "B")
+
+# F-039-5: _total_realizable — None при протухшем OB, сумма при живом
+stR3 = ArbitrageStrategy(ArbParams(symbol_a="BRV6@RTSX", ticker_a="BRV6",
+                                   symbol_b="BRZ6@RTSX", ticker_b="BRZ6",
+                                   risk_free_rate=0.16, contract_size=1,
+                                   min_profit_type="rub", min_profit_value=25.0,
+                                   slippage_bps=5.0, use_commission=False))
+stR3.ob_a.update([(105.60, 5, 0, 1), (105.62, 0, 5, 1)])
+stR3.ob_b.update([(95.70, 5, 0, 1), (95.74, 0, 5, 1)])
+stR3.open_layer(LONG_BASIS, 105.78, 96.33, 1, 1, z=2.0)
+tot = stR3._total_realizable()
+l1 = stR3._layer_realizable_pnl(stR3.layers[0])
+check("F-039 total = sum of layers", tot is not None and abs(tot - l1) < 0.01, f"tot={tot} l1={l1}")
+stR3.ob_a._ts = time.time() - 10
+check("F-039 total None on stale OB", stR3._total_realizable() is None)
+
+# F-039-6: карточка unrealizedPnl = реализуемый (свежий стакан)
+stR3.ob_a.update([(105.60, 5, 0, 1), (105.62, 0, 5, 1)])
+stt = stR3.get_status()
+check("F-039 card unrealized = realizable", stt["unrealizedPnl"] == stt["realizableUnrealizedPnl"] and abs(stt["unrealizedPnl"] - l1) < 0.01,
+      f"card={stt['unrealizedPnl']} realizable={stt['realizableUnrealizedPnl']}")
+check("F-039 card keeps last-variant for diagnostics", "localUnrealizedPnl" in stt)
+
 print(f"\n===== RESULTS: PASS={PASS} FAIL={FAIL} =====")
 sys.exit(0 if FAIL == 0 else 1)
