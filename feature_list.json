@@ -825,7 +825,7 @@
       "status": "done",
       "owner": "main",
       "commits": [
-        "SEE-COMMIT"
+        "380d72f"
       ],
       "summary": "BRV6/BRZ6: механизм тейка F-032 (закрытие слоями при реализуемом ≥ 25 ₽) не имел данных для работы: финамовский quote-стрим в цикле UNAUTHENTICATED, ISS-fallback подпитывал только фьючерсную ногу B, а маршрутизация «last < 1000 → нога A» на календарном спреде лила BRZ6-принты в price_a BRV6 (last 95,3 vs OB 105,6) → фантомный Unrealized +47 ₽ при реализуемом −0,8 ₽/слой. Фиксы: (1) route_quote — тикер, затем ближайший OB mid ±2%, двусмысленные котировки отбрасываются; (2) ISS-подпитка фьючерсной ноги A; (3) last доверяется только при согласии со стаканом ±2% (обновление mid при расхождении); (4) карточка Unrealized показывает реализуемый PnL (те же цены, что решают тейк), last-вариант в localUnrealizedPnl. Входы не тронуты. Тесты: 53 PASS / 0 FAIL (11 новых F-039).",
       "logic": "route_quote() в strategy_arb: ticker match → nearest OB mid ±2% → drop; _total_realizable() для карточки; main_arb: _moex_poller ветка futures-A + last-guard ±2% для обеих ног",
