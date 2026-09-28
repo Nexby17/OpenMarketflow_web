@@ -35,6 +35,7 @@ import argparse
 import json
 import logging
 import signal as sig_module
+import subprocess
 import threading
 import time
 from pathlib import Path
@@ -517,40 +518,12 @@ def main_loop():
                 if fill_price > 0:
                     strategy.update_fill_price(fill_price, action.get("action", ""))
 
-            # === VAH/VAL RANGE BREAKOUT STOP ===
-            # If price exits VA and we have a position → hard close all
-            if strategy.in_position and strategy.is_outside_va(price):
-                vah = strategy.vp.vah if strategy.vp else 0
-                val = strategy.vp.val if strategy.vp else 0
-                log.warning(f"VA BREAKOUT STOP: price={price:.0f} outside VA (VAL={val:.0f}..VAH={vah:.0f}) — closing all")
-                if not PAPER_MODE:
-                    side = SELL if strategy.direction == LONG else BUY
-                    va_qty = strategy.total_lots
-                    va_avg = strategy._avg_price
-                    va_dir = strategy.direction
-                    va_fill = 0.0
-                    try:
-                        va_res = orders.place_market(side, va_qty, tag="va_stop")
-                        if va_res:
-                            va_fill = orders.wait_fill(va_res.order_id, timeout=2.0) or 0.0
-                        else:
-                            # F-043: order may still have executed despite failed placement call
-                            time.sleep(3)
-                            va_bl = _get_broker_position_fast()
-                            if va_bl is not None and va_bl < va_qty:
-                                log.warning("VA BREAKOUT STOP: DP failed but broker lots changed — order executed")
-                                va_fill = price
-                    except Exception as e:
-                        log.error(f"VA BREAKOUT STOP: order failed: {e}")
-                    if va_fill > 0:
-                        _record_broker_trade({"action": "close_all", "avgPrice": va_avg,
-                                              "qty": va_qty, "reason": "va_breakout_stop",
-                                              "side": "sell" if va_dir == LONG else "buy"}, va_fill)
-                    else:
-                        log.error("VA BREAKOUT STOP: fill unconfirmed — robot reset to FLAT, DESYNC monitor will verify")
-                strategy._close_all(price, "va_breakout_stop")
-                strategy._reset_position()
-                save_state()
+            # === VA BREAKOUT STOP: REMOVED (port a6ec3b8 from server-main, утверждено Дмитрием 28.09.2026) ===
+            # Позиция НЕ закрывается жёстким стопом при выходе цены из Value Area.
+            # Выход только по обычным правилам (partial TP, min_profit, stop_loss,
+            # timeout, close_half_pct, daily_stop). Вне VA усреднение на паузе
+            # (AVG VA BLOCK в strategy_of._check_averaging), пропущенные уровни
+            # добираются catch-up'ом при возврате цены в VA.
 
             # Periodic state save (every 30 sec)
             if time.time() - last_save > 30:
@@ -965,6 +938,29 @@ class APIHandler(BaseHTTPRequestHandler):
             save_state()
             self._json(200, {"ok": True, "mode": _mode, "paper": PAPER_MODE})
 
+        elif path == "/restart":
+            # Reglement restart (port server-main): FLAT check → cooldown 90s → detached self-restart.
+            qs = self.path.split("?")[1] if "?" in self.path else ""
+            force = "force=1" in qs
+            lots_now = strategy.total_lots
+            if lots_now > 0 and not force:
+                self._json(409, {"ok": False, "error": "position open", "lots": lots_now,
+                                 "hint": "call /restart?force=1 to restart anyway (position kept)"})
+                return
+            left = _restart_cooldown_left()
+            if left > 0:
+                self._json(429, {"ok": False, "error": "cooldown", "retry_after_sec": int(left) + 1})
+                return
+            _mark_restart_now()
+            save_state()
+            try:
+                _schedule_self_restart()
+            except Exception as e:
+                log.error(f"restart schedule failed: {e}", exc_info=True)
+                self._json(500, {"ok": False, "error": f"restart schedule failed: {e}"})
+                return
+            self._json(200, {"ok": True, "restarting": True, "force": force, "lots": lots_now})
+
         elif path == "/position/adjust":
             # MANUAL POSITION ADJUST: синхронизация state с брокером БЕЗ ордеров.
             # POST {lots: int со знаком (абсолютная позиция), price: float}
@@ -1268,6 +1264,92 @@ def _warmup_vwema():
         log.error(f"VWEMA warmup error: {e}", exc_info=True)
 
 
+def _backfill_vp():
+    """Backfill Volume Profile with today's M1 bars so VAH/VAL reflect the full
+    session, not just live ticks since (re)start. Port from server-main (fix 22.09.2026)."""
+    if not strategy.vp:
+        return
+    try:
+        # VP session resets at midnight MSK — backfill from midnight MSK today
+        start = datetime.now(MSK).replace(hour=0, minute=0, second=0, microsecond=0).astimezone(timezone.utc)
+        now = datetime.now(timezone.utc)
+        resp = _rest4mod.get_bars(SYMBOL, "TIME_FRAME_M1",
+                                  start.isoformat().replace("+00:00", "Z"),
+                                  now.isoformat().replace("+00:00", "Z"))
+        bars = resp.get("bars", []) if isinstance(resp, dict) else []
+        if bars:
+            fed = 0
+            for bar in bars:
+                def _dv(x):
+                    return float(x.get("value", 0)) if isinstance(x, dict) else float(x or 0)
+                h, l, c, v = _dv(bar.get("high")), _dv(bar.get("low")), _dv(bar.get("close")), _dv(bar.get("volume"))
+                if c > 0 and v > 0:
+                    strategy.vp.add_trade((h + l + c) / 3.0, int(v), datetime.now(MSK))
+                    fed += 1
+            strategy.vp.calculate()
+            st = strategy.vp.state
+            log.info(f"VP backfill: {fed} M1 bars | VAH={st['vah']} VAL={st['val']} POC={st['poc']} vol={st['totalVolume']}")
+        else:
+            log.warning("VP backfill: no historical bars received")
+    except Exception as e:
+        log.error(f"VP backfill error: {e}", exc_info=True)
+
+
+# ========== Restart (port from server-main, Windows adaptation) ==========
+
+RESTART_COOLDOWN_SEC = 90  # protects against Finam rate limit; force does NOT bypass it
+
+
+def _restart_cooldown_left() -> float:
+    """Seconds left in restart cooldown (timestamp lives in its own file, survives restart)."""
+    ts_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), "of_restart_ts.json")
+    try:
+        with open(ts_file) as f:
+            last_restart = json.load(f).get("last_restart", 0)
+    except Exception:
+        last_restart = 0
+    return RESTART_COOLDOWN_SEC - (time.time() - last_restart)
+
+
+def _mark_restart_now() -> None:
+    ts_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), "of_restart_ts.json")
+    try:
+        with open(ts_file, "w") as f:
+            json.dump({"last_restart": time.time()}, f)
+    except Exception as e:
+        log.warning(f"Restart ts write failed: {e}")
+
+
+def _schedule_self_restart() -> None:
+    """Deferred detached self-restart (Windows port of systemd-run approach).
+
+    Spawns a detached python that waits 3s, then (a) starts a NEW robot process
+    first, (b) only after it is up — kills the old one. Sequence avoids a port/
+    data gap: new process binds with allow_reuse_address, old one is terminated
+    right after. On Linux the original systemd-run path is kept.
+    """
+    if os.name == "nt":
+        py = sys.executable
+        script = os.path.abspath(__file__)
+        helper = (
+            "import os,sys,time,subprocess;"
+            "time.sleep(3.0);"
+            "det=0x00000008;"
+            "p=subprocess.Popen([sys.executable,sys.argv[1]],creationflags=det);"
+            "time.sleep(5.0);"
+            "subprocess.run(['taskkill','/F','/PID',str(os.getppid())],creationflags=det)"
+        )
+        subprocess.Popen([py, "-c", helper, script], creationflags=0x00000008,
+                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                         close_fds=True)
+        log.info("RESTART scheduled in 3s (Windows detached helper: start new, then kill old)")
+    else:
+        subprocess.Popen(["systemd-run", "--on-active=2s",
+                          "systemctl", "restart", "of-robot"],
+                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        log.info("RESTART scheduled in 2s (systemd-run)")
+
+
 # ========== Shutdown ==========
 
 def on_shutdown(signum, frame):
@@ -1309,6 +1391,9 @@ if __name__ == "__main__":
 
     # VWEMA warmup: load historical bars so filter is ready immediately
     _warmup_vwema()
+
+    # VP backfill: today's M1 bars into Volume Profile (VAH/VAL full-session, port server-main)
+    _backfill_vp()
 
     # Warmup period (let subscriptions accumulate data)
     log.info("Warmup: waiting 10 sec for data streams...")

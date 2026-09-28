@@ -87,6 +87,10 @@ class OFParams:
     vwema_flat_th: float = 1.0    # flat zone threshold (ATR multiples)
     vwema_block_counter: bool = True  # block counter-trend entries
     vwema_avg_exit: bool = False    # B2: не усреднять против VWEMA + закрыть усреднённую позицию при развороте VWEMA
+    # HL filter (only_strict): вход лонгом только у лоу окна, шортом только у хая окна
+    hl_filter: bool = False        # OFF по умолчанию — поведение как раньше
+    hl_window: int = 24            # окно в барах (24 × M5 = 2 часа)
+    hl_delta: float = 150.0        # «близко к экстремуму» в пунктах
 
 
 @dataclass
@@ -334,6 +338,7 @@ class OrderFlowStrategy:
         self._round_trips: int = 0
         self._entry_time: Optional[datetime] = None
         self._signal_type: str = ""
+        self._avg_va_block_logged: bool = False  # AVG VA BLOCK log de-dup
 
         # Trade history for journal
         self._trade_history: list[dict] = []
@@ -755,6 +760,21 @@ class OrderFlowStrategy:
             log.info("ENTRY BLOCKED by direction_filter=short (signal=LONG)")
             return None
 
+        # HL filter (only_strict): LONG только у лоу окна, SHORT только у хая окна.
+        # Середина диапазона — блок входа. Выкл (hl_filter=False) → как раньше.
+        if self.p.hl_filter:
+            hl = self.signals.get_hl_window(self.p.hl_window)
+            if hl is None:
+                log.info("HL FILTER: window not ready → BLOCK")
+                return None
+            wh, wl = hl
+            if direction == LONG and (price - wl) > self.p.hl_delta:
+                log.info(f"HL FILTER: LONG blocked — не у лоу окна (wl={wl:.0f} price={price:.0f} Δ={self.p.hl_delta:.0f})")
+                return None
+            if direction == SHORT and (wh - price) > self.p.hl_delta:
+                log.info(f"HL FILTER: SHORT blocked — не у хая окна (wh={wh:.0f} price={price:.0f} Δ={self.p.hl_delta:.0f})")
+                return None
+
         # VWEMA regime filter — block counter-trend entries
         if self.vwema and self.vwema.ready and self.p.vwema_block_counter:
             td = self.vwema.direction
@@ -846,6 +866,19 @@ class OrderFlowStrategy:
         """
         if self.p.enable_max_levels and self._average_levels >= self.p.max_average_levels:
             return []
+
+        # VP RANGE mode: вне VA не усредняемся (решение Самурая 07.09.2026, port с server-main).
+        # Позиция не закрывается — выход только по обычным правилам (partial TP,
+        # Min Profit/Lot, Close % All, дневной SL). При возврате цены внутрь VA
+        # штатный catch-up доберёт ВСЕ пропущенные уровни по текущей цене.
+        if self.is_outside_va(price):
+            if not self._avg_va_block_logged:
+                log.info(f"AVG VA BLOCK: price={price:.0f} outside VA — averaging paused, missed levels accumulate for catch-up")
+                self._avg_va_block_logged = True
+            return []
+        elif self._avg_va_block_logged:
+            log.info("AVG VA BLOCK lifted: price back inside VA — catch-up averaging resumes")
+            self._avg_va_block_logged = False
 
         # B2: не усреднять против тренда VWEMA
         if self.p.vwema_avg_exit and self.vwema and self.vwema.ready:
@@ -1217,6 +1250,29 @@ class OrderFlowStrategy:
 
     # ---------- Status ----------
 
+    def _hl_state(self) -> dict:
+        """HL filter state for /status: window high/low, near flags, verdict."""
+        if not self.p.hl_filter:
+            return {"enabled": False}
+        hl = self.signals.get_hl_window(self.p.hl_window)
+        if hl is None:
+            return {"enabled": True, "ready": False, "window": self.p.hl_window, "delta": self.p.hl_delta}
+        wh, wl = hl
+        p = self._current_price
+        near_high = (wh - p) <= self.p.hl_delta
+        near_low = (p - wl) <= self.p.hl_delta
+        if near_high and near_low:
+            verdict = "both"  # окно уже Δ — LONG и SHORT оба в зоне допуска (фильтр нейтрален)
+        elif near_high:
+            verdict = "short_only"
+        elif near_low:
+            verdict = "long_only"
+        else:
+            verdict = "blocked"
+        return {"enabled": True, "ready": True, "window": self.p.hl_window, "delta": self.p.hl_delta,
+                "winHigh": round(wh, 2), "winLow": round(wl, 2),
+                "nearHigh": near_high, "nearLow": near_low, "verdict": verdict}
+
     def get_status(self) -> dict:
         """Get full status for UI/API."""
         return {
@@ -1266,4 +1322,5 @@ class OrderFlowStrategy:
             "vp": self.vp.state if self.vp else None,
             "directionFilter": self.p.direction_filter,
             "dmWallAgree": self._last_dm_wall,
+            "hl": self._hl_state(),
         }

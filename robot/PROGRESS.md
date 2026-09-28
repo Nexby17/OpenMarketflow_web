@@ -17,6 +17,14 @@
 
 ## Лента изменений
 
+### 2026-09-28 — F-044: порт фич OF-Si с server-main (утверждено Дмитрием)
+- strategy_of.py: HL-фильтр входа (hl_filter/hl_window/hl_delta, гейт после direction_filter, verdict «both» для узкого окна); _hl_state() в /status; AVG VA BLOCK — пауза усреднения вне VA + catch-up при возврате.
+- orderflow_engine.py: get_hl_window() (high/low последних N закрытых баров).
+- main_of.py: VP backfill при старте (M1-бары с полуночи МСК → Volume Profile через REST get_bars); POST /restart (FLAT-чек 409/force, cooldown 90с, Windows detached-helper «старт нового → kill старого»); **удалён VA BREAKOUT STOP** (позиция вне VA больше не закрывается насильно — пара к VA-паузе усреднения, a6ec3b8).
+- Решения Дмитрия: live /instrument сохранён (guard stopped+FLAT → 409 подтверждён), параметры не менять.
+- Документация: docs/ORDERFLOW_ROBOT_SI.md переписан (наша hub-архитектура + 16 разделов), устаревший orderflow-spec.md заменён.
+- Тесты: tests/test_of_port_features.py 5/5 PASS; py_compile 3/3 OK. Не откатывать: F-043/F-019/threaded API/honest sync/PAUSE/ротация логов.
+
 ### 2026-08-24–25 — Управление и коррекция
 - /position/adjust (71992c2 Si, 287f092 MX): ручная установка позиции (dir/лоты/avg/lot_queue) без ордеров; UI-блок в обеих edit-панелях (a67b0a0). Тесты: +3/-3/FLAT/валидация + CDP PASS.
 - Кнопки (f06e2e8): ПАУЗА ведёт позицию (main_loop: process_tick в paused, entry/average/pyramid блокированы, close/partial исполняются); СТОП закрывает всё; СТАРТ будит. Живые тесты обоих роботов.

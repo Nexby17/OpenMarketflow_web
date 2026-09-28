@@ -4,6 +4,29 @@
 
 ---
 
+## 2026-09-28 — F-044: порт фич OF-Si с server-main (утверждено Дмитрием)
+
+**Контекст:** Дмитрий выложил на тест-ветку server-main обновления OF-роботов + полное описание ORDERFLOW_ROBOT_SI.md; попросил сравнить с нашим main и перенести улучшения. Дифф по SI-файлам +782/−527 (большая часть — перестановка логики между транспортами: у них FinamPy+orders_dp, у нас WS-hub+REST 4.3.3).
+
+**Утверждённый план (с комментариями Дмитрия):** перенести HL-фильтр, VA-паузу усреднения, VP backfill, POST /restart; (5) оставить наш live /instrument + их guard 409 при позиции; (6) параметры не менять.
+
+**Реализовано (3 файла, +184/−34):**
+- strategy_of.py: hl_filter/hl_window/hl_delta в OFParams; HL-гейт в _check_entry после direction_filter (LONG только у лоу окна, SHORT только у хая, середина — блок, узкое окно — verdict both); _hl_state() в /status; AVG VA BLOCK в _check_averaging (вне VA усреднение на паузе, catch-up при возврате, дедуп лога);
+- orderflow_engine.py: get_hl_window() (high/low последних N закрытых баров);
+- main_of.py: _backfill_vp() (сегодняшние M1-бары с полуночи МСК через REST get_bars → Volume Profile, вызов после VWEMA warmup); POST /restart (FLAT-чек 409 + force=1, cooldown 90с в of_restart_ts.json, force НЕ обход cooldown, detached-перезапуск: Windows — helper «старт нового процесса → kill старого» через 3с, Linux — systemd-run); **удалён жёсткий VA BREAKOUT STOP** (вторая половина a6ec3b8: без этого VA-пауза усреднения бессмысленна — позиция всё равно закрывалась бы при выходе из VA).
+
+**Решения Дмитрия:** /instrument остаётся live (guard stopped+FLAT → 409 уже был в F-017 — подтверждён); of_config.json не тронут.
+
+**Проверки:** py_compile 3/3 OK; tests/test_of_port_features.py 5/5 PASS (get_hl_window, вердикты short_only/long_only/blocked/both, HL-гейт блок середины + вход у лоу, VA-пауза + catch-up, дефолт hl_filter=OFF); старые падения tests/ воспроизведены на чистом main (finam_compat удалён при порте, pytest отсутствует) — к порту отношения не имеют.
+
+**Документация:** docs/ORDERFLOW_ROBOT_SI.md переписан под нашу hub-архитектуру + перенесённые фичи (16 разделов, формат server-main); устаревший docs/orderflow-spec.md (v3 от 19.06.2026, сигналы/локи не соответствуют коду) заменён.
+
+**Не откатывать:** F-043 anti-double-close, F-019 fast execution, threaded API, honest broker-sync, PAUSE-семантика, ротация логов (DailyFileHandler).
+
+**Дальше:** перезапуск робота Дмитрием (закон: старт только Дмитрием); проверить в UI hl-блок status и кнопки restart.
+
+---
+
 ## 2026-09-23 — F-038: тейк-профит по реализуемому PnL (b82ecd0)
 
 **Проблема:** арб GAZP/GZZ6 за два дня: 147 из 149 одиночных тейков profit_target закрылись В МИНУС (avg −17,13 ₽, суммарно −2 551,83 ₽); реализованный PnL −1 820,87 ₽. Корень: тейк считался по last-ценам (одиночные принты 1 лота неликвидного GZZ6 расходятся со стаканом на 2–40 ₽), а закрытие платило спред+slippage (фрикшн круга ≈15,5 ₽). «Мин. профит 25 ₽» — тейк-профит по коду (unrealized <= 0 → False), убыточный слой не закрывает; стоп фактически отсутствовал (risk_value 50 000 при капитале 30 000). update_market() существовал, но не вызывался — bid/ask в проверке всегда нули. Paper-режим пропускал проверку сессии → час 07:00: 130 сделок, −1 861 ₽.
