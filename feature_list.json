@@ -881,6 +881,28 @@
         "15d5b9c"
       ],
       "summary": "28.09 Дмитрий: робот Si не переключается между шорт/лонг — торгует оба всегда. Причина: в app.js отсутствовали ОБЕ функции-обработчика Si-панели: ofSetDirection (селектор «Фильтр» ОБА/LONG/SHORT) и toggleOfSignal (чекбоксы CVD Trend/dm_wall/CVD Accel) — клики падали с ReferenceError в консоли, значение никуда не уходило; селектор визуально переключался (браузер меняет value до onchange), создавая ложное впечатление работы. Дополнительно ofRobotSaveFromPanel/ofMxRobotSaveFromPanel не включали direction_filter в save-body — «Сохранить» не переносило фильтр. Робот (strategy_of.py:751 check_entry) и REST /params direction_filter поддерживали полностью (проверено POST short/long/both на живой 5080 — принимает, status отражает, of_config.json сохраняет). Фиксы: (1) добавлены ofSetDirection + toggleOfSignal (POST OF_ROBOT_API /params, лог в Журнал); (2) оба save-body дополнены direction_filter из своих селекторов; (3) v=113, деплой в bin wwwroot. Проверка: node --check OK; сервер отдаёт v=113 с функциями; E2E API-эмуляция действий панели: direction_filter short→long→both на 5080, cfg on-disk = short после save, restored both. Браузерная проверка через autoglm не удалась (Extension did not connect in time) — попросить Дмитрия подтвердить Ctrl+F5 → селектор → журнал 'OF-Si direction filter → SHORT'."
+    },
+    {
+      "id": "F-042",
+      "name": "Самоисцеление импорта websockets в finam_hub (reconnect loop)",
+      "area": "infra/hub",
+      "status": "done",
+      "owner": "main",
+      "commits": [],
+      "summary": "28.09: повреждённый кэш модуля websockets в sys.modules не самоисцелялся при реконнектах (import вне while-loop). Зомби-процессы 5080/5081 (19100, 9684) спамили 'no attribute connect' (MX: 1336 за день). Зомби убиты; фикс pop+reimport запланирован в finam_hub.py.",
+      "date": "2026-09-28"
+    },
+    {
+      "id": "F-043",
+      "name": "Анти-дабл-клоз защита close_all (фантомные позиции)",
+      "area": "robots/of",
+      "status": "done",
+      "owner": "main",
+      "commits": [
+        "7eb550d"
+      ],
+      "summary": "28.09 DESYNC-шторм Si: close_all исполнился на бирже (IOC 2 лота @85748), но REST-ответ не вернулся за таймаут -> 'keeping position, will retry' -> повторный close -> неттинг превратил SHORT -2 в фантомный LONG +2. Фикс: guard перед ретраем close_all — сверка с брокером (FLAT -> синк робота, иначе блок ретрая), разряд guard после подтверждения, авто-истечение 5 мин. VA-stop: wait_fill 2с + запись сделки в историю + верификация при DP-fail. Тест tmp/test_f043_guard.py 7/7 PASS. Файлы: main_of.py + main_of_mx.py, коммит 7eb550d.",
+      "date": "2026-09-28"
     }
   ]
 }
