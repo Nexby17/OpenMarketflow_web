@@ -537,7 +537,15 @@ class ArbOrderManager:
             result["error"] = f"leg_a_{leg_a.error}"
             return result
 
-        # Check min fill ratio
+        # F-041: нормализация единиц. Брокер возвращает executed_quantity в АКЦИЯХ (для акций),
+        # вся внутренняя математика робота ведётся в ЛОТАХ. Приводим fill к лотам здесь — один раз.
+        if leg_a.quantity and leg_a.quantity > 0:
+            lot = self._lot_sizes.get(symbol_a.split("@")[0], self._default_lot_size)
+            if lot > 1 and leg_a.quantity % lot == 0 and leg_a.quantity > lots_a:
+                # похоже на акции (кратно лоту и больше запрошенных лотов) → конвертим
+                leg_a.quantity = leg_a.quantity // lot
+
+        # Check min fill ratio (теперь честно: лоты/лоты)
         if lots_a > 0 and leg_a.quantity / lots_a < min_fill_ratio:
             log.warning(f"Leg A fill ratio {leg_a.quantity}/{lots_a} < {min_fill_ratio} — emergency closing partial {leg_a.quantity}")
             emergency_side = SELL if side_a == BUY else BUY
@@ -546,8 +554,11 @@ class ArbOrderManager:
             return result
 
         # Adjust leg B volume to match actual fill
-        actual_lots_b = lots_b  # could scale: int(leg_a.quantity * ratio)
-        log.info(f"Leg A filled {leg_a.quantity}@{leg_a.price:.2f} → executing leg B market {actual_lots_b}")
+        # F-041: частичный fill ноги A должен ужимать и ногу B, иначе голый хедж
+        # (было: actual_lots_b = lots_b всегда; при 5/10 лотов A получали полный B)
+        fill_ratio = (leg_a.quantity / lots_a) if lots_a > 0 else 1.0
+        actual_lots_b = max(1, round(lots_b * fill_ratio)) if lots_b > 0 else 0
+        log.info(f"Leg A filled {leg_a.quantity}@{leg_a.price:.2f} (ratio {fill_ratio:.2f}) → executing leg B market {actual_lots_b}")
 
         # Leg B: MARKET
         market_b = self._place_market(symbol_b, side_b, actual_lots_b, tag="arb_entry_b")
