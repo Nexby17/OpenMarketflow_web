@@ -185,6 +185,9 @@ _fill_sub_thread: threading.Thread | None = None
 _hub_adapter = None
 _running = True
 _mode = "stopped"  # stopped, running, paused
+# F-043: anti-double-close guard state (armed when close order outcome is unknown)
+_close_guard = None  # {"dir": int, "qty": int} | None
+_close_guard_ts = 0.0
 _last_fp_reconnect: float = 0.0  # guard against reconnect loop
 
 # --- Current price (thread-safe via lock) ---
@@ -671,6 +674,24 @@ def _execute_action(action: dict):
         # Save avgPrice BEFORE strategy modifies it
         avg_for_record = strategy._avg_price
 
+        # F-043: anti-double-close guard (root cause of 28.09 phantom LONG +2 on Si:
+        # close order executed but caller saw timeout/None and re-sent close)
+        global _close_guard, _close_guard_ts
+        now_mono = time.monotonic()
+        if _close_guard is not None and _close_guard["dir"] == strategy._dir \
+                and _close_guard["qty"] == qty and now_mono - _close_guard_ts < 300:
+            broker_lots = _get_broker_position_fast()
+            if broker_lots is not None and broker_lots == 0:
+                log.warning("F-043 close guard: broker FLAT confirmed - position was already closed, syncing robot to FLAT")
+                strategy._reset_position()
+                _close_guard = None
+                _close_guard_ts = 0.0
+                save_state()
+                return
+            log.error("F-043 GUARD: close_all retry BLOCKED (previous close may have executed). "
+                      f"broker_lots={broker_lots if broker_lots is not None else 'UNKNOWN'} - manual/UI adjust or broker-confirm required; NOT re-sending close")
+            return
+
         side_int = SELL if side_str == "sell" else BUY
         global _last_fill_price, _last_fill_time
         _last_fill_price = 0.0
@@ -703,7 +724,11 @@ def _execute_action(action: dict):
                 _record_broker_trade(action, strategy._current_price)
                 strategy._reset_position()
             else:
-                log.error(f"CLOSE_ALL: order placement failed for {side_str} {qty} — keeping position, will retry next tick")
+                # F-043: close MIGHT have executed (timeout before order_id returned).
+                # Arm guard; next close_all attempt will broker-verify instead of blindly re-sending.
+                _close_guard = {"dir": strategy._dir, "qty": qty}
+                _close_guard_ts = time.monotonic()
+                log.error(f"CLOSE_ALL: order placement failed for {side_str} {qty} - keeping position, will retry next tick")
 
     elif act in ("entry", "average", "pyramid"):
         side_int = BUY if side_str == "buy" else SELL
