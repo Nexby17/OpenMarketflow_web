@@ -210,3 +210,26 @@
 **Диагноз:** 28.09 07:14:11–38 Finam отдал мусорный OB GAZP (ask=93.00/bid=105.00 при рынке 98.6–99.8; GAZP не торговался в 93/105 весь сентябрь). 12 фантомных кругов: вход paper по ob_a.best_ask=93.00 (LegResult всегда filled), через тик ob_a.best_bid=105.00 → realizable +1183.56 ≥ 25 → мгновенный тейк. +16 632 ₽ фантома в журнале, realized +15 228. Finam-стрим всё утро в UNAUTH-цикле — валидный OB не приходил.
 
 **Фикс:** _orderbook_sane() гейт в check_entry (свежесть <5с, bid<ask, mid ±1% от last, спред ≤2%; до первого снапшота — не блокирует) + дроп crossed-снапшотов в OB-поллере. Выход уже защищён (F-032/F-039). Тесты 59/59 (6 новых). Входная dev_ann-логика не тронута.
+
+### 28.09 — F-041: починен фильтр направления OF-Si (и хвосты MX)
+
+**Симптом (Дмитрий):** «Робот не переключается между режимами шорт/лонг, только оба».
+
+**Причина (3 слоя):**
+1. `ofSetDirection` — обработчик селектора «Фильтр» (ОБА/LONG/SHORT) Si-панели — **отсутствовал в app.js**. ReferenceError на каждый клик; селектор визуально менялся (браузер меняет value до onchange), робот ничего не получал.
+2. `toggleOfSignal` — обработчик чекбоксов CVD Trend / dm_wall / CVD Accel Si-панели — тоже отсутствовал (та же проверка выявила).
+3. `ofRobotSaveFromPanel`/`ofMxRobotSaveFromPanel` не отправляли `direction_filter` при «Сохранить».
+
+У MX-панели аналоги были (`ofMxSetDirection`/`toggleOfMxSignal`) — сломана была только Si-ветка + save-тела обоих.
+
+**Фикс (v=113):**
+- app.js: добавлены `ofSetDirection(value)` (POST `/params {direction_filter}` на 5080 + `ofRobotPoll()` + журнал) и `toggleOfSignal(param, value)` (POST `/params {[param]: value}` + журнал).
+- Оба save-body дополнены `direction_filter: el('ofDirFilter'/'ofMxDirFilter')?.value || 'both'`.
+- Деплой: app.js → bin/Debug/net10.0/wwwroot, index.html v=112→113 (оба).
+
+**Проверка:**
+- `node --check` обеих копий — OK.
+- Сервер отдаёт v=113, в JS есть обе функции (проверено GET /js/app.js?v=113 после логина).
+- E2E API-эмуляция действий панели на живом Si (5080, mode=stopped): POST direction_filter short → status=short → long → status=long → both → status=both; полный save-body с direction_filter=short → of_config.json direction_filter=short; восстановлено both.
+- Сам робот не менялся: strategy_of.py block-entry по direction_filter (строка ~751) работал всегда.
+- autoglm браузер-проверка не прошла (Extension did not connect in time) — финальное подтверждение за Дмитрием: Ctrl+F5, переключить фильтр, в «Лог событий» придёт «OF-Si direction filter → SHORT».

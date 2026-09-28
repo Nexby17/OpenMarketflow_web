@@ -5347,6 +5347,7 @@ async function ofRobotSaveFromPanel() {
         vah_val_pct: parseInt(el('editOfVaPct')?.value) || 70,
         vah_val_bin_size: parseInt(el('editOfVpBin')?.value) || 50,
         vah_val_mode: el('editOfVpMode')?.value || 'range',
+        direction_filter: el('ofDirFilter')?.value || 'both',
     };
     try {
         // F-010: если робот offline — пишем конфиг через сервер (применится при старте)
@@ -5543,6 +5544,34 @@ async function ofMxRobotPoll() {
     } catch(e) {
         ofMxRobot = null;
         _ofMxWasOnline = false;
+    }
+}
+
+async function toggleOfSignal(param, value) {
+    try {
+        const resp = await fetch(OF_ROBOT_API + '/params', {
+            method: 'POST',
+            headers: {'Content-Type':'application/json'},
+            body: JSON.stringify({[param]: value})
+        });
+        await resp.json();
+        addLog(nowTime(), 'INFO', `OF-Si signal ${param}=${value}`);
+    } catch(e) {
+        addLog(nowTime(), 'ERROR', 'OF-Si toggle failed: ' + e.message);
+    }
+}
+
+async function ofSetDirection(value) {
+    try {
+        await fetch(OF_ROBOT_API + '/params', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({direction_filter: value})
+        });
+        await ofRobotPoll();
+        addLog(nowTime(), 'INFO', `OF-Si direction filter → ${value.toUpperCase()}`);
+    } catch(e) {
+        addLog(nowTime(), 'ERROR', 'OF-Si direction filter failed: ' + e.message);
     }
 }
 
@@ -5959,6 +5988,7 @@ async function ofMxRobotSaveFromPanel() {
         vah_val_bin_size: parseInt(el('editOfMxVahValBin')?.value) || 5,
         vah_val_mode: el('editOfMxVahValMode')?.value || 'fade',
         use_vah_val: el('editOfMxUseVahVal')?.checked || el('toggleMxVp')?.checked || false,
+        direction_filter: el('ofMxDirFilter')?.value || 'both',
     };
     // Always save to localStorage first
     localStorage.setItem('ofMxSavedParams', JSON.stringify(body));
