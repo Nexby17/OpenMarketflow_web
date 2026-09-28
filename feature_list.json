@@ -877,7 +877,9 @@
       "area": "robots/of",
       "status": "done",
       "owner": "main",
-      "commits": [],
+      "commits": [
+        "15d5b9c"
+      ],
       "summary": "28.09 Дмитрий: робот Si не переключается между шорт/лонг — торгует оба всегда. Причина: в app.js отсутствовали ОБЕ функции-обработчика Si-панели: ofSetDirection (селектор «Фильтр» ОБА/LONG/SHORT) и toggleOfSignal (чекбоксы CVD Trend/dm_wall/CVD Accel) — клики падали с ReferenceError в консоли, значение никуда не уходило; селектор визуально переключался (браузер меняет value до onchange), создавая ложное впечатление работы. Дополнительно ofRobotSaveFromPanel/ofMxRobotSaveFromPanel не включали direction_filter в save-body — «Сохранить» не переносило фильтр. Робот (strategy_of.py:751 check_entry) и REST /params direction_filter поддерживали полностью (проверено POST short/long/both на живой 5080 — принимает, status отражает, of_config.json сохраняет). Фиксы: (1) добавлены ofSetDirection + toggleOfSignal (POST OF_ROBOT_API /params, лог в Журнал); (2) оба save-body дополнены direction_filter из своих селекторов; (3) v=113, деплой в bin wwwroot. Проверка: node --check OK; сервер отдаёт v=113 с функциями; E2E API-эмуляция действий панели: direction_filter short→long→both на 5080, cfg on-disk = short после save, restored both. Браузерная проверка через autoglm не удалась (Extension did not connect in time) — попросить Дмитрия подтвердить Ctrl+F5 → селектор → журнал 'OF-Si direction filter → SHORT'."
     }
   ]
