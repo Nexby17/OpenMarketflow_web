@@ -1331,18 +1331,20 @@ def _schedule_self_restart() -> None:
     if os.name == "nt":
         py = sys.executable
         script = os.path.abspath(__file__)
+        # Windows: SO_REUSEADDR позволяет ВТОРОЙ бинд на тот же порт — двойной слушатель.
+        # Порядок строго: сначала kill СТАРОГО, пауза 2с, только потом старт нового.
         helper = (
             "import os,sys,time,subprocess;"
             "time.sleep(3.0);"
             "det=0x00000008;"
-            "p=subprocess.Popen([sys.executable,sys.argv[1]],creationflags=det);"
-            "time.sleep(5.0);"
-            "subprocess.run(['taskkill','/F','/PID',str(os.getppid())],creationflags=det)"
+            "subprocess.run(['taskkill','/F','/PID',str(os.getppid())],creationflags=det);"
+            "time.sleep(2.0);"
+            "subprocess.Popen([sys.executable,sys.argv[1]],creationflags=det)"
         )
         subprocess.Popen([py, "-c", helper, script], creationflags=0x00000008,
                          stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
                          close_fds=True)
-        log.info("RESTART scheduled in 3s (Windows detached helper: start new, then kill old)")
+        log.info("RESTART scheduled in 3s (Windows detached helper: kill old, then start new)")
     else:
         subprocess.Popen(["systemd-run", "--on-active=2s",
                           "systemctl", "restart", "of-robot"],

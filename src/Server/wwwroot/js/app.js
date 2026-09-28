@@ -2393,6 +2393,7 @@ async function renderRobots() {
                 <button class="btn btn-success btn-sm" onclick="ofRobotApi('start')" ${mode==='running'?'disabled':''}>▶</button>
                 <button class="btn btn-warning btn-sm" onclick="ofRobotApi('pause')" ${mode!=='running'?'disabled':''}>⏸</button>
                 <button class="btn btn-danger btn-sm" onclick="ofRobotApi('stop')" ${mode==='stopped'?'disabled':''}>⏹</button>
+                <button class="btn btn-sm" style="background:#2196F3;color:#fff" title="Регламентный рестарт (FLAT-чек, cooldown 90с)" onclick="ofRobotRestart()" ${window._ofRestarting?'disabled':''}>${window._ofRestarting?'⏳':'🔄'}</button>
             </td>
             <td class="${modeCls}">${modeText}</td>
         </tr>`;
@@ -5139,6 +5140,19 @@ async function ofRobotEditPanel() {
                 <div class="metric-card" style="min-width:120px"><div class="metric-label">VWEMA Trend</div><div id="ofVwemaTrend" style="font-size:16px;font-weight:bold;color:#9CA3AF">—</div></div>
             </div>
             <hr style="border-color:#2D2D44;margin:12px 0">
+            <!-- HL Filter (порт server-main ca58913): вход лонгом только у лоу окна, шортом только у хая -->
+            <div class="metrics-row" style="flex-wrap:wrap;margin-bottom:16px;align-items:center">
+                <div class="metric-card" style="display:flex;align-items:center;gap:8px">
+                    <label style="display:flex;align-items:center;gap:6px;cursor:pointer">
+                        <input id="editOfUseHl" type="checkbox" ${(p.hl_filter)?'checked':''} style="width:18px;height:18px;cursor:pointer">
+                        <span style="font-weight:bold;color:#66BB6A">HL Filter</span>
+                    </label>
+                </div>
+                <div class="metric-card"><div class="metric-label">Окно (баров)</div><input id="editOfHlWindow" class="input" type="number" min="2" max="30" value="${p.hl_window||24}" style="width:60px" title="24 × M5 = 2 часа"></div>
+                <div class="metric-card"><div class="metric-label">Δ близости (пт)</div><input id="editOfHlDelta" class="input" type="number" step="1" value="${p.hl_delta||150}" style="width:70px"></div>
+                <div class="metric-card" style="min-width:150px"><div class="metric-label">HL вердикт</div><div id="ofHlVerdict" style="font-size:14px;font-weight:bold;color:#9CA3AF">—</div></div>
+            </div>
+            <hr style="border-color:#2D2D44;margin:12px 0">
             <!-- VAH/VAL Volume Profile Filter -->
             <div class="metrics-row" style="flex-wrap:wrap;margin-bottom:16px;align-items:center">
                 <div class="metric-card" style="display:flex;align-items:center;gap:8px">
@@ -5303,6 +5317,17 @@ function ofUpdatePanel() {
             el('ofVwemaTrend').style.color = '#6B7280';
         }
     }
+    // HL filter state (порт server-main)
+    if (el('ofHlVerdict')) {
+        const hl = s.hl;
+        const v = el('ofHlVerdict');
+        if (!hl || !hl.enabled) { v.textContent = 'OFF'; v.style.color = '#6B7280'; }
+        else if (!hl.ready) { v.textContent = '⏳ прогрев окна'; v.style.color = '#9CA3AF'; }
+        else if (hl.verdict === 'both') { v.textContent = `🔀 любые (окно ${Math.round((hl.winHigh||0)-(hl.winLow||0))} пт ≤ 2Δ)`; v.style.color = '#9C27B0'; }
+        else if (hl.verdict === 'short_only') { v.textContent = `🔴 SHORT only (${(hl.winHigh||0).toFixed(0)})`; v.style.color = '#F44336'; }
+        else if (hl.verdict === 'long_only') { v.textContent = `🟢 LONG only (${(hl.winLow||0).toFixed(0)})`; v.style.color = '#4CAF50'; }
+        else { v.textContent = `⛔ блок ${Math.round(hl.winLow||0)}–${Math.round(hl.winHigh||0)}`; v.style.color = '#FF9800'; }
+    }
 }
 
 async function ofRobotSaveFromPanel() {
@@ -5347,6 +5372,10 @@ async function ofRobotSaveFromPanel() {
         vah_val_pct: parseInt(el('editOfVaPct')?.value) || 70,
         vah_val_bin_size: parseInt(el('editOfVpBin')?.value) || 50,
         vah_val_mode: el('editOfVpMode')?.value || 'range',
+
+        hl_filter: el('editOfUseHl')?.checked || false,
+        hl_window: Math.max(2, Math.min(parseInt(el('editOfHlWindow')?.value) || 24, 30)),
+        hl_delta: parseFloat(el('editOfHlDelta')?.value) || 150,
         direction_filter: el('ofDirFilter')?.value || 'both',
     };
     try {
@@ -5591,11 +5620,61 @@ async function onOfMxRobotAccountChange(val) {
 }
 
 
+async function ofRobotRestart() {
+    // Регламентный рестарт Si-робота через его собственный POST /restart
+    // (FLAT-чек 409 + cooldown 90с внутри робота; Windows-helper «старт нового → kill старого»).
+    // Процесс PID меняется — RobotProcessManager об этом не знает, поэтому /start обязан
+    // идти через start-protected (probe /health → спавн только если реально мёртв).
+    if (window._ofRestarting) return;
+    window._ofRestarting = true;
+    try {
+        showToast('⏳ Рестарт Si-робота (FLAT-чек + cooldown 90с)...', 'info');
+        const resp = await fetch(OF_ROBOT_API + '/restart', {method: 'POST', signal: AbortSignal.timeout(10000)});
+        const data = await resp.json().catch(() => ({}));
+        if (resp.status === 409) {
+            showToast(`❌ Позиция открыта (${data.lots} лот.) — рестарт отклонён. force=1 через панель отладки.`, 'error');
+            addLog(nowTime(), 'WARN', `OF-Si restart 409: position open (${data.lots})`);
+            return;
+        }
+        if (resp.status === 429) {
+            showToast(`⏳ Cooldown: повторите через ${data.retry_after_sec || 90} с`, 'error');
+            addLog(nowTime(), 'WARN', `OF-Si restart cooldown ${data.retry_after_sec}s`);
+            return;
+        }
+        if (!resp.ok) {
+            showToast('❌ Рестарт не принят: ' + (data.error || resp.status), 'error');
+            addLog(nowTime(), 'ERROR', 'OF-Si restart failed: ' + (data.error || resp.status));
+            return;
+        }
+        showToast('🔄 Рестарт запущен — робот поднимется через ~10–20с', 'ok');
+        addLog(nowTime(), 'INFO', 'OF-Si restart: ' + JSON.stringify(data).slice(0, 100));
+        // Ждём подъём нового процесса и обновляем таблицу
+        setTimeout(async () => { try { await ofRobotPoll(); } catch(e) {} renderRobots(); }, 15000);
+        setTimeout(async () => { try { await ofRobotPoll(); } catch(e) {} renderRobots(); }, 25000);
+    } catch(e) {
+        showToast('❌ Робот не отвечает (' + e.message + ') — если процесс мёртв, используй ▶', 'error');
+        addLog(nowTime(), 'ERROR', 'OF-Si restart error: ' + e.message);
+    } finally {
+        setTimeout(() => { window._ofRestarting = false; renderRobots(); }, 30000);
+    }
+}
+
 async function ofRobotApi(action) {
     try {
         // F-012: одна кнопка = весь цикл. Если робот не поднят — поднимаем процесс, затем команду.
         if ((action === 'start' || action === 'resume') && typeof _ofProcBooting === 'undefined') { window._ofProcBooting = true; }
         if (action === 'start') {
+            // Restart-safe: робот мог перезапуститься сам (ofRobotRestart) — PID у менеджера устарел.
+            // Сначала probe: живой робот не спавним (защита от дубля на порт 5080).
+            let _needSpawn = true;
+            try {
+                const hp = await fetch(OF_ROBOT_API + '/health', {signal: AbortSignal.timeout(2500)});
+                if (hp.ok) {
+                    _needSpawn = false;
+                    showToast('ℹ Робот уже жив (перезапущен снаружи) — просто включаю', 'info');
+                }
+            } catch(e) { /* мёртв — спавним через менеджер ниже */ }
+            if (_needSpawn) {
             showToast('⏳ Поднимаю процесс SiU6 (подключение к Finam ~15с)...', 'info');
             try {
                 const pr = await fetch('/api/of/process/of/start', {method: 'POST', signal: AbortSignal.timeout(35000)});
@@ -5614,6 +5693,7 @@ async function ofRobotApi(action) {
                 return;
             }
             window._ofProcBooting = false;
+            }
         }
         const resp = await fetch(OF_ROBOT_API + '/' + action, {method: 'POST'});
         const data = await resp.json();
