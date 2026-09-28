@@ -1,7 +1,7 @@
 {
   "meta": {
     "version": "1.0",
-    "updated": "2026-09-25",
+    "updated": "2026-09-28",
     "description": "Реестр фич OpenMarketflow: контроль, статусы, история логики. Дополнение к коммитам: фича шире коммита (несколько коммитов, тесты, решения).",
     "rules": {
       "statuses": [
@@ -844,6 +844,32 @@
         "robot/test_arb_fair.py: +11 кейсов F-039"
       ],
       "note": "Решение Дмитрия 25.09: «Робот должен закрывать позицию слоями при мин профит 25 руб — это единственный выход. Сделать»."
+    },
+    {
+      "id": "F-040",
+      "name": "Санитарный контроль стакана на входе (защита журнала от фантомных кругов)",
+      "area": "robots/arb",
+      "status": "done",
+      "owner": "main",
+      "commits": [
+        "SEE-COMMIT-F040"
+      ],
+      "summary": "Утром 28.09 в 07:14 Finam вернул мусорный OB GAZP (ask=93.00, затем bid=105.00 при рынке 98.6-99.8) — 12 фантомных кругов за 27 сек: paper-вход по 93.00 → мгновенный тейк по 105.00 (realizable +1183.56 ₽), по +1183.56 в журнал × 12 = +16 632 ₽ фантома, realized скакнул с −1 693 до +15 228. PnL считался честно от фантомных цен — ошибка была в доверии мусорному стакану на ВХОДЕ (выход защищён F-032/F-039). Фиксы: (1) _orderbook_sane() в check_entry: OB свежий (<5с), без креста, mid ±1% от last, спред ≤2% — иначе вход блокируется; до первого снапшота OB (ts=0) вход не блокируется (тесты/старое поведение); (2) в _ob_poller снапшоты с крестом (top_bid >= top_ask) отбрасываются с WARNING до попадания в трекер. Тесты: 59 PASS / 0 FAIL (6 новых F-040).",
+      "logic": "_orderbook_sane(max_dev_pct=1.0, max_spread_pct=2.0): freshness+cross+mid-vs-last+spread; check_entry гейт; OB-поллер дроп креста",
+      "tests": [
+        "crossed OB (93/105) → insane, entry blocked",
+        "sane OB → pass",
+        "last ±1.4% от mid → blocked",
+        "stale OB (>5с) → blocked",
+        "wide spread 3% → blocked",
+        "59/59 test_arb_fair"
+      ],
+      "changes": [
+        "robot/arb_common/strategy_arb.py: _orderbook_sane + гейт в check_entry",
+        "robot/main_arb.py: дроп crossed-снапшотов в _ob_poller",
+        "robot/test_arb_fair.py: +6 кейсов F-040"
+      ],
+      "note": "Кейс Дмитрия 28.09: «в торговом журнале ошибка подсчёта PnL» — журнал верен, ошибка была в ценах входа/выхода из мусорного OB."
     }
   ]
 }

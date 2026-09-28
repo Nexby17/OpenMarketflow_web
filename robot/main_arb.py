@@ -351,8 +351,22 @@ def _ob_poller():
                         else:
                             log.warning(f"OB poll {name} error: {err}")
                 elif rows:
-                    ob_tracker.update(rows)
-                    _stale_count = 0
+                    # F-040: отбрасываем снапшоты с крестом (bid >= ask) — Finam при reconnect
+                    # возвращает мусорные уровни (GAZP 28.09: ask=93.00/bid=105.00 при рынке 99.5)
+                    prices_bid = [p for p, b, s, a in rows if b > 0 and p > 0]
+                    prices_ask = [p for p, b, s, a in rows if s > 0 and p > 0]
+                    if prices_bid and prices_ask:
+                        top_bid = max(prices_bid)
+                        top_ask = min(prices_ask)
+                        if top_bid >= top_ask:
+                            log.warning(f"OB poll {name}: crossed snapshot dropped (bid {top_bid} >= ask {top_ask})")
+                            ob_tracker.update([])
+                        else:
+                            ob_tracker.update(rows)
+                            _stale_count = 0
+                    else:
+                        ob_tracker.update(rows)
+                        _stale_count = 0
         except Exception as e:
             log.warning(f"OB poll outer error: {e}")
         # F-032 (2026-09-23): ВАЖНО — basis_calc.update_market() здесь НЕ вызываем.

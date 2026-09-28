@@ -372,6 +372,15 @@ class ArbitrageStrategy:
             log.warning(f"Entry blocked: insufficient data ({self.basis_calc.data_points}/dev, spread_pts={len(self.basis_calc._spread_history)}/{self.basis_calc.lookback})")
             return None
 
+        # F-040 (2026-09-28): санитарный контроль СТАКАНА перед входом.
+        # Утром 28.09 Finam вернул мусорный OB (GAZP: ask=93.00 / bid=105.00 при рынке 99.5) —
+        # paper-вход по 93.00 + мгновенный тейк по 105.00 = +1183₽×12 фантомных кругов в журнале.
+        # Проверяем ТОЛЬКО если стаканы когда-либо приходили (ts>0): в тестах и до первого
+        # снапшота OB вход не блокируем — живой last-фид достаточен (старое поведение).
+        if (self.ob_a.ts > 0 or self.ob_b.ts > 0) and not self._orderbook_sane():
+            log.warning("Entry blocked: orderbook sanity check failed (OB mid vs last / crossed OB)")
+            return None
+
         # Capital check — stop adding layers if we can't afford another
         if not self._can_open_layer():
             log.warning(f"Entry blocked: capital (used={self._used_capital():.0f} + layer={self._layer_cost():.0f} > capital={self.p.capital})")
@@ -808,6 +817,41 @@ class ArbitrageStrategy:
                 return None
             total += r
         return total
+
+    def _orderbook_sane(self, max_dev_pct: float = 1.0, max_spread_pct: float = 2.0) -> bool:
+        """F-040 (2026-09-28): санитарная проверка стаканов перед входом.
+
+        Отсекает мусорные снапшоты OB (крест-загрязнение, битые снапшоты при reconnect):
+          1) OB mid каждой ноги должен совпадать с last-ценой (±max_dev_pct%);
+          2) спред стакана (ask-bid)/mid не шире max_spread_pct%;
+          3) bid < ask (без креста).
+        Стаканы обязаны быть свежими (< 5 c): иначе вход на протухших ценах.
+        last берём из basis_calc (для GAZP он живой по ISS даже при падении Finam-стрима).
+        """
+        now = time.time()
+        if now - self.ob_a.ts > 5 or now - self.ob_b.ts > 5:
+            return False
+        bb_a, ba_a = self.ob_a.best_bid, self.ob_a.best_ask
+        bb_b, ba_b = self.ob_b.best_bid, self.ob_b.best_ask
+        if bb_a <= 0 or ba_a <= 0 or bb_b <= 0 or ba_b <= 0:
+            return False
+        if bb_a >= ba_a or bb_b >= ba_b:
+            return False  # crossed/locked OB
+        pa = self.basis_calc.price_a
+        pb = self.basis_calc.price_b
+        if pa <= 0 or pb <= 0:
+            return False
+        mid_a = (bb_a + ba_a) / 2.0
+        mid_b = (bb_b + ba_b) / 2.0
+        if abs(pa - mid_a) / mid_a * 100 > max_dev_pct:
+            return False
+        if abs(pb - mid_b) / mid_b * 100 > max_dev_pct:
+            return False
+        if (ba_a - bb_a) / mid_a * 100 > max_spread_pct:
+            return False
+        if (ba_b - bb_b) / mid_b * 100 > max_spread_pct:
+            return False
+        return True
 
     def route_quote(self, symbol: str, last: float) -> Optional[str]:
         """F-039 (2026-09-25): маршрут котировки в ногу A/B. Возвращает 'A'/'B'/None.

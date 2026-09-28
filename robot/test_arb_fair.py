@@ -383,5 +383,42 @@ check("F-039 card unrealized = realizable", stt["unrealizedPnl"] == stt["realiza
       f"card={stt['unrealizedPnl']} realizable={stt['realizableUnrealizedPnl']}")
 check("F-039 card keeps last-variant for diagnostics", "localUnrealizedPnl" in stt)
 
+print("=== F-040: orderbook sanity guard (вход по мусорному OB закрыт) ===")
+# Реальный кейс 28.09: OB GAZP ask=93.00 / bid=105.00 при last 99.55 → вход был по 93
+stG = ArbitrageStrategy(ArbParams(symbol_a="GAZP@MISX", ticker_a="GAZP",
+                                  symbol_b="GZZ6@RTSX", ticker_b="GZZ6",
+                                  lots_a=10, lots_b=1, hedge_ratio=100.0, mult_a=10.0, mult_b=1.0,
+                                  risk_free_rate=0.145, contract_size=100, capital=30000,
+                                  min_profit_type="rub", min_profit_value=25.0,
+                                  entry_mode="zscore", dev_ann_high=2.5, dev_ann_low=-1.0,
+                                  dev_lookback=100, dev_push_interval=0.05,
+                                  expiration_date=(datetime.now() + timedelta(days=80)).strftime("%Y-%m-%d")))
+# мусорный OB
+stG.ob_a.update([(105.00, 10, 0, 1), (93.00, 0, 10, 1)])
+stG.ob_b.update([(10269.86, 5, 0, 1), (10270.5, 0, 5, 1)])
+stG.basis_calc.update_price_a(99.55)
+stG.basis_calc.update_price_b(10277.0)
+check("F-040 crossed OB insane", stG._orderbook_sane() is False)
+check("F-040 crossed OB blocks entry", stG.check_entry() is None)
+
+# нормальный OB — проверки проходят
+stG.ob_a.update([(98.70, 10, 0, 1), (98.72, 0, 10, 1)])
+stG.basis_calc.update_price_a(98.71)
+check("F-040 sane OB ok (price near mid)", stG._orderbook_sane() is True)
+
+# last далеко от mid (1.5%) — блок
+stG.basis_calc.update_price_a(97.30)
+check("F-040 last dev 1.4% from mid blocks", stG._orderbook_sane() is False)
+
+# протухший OB — блок
+stG.basis_calc.update_price_a(98.71)
+stG.ob_a._ts = time.time() - 10
+check("F-040 stale OB blocks", stG._orderbook_sane() is False)
+
+# широкий стакан (3%) — блок
+stG.ob_a.update([(97.50, 10, 0, 1), (100.50, 0, 10, 1)])
+stG.basis_calc.update_price_a(99.0)
+check("F-040 wide spread blocks", stG._orderbook_sane() is False)
+
 print(f"\n===== RESULTS: PASS={PASS} FAIL={FAIL} =====")
 sys.exit(0 if FAIL == 0 else 1)
