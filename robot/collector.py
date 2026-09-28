@@ -155,7 +155,7 @@ def _on_latest_trades(event):
                 if hasattr(trade.timestamp, "seconds"):
                     ts = trade.timestamp.seconds
 
-                writer.writerow([f"{ts:.3f}", f"{price:.0f}", size, side])
+                writer.writerow([f"{ts:.3f}", f"{price:.3f}", size, side])
                 _trades_count += 1
     except Exception as e:
         log.error(f"Trades callback error: {e}")
@@ -179,10 +179,10 @@ def _on_order_book(event):
 
                     # Write bid rows and ask rows
                     if buy > 0:
-                        writer.writerow([f"{ts:.3f}", "B", f"{price:.0f}", int(buy), action])
+                        writer.writerow([f"{ts:.3f}", "B", f"{price:.3f}", int(buy), action])
                         _ob_count += 1
                     if sell > 0:
-                        writer.writerow([f"{ts:.3f}", "S", f"{price:.0f}", int(sell), action])
+                        writer.writerow([f"{ts:.3f}", "S", f"{price:.3f}", int(sell), action])
                         _ob_count += 1
     except Exception as e:
         log.error(f"OB callback error: {e}")

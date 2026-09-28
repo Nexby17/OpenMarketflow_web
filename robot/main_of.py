@@ -57,6 +57,58 @@ TICKER = getattr(config, "TICKER", "SiU6")
 ACCOUNT = getattr(config, "ACCOUNT_ID", os.environ.get("FINAM_ACCOUNT", "1225953"))
 DP_URL = getattr(config, "DP_URL", "http://localhost:5060")
 
+# --- Instrument selection (of_config.json 'ticker' overrides shared .env default) ---
+_config_ticker: str | None = None
+
+def _resolve_instrument() -> None:
+    """Apply ticker chosen in UI (persisted to of_config.json via /params).
+
+    .env ROBOT_SYMBOL/ROBOT_TICKER is shared by ALL of-robot services, so the
+    per-robot selection lives in of_config.json. Streams bind at process start,
+    so a switch applies on restart, never mid-run.
+    Guard: if state has an open position on another symbol, keep that symbol so
+    the position can re-attach; the pending switch stays and /start refuses
+    until the position is closed and the robot restarted.
+    """
+    global SYMBOL, TICKER, _config_ticker
+    cfg_path = os.path.join(os.getcwd(), "of_config.json")
+    state_path = os.path.join(os.getcwd(), "of_state.json")
+    cfg_ticker = None
+    try:
+        if os.path.exists(cfg_path):
+            with open(cfg_path) as f:
+                cfg_ticker = json.load(f).get("ticker")
+    except Exception as e:
+        log.warning(f"of_config.json read failed: {e}")
+    if not cfg_ticker or not isinstance(cfg_ticker, str):
+        _config_ticker = TICKER
+        return
+    cfg_ticker = cfg_ticker.strip()
+    if not cfg_ticker.isalnum() or not (3 <= len(cfg_ticker) <= 8) or not cfg_ticker[0].isalpha():
+        log.warning(f"of_config.json ticker {cfg_ticker!r} invalid — ignored, staying on {SYMBOL}")
+        _config_ticker = TICKER
+        return
+    try:
+        if os.path.exists(state_path):
+            with open(state_path) as f:
+                st = json.load(f)
+            lots = int(st.get("totalLots") or 0)
+            st_sym = st.get("symbol")
+            if lots > 0 and st_sym and str(st_sym).split("@")[0] != cfg_ticker:
+                _config_ticker = cfg_ticker  # pending — /start refuses until flat + restart
+                log.error(f"Instrument switch {st_sym} -> {cfg_ticker} BLOCKED: {lots} lots open on {st_sym}. "
+                          f"Staying on {SYMBOL}; close the position and restart to switch.")
+                return
+    except Exception as e:
+        log.warning(f"of_state.json read failed: {e}")
+    board = SYMBOL.split("@", 1)[1] if "@" in SYMBOL else "RTSX"
+    SYMBOL = f"{cfg_ticker}@{board}"
+    TICKER = cfg_ticker
+    _config_ticker = cfg_ticker
+    log.info(f"Instrument from of_config.json: {SYMBOL}")
+
+_resolve_instrument()
+
 # === Multi-account support ===
 ACCOUNTS = {
     "main": "1225953",
@@ -141,6 +193,7 @@ def save_state():
         state = strategy.get_state()
         state["mode"] = _mode
         state["activeAccount"] = ACTIVE_ACCOUNT_KEY
+        state["symbol"] = SYMBOL
         state["direction_filter"] = params.direction_filter
         with open(STATE_FILE, "w") as f:
             json.dump(state, f, indent=2, default=str)
@@ -809,8 +862,11 @@ class APIHandler(BaseHTTPRequestHandler):
             status = strategy.get_status()
             status["mode"] = _mode
             status["symbol"] = SYMBOL
+            status["ticker"] = TICKER
+            status["pendingTicker"] = _config_ticker
             status["currentPrice"] = price
             status["params"] = {k: getattr(params, k) for k in dir(params) if not k.startswith("_") and not callable(getattr(params, k))}
+            status["params"]["ticker"] = TICKER
             status["paper"] = PAPER_MODE
             status["accounts"] = ACCOUNTS
             status["activeAccount"] = ACTIVE_ACCOUNT_KEY
@@ -903,10 +959,17 @@ class APIHandler(BaseHTTPRequestHandler):
             self._json(404, {"error": "not found"})
 
     def do_POST(self):
-        global _mode, orders, ACTIVE_ACCOUNT_KEY
+        global _mode, orders, ACTIVE_ACCOUNT_KEY, _config_ticker
         path = self.path.split("?")[0]
 
         if path == "/start":
+            if _config_ticker != TICKER:
+                # Streams are bound to SYMBOL at process start — starting on the old
+                # instrument after a ticker switch would silently trade nothing.
+                self._json(409, {"ok": False,
+                                 "error": f"instrument switch pending: {TICKER} -> {_config_ticker}. Use restart to apply.",
+                                 "activeTicker": TICKER, "pendingTicker": _config_ticker})
+                return
             _mode = "running"
             strategy._force_unlock()  # Reset entry lock on manual start
             save_state()
@@ -1123,9 +1186,22 @@ class APIHandler(BaseHTTPRequestHandler):
         elif path == "/params":
             # Update parameters
             length = int(self.headers.get("Content-Length", 0))
+            resp = {"ok": True}
             if length > 0:
                 body = self.rfile.read(length)
                 data = json.loads(body)
+                # Instrument selection (persisted; applies on restart — streams bind at startup)
+                new_ticker = data.pop("ticker", None)
+                if new_ticker is not None:
+                    t = str(new_ticker).strip()
+                    if not t.isalnum() or not (3 <= len(t) <= 8) or not t[0].isalpha():
+                        self._json(400, {"ok": False, "error": f"bad ticker: {new_ticker!r}"})
+                        return
+                    if t != _config_ticker:
+                        _config_ticker = t
+                        if t != TICKER:
+                            log.warning(f"Instrument switch requested: {TICKER} -> {t} — saved to of_config.json, applies after RESTART")
+                            resp["instrumentRestartRequired"] = True
                 for k, v in data.items():
                     if hasattr(params, k):
                         setattr(params, k, v)
@@ -1136,6 +1212,7 @@ class APIHandler(BaseHTTPRequestHandler):
                 # Reconstruct VP if VAH/VAL params changed
                 if "use_vah_val" in data or any(k.startswith("vah_val_") for k in data):
                     strategy._init_vp()
+                    _backfill_vp()
                 # Sync agg_window to signal engine
                 if "agg_window" in data:
                     strategy.signals.set_agg_window(data["agg_window"])
@@ -1143,11 +1220,13 @@ class APIHandler(BaseHTTPRequestHandler):
                     strategy.signals._agg_ratio_threshold = data["agg_ratio_threshold"]
                 if "use_agg_ratio" in data:
                     strategy.signals._use_agg_ratio = data["use_agg_ratio"]
-                # Save to config
+                # Save to config (keep instrument selection — not an OFParams field)
                 cfg_path = os.path.join(os.getcwd(), "of_config.json")
+                cfg = {k: getattr(params, k) for k in dir(params) if not k.startswith("_") and not callable(getattr(params, k))}
+                cfg["ticker"] = _config_ticker
                 with open(cfg_path, "w") as f:
-                    json.dump({k: getattr(params, k) for k in dir(params) if not k.startswith("_") and not callable(getattr(params, k))}, f, indent=2)
-            self._json(200, {"ok": True})
+                    json.dump(cfg, f, indent=2)
+            self._json(200, resp)
 
         elif path == "/reset-stats":
             strategy._realized_pnl = 0.0
@@ -1222,6 +1301,49 @@ def _warmup_vwema():
         log.error(f"VWEMA warmup error: {e}", exc_info=True)
 
 
+# ========== VP Backfill ==========
+
+def _backfill_vp():
+    """Backfill Volume Profile with today's M1 bars so VAH/VAL reflect the full
+    session, not just live ticks since (re)start. Fix 22.09.2026."""
+    if not strategy.vp:
+        return
+    try:
+        from google.protobuf.timestamp_pb2 import Timestamp
+        from google.type.interval_pb2 import Interval
+        import FinamPy.grpc.marketdata_service_pb2 as md_pb2
+
+        # VP session resets at midnight MSK — backfill from midnight MSK today
+        start = datetime.now(MSK).replace(hour=0, minute=0, second=0, microsecond=0).astimezone(timezone.utc)
+        now = datetime.now(timezone.utc)
+        resp = fp.call_function(
+            fp.marketdata_stub.Bars,
+            md_pb2.BarsRequest(
+                symbol=SYMBOL,
+                timeframe=md_pb2.TimeFrame.TIME_FRAME_M1,
+                interval=Interval(
+                    start_time=Timestamp(seconds=int(start.timestamp())),
+                    end_time=Timestamp(seconds=int(now.timestamp())),
+                ),
+            ),
+        )
+        if resp and resp.bars:
+            fed = 0
+            for bar in resp.bars:
+                h, l, c = _to_float(bar.high), _to_float(bar.low), _to_float(bar.close)
+                v = int(_to_float(bar.volume))
+                if c > 0 and v > 0:
+                    strategy.vp.add_trade((h + l + c) / 3.0, v, datetime.now(MSK))
+                    fed += 1
+            strategy.vp.calculate()
+            st = strategy.vp.state
+            log.info(f"VP backfill: {fed} M1 bars | VAH={st['vah']} VAL={st['val']} POC={st['poc']} vol={st['totalVolume']}")
+        else:
+            log.warning("VP backfill: no historical bars received")
+    except Exception as e:
+        log.error(f"VP backfill error: {e}", exc_info=True)
+
+
 # ========== Shutdown ==========
 
 def on_shutdown(signum, frame):
@@ -1263,6 +1385,9 @@ if __name__ == "__main__":
 
     # VWEMA warmup: load historical bars so filter is ready immediately
     _warmup_vwema()
+
+    # VP backfill: seed today's volume profile so VAH/VAL are correct after restart
+    _backfill_vp()
 
     # Warmup period (let subscriptions accumulate data)
     log.info("Warmup: waiting 10 sec for data streams...")

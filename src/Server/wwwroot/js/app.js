@@ -2177,7 +2177,17 @@ let _mainRobotInstrument = localStorage.getItem('mainRobotInstrument') || 'SiU6'
 // === Order Flow robot instrument/account ===
 function onOfRobotInstrumentChange(val) {
     localStorage.setItem('ofRobotInstrument', val);
-    addLog(nowTime(), 'INFO', `📊 OF контракта изменена на ${val} (применится при следующем старте)`);
+    // Persist to the robot — localStorage alone never reached the server (fix 16.09.2026)
+    fetch(OF_ROBOT_API + '/params', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ticker: val})
+    }).then(r => r.json()).then(d => {
+        if (d && d.ok === false) { addLog(nowTime(), 'ERROR', '📊 OF инструмент не сохранён: ' + (d.error || 'unknown')); return; }
+        addLog(nowTime(), 'INFO', `📊 OF инструмент ${val} сохранён на роботе (применится при рестарте 🔄)`);
+    }).catch(e => {
+        addLog(nowTime(), 'ERROR', '📊 OF инструмент не сохранён (робот офлайн?): ' + e.message);
+    });
 }
 function onOfRobotAccountChange(val) {
     localStorage.setItem('ofRobotAccount', val);
@@ -2315,7 +2325,7 @@ async function renderRobots() {
 
     // Order Flow Robot row
     let ofRobotRow = '';
-    let _ofInstrument = localStorage.getItem('ofRobotInstrument') || 'SiU6';
+    let _ofInstrument = (ofRobot && ofRobot.symbol ? String(ofRobot.symbol).split('@')[0] : null) || localStorage.getItem('ofRobotInstrument') || 'SiU6';
     let _ofAccount = localStorage.getItem('ofRobotAccount') || '1225953';
     if (ofRobot) {
         const s = ofRobot;
@@ -5911,6 +5921,7 @@ function ofUpdatePanel() {
         const v = el('ofHlVerdict');
         if (!hl || !hl.enabled) { v.textContent = 'OFF'; v.style.color = '#6B7280'; }
         else if (!hl.ready) { v.textContent = '⏳ прогрев окна'; v.style.color = '#9CA3AF'; }
+        else if (hl.verdict === 'both' || (hl.nearHigh && hl.nearLow)) { v.textContent = `🔀 любые (окно ${Math.round((hl.winHigh||0)-(hl.winLow||0))} пт ≤ Δ${hl.delta})`; v.style.color = '#9C27B0'; }
         else if (hl.verdict === 'short_only') { v.textContent = `🔴 SHORT only (${(hl.winHigh||0).toFixed(0)})`; v.style.color = '#F44336'; }
         else if (hl.verdict === 'long_only') { v.textContent = `🟢 LONG only (${(hl.winLow||0).toFixed(0)})`; v.style.color = '#4CAF50'; }
         else { v.textContent = `⛔ блок ${Math.round(hl.winLow||0)}–${Math.round(hl.winHigh||0)}`; v.style.color = '#FF9800'; }
@@ -6839,6 +6850,19 @@ function ofBrRobotEditPanel() {
                 <div class="metric-card" style="min-width:120px"><div class="metric-label">VWEMA Trend</div><div id="ofBrVwemaTrend" style="font-size:16px;font-weight:bold;color:#9CA3AF">—</div></div>
             </div>
             <hr style="border-color:#2D2D44;margin:12px 0">
+            <!-- HL Filter (only_strict): вход лонгом только у лоу окна, шортом только у хая -->
+            <div class="metrics-row" style="flex-wrap:wrap;margin-bottom:16px;align-items:center">
+                <div class="metric-card" style="display:flex;align-items:center;gap:8px">
+                    <label style="display:flex;align-items:center;gap:6px;cursor:pointer" title="Вход лонгом только у лоу окна, шортом только у хая. Середина диапазона — блок. Выкл = как раньше">
+                        <input id="editOfBrUseHl" type="checkbox" ${(p.hl_filter)?'checked':''} style="width:18px;height:18px;cursor:pointer">
+                        <span style="font-weight:bold;color:#66BB6A">HL Filter</span>
+                    </label>
+                </div>
+                <div class="metric-card"><div class="metric-label">Окно (баров M5)</div><input id="editOfBrHlWindow" class="input" type="number" min="2" max="30" value="${p.hl_window||24}" style="width:60px" title="24 = 2 часа"></div>
+                <div class="metric-card"><div class="metric-label">Δ близости (пт)</div><input id="editOfBrHlDelta" class="input" type="number" value="${p.hl_delta||150}" style="width:70px"></div>
+                <div class="metric-card" style="min-width:150px"><div class="metric-label">HL вердикт</div><div id="ofBrHlVerdict" style="font-size:14px;font-weight:bold;color:#9CA3AF">—</div></div>
+            </div>
+            <hr style="border-color:#2D2D44;margin:12px 0">
             <!-- VAH/VAL Volume Profile Filter -->
             <div class="metrics-row" style="flex-wrap:wrap;margin-bottom:16px;align-items:center">
                 <div class="metric-card" style="display:flex;align-items:center;gap:8px">
@@ -6960,6 +6984,17 @@ function ofBrUpdateLive() {
         const vwDir = s.vwema.direction > 0 ? '↑ UP' : s.vwema.direction < 0 ? '↓ DOWN' : '→ FLAT';
         setText('ofBrVwemaTrend', vwDir + ' (f=' + (s.vwema.ema_f ? s.vwema.ema_f.toFixed(0) : '—') + ' s=' + (s.vwema.ema_s ? s.vwema.ema_s.toFixed(0) : '—') + ')');
     }
+    // HL filter state
+    if (el('ofBrHlVerdict')) {
+        const hl = s.hl;
+        const v = el('ofBrHlVerdict');
+        if (!hl || !hl.enabled) { v.textContent = 'OFF'; v.style.color = '#6B7280'; }
+        else if (!hl.ready) { v.textContent = '⏳ прогрев окна'; v.style.color = '#9CA3AF'; }
+        else if (hl.verdict === 'both' || (hl.nearHigh && hl.nearLow)) { v.textContent = `🔀 любые (окно ${Math.round((hl.winHigh||0)-(hl.winLow||0))} пт ≤ Δ${hl.delta})`; v.style.color = '#9C27B0'; }
+        else if (hl.verdict === 'short_only') { v.textContent = `🔴 SHORT only (${(hl.winHigh||0).toFixed(0)})`; v.style.color = '#F44336'; }
+        else if (hl.verdict === 'long_only') { v.textContent = `🟢 LONG only (${(hl.winLow||0).toFixed(0)})`; v.style.color = '#4CAF50'; }
+        else { v.textContent = `⛔ блок ${Math.round(hl.winLow||0)}–${Math.round(hl.winHigh||0)}`; v.style.color = '#FF9800'; }
+    }
 }
 
 async function ofBrRobotSaveFromPanel() {
@@ -6998,6 +7033,9 @@ async function ofBrRobotSaveFromPanel() {
         vwema_flat_th: parseFloat(el('editOfBrVwemaFlat')?.value) || 1.0,
         vwema_block_counter: el('editOfBrVwemaBlock')?.checked !== false,
         vwema_avg_exit: el('editOfBrVwemaAvgExit')?.checked || false,
+        hl_filter: el('editOfBrUseHl')?.checked || false,
+        hl_window: Math.min(parseInt(el('editOfBrHlWindow')?.value) || 24, 30),
+        hl_delta: parseFloat(el('editOfBrHlDelta')?.value) || 150,
         vah_val_pct: parseInt(el('editOfBrVahValPct')?.value) || 95,
         vah_val_bin_size: parseFloat(el('editOfBrVahValBin')?.value) || 0.35,
         vah_val_mode: el('editOfBrVahValMode')?.value || 'range',

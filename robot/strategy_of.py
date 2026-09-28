@@ -1374,7 +1374,14 @@ class OrderFlowStrategy:
         p = self._current_price
         near_high = (wh - p) <= self.p.hl_delta
         near_low = (p - wl) <= self.p.hl_delta
-        verdict = "short_only" if near_high else ("long_only" if near_low else "blocked")
+        if near_high and near_low:
+            verdict = "both"  # окно у́же Δ — LONG и SHORT оба в зоне допуска (фильтр нейтрален)
+        elif near_high:
+            verdict = "short_only"
+        elif near_low:
+            verdict = "long_only"
+        else:
+            verdict = "blocked"
         return {"enabled": True, "ready": True, "window": self.p.hl_window, "delta": self.p.hl_delta,
                 "winHigh": round(wh, 2), "winLow": round(wl, 2),
                 "nearHigh": near_high, "nearLow": near_low, "verdict": verdict}

@@ -18,7 +18,7 @@ import threading
 import time
 from pathlib import Path
 from datetime import datetime, timezone, timedelta
-from http.server import HTTPServer, BaseHTTPRequestHandler
+from http.server import HTTPServer, ThreadingHTTPServer, BaseHTTPRequestHandler
 
 from FinamPy import FinamPy
 
@@ -782,6 +782,10 @@ def _execute_action(action: dict):
 # ========== API ==========
 
 class APIHandler(BaseHTTPRequestHandler):
+    # Таймаут на idle keep-alive соединение: иначе один уснувший браузер
+    # навсегда занимал единственный поток сервера (баг 21.09: /status вис, UI «не запущен»)
+    timeout = 60
+
     def log_message(self, fmt, *args):
         pass  # Suppress default logging
 
@@ -1306,8 +1310,11 @@ if __name__ == "__main__":
     import socket
     HTTPServer.address_family = socket.AF_INET
     HTTPServer.socket_type = socket.SOCK_STREAM
-    class ReusableHTTPServer(HTTPServer):
+    # Многопоточный сервер (daemon threads): однопоточный + keep-alive без таймаута
+    # намертво блокировался одним уснувшим соединением (21.09, 5083)
+    class ReusableHTTPServer(ThreadingHTTPServer):
         allow_reuse_address = True
+        daemon_threads = True
     server = ReusableHTTPServer(("0.0.0.0", PORT), APIHandler)
     log.info(f"API listening on :{PORT}")
     log.info(f"Endpoints: GET /status | GET /health | POST /start /stop /pause /params")
