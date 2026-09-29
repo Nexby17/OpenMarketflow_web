@@ -3671,9 +3671,19 @@ function createArbInstance(prefix, port) {
             } else { el(prefix+'Pos').textContent = 'Флэт'; el(prefix+'Pos').style.color = ''; }
         }
         if (el(prefix+'Unreal')) {
-            const u = d.unrealizedPnl || 0;
-            el(prefix+'Unreal').textContent = (u>=0?'+':'') + u.toFixed(1) + ' ₽';
-            el(prefix+'Unreal').style.color = u > 0 ? 'var(--green)' : u < 0 ? 'var(--red)' : '';
+            // F-047: показываем РЕАЛИЗУЕМЫЙ PnL (стакан − slippage − комиссии) —
+            // именно по нему робот принимает решение о тейке (min_profit).
+            // d.unrealizedPnl — last-оценка без издержек, расходится с решением.
+            let u, hint;
+            const rl = d.realizableUnrealizedPnl;
+            if (rl != null) { u = rl; hint = ''; }
+            else { u = d.unrealizedPnl || 0; hint = '≈'; } // стакан протух — last-приближение
+            const e2 = el(prefix+'Unreal');
+            e2.textContent = hint + (u>=0?'+':'') + u.toFixed(1) + ' ₽';
+            e2.style.color = u > 0 ? 'var(--green)' : u < 0 ? 'var(--red)' : '';
+            e2.title = rl != null
+                ? 'Реализуемый PnL: стакан − slippage − комиссии (критерий тейк-профита)'
+                : 'Стакан протух — показана last-оценка без издержек (тейк не оценивается)';
         }
         if (el(prefix+'Realized')) {
             const r = d.realizedPnl || 0;
