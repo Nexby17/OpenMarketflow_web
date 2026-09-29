@@ -28,6 +28,8 @@ from typing import Callable, Optional
 
 log = logging.getLogger("finam_hub")
 
+_WS_CONNECT = None  # F-043: лениво инициализируемый websockets.connect
+
 WS_URL = "wss://api.finam.ru:443/ws"
 AUTH_URL = "https://api.finam.ru/v1/sessions"
 JWT_TTL = 15 * 60          # Finam JWT живёт 15 минут
@@ -144,13 +146,31 @@ class FinamHub:
 
     def _run(self):
         """Главный цикл: connect → receive loop → reconnect с backoff."""
-        import websockets  # лениво: зависимость только у хаба
+        # F-043 (2026-09-29): раньше здесь был голый 'import websockets' и вызов websockets.connect.
+        # В живом процессе иногда срабатывает AttributeError "module 'websockets' has no attribute 'connect'"
+        # (затенение/порядок импортов в потоке) — робот неделями сидел без данных (logs 25.09+: сотни no-attr, 0 коннектов).
+        # Импортируем connect ЯВНО из подпакета с fallback-цепочкой и логируем диагностику вместо молчаливого ретрая.
+        global _WS_CONNECT
+        if _WS_CONNECT is None:
+            try:
+                import websockets as _wsmod
+                _ws_file = getattr(_wsmod, "__file__", "?")
+                if hasattr(_wsmod, "connect"):
+                    _WS_CONNECT = _wsmod.connect
+                else:
+                    # 17.x: клиент живёт в websockets.asyncio.client и websockets.sync.client
+                    from websockets.asyncio.client import connect as _c1
+                    _WS_CONNECT = _c1
+                log.info("websockets ready: file=%s has_connect=True", _ws_file)
+            except Exception as _impe:
+                log.error("websockets import failed: %s", _impe)
+                raise
 
         delay = RECONNECT_BASE
         while self._running:
             try:
                 jwt = self._ensure_jwt()
-                ws = websockets.connect(
+                ws = _WS_CONNECT(
                     WS_URL,
                     additional_headers={"Authorization": jwt},
                     open_timeout=10,
