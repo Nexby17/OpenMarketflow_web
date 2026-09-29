@@ -264,3 +264,9 @@
 - **Фикс**: guard `if signal and self.layers and not self._allows_averaging(signal["side"])`. Тест tmp/test_f045_arb_entry.py 6/6 PASS (реальный arb_common код). Код общий для всех арб-роботов (GAZP/SBER/BR).
 - **Почему панель показывала плюс, а закрытия не было**: min_profit=15 ₽ считается по реализуемому PnL (стакан − slippage 5 bps − комиссии), что давало −1,11 ₽; +59,8 ₽ на панели — mid-PnL без издержек. Плюс выходы только в сессии 10:00–18:45 (use_evening=false).
 - Нумерация: F-044 занят (перенос OF-Si фич 28.09), фикс назван F-045. Действует после следующего ▶ арб-роботов.
+
+### F-045 активация (29.09 12:11, по слову Дмитрия «Перезапусти и примени»)
+- Перезапущены все три арб-робота: GAZP PID 19048→2368 (--no-paper live), SBER 3544→12560 (paper), BR 2836→3868 (paper).
+- Метод: taskkill → ожидание освобождения LISTENING (netstat, TIME_WAIT не мешает бинду) → detached-спавн с per-instance env ARB_CONFIG_FILE/ARB_STATE_FILE → health-check → сверка слоёв.
+- Слои восстановлены из state 1-в-1: GAZP 1×SHORT(-1,10,1), SBER 2×SHORT, BR 4×LONG; mode=running у всех.
+- Проверка: в новом логе 0 «Main loop error»; realizableUnrealizedPnl считается и обновляется (−1,11→+3,89 ₽ за 20с); прогрев dev-истории после старта (39-40/50) — входы разблокируются через несколько минут, выходы работают сразу.

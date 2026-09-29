@@ -923,7 +923,7 @@
       "commits": [
         "2828c2b"
       ],
-      "summary": "29.09: GAZP/GZZ6 SHORT 10×1 не закрывался по мин-профиту. Корень: check_entry обращался к signal['side'] при signal=None (слой открыт + dev_ann в мёртвой зоне) → TypeError каждый такой тик; check_exit стоит ПОСЛЕ check_entry в main loop и пропускался. 1107 крашей 10:00–10:30 (общий arb-лог; код общий для SBER/BR). Фикс: guard `signal and self.layers and ...`. Воспроизведено на реальном коде, тест tmp/test_f045_arb_entry.py 6/6 PASS. Нюанс: выходы считаются только в сессии 10:00–18:45 (use_evening=false); у GAZP-слоя min_profit=15₽ по реализуемому PnL (стакан − slippage − комиссии), панельный +59,8₽ считался от mid без издержек. Вступает в силу при следующем ▶ роботов.",
+      "summary": "29.09: GAZP/GZZ6 SHORT 10×1 не закрывался по мин-профиту. Корень: check_entry обращался к signal['side'] при signal=None (слой открыт + dev_ann в мёртвой зоне) → TypeError каждый такой тик; check_exit стоит ПОСЛЕ check_entry в main loop и пропускался. 1107 крашей 10:00–10:30 (общий arb-лог; код общий для SBER/BR). Фикс: guard `signal and self.layers and ...`. Воспроизведено на реальном коде, тест tmp/test_f045_arb_entry.py 6/6 PASS. Нюанс: выходы считаются только в сессии 10:00–18:45 (use_evening=false); у GAZP-слоя min_profit=15₽ по реализуемому PnL (стакан − slippage − комиссии), панельный +59,8₽ считался от mid без издержек. Вступает в силу при следующем ▶ роботов. Активировано 29.09 12:11: перезапуск всех троих (GAZP live 2368, SBER 12560, BR 3868), слои из state 1-в-1, 0 крашей, realizable PnL обновляется.",
       "date": "2026-09-29"
     }
   ]
