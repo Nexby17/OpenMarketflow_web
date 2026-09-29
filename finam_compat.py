@@ -30,18 +30,20 @@ class FinamClient(_SdkClient):
     REST sub-clients (account/instruments/orders REST) come from SDK via
     composition, not inheritance (SDK sets self.orders etc in __init__)."""
 
+    # F-046: Finam JWT lives ~15 min. Without proactive refresh every gRPC call
+    # dies with UNAUTHENTICATED -> orderbook goes stale -> take-profit blind.
+    _JWT_REFRESH_INTERVAL = 540.0  # seconds; SDK REST path refreshes every 10 min
+
     def __init__(self, token: str):
         # SDK Client не наследуем: его __init__ перезаписывает self.orders/orders_stub
         self._sdk = _SdkClient(TokenManager(token), auto_refresh_tokens=True)
         self._token_manager = TokenManager(token)
-        # JWT для gRPC: сразу получаем (не ждём REST-цикла)
-        try:
-            import asyncio
-            from finam_trade_api.access.access_token import TokenClient as _TC
-            tc = _TC(self._token_manager)
-            asyncio.get_event_loop().run_until_complete(tc.set_jwt_token())
-        except Exception:
-            pass
+        self._jwt_lock = threading.Lock()
+        self._jwt_ts = 0.0
+        # JWT для gRPC: сразу получаем. asyncio.run() создаёт свежий loop и работает
+        # из ЛЮБОГО потока (get_event_loop() в тредах падал молча — корень шторма
+        # 'token expired'/'Invalid access key' 29.09).
+        self._refresh_jwt(force=True)
         creds = _grpc.ssl_channel_credentials()
         self._grpc_channel = _grpc.secure_channel(_GRPC_TARGET, creds)
         self._grpc_md = _md_grpc.MarketDataServiceStub(self._grpc_channel)
@@ -60,9 +62,39 @@ class FinamClient(_SdkClient):
     def accounts(self):
         return self._grpc_acc
 
+    def _refresh_jwt(self, force: bool = False) -> None:
+        """F-046: synchronous JWT refresh — thread-safe, throttled, loud on failure."""
+        now = time.monotonic()
+        if not force and now - self._jwt_ts < self._JWT_REFRESH_INTERVAL:
+            return
+        with self._jwt_lock:
+            now = time.monotonic()
+            if not force and now - self._jwt_ts < self._JWT_REFRESH_INTERVAL:
+                return
+            try:
+                import asyncio
+                from finam_trade_api.access.access_token import TokenClient as _TC
+                tc = _TC(self._token_manager)
+                asyncio.run(tc.set_jwt_token())
+                self._jwt_ts = time.monotonic()
+            except Exception as e:
+                # keep the old JWT (if any); never fall back to the raw secret
+                logger.error("F-046 JWT refresh failed (keeping old token): %s", e)
+
     def get_token(self) -> str:
-        """Return current JWT (old FinamClient API)."""
-        return self._token_manager.jwt_token or self._token_manager.token
+        """Return current JWT (old FinamClient API). F-046: self-healing.
+
+        Old behavior returned the raw API secret when JWT was missing/aged —
+        Finam gRPC rejected it as 'Invalid access key'. Now the token is
+        refreshed proactively (every _JWT_REFRESH_INTERVAL) and on demand;
+        the raw secret is never sent as an authorization header."""
+        jwt = self._token_manager.jwt_token
+        if not jwt or (time.monotonic() - self._jwt_ts) >= self._JWT_REFRESH_INTERVAL:
+            self._refresh_jwt()
+            jwt = self._token_manager.jwt_token
+        if not jwt:
+            logger.warning("F-046 get_token: no JWT available (refresh failed)")
+        return jwt or ""
 from finam_trade_api.proto.grpc.tradeapi.v1.marketdata import marketdata_service_pb2 as md
 from finam_trade_api.proto.grpc.tradeapi.v1.orders import orders_service_pb2 as ord_pb
 from finam_trade_api.proto.grpc.tradeapi.v1.accounts import accounts_service_pb2 as accts_pb
