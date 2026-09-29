@@ -925,6 +925,30 @@
       ],
       "summary": "29.09: GAZP/GZZ6 SHORT 10×1 не закрывался по мин-профиту. Корень: check_entry обращался к signal['side'] при signal=None (слой открыт + dev_ann в мёртвой зоне) → TypeError каждый такой тик; check_exit стоит ПОСЛЕ check_entry в main loop и пропускался. 1107 крашей 10:00–10:30 (общий arb-лог; код общий для SBER/BR). Фикс: guard `signal and self.layers and ...`. Воспроизведено на реальном коде, тест tmp/test_f045_arb_entry.py 6/6 PASS. Нюанс: выходы считаются только в сессии 10:00–18:45 (use_evening=false); у GAZP-слоя min_profit=15₽ по реализуемому PnL (стакан − slippage − комиссии), панельный +59,8₽ считался от mid без издержек. Вступает в силу при следующем ▶ роботов. Активировано 29.09 12:11: перезапуск всех троих (GAZP live 2368, SBER 12560, BR 3868), слои из state 1-в-1, 0 крашей, realizable PnL обновляется.",
       "date": "2026-09-29"
+    },
+    {
+      "id": "F-046",
+      "name": "JWT self-heal в FinamClient (убийца шторма token expired / слепоты тейка)",
+      "area": "robots/common",
+      "status": "done",
+      "owner": "main",
+      "commits": [
+        "61aedbc"
+      ],
+      "summary": "29.09: арб-роботы слепли по стакану → тейк не оценивался (realizable=null). Корень: FinamClient.__init__ брал JWT через asyncio.get_event_loop() — в не-main потоках (_reconnect_finam из OB-poller) молча падал; после ~15 мин JWT протухал и все gRPC-вызовы ловили UNAUTHENTICATED ('Missing auth token'/'Invalid access key'), reconnect не помогал (новый клиент — тот же баг). get_token() ещё и фолбэкал на raw-секрет (Finam его отвергает). Фикс: _refresh_jwt() — threading.Lock + monotonic-троттлинг 9 мин + asyncio.run() (свежий loop в любом потоке) + громкий лог ошибок; get_token() дёргает рефреш при отсутствии/старении JWT и НИКОГДА не возвращает raw-секрет. Тест tmp/test_f046_jwt.py 7/7 PASS (вкл. рефреш из не-main потока и сохранение старого JWT при сбое). Шторм 350 строк/мин → 0 после рестарта. Активирован рестартом 13:11-13:13.",
+      "date": "2026-09-29"
+    },
+    {
+      "id": "F-047",
+      "name": "Панель арб-роботов: Unrealized PnL = реализуемый PnL (критерий тейка)",
+      "area": "ui",
+      "status": "done",
+      "owner": "main",
+      "commits": [
+        "f3cfce9"
+      ],
+      "summary": "29.09: панель показывала +30,9 ₽ (last-оценка без издержек), а робот правильно держал позицию — критерий тейка realizableUnrealizedPnl был −19…−23 ₽ (стакан − slippage 5bps − комиссии < порога 15 ₽). Карточка теперь показывает realizable напрямую; при протухшем стакане (>3 с) — last-оценка с префиксом '~' и tooltip-пояснением. v=115, node --check OK, сервер отдаёт фикс (проверено :5050).",
+      "date": "2026-09-29"
     }
   ]
 }
