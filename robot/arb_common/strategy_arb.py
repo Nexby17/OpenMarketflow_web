@@ -397,7 +397,12 @@ class ArbitrageStrategy:
         # Averaging check: only add layer if basis continues to trend
         # SHORT: basis must be > last layer entry_basis (expanding)
         # LONG: basis must be < last layer entry_basis (contracting)
-        if self.layers and not self._allows_averaging(signal["side"]):
+        # F-045: guard signal — при открытом слое и ОТСУТСТВИИ сигнала (signal=None,
+        # dev_ann в мёртвой зоне) обращение signal["side"] роняло check_entry с
+        # TypeError 'NoneType' object is not subscriptable КАЖДЫЙ ТИК. check_exit
+        # стоит после check_entry в main loop — тейк по min_profit не доходил никогда
+        # (инцидент 29.09: GAZP/GZZ6 SHORT 10x1 не закрывался при положительном PnL).
+        if signal and self.layers and not self._allows_averaging(signal["side"]):
             return None
 
         return signal
