@@ -956,7 +956,9 @@
       "area": "robots/arb",
       "status": "done",
       "owner": "main",
-      "commits": [],
+      "commits": [
+        "0103c49"
+      ],
       "summary": "29.09: журнал писал оценки (leg A — лимитка, leg B — стакан): gRPC SubscribeTrades/Orders/Bars/OrderBook падали без authorization metadata (12607 ошибок/день), в proto Order нет average_price → GetOrder подставлял лимитку. Реальный итог 29.09: −69.62₽ вместо +644.19₽ на бумаге (расхождения leg B до 126 пт). Фикс: (1) finam_compat.py — auth metadata во все 6 стримов; (2) orders_arb.py — _resolve_fill_price (trade sub → REST GetTrades wavg 6 дней → gRPC avg → оценка с флагом is_real), _get_broker_trades_window с force-refresh; (3) strategy_arb.py — ArbLayer.order_id_a/b + price_real_a/b, в trade-записи priceSource (broker/mixed/estimate) и id всех 4 ордеров, персист в save/load_state; (4) main_arb.py — авто-ресинк журнала при старте (resync_silent) + POST /reload-state; (5) finam_rest4.get_trades(start,end) с symbol; (6) новый robot/resync_journal.py (dry-run/--apply, матч ордеров к слоям по времени ±120с, фильтр чужих фьючерсов 9000–11000). Ресинк применён и подтверждён перезапуском 17:52 29.09 (API: realizedPnl=−69.62, все записи priceSource=broker).",
       "date": "2026-09-29"
     },
@@ -966,7 +968,9 @@
       "area": "ui+robots/common",
       "status": "done",
       "owner": "main",
-      "commits": [],
+      "commits": [
+        "0103c49"
+      ],
       "summary": "30.09 два инцидента из одного корня: (a) «SiU6 остановлен и не стартует» — обработчик /start не логировался, запрос от вкладки не доходил/не виден; (b) открытая вкладка веб-UI сама слала POST /start при загрузке — включала остановленных роботов (OF Si успел набрать 4 лота лонга за 12:00–13:25). Фикс: (1) main_of.py / main_of_mx.py / main_arb.py — log.warning при каждой смене режима с переходом и размером позиции; (2) app.js — confirm() на Start/Pause/Stop и startViaServer (фоновая вкладка не может молча включить торговлю). py_compile 3/3 OK, node --check OK, тесты 25/25.",
       "date": "2026-09-30"
     }
