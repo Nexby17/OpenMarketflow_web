@@ -298,3 +298,18 @@
 - Стало: 4 ветки — match → mode сохраняется («STARTUP: position OK»); broker-pos+robot-FLAT → stopped; robot-pos+broker-FLAT → stopped (desync); mismatch lots/dir → stopped.
 - Проверки: py_compile 2/2 OK; decision matrix 6/6 OK; tests/test_of_port_features.py SMOKE PASS.
 - Роботы не перезапускались (R-001) — фикс подхватится при следующем старте Дмитрием.
+
+
+## 2026-09-30 17:23-18:35 — F-052: тейки по фантомному стакану закрыты (GAZP/SBER/BR)
+
+Симптом: 15/18 сделок GAZP-арба reason=profit_target с отрицательным PnL (realized −103.15₽), Дмитрий запретил убыточные закрытия. Корень: ISS-поллер robot/main_arb.py при OFFER=null рисовал ask=LAST; gRPC-стакан в 429-бэкоффе — решения принимались по фантомному аску (15:31:27: realizable=+51.89, факт −13.10₽). Exit-путь не имел sanity (вход — F-040).
+
+Фикс (bb551ae):
+- main_arb.py, ISS-поллер обеих ног: только реальные строки OB, никакой подмены LAST→ask/bid.
+- arb_common/strategy_arb.py, _layer_realizable_pnl: sanity last∈[bid×(1−eps), ask×(1+eps)], eps 0.5% futures / 0.2% stock (по _is_futures), интервальная форма — широкий, но реальный стакан BR проходит; рассинхрон → None → тейк не квалифицируется.
+- Гейты во всех трёх main_arb (robot/, arb_sber_sru6/, arb_br_calendar/): одиночный profit_target перепроверяется перед отправкой ордеров (_exit_qualifies по живому стакану), групповой profit_target_total требует все слои >0 и сумму ≥ порога; ALARM-лог при тейке в минус.
+- Риск-выходы (stop_loss/daily_stop_loss), manual_stop, cleanup — без гейта, стоп-защита прежняя.
+
+Тесты: +4 кейса F-052 в robot/test_arb_fair.py (мусорный OB → None и блок выхода; согласованный OB → тейк после 3 тиков; акция-нога 1.2% рассинхрона → None; широкий реальный OB проходит). Итого 62/62 PASS, py_compile 5/5.
+
+Рестарт 18:32-18:35 (явное «делай» Дмитрия, R-001): kill /F + spawn с per-instance env (ARB_CONFIG_FILE/ARB_STATE_FILE/ARB_SYMBOL_* — зеркало RobotProcessManager Program.cs). Ключевой нюанс: on_shutdown (SIGTERM//stop) ставит mode=stopped → при старте cleanup закроет слои по рынку; рестарт с позициями — только kill /F при свежем state (<40 с, periodic save 30 с). Результат: 5090 GAZP/GZZ6 real PID 23636 (2 SHORT-слоя, −103.15₽), 5091 SBER/SRZ6 paper PID 34236 (1 слой, +2283.22₽), 5092 BRV6/BRZ6 paper PID 716 (4 слоя, +50.42₽); OB живые, state загружен 1-в-1, F-048-ресинк 0 правок. Смена бронирования: R-011 (раздельные логи) → F-054; F-052 закреплён за этим фиксом.

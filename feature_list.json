@@ -1,7 +1,7 @@
 {
   "meta": {
     "version": "1.0",
-    "updated": "2026-09-29",
+    "updated": "2026-09-30",
     "description": "Реестр фич OpenMarketflow: контроль, статусы, история логики. Дополнение к коммитам: фича шире коммита (несколько коммитов, тесты, решения).",
     "rules": {
       "statuses": [
@@ -984,6 +984,18 @@
         "42875bc"
       ],
       "summary": "30.09 инцидент: оба OF-робота (5080 Si, 5081 MX) после рестарта 13:26 сразу в mode=stopped с открытыми позициями. Причина: reconciliation (PORT-B1) любой ненулевой брокерский лот трактовал как «robot FLAT» и ставил stopped, даже когда позиция успешно восстановлена из state и совпадает с брокерской (Si 4 лота dir=1 avg=85055 = брокер; MX 1 лот dir=1 avg=227850 ≈ брокер 227875). Фикс main_of.py + main_of_mx.py: reconciliation сравнивает strategy.in_position/direction/total_lots с get_broker_position(): совпало → «position OK», mode сохраняется; robot FLAT + брокер в позиции → stopped (старое поведение); robot в позиции + брокер FLAT → stopped (новая ветка desync); оба в позиции, но lots/dir не совпадают → stopped. py_compile 2/2 OK, decision matrix 6/6, SMOKE PASS (test_of_port_features).",
+      "date": "2026-09-30"
+    },
+    {
+      "id": "F-052",
+      "name": "Запрет тейка по фантомному стакану: честный OB в ISS-поллере + sanity last-vs-OB + гейт тейка перед ордерами",
+      "area": "robots/arb",
+      "status": "done",
+      "owner": "main",
+      "commits": [
+        "bb551ae"
+      ],
+      "summary": "30.09 инцидент GZZ6 (запрос Дмитрия «запретил закрывать с убытком»): 15/18 сделок GAZP-арба reason=profit_target с PnL −2..−14₽, realized −103.15₽. Механизм: MOEX ISS-поллер в main_arb.py подставлял ask=LAST при OFFER=null (BID=10083/OFFER=null по GZZ6), gRPC-стакан в 429-бэкоффе → realizable считался по фантомному аску (15:31:27 realizable=+51.89 при last-unreal=−11.60, факт −13.10₽); на выходе sanity не было (на входе F-040 был). Фикс: (1) ISS-поллер обеих ног (futures A и B) пушит в OrderBookTracker только реальные строки — нет OFFER → best_ask=0 → realizable=None; (2) strategy_arb._layer_realizable_pnl: sanity last∈[bid×(1−eps), ask×(1+eps)], eps 0.5% фьючерсы / 0.2% акции, интервальная форма (широкий реальный стакан BR проходит); (3) гейт profit_target в _execute_single_exit перед отправкой ордеров — повторная квалификация по живому стакану (main_arb + arb_sber_sru6 + arb_br_calendar); (4) групповой гейт profit_target_total в exit_all: батч закрывается только если ВСЕ слои >0 и сумма ≥ порога; (5) F-052 ALARM в логе, если тейк всё же закрылся в минус. Риск-выходы (stop_loss/daily_stop_loss) и manual_stop/cleanup без гейта. Тесты: блок F-052 в test_arb_fair.py, 62/62 PASS. Торговая логика входов не тронута (R-002).",
       "date": "2026-09-30"
     }
   ]
