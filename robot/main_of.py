@@ -1414,13 +1414,36 @@ if __name__ == "__main__":
         if _bpos is None:
             log.warning("STARTUP: broker position check failed (API) — skipping reconciliation, DESYNC monitor will verify")
         else:
+            # F-051: сравнение с позицией, восстановленной из state. Раньше любой
+            # ненулевой брокерский лот считался «robot FLAT» и глушил робота
+            # (mode=stopped), даже когда позиция восстановлена из state и совпадает
+            # с брокером (инцидент 30.09: оба OF-робота stopped сразу после рестарта).
             _bl = _bpos.get('lots', 0)
             _bdir = _bpos.get('dir', 0)
-            if _bl != 0:
+            _robot_in_pos = strategy.in_position
+            _robot_dir = strategy.direction
+            _robot_lots = strategy.total_lots
+            if _bl == 0 and _robot_in_pos:
+                # брокер позиции не видит, робот держит позицию из state — реальный desync
+                log.warning(f"STARTUP: DESYNC — robot has {_robot_lots} lot(s) dir={_robot_dir} but broker FLAT. Stopped — investigate manually.")
+                _mode = "stopped"
+                save_state()
+            elif _bl != 0 and not _robot_in_pos:
                 _side = "long" if _bdir > 0 else "short"
                 log.warning(f"STARTUP: broker has {_bl} {_side} lot(s) (avg={_bpos.get('avg_price', 0):.0f}) but robot is FLAT. NOT entering — investigate manually.")
                 _mode = "stopped"
                 save_state()
+            elif _bl != 0 and _robot_in_pos and (_bdir != _robot_dir or _bl != _robot_lots):
+                # обе позиции есть, но не совпадают — старое поведение (остановка)
+                log.warning(f"STARTUP: DESYNC — robot {_robot_lots} lot(s) dir={_robot_dir} vs broker {_bl} lot(s) dir={_bdir}. Stopped — investigate manually.")
+                _mode = "stopped"
+                save_state()
+            else:
+                # позиции совпадают (или обе FLAT) — робот продолжает в своём режиме
+                if _bl != 0:
+                    log.info(f"STARTUP: position OK — robot {_robot_lots} lot(s) dir={_robot_dir} matches broker (avg={_bpos.get('avg_price', 0):.0f}), mode={_mode}")
+                else:
+                    log.info(f"STARTUP: position OK — both FLAT, mode={_mode}")
     except Exception as _e:
         log.warning(f"STARTUP: broker position check failed: {_e}")
 

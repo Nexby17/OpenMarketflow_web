@@ -291,3 +291,10 @@
 ## 2026-09-29 14:0x — F-043: WS-хаб потерял websockets.connect — сигналы не шли
 
 Симптом: MXU6 «не торгует», в UI сигналы — тиры. Причина: finam_hub с 25.09 почти не коннектился (28.09: 1426× AttributeError «websockets has no attribute connect», 0 коннектов) — trade/quote/bars потоки пусты, CVD/VWEMA не считаются. Атрибут в py4-websockets 17.0.1 есть; сбой зависит от порядка инициализации в потоке хаба. Фикс: явный однократный импорт connect с fallback (websockets.connect → websockets.asyncio.client.connect) + диагностика файла модуля. После рестарта MXU6: WS connected, 70 баров M5, VWEMA ready, CVD копится, цена живая. MXU6 в running.
+
+## 2026-09-30 - F-051: reconciliation OF (main_of/main_of_mx) — позиция из state vs брокер
+
+- Было: любой broker lots!=0 → «robot is FLAT» → _mode=stopped, даже если стратегия восстановила позицию из state (инцидент 30.09: Si 4 лота, MX 1 лот — оба stopped после рестарта).
+- Стало: 4 ветки — match → mode сохраняется («STARTUP: position OK»); broker-pos+robot-FLAT → stopped; robot-pos+broker-FLAT → stopped (desync); mismatch lots/dir → stopped.
+- Проверки: py_compile 2/2 OK; decision matrix 6/6 OK; tests/test_of_port_features.py SMOKE PASS.
+- Роботы не перезапускались (R-001) — фикс подхватится при следующем старте Дмитрием.
