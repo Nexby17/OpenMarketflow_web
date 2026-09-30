@@ -3702,15 +3702,34 @@ function createArbInstance(prefix, port) {
         if (el(prefix+'RbStatus')) el(prefix+'RbStatus').textContent = d.mode==='running' ? '🟢' : d.mode==='paused' ? '🟡' : '⚪';
     }
 
-    async function start() { await fetch2('/start','POST'); refresh(); }
-    async function pause() { await fetch2('/pause','POST'); refresh(); }
-    async function stop()  { await fetch2('/stop','POST'); refresh(); }
+    // F-050 (2026-09-30): подтверждение перед стартом — открытая вкладка в фоне
+    // больше не сможет сама включить торговлю (инцидент 30.09: авто-/start из браузера
+    // включал остановленных роботов). confirm возвращает Promise во всех современных
+    // браузерах; если диалог отклонён — ничего не шлём.
+    async function start() {
+        const ok = await confirm('Запустить торговлю? (режим станет running)');
+        if (!ok) return;
+        await fetch2('/start','POST'); refresh();
+    }
+    async function pause() {
+        const ok = await confirm('Пауза? (откроем новые входы, позиции останутся)');
+        if (!ok) return;
+        await fetch2('/pause','POST'); refresh();
+    }
+    async function stop()  {
+        const ok = await confirm('Остановить торговлю? (отменить ордера и закрыть позиции)');
+        if (!ok) return;
+        await fetch2('/stop','POST'); refresh();
+    }
 
     // F-018: старт/стоп процесса через серверный RobotProcessManager (start = Dmitry only)
     // F-019-fix: после подъёма процесса шлём роботу POST /start — торговля включается сразу,
     // как это делала старая кнопка (fetch2('/start')) при живом процессе
     async function startViaServer() {
         const name = ARB_PROC_NAMES[prefix];
+        // F-050: подтверждение и на путь «поднять процесс + включить торговлю»
+        const okStart = await confirm('Поднять процесс робота и ЗАПУСТИТЬ торговлю?');
+        if (!okStart) return;
         if (!name) { await fetch2('/start', 'POST'); return; }
         try {
             const r = await fetch(`/api/of/process/${name}/start`, {method: 'POST', signal: AbortSignal.timeout(45000)});
@@ -3995,9 +4014,9 @@ function arbRenderJournal() {
         const pnlCls = t.pnl > 0 ? 'color:var(--green)' : t.pnl < 0 ? 'color:var(--red)' : '';
         const cumulCls = cumul >= 0 ? 'color:var(--green)' : 'color:var(--red)';
         const entryAStr = (t.entryPriceA||0).toFixed(2);
-        const entryBStr = (t.entryPriceB||0).toFixed(0);
+        const entryBStr = (t.entryPriceB||0).toFixed(2);
         const exitAStr = (t.exitPriceA||0).toFixed(2);
-        const exitBStr = (t.exitPriceB||0).toFixed(0);
+        const exitBStr = (t.exitPriceB||0).toFixed(2);
         return `<tr style="border-bottom:1px solid var(--border-color)">
             <td style="padding:4px 6px;font-size:11px;color:#9CA3AF">${displayDate}</td>
             <td style="padding:4px 6px;font-size:11px">${entryTime}</td>

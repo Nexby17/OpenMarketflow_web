@@ -48,6 +48,7 @@ class LegResult:
     order_id: str = ""
     error: str = ""
     slippage: float = 0.0  # actual vs estimated price difference
+    price_is_real: bool = False  # F-048: True — цена от брокера, False — оценка
 
 
 class ArbOrderManager:
@@ -83,6 +84,11 @@ class ArbOrderManager:
         self._fill_prices: dict[str, float] = {}       # order_id → actual fill price
         self._fill_lock = threading.Lock()
         self._total_slippage: float = 0.0  # cumulative slippage for logging
+
+        # F-048: реальные исполнения от брокера через REST GetTrades
+        self._broker_fills_cache: dict[str, dict] = {}          # order_id → agg
+        self._broker_fill_miss_tried: dict[str, bool] = {}      # order_id → force-refresh был
+        self._broker_trades_window: dict = {"ts": 0.0, "orders": {}}  # кэш окна GetTrades
 
     def set_finam_py(self, fp):
         """Attach FinamPy instance for direct gRPC order placement."""
@@ -204,34 +210,136 @@ class ArbOrderManager:
                 log.debug(f"GetOrder fallback {order_id}: {str(e)[:60]}")
         return None
 
-    def _get_real_fill_price(self, order_id: str, fallback_price: float) -> float:
-        """Get real fill price for an order. Priority: trade subscription > gRPC avg_price > fallback.
-        Returns the best available price, always >= 0."""
-        # 1. Try trade subscription (may already have the fill from earlier)
+    def _resolve_fill_price(self, order_id: str, fallback_price: float) -> tuple:
+        """F-048: реальная цена исполнения. Приоритет:
+        1) trade subscription (живой gRPC-стрим сделок);
+        2) REST GetTrades — факт исполнения от брокера (wavg), работает и для
+           вчерашних ордеров (долгие слои), immune к гонке 'trade пришёл раньше
+           регистрации pending';
+        3) gRPC GetOrder average_price (в текущем proto поля нет — на будущее);
+        4) fallback-оценка (лимитная цена / стакан) — ПОМЕЧАЕТСЯ как оценка.
+        Returns (price, is_real)."""
+        if not order_id:
+            return (fallback_price, False) if fallback_price > 0 else (0.0, False)
+        # 1. Trade subscription
         real = self._wait_fill_price(order_id, timeout=1.5)
         if real and real > 0:
             log.info(f"REAL FILL from trade sub: {order_id} price={real:.2f}")
-            return real
+            return real, True
 
-        # 2. Try gRPC GetOrder for average_price
+        # 2. REST GetTrades — факт от брокера (F-048). Раньше здесь был только
+        #    gRPC GetOrder, который в proto Order без average_price возвращал
+        #    ЛИМИТНУЮ цену (.price) — журнал расходился с брокером.
+        real = self._get_broker_fills(order_id)
+        if real and real > 0:
+            log.info(f"REAL FILL from REST: {order_id} price={real:.2f}")
+            return real, True
+
+        # 3. gRPC GetOrder average_price (если брокер начнёт отдавать поле)
         if self._fp and _HAS_GRPC:
             try:
-                from finam_trade_api.proto.grpc.tradeapi.v1.orders.orders_service_pb2 import GetOrderRequest
                 for acc in [self._account, self._stock_account]:
                     status = self._grpc_get_order_status(order_id, acc)
                     if status and status.get("avg_price", 0) > 0:
                         log.info(f"REAL FILL from gRPC: {order_id} avg_price={status['avg_price']:.2f}")
-                        return float(status["avg_price"])
+                        return float(status["avg_price"]), True
             except Exception as e:
                 log.debug(f"gRPC avg fallback {order_id}: {str(e)[:60]}")
 
-        # 3. Fallback (limit price or OB estimate)
+        # 4. Fallback — оценка, НЕ факт
         if fallback_price > 0:
-            log.debug(f"FILL fallback to estimate: {order_id} price={fallback_price:.2f}")
-            return fallback_price
+            log.info(f"FILL ESTIMATE (not broker): {order_id} price={fallback_price:.2f}")
+            return fallback_price, False
 
         log.warning(f"No fill price available for {order_id}!")
-        return 0.0
+        return 0.0, False
+
+    def _get_real_fill_price(self, order_id: str, fallback_price: float) -> float:
+        """Get real fill price for an order. Returns the best available price, always >= 0."""
+        price, _is_real = self._resolve_fill_price(order_id, fallback_price)
+        return price
+
+    # === F-048: broker real fills via REST ===
+
+    _BROKER_WINDOW_SEC = 300.0   # кэш окна GetTrades (сек)
+    _BROKER_WINDOW_DAYS = 6      # сделки могут быть вчерашние/позавчерашние (долгие слои)
+
+    def _get_broker_trades_window(self, force: bool = False) -> dict:
+        """F-048: исполненные сделки (REST GetTrades) за последние N дней,
+        сгруппированные по order_id с ценой wavg. Возвращает {order_id: agg}.
+        Пустой результат НЕ кэшируется (чтобы повторить после сбоя REST)."""
+        now = time.time()
+        if (not force
+                and now - self._broker_trades_window["ts"] < self._BROKER_WINDOW_SEC
+                and self._broker_trades_window["orders"]):
+            return self._broker_trades_window["orders"]
+        try:
+            import finam_rest4 as _r4
+            from datetime import datetime, timedelta, timezone
+            end = datetime.now(timezone.utc)
+            start = end - timedelta(days=self._BROKER_WINDOW_DAYS)
+            orders: dict[str, dict] = {}
+            for acc in dict.fromkeys([self._stock_account, self._account]):
+                if not acc:
+                    continue
+                try:
+                    trades = _r4.get_trades(acc, start, end, limit=1000)
+                except Exception as e:
+                    log.debug(f"REST GetTrades acc={acc}: {str(e)[:80]}")
+                    continue
+                for t in trades:
+                    oid = str(t.get("order_id", ""))
+                    price = float(t.get("price", 0) or 0)
+                    size = float(t.get("size", 0) or 0)
+                    if not oid or price <= 0 or size <= 0:
+                        continue
+                    ts_raw = t.get("timestamp", "")
+                    try:
+                        ts_val = datetime.fromisoformat(str(ts_raw).replace("Z", "+00:00")).timestamp()
+                    except Exception:
+                        ts_val = 0.0
+                    agg = orders.get(oid)
+                    if agg is None:
+                        orders[oid] = {"symbol": (t.get("symbol") or "").split("@")[0].upper(),
+                                       "price": price, "size": size, "side": t.get("side", ""),
+                                       "ts": ts_val}
+                    else:
+                        total = agg["size"] + size
+                        agg["price"] = (agg["price"] * agg["size"] + price * size) / total
+                        agg["size"] = total
+            if orders:
+                self._broker_trades_window = {"ts": now, "orders": orders}
+                log.info(f"F-048 broker fills window: {len(orders)} orders via REST")
+            return orders
+        except Exception as e:
+            log.debug(f"broker fills window error: {str(e)[:80]}")
+            return self._broker_trades_window.get("orders", {})
+
+    def _get_broker_fills(self, order_id: str) -> Optional[float]:
+        """F-048: реальная средняя цена исполнения ордера от брокера (REST, wavg по size).
+        Кэш per order_id. None если у брокера нет сделок по ордеру.
+        При промахе по свежему кэшу — один force-refresh (ордер мог исполниться
+        сразу после предыдущего обновления окна)."""
+        if not order_id:
+            return None
+        oid = str(order_id)
+        cached = self._broker_fills_cache.get(oid)
+        if cached is not None:
+            return cached["price"] if cached.get("size", 0) > 0 else None
+        agg = self._get_broker_trades_window().get(oid)
+        if agg and agg.get("size", 0) > 0:
+            self._broker_fills_cache[oid] = agg
+            return float(agg["price"])
+        # Промах: один раз форсируем обновление окна (ордер новее кэша)
+        if not self._broker_fill_miss_tried.get(oid):
+            self._broker_fill_miss_tried[oid] = True
+            if len(self._broker_fill_miss_tried) > 500:
+                self._broker_fill_miss_tried.clear()
+            agg = self._get_broker_trades_window(force=True).get(oid)
+            if agg and agg.get("size", 0) > 0:
+                self._broker_fills_cache[oid] = agg
+                return float(agg["price"])
+        return None
 
     def _log_slippage(self, leg: str, est: float, actual: float):
         """Log slippage for monitoring."""
@@ -460,17 +568,21 @@ class ArbOrderManager:
             state_str = {1: 'active', 2: 'partial', 3: 'filled', 4: 'rejected', 5: 'cancelled'}.get(state, 'unknown')
             # Extract real average fill price from broker
             avg_price = 0.0
+            limit_price = 0.0
             # Response may have order field or fields at top level
             resp_order = resp.order if hasattr(resp, 'order') and resp.HasField('order') else resp
+            # F-048: .price в proto Order — ЛИМИТНАЯ цена заявки, НЕ исполнения.
+            # Падать на неё нельзя: журнал получал лимитку вместо факта (инцидент 29.09).
+            if hasattr(resp_order, 'price') and resp_order.price:
+                lp = getattr(resp_order.price, 'value', None)
+                if lp:
+                    limit_price = float(lp)
             if hasattr(resp_order, 'average_price') and resp_order.average_price:
                 avg_val = getattr(resp_order.average_price, 'value', None)
                 if avg_val:
                     avg_price = float(avg_val)
-            if avg_price <= 0 and hasattr(resp_order, 'price') and resp_order.price:
-                price_val = getattr(resp_order.price, 'value', None)
-                if price_val:
-                    avg_price = float(price_val)
-            return {"state": state_str, "filled_quantity": executed, "avg_price": avg_price}
+            return {"state": state_str, "filled_quantity": executed,
+                    "avg_price": avg_price, "limit_price": limit_price}
         except Exception as e:
             log.debug(f"gRPC GetOrder {order_id}: {str(e)[:60]}")
             return None
@@ -508,21 +620,22 @@ class ArbOrderManager:
                 log.debug(f"Fill poll {order_id}: state={state} qty={filled_qty} price={fill_price}")
 
                 if state in ("filled", "matched"):
-                    # Priority: trade subscription > gRPC avg_price > known_price
-                    fill_price = self._get_real_fill_price(order_id, known_price)
+                    # Priority: trade subscription > REST broker fills > gRPC avg_price
+                    fill_price, is_real = self._resolve_fill_price(order_id, known_price)
                     return LegResult(filled=True, price=fill_price,
                                      quantity=filled_qty,
-                                     order_id=order_id)
+                                     order_id=order_id, price_is_real=is_real)
                 if state in ("cancelled", "canceled", "rejected") and filled_qty == 0:
                     return LegResult(filled=False, order_id=order_id,
                                      error=f"order_{state}")
                 if state in ("cancelled", "canceled") and filled_qty > 0:
                     # Partial fill then cancelled — use real fill price
-                    fill_price = self._get_real_fill_price(order_id, known_price)
+                    fill_price, is_real = self._resolve_fill_price(order_id, known_price)
                     return LegResult(filled=True, price=fill_price,
                                      quantity=filled_qty,
                                      order_id=order_id,
-                                     error="partial_fill")
+                                     error="partial_fill",
+                                     price_is_real=is_real)
 
             time.sleep(poll_interval)
 
@@ -533,18 +646,20 @@ class ArbOrderManager:
         if status:
             filled_qty = int(status.get("filled_quantity", 0))
             if filled_qty > 0:
-                fill_price = self._get_real_fill_price(order_id, known_price)
+                fill_price, is_real = self._resolve_fill_price(order_id, known_price)
                 return LegResult(filled=True, price=fill_price,
                                  quantity=filled_qty,
                                  order_id=order_id,
-                                 error="timeout_partial")
+                                 error="timeout_partial",
+                                 price_is_real=is_real)
         # If cancel returned NOT_FOUND, order likely already filled
         if cancel_result == 'not_found':
-            fill_price = self._get_real_fill_price(order_id, known_price)
+            fill_price, is_real = self._resolve_fill_price(order_id, known_price)
             log.warning(f"Fill poll timeout but cancel NOT_FOUND — order likely filled, real_fill_price={fill_price:.2f}")
             return LegResult(filled=True, price=fill_price,
                              quantity=0, order_id=order_id,
-                             error="likely_filled_no_price")
+                             error="likely_filled_no_price",
+                             price_is_real=is_real)
         return LegResult(filled=False, order_id=order_id, error="timeout")
 
     # === Public: Execute both legs ===
@@ -587,6 +702,7 @@ class ArbOrderManager:
 
         leg_a = self._wait_for_fill(oid_a, timeout, known_price=limit_price_a)
         result["leg_a"] = leg_a
+        is_real = getattr(leg_a, "price_is_real", False)
 
         if not leg_a.filled:
             result["error"] = f"leg_a_{leg_a.error}"
@@ -601,17 +717,19 @@ class ArbOrderManager:
             if topup and topup.get("order_id"):
                 topup_oid = topup["order_id"]
                 # Wait briefly for market topup fill
-                topup_price = self._get_real_fill_price(topup_oid, limit_price_a)
+                topup_price, topup_real = self._resolve_fill_price(topup_oid, limit_price_a)
                 if topup_price > 0:
                     # Weighted average price
                     leg_a = LegResult(filled=True,
                                        price=(leg_a.price * leg_a.quantity + topup_price * remaining_qty) / qty_a,
-                                       quantity=qty_a, order_id=leg_a.order_id)
+                                       quantity=qty_a, order_id=leg_a.order_id,
+                                       price_is_real=is_real or topup_real)
                     log.info(f"Leg A topped up: total {qty_a}@{leg_a.price:.2f}")
                 else:
                     # Assume filled at limit price
                     leg_a = LegResult(filled=True, price=leg_a.price,
-                                       quantity=qty_a, order_id=leg_a.order_id)
+                                       quantity=qty_a, order_id=leg_a.order_id,
+                                       price_is_real=is_real)
             else:
                 log.error(f"Leg A topup market FAILED for {remaining_qty} {symbol_a} — proceeding with partial {leg_a.quantity}")
 
@@ -639,12 +757,13 @@ class ArbOrderManager:
             result["error"] = "leg_b_failed_emergency_closed_a"
             return result
 
-        # Leg B fill price — get REAL fill from broker (trade sub / gRPC), fallback to OB estimate
+        # Leg B fill price — get REAL fill from broker (trade sub / REST / gRPC), fallback to OB estimate
         oid_b = market_b.get("order_id", "")
-        leg_b_fill_price = self._get_real_fill_price(oid_b, market_price_b) if oid_b else market_price_b
-        log.info(f"Leg B fill price: {leg_b_fill_price:.2f} (OB est={market_price_b:.2f})")
+        leg_b_fill_price, leg_b_real = self._resolve_fill_price(oid_b, market_price_b) if oid_b else (market_price_b, False)
+        log.info(f"Leg B fill price: {leg_b_fill_price:.2f} ({'broker' if leg_b_real else 'OB est'}), OB est={market_price_b:.2f}")
         result["leg_b"] = LegResult(filled=True, price=leg_b_fill_price,
-                                    quantity=actual_lots_b)
+                                    quantity=actual_lots_b, order_id=oid_b,
+                                    price_is_real=leg_b_real)
         # Convert leg_a filled shares back to lots for caller
         shares_a = leg_a.quantity
         if self._is_stock(symbol_a) and shares_a > 0:
@@ -653,7 +772,8 @@ class ArbOrderManager:
                 lots_a_filled = shares_a // ls
                 log.info(f"Leg A filled: {shares_a} shares = {lots_a_filled} lots")
                 result["leg_a"] = LegResult(filled=True, price=leg_a.price,
-                                            quantity=lots_a_filled, order_id=leg_a.order_id)
+                                            quantity=lots_a_filled, order_id=leg_a.order_id,
+                                            price_is_real=is_real)
         result["success"] = True
         return result
 
@@ -819,9 +939,9 @@ class ArbOrderManager:
             self._log_slippage("A", est_price_a, final_a_price)
             self._log_slippage("B", est_price_b, final_b_price)
             result["leg_a"] = LegResult(filled=True, price=final_a_price, quantity=final_a_qty,
-                                       slippage=final_a_price - est_price_a)
+                                       order_id=oid_a, slippage=final_a_price - est_price_a)
             result["leg_b"] = LegResult(filled=True, price=final_b_price, quantity=final_b_qty,
-                                       slippage=final_b_price - est_price_b)
+                                       order_id=oid_b, slippage=final_b_price - est_price_b)
             result["success"] = True
             return result
 

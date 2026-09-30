@@ -189,3 +189,32 @@ def get_today_trades(account_id: str, limit: int = 200) -> list:
             "timestamp": t.get("timestamp", ""),
         })
     return out
+
+
+def get_trades(account_id: str, start, end, limit: int = 1000) -> list:
+    """F-048: исполненные сделки счёта за произвольное окно [start, end] (datetime UTC).
+    [{order_id, symbol, price, size, side, timestamp}].
+    В отличие от get_today_trades() включает symbol и работает для вчерашних сделок
+    (долгие слои): журнал арбитражного робота должен писать ЦЕНЫ БРОКЕРА."""
+    r4 = _get_module()
+    from finam_trade_api.account.model import GetTradesRequest
+    req = GetTradesRequest(
+        account_id=account_id,
+        start_time=start.strftime("%Y-%m-%dT%H:%M:%SZ") if hasattr(start, "strftime") else str(start),
+        end_time=end.strftime("%Y-%m-%dT%H:%M:%SZ") if hasattr(end, "strftime") else str(end),
+        limit=limit)
+    resp = r4.call(r4.client.account.get_trades(req))
+    d = resp.model_dump(mode="json") if hasattr(resp, "model_dump") else dict(resp)
+    out = []
+    for t in d.get("trades", []):
+        price = t.get("price") or {}
+        size = t.get("size") or {}
+        out.append({
+            "order_id": str(t.get("order_id", "")),
+            "symbol": t.get("symbol", ""),
+            "price": float(price.get("value", 0)) if isinstance(price, dict) else float(price or 0),
+            "size": float(size.get("value", 0)) if isinstance(size, dict) else float(size or 0),
+            "side": t.get("side", ""),
+            "timestamp": t.get("timestamp", ""),
+        })
+    return out

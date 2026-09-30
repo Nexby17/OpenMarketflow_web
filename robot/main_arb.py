@@ -795,6 +795,8 @@ def _execute_entry(signal: dict):
         fill_a = result["leg_a"]
         fill_b = result["leg_b"]
         side_int = LONG_BASIS if side == "long_basis" else SHORT_BASIS
+        # F-048: в слой идут id реальных ордеров + флаги «цена от брокера» —
+        # журнал потом сверяется с брокером по этим id
         strategy.open_layer(
             side=side_int,
             price_a=fill_a.price,
@@ -803,6 +805,10 @@ def _execute_entry(signal: dict):
             lots_b=fill_b.quantity,
             z=z,
             dev_ann=signal.get("dev_ann", 0.0),
+            order_id_a=getattr(fill_a, "order_id", ""),
+            order_id_b=getattr(fill_b, "order_id", ""),
+            price_real_a=getattr(fill_a, "price_is_real", False),
+            price_real_b=getattr(fill_b, "price_is_real", False),
         )
         log.info(
             f"LAYER OPEN {side.upper()} #{strategy.layers[-1].layer_id} | "
@@ -889,11 +895,14 @@ def _execute_single_exit(layer, reason: str, force_market: bool = False):
             return
         res_a = orders_mgr._place_market(params.symbol_a, side_a, _lots_to_shares(params.symbol_a, layer.lots_a), tag=f"arb_exit_{layer.layer_id}")
         res_b = orders_mgr._place_market(params.symbol_b, side_b, layer.lots_b, tag=f"arb_exit_{layer.layer_id}")
-        # Get real fill prices from broker
-        real_a = orders_mgr._get_real_fill_price(res_a.get('order_id',''), est_a) if res_a else est_a
-        real_b = orders_mgr._get_real_fill_price(res_b.get('order_id',''), est_b) if res_b else est_b
+        # F-048: реальные цены + id ордеров в журнал
+        real_a, real_flag_a = orders_mgr._resolve_fill_price(res_a.get('order_id',''), est_a) if res_a else (est_a, False)
+        real_b, real_flag_b = orders_mgr._resolve_fill_price(res_b.get('order_id',''), est_b) if res_b else (est_b, False)
         if res_a and res_b:
-            strategy.close_layer(layer, real_a, real_b, reason)
+            strategy.close_layer(layer, real_a, real_b, reason,
+                                 exit_order_id_a=res_a.get('order_id', ''),
+                                 exit_order_id_b=res_b.get('order_id', ''),
+                                 price_real_a=real_flag_a, price_real_b=real_flag_b)
             log.info(f"Market exit OK layer #{layer.layer_id} A@{real_a:.2f} B@{real_b:.2f}")
         else:
             log.error(f"Market exit failed layer #{layer.layer_id}: A={'OK' if res_a else 'FAIL'} B={'OK' if res_b else 'FAIL'}")
@@ -941,7 +950,12 @@ def _execute_single_exit(layer, reason: str, force_market: bool = False):
         # F-032: факт закрытия логируем рядом с предсказанием — расхождение означает,
         # что стакан ушёл между проверкой и исполнением (норма: единицы рублей)
         log.info(f"EXIT layer #{layer.layer_id} filled: A@{fill_a.price:.2f} B@{fill_b.price:.2f} (paper est. limit {limit_price:.2f} / mkt {market_price_b:.2f}) reason={reason}")
-        strategy.close_layer(layer, fill_a.price, fill_b.price, reason)
+        # F-048: id ордеров выхода + флаги реальных цен — журнал = цены брокера
+        strategy.close_layer(layer, fill_a.price, fill_b.price, reason,
+                             exit_order_id_a=getattr(fill_a, "order_id", ""),
+                             exit_order_id_b=getattr(fill_b, "order_id", ""),
+                             price_real_a=getattr(fill_a, "price_is_real", False),
+                             price_real_b=getattr(fill_b, "price_is_real", False))
     else:
         log.error(f"Exit failed layer #{layer.layer_id}: {result['error']} — retrying next tick")
 
@@ -1077,6 +1091,8 @@ class APIHandler(BaseHTTPRequestHandler):
         path = self.path.split("?")[0]
 
         if path == "/start":
+            # F-050: логируем смену режима — источник включения должен быть виден
+            log.warning(f"API POST /start: mode {_mode} → running")
             _mode = "running"
             strategy.force_unlock()
             save_state()
@@ -1084,6 +1100,7 @@ class APIHandler(BaseHTTPRequestHandler):
             self._json(200, {"ok": True, "mode": _mode})
 
         elif path == "/stop":
+            log.warning(f"API POST /stop: mode {_mode} → stopped (layers={len(strategy.layers)})")
             _mode = "stopped"
             # Close all layers if any (with lock to prevent race with main loop)
             if strategy.layers:
@@ -1104,6 +1121,7 @@ class APIHandler(BaseHTTPRequestHandler):
             self._json(200, {"ok": True, "mode": _mode, "paper": PAPER_MODE})
 
         elif path == "/pause":
+            log.warning(f"API POST /pause: mode {_mode} → paused")
             _mode = "paused"
             save_state()
             log.info("Mode → PAUSED")
@@ -1250,6 +1268,31 @@ class APIHandler(BaseHTTPRequestHandler):
             log.info("Statistics reset: realizedPnl=0, trades=0")
             self._json(200, {"ok": True})
 
+        elif path == "/reload-state":
+            # F-048: перечитать arb_state.json с диска в работающий процесс
+            # (для ресинка журнала по реальным ценам брокера без перезапуска).
+            # Слои НЕ трогаем — открытые позиции принадлежат рабочему циклу;
+            # обновляем только журнал/статистику.
+            try:
+                if os.path.exists(STATE_FILE):
+                    with open(STATE_FILE) as f:
+                        st = json.load(f)
+                    hist = st.get("trade_history", [])
+                    strategy.trade_history = hist
+                    if hist:
+                        strategy.realized_pnl = sum(t.get("pnl", 0) for t in hist)
+                        strategy.peak_pnl = max(strategy.realized_pnl, st.get("peak_pnl", 0))
+                        strategy.max_dd = st.get("max_dd", 0)
+                    save_state()
+                    log.info(f"/reload-state: trade_history={len(hist)} realized_pnl={strategy.realized_pnl:.2f}")
+                    self._json(200, {"ok": True, "trades": len(hist),
+                                      "realized_pnl": round(strategy.realized_pnl, 2)})
+                else:
+                    self._json(404, {"error": f"state file not found: {STATE_FILE}"})
+            except Exception as e:
+                log.error(f"/reload-state error: {e}")
+                self._json(500, {"error": str(e)})
+
         else:
             self._json(404, {"error": "not found"})
 
@@ -1286,6 +1329,16 @@ if __name__ == "__main__":
              f"hedge_ratio={params.hedge_ratio}")
     log.info(f"Min profit: {params.min_profit_type}={params.min_profit_value}")
     log.info(f"Risk: {params.risk_type}={params.risk_value}")
+
+    # F-048: авто-ресинк журнала по реальным ценам брокера ДО загрузки state.
+    # Правит оценки (leg A — лимитка, leg B — стакан) фактами REST GetTrades.
+    try:
+        import resync_journal as _rsj
+        _n, _pnl = _rsj.resync_silent(STATE_FILE, ACCOUNT, days=6)
+        if _n:
+            log.info(f"F-048 journal resync: {_n} trades corrected (realized_pnl={_pnl:+.2f})")
+    except Exception as _e:
+        log.warning(f"F-048 journal resync skipped (non-fatal): {_e}")
 
     load_state_from_disk()
 

@@ -270,7 +270,8 @@ class FinamPyCompat:
         req = md.SubscribeBarsRequest(symbol=symbol, timeframe=timeframe)
         while True:
             try:
-                stream = self.client.market_data.SubscribeBars(req)
+                # F-047: streams require explicit authorization metadata (см. subscribe_trades_thread)
+                stream = self.client.market_data.SubscribeBars(req, metadata=[("authorization", self.client.get_token())])
                 for response in stream:
                     self.on_new_bar.emit(response, timeframe)
             except Exception as e:
@@ -298,7 +299,8 @@ class FinamPyCompat:
         req = ord_pb.SubscribeOrdersRequest(account_id=account_id)
         while True:
             try:
-                stream = self.client.orders.SubscribeOrders(req)
+                # F-047: streams require explicit authorization metadata
+                stream = self.client.orders.SubscribeOrders(req, metadata=[("authorization", self.client.get_token())])
                 for response in stream:
                     for o in response.orders:
                         self.on_order.emit(o)
@@ -307,11 +309,17 @@ class FinamPyCompat:
                 time.sleep(3)
 
     def subscribe_trades_thread(self, account_id: str = "") -> None:
-        """Blocking: iterates SubscribeTrades stream, emits on_trade."""
+        """Blocking: iterates SubscribeTrades stream, emits on_trade.
+
+        F-047 (2026-09-29): Finam gRPC-стримы требуют ЯВНЫЙ authorization-заголовок.
+        Без него стрим падает с UNAUTHENTICATED в бесконечном reconnect-цикле —
+        12607 ошибок за день 29.09, ни одного on_trade: в торговый журнал писались
+        оценки (лимитная цена / стакан) вместо реальных цен сделок брокера."""
         req = ord_pb.SubscribeTradesRequest(account_id=account_id)
         while True:
             try:
-                stream = self.client.orders.SubscribeTrades(req)
+                stream = self.client.orders.SubscribeTrades(
+                    req, metadata=[("authorization", self.client.get_token())])
                 for response in stream:
                     for t in response.trades:
                         self.on_trade.emit(t)
@@ -336,7 +344,8 @@ class FinamPyCompat:
         req = md.SubscribeOrderBookRequest(symbol=symbol)
         while True:
             try:
-                stream = self.client.market_data.SubscribeOrderBook(req)
+                # F-047: streams require explicit authorization metadata
+                stream = self.client.market_data.SubscribeOrderBook(req, metadata=[("authorization", self.client.get_token())])
                 for response in stream:
                     self.on_order_book.emit(response)
             except Exception as e:
@@ -356,7 +365,9 @@ class FinamPyCompat:
         )
         while True:
             try:
-                stream = self.client.orders.SubscribeOrderTrade(req)
+                # F-047: streams require explicit authorization metadata
+                stream = self.client.orders.SubscribeOrderTrade(
+                    req, metadata=[("authorization", self.client.get_token())])
                 for response in stream:
                     if params.get("trades"):
                         for t in response.trades:

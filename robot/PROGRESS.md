@@ -73,6 +73,12 @@
 3. DataProvider :5060 — вывод из эксплуатации после Этапа 5
 
 
+## 2026-09-29/30 — Арб-роботы: F-048 журнал = цены брокера, раскорреляция L14, F-050 логи режимов
+
+- **F-048 (29.09):** журнал арба писал оценки (leg A лимитка, leg B стакан) — gRPC-стримы Finam без auth metadata (12607 ошибок/день), в proto Order нет average_price. Фикс: auth во все стримы (finam_compat.py), _resolve_fill_price (trade sub → REST GetTrades → gRPC → оценка с флагом is_real) в orders_arb.py, order_id/priceSource в журнале (strategy_arb.py), авто-ресинк при старте + POST /reload-state (main_arb.py), robot/resync_journal.py (dry-run/--apply). Реальный итог 29.09: −69.62₽ вместо +644.19₽. Тесты 25/25. Перезапуск 17:52 — API подтвердил broker-цены.
+- **Раскорреляция L14 (30.09):** тейк сорвался (gRPC limit failed + DP 5060 лежит), нога A исполнена брокером (SELL 100 @97.43) но не записана → у брокера остался голый SHORT GZZ6 −1. По решению Дмитрия (вариант B): kill процесса, BUY GZZ6 1 @9998 (11:40:06), позиция 0/0, L14 закрыт в state по фактам (+1.87, manual_resync_close), realized −79.09. Старт 11:52 без env подхватил мусорный дефолтный arb_state.json (фантомный L15 от 22.09, daily_stop → EXIT ALL фантома, лимитка SELL GAZP успела уйти — отменена, ущерба нет). Повторный старт 12:00 с env — корректный state, running. Дефолтный arb_state.json очищен.
+- **F-050 (30.09):** main_arb/main_of/main_of_mx — log.warning на каждый POST /start /stop /pause (переход режима + размер позиции); app.js — confirm() на кнопках Start/Pause/Stop (фоновая вкладка не может молча включить торговлю — инцидент: OF Si самонабрал 4 лота за 12:00–13:25). py_compile 3/3, node --check OK, тесты 25/25. OF Si/MX перезапущены с логированием; startup-реконсиляция поймала «broker 4 lots vs robot FLAT → NOT entering».
+
 ## 2026-09-14 — Фикс: честная сверка позиции брокера (знак шорта + ретраи)
 
 Инцидент 11:46 МСК: MXU6 шорт 1 @232200 исполнился (order 1984994379379006531, POST /orders 200),

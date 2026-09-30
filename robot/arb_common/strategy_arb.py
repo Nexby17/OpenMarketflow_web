@@ -112,6 +112,11 @@ class ArbLayer:
     lots_a: int = 0
     lots_b: int = 0
     layer_id: int = 0             # unique sequential id
+    # F-048: ids ордеров обеих ног + флаги «цена от брокера» (для журнала по реальным сделкам)
+    order_id_a: str = ""
+    order_id_b: str = ""
+    price_real_a: bool = False
+    price_real_b: bool = False
 
 
 class ArbitrageStrategy:
@@ -294,6 +299,11 @@ class ArbitrageStrategy:
                     "lots_a": l.lots_a,
                     "lots_b": l.lots_b,
                     "layer_id": l.layer_id,
+                    # F-048: persистность id ордеров — критично для ресинка журнала по брокеру
+                    "order_id_a": l.order_id_a,
+                    "order_id_b": l.order_id_b,
+                    "price_real_a": l.price_real_a,
+                    "price_real_b": l.price_real_b,
                 }
                 for l in self.layers
             ],
@@ -336,6 +346,10 @@ class ArbitrageStrategy:
                 lots_a=ld["lots_a"],
                 lots_b=ld["lots_b"],
                 layer_id=ld.get("layer_id", self._next_layer_id),
+                order_id_a=ld.get("order_id_a", ""),
+                order_id_b=ld.get("order_id_b", ""),
+                price_real_a=ld.get("price_real_a", False),
+                price_real_b=ld.get("price_real_b", False),
             ))
             self._next_layer_id = max(self._next_layer_id, ld.get("layer_id", 0) + 1)
         # F-032: счётчики подтверждения не персистятся — после рестарта копятся заново
@@ -888,8 +902,12 @@ class ArbitrageStrategy:
     # === Layer Management ===
 
     def open_layer(self, side: int, price_a: float, price_b: float,
-                   lots_a: int, lots_b: int, z: float, dev_ann: float = 0.0):
-        """Open a new layer after both legs filled."""
+                   lots_a: int, lots_b: int, z: float, dev_ann: float = 0.0,
+                   order_id_a: str = "", order_id_b: str = "",
+                   price_real_a: bool = False, price_real_b: bool = False):
+        """Open a new layer after both legs filled.
+        F-048: order_id_a/b — id реальных ордеров брокера; price_real_a/b — цены от брокера
+        (True) или оценки (False). Параметры с дефолтами — обратная совместимость с тестами."""
         entry_basis = price_b - price_a * self.p.hedge_ratio
         layer = ArbLayer(
             side=side,
@@ -902,13 +920,19 @@ class ArbitrageStrategy:
             lots_a=lots_a,
             lots_b=lots_b,
             layer_id=self._next_layer_id,
+            order_id_a=order_id_a,
+            order_id_b=order_id_b,
+            price_real_a=price_real_a,
+            price_real_b=price_real_b,
         )
         self._next_layer_id += 1
         self.layers.append(layer)
         # Brief anti-duplicate lock (main loop ticks every 0.5s)
         self._set_lock(2.0)
+        src_a = "broker" if price_real_a else "est"
+        src_b = "broker" if price_real_b else "est"
         side_str = "LONG" if side == LONG_BASIS else "SHORT"
-        log.info(f"LAYER #{layer.layer_id} OPEN {side_str} | A={price_a:.2f} ×{lots_a} | B={price_b:.2f} ×{lots_b} | basis={entry_basis:.2f} Z={z:.2f} dev_ann={dev_ann:+.2f}% | layers={len(self.layers)}")
+        log.info(f"LAYER #{layer.layer_id} OPEN {side_str} | A={price_a:.2f}×{lots_a}[{src_a}] id={order_id_a or '-'} | B={price_b:.2f}×{lots_b}[{src_b}] id={order_id_b or '-'} | basis={entry_basis:.2f} Z={z:.2f} dev_ann={dev_ann:+.2f}% | layers={len(self.layers)}")
 
     def get_layer(self, layer_id: int) -> Optional[ArbLayer]:
         """Find layer by id."""
@@ -917,8 +941,11 @@ class ArbitrageStrategy:
                 return l
         return None
 
-    def close_layer(self, layer: ArbLayer, exit_price_a: float, exit_price_b: float, reason: str):
-        """Close a specific layer and calculate realized PnL."""
+    def close_layer(self, layer: ArbLayer, exit_price_a: float, exit_price_b: float, reason: str,
+                    exit_order_id_a: str = "", exit_order_id_b: str = "",
+                    price_real_a: bool = False, price_real_b: bool = False):
+        """Close a specific layer and calculate realized PnL.
+        F-048: exit_order_id_a/b + price_real_a/b — те же гарантии реальных цен на выходе."""
         if layer.side == LONG_BASIS:
             pnl_b = (exit_price_b - layer.entry_price_b) * layer.lots_b * self.p.mult_b
             pnl_a = (layer.entry_price_a - exit_price_a) * layer.lots_a * self.p.mult_a
@@ -954,11 +981,19 @@ class ArbitrageStrategy:
             "pnl": round(pnl_net, 2),
             "commission": round(comm, 2),
             "reason": reason,
+            # F-048: пронансировка цен + id ордеров (журнал = цены брокера)
+            "priceSource": "broker" if (price_real_a and price_real_b) else (
+                "mixed" if (price_real_a or price_real_b) else "estimate"),
+            "entryOrderIdA": layer.order_id_a,
+            "entryOrderIdB": layer.order_id_b,
+            "exitOrderIdA": exit_order_id_a,
+            "exitOrderIdB": exit_order_id_b,
         }
         self.trade_history.append(trade)
 
+        src = trade["priceSource"]
         side_str = "LONG" if layer.side == LONG_BASIS else "SHORT"
-        log.info(f"LAYER #{layer.layer_id} CLOSE {side_str} | PnL={pnl_net:+.2f}₽ (gross={pnl:+.2f}₽ comm={comm:.2f}₽) | reason={reason} | hold={hold_min:.0f}min | layers={len(self.layers)-1}")
+        log.info(f"LAYER #{layer.layer_id} CLOSE {side_str} | PnL={pnl_net:+.2f}₽ (gross={pnl:+.2f}₽ comm={comm:.2f}₽) [{src}] | reason={reason} | hold={hold_min:.0f}min | layers={len(self.layers)-1}")
 
         self.layers.remove(layer)
         self._set_lock(1.0)  # 1 sec cooldown after exit

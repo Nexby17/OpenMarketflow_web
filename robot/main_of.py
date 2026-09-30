@@ -863,6 +863,8 @@ class APIHandler(BaseHTTPRequestHandler):
             self._json(200, {"ok": True, "symbol": SYMBOL, "mode": _mode})
 
         elif path == "/start":
+            # F-050: логируем смену режима — иначе «жму кнопку, а робот не стартует» не диагностируется
+            log.warning(f"API POST /start: mode {_mode} → running (entry_lock reset)")
             _mode = "running"
             strategy._force_unlock()  # Reset entry lock on manual start
             save_state()
@@ -907,6 +909,8 @@ class APIHandler(BaseHTTPRequestHandler):
 
         elif path == "/stop":
             # Stop = cancel orders + close position
+            # F-050: логируем — источник «робот сам остановился» должен быть виден
+            log.warning(f"API POST /stop: mode {_mode} → stopped (cancel orders + close pos={strategy.total_lots} lots)")
             _mode = "stopped"
             if not PAPER_MODE:
                 active = orders.get_active_orders(symbol=SYMBOL)
@@ -929,6 +933,7 @@ class APIHandler(BaseHTTPRequestHandler):
 
         elif path == "/pause":
             # Pause = cancel orders, keep position
+            log.warning(f"API POST /pause: mode {_mode} → paused (cancel orders, keep pos={strategy.total_lots} lots)")
             _mode = "paused"
             if not PAPER_MODE:
                 active = orders.get_active_orders(symbol=SYMBOL)
