@@ -811,6 +811,20 @@ class ArbitrageStrategy:
         if bb_a <= 0 or ba_a <= 0 or bb_b <= 0 or ba_b <= 0:
             return None
 
+        # F-052 (2026-09-30): sanity — last обеих ног должен лежать в интервале
+        # [bid×(1−eps), ask×(1+eps)], eps: 0.5% фьючерсы / 0.2% акции.
+        # Инцидент GZZ6: ISS-поллер рисовал ask=LAST при OFFER=null, gRPC-стакан в 429-бэкоффе
+        # → тейк по фантомному аску, факт закрытия в минус. Интервальная форма (не точечная):
+        # широкий, но реальный стакан (BR) проходит, разошедшийся с last — блокируется.
+        eps_a = 0.005 if self._is_futures(self.p.ticker_a) else 0.002
+        eps_b = 0.005 if self._is_futures(self.p.ticker_b) else 0.002
+        for _last, _eps, _bb, _ba in (
+            (self.basis_calc.price_a, eps_a, bb_a, ba_a),
+            (self.basis_calc.price_b, eps_b, bb_b, ba_b),
+        ):
+            if _last > 0 and not (_bb * (1 - _eps) <= _last <= _ba * (1 + _eps)):
+                return None
+
         slip_b = ba_b * self.p.slippage_bps / 10000.0  # 5 bps по ноге B, как в исполнении
 
         if layer.side == LONG_BASIS:

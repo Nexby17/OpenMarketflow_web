@@ -540,12 +540,16 @@ def _moex_poller():
                                 ob_mid = strategy.ob_a.mid
                                 if ob_mid <= 0 or abs(last - ob_mid) / ob_mid <= 0.02:
                                     strategy.basis_calc.update_price_a(last)
-                                eff_bid = bid if bid > 0 else last
-                                eff_ask = ask if ask > 0 else last
+                                # F-052: в стакан попадают только реальные строки —
+                                # OFFER=null больше НЕ подменяется last (фантомный ask
+                                # = тейк по вымыслу, инцидент GZZ6 2026-09-30)
                                 rows = []
-                                rows.append((eff_bid, max(bid_vol, 1), 0, 1))
-                                rows.append((eff_ask, 0, max(ask_vol, 1), 1))
-                                strategy.ob_a.update(rows)
+                                if bid > 0:
+                                    rows.append((bid, max(bid_vol, 1), 0, 1))
+                                if ask > 0:
+                                    rows.append((ask, 0, max(ask_vol, 1), 1))
+                                if rows:
+                                    strategy.ob_a.update(rows)
                                 if last != last_log_a:
                                     last_log_a = last
                                     log.debug(f"MOEX {ticker_a}: {last:.2f} bid={bid:.2f} ask={ask:.2f}")
@@ -571,13 +575,14 @@ def _moex_poller():
                             ask_vol = int(rowdict.get("OFFERDEPTH") or 0)
                             if last > 0:
                                 strategy.basis_calc.update_price_b(last)
-                                # Use LAST for orderbook if bid/ask missing
-                                eff_bid = bid if bid > 0 else last
-                                eff_ask = ask if ask > 0 else last
+                                # F-052: как и нога A — никаких фантомных ask=LAST
                                 rows = []
-                                rows.append((eff_bid, max(bid_vol, 1), 0, 1))
-                                rows.append((eff_ask, 0, max(ask_vol, 1), 1))
-                                strategy.ob_b.update(rows)
+                                if bid > 0:
+                                    rows.append((bid, max(bid_vol, 1), 0, 1))
+                                if ask > 0:
+                                    rows.append((ask, 0, max(ask_vol, 1), 1))
+                                if rows:
+                                    strategy.ob_b.update(rows)
                                 if last != last_log_b:
                                     last_log_b = last
                                     log.debug(f"MOEX {ticker_b}: {last:.2f} bid={bid:.2f} ask={ask:.2f}")
@@ -844,6 +849,29 @@ def _execute_exit(signal: dict, force_market: bool = False):
         if not strategy.layers:
             return
         log.info(f"EXIT ALL {len(strategy.layers)} layers — reason={signal['reason']}")
+        # F-052: групповой гейт тейка по сумме — батч закрывается ТОЛЬКО если ВСЕ слои
+        # реально прибыльны и сумма >= порога. Частичное закрытие группы ломает баланс ног.
+        if signal["reason"] == "profit_target_total":
+            reals = [(l, strategy._layer_realizable_pnl(l)) for l in strategy.layers]
+            if any(r is None for _, r in reals):
+                log.warning("F-052 GATE exit_all: profit_target_total отменён — realizable=None "
+                            "(стакан протух или не согласован с last). Позиция удержана.")
+                return
+            total_r = sum(r for _, r in reals)
+            _thr = strategy.p.min_profit_value
+            if strategy.p.min_profit_type == "pct":
+                _gocb = getattr(strategy.p, "go_per_contract_b", 0.0)
+                _gocb = _gocb() if callable(_gocb) else _gocb
+                _cost = sum(abs(l.entry_price_a * l.lots_a * strategy.p.mult_a)
+                            + abs(l.entry_price_b * l.lots_b * _gocb) for l, _ in reals)
+                _ok_thr = _cost > 0 and (total_r / _cost * 100) >= _thr
+            else:
+                _ok_thr = total_r >= _thr
+            if not (all(r > 0 for _, r in reals) and _ok_thr):
+                log.warning(f"F-052 GATE exit_all: profit_target_total отменён — "
+                            f"total_realizable={total_r:.2f} < порога {_thr} {strategy.p.min_profit_type}, "
+                            f"layers={[(l.layer_id, round(r, 2)) for l, r in reals]}. Позиция удержана.")
+                return
         if PAPER_MODE:
             # F-032: цены закрытия — из живого стакана (как в реализуемом PnL), last только fallback
             pa = strategy.ob_a.best_bid or strategy.basis_calc.price_a
@@ -878,6 +906,17 @@ def _execute_exit(signal: dict, force_market: bool = False):
 def _execute_single_exit(layer, reason: str, force_market: bool = False):
     """Execute exit for one layer: reverse legs.
     force_market=True for manual_stop/cleanup — use market orders to guarantee fill."""
+    # F-052: повторная проверка тейка ПЕРЕД отправкой ордеров — сигнал мог быть принят
+    # по фантомному стакану, к моменту исполнения данные уже честные. Риск-выходы
+    # (stop_loss/daily_stop_loss) и ручные (manual_stop/cleanup) проходят всегда.
+    if reason == "profit_target":
+        _rl = strategy._layer_realizable_pnl(layer)
+        if not strategy._exit_qualifies(_rl, layer):
+            _rl_str = f"{_rl:.2f}" if _rl is not None else "None (стакан протух/несогласован)"
+            log.warning(f"F-052 GATE layer #{layer.layer_id}: profit_target отменён — "
+                        f"realizable={_rl_str} < порога {strategy.p.min_profit_value} "
+                        f"{strategy.p.min_profit_type}. Слой удержан.")
+            return
     if layer.side == LONG_BASIS:
         side_a = BUY
         side_b = SELL
@@ -899,11 +938,14 @@ def _execute_single_exit(layer, reason: str, force_market: bool = False):
         real_a, real_flag_a = orders_mgr._resolve_fill_price(res_a.get('order_id',''), est_a) if res_a else (est_a, False)
         real_b, real_flag_b = orders_mgr._resolve_fill_price(res_b.get('order_id',''), est_b) if res_b else (est_b, False)
         if res_a and res_b:
-            strategy.close_layer(layer, real_a, real_b, reason,
-                                 exit_order_id_a=res_a.get('order_id', ''),
-                                 exit_order_id_b=res_b.get('order_id', ''),
-                                 price_real_a=real_flag_a, price_real_b=real_flag_b)
+            _pnl_net = strategy.close_layer(layer, real_a, real_b, reason,
+                                            exit_order_id_a=res_a.get('order_id', ''),
+                                            exit_order_id_b=res_b.get('order_id', ''),
+                                            price_real_a=real_flag_a, price_real_b=real_flag_b)
             log.info(f"Market exit OK layer #{layer.layer_id} A@{real_a:.2f} B@{real_b:.2f}")
+            if reason == "profit_target" and _pnl_net < 0:
+                log.error(f"F-052 ALARM layer #{layer.layer_id}: тейк закрылся В МИНУС "
+                          f"{_pnl_net:+.2f}₽ (A@{real_a:.2f} B@{real_b:.2f}) — стакан разошёлся с фактом")
         else:
             log.error(f"Market exit failed layer #{layer.layer_id}: A={'OK' if res_a else 'FAIL'} B={'OK' if res_b else 'FAIL'}")
         return
@@ -951,11 +993,14 @@ def _execute_single_exit(layer, reason: str, force_market: bool = False):
         # что стакан ушёл между проверкой и исполнением (норма: единицы рублей)
         log.info(f"EXIT layer #{layer.layer_id} filled: A@{fill_a.price:.2f} B@{fill_b.price:.2f} (paper est. limit {limit_price:.2f} / mkt {market_price_b:.2f}) reason={reason}")
         # F-048: id ордеров выхода + флаги реальных цен — журнал = цены брокера
-        strategy.close_layer(layer, fill_a.price, fill_b.price, reason,
-                             exit_order_id_a=getattr(fill_a, "order_id", ""),
-                             exit_order_id_b=getattr(fill_b, "order_id", ""),
-                             price_real_a=getattr(fill_a, "price_is_real", False),
-                             price_real_b=getattr(fill_b, "price_is_real", False))
+        _pnl_net = strategy.close_layer(layer, fill_a.price, fill_b.price, reason,
+                                        exit_order_id_a=getattr(fill_a, "order_id", ""),
+                                        exit_order_id_b=getattr(fill_b, "order_id", ""),
+                                        price_real_a=getattr(fill_a, "price_is_real", False),
+                                        price_real_b=getattr(fill_b, "price_is_real", False))
+        if reason == "profit_target" and _pnl_net < 0:
+            log.error(f"F-052 ALARM layer #{layer.layer_id}: тейк закрылся В МИНУС "
+                      f"{_pnl_net:+.2f}₽ (A@{fill_a.price:.2f} B@{fill_b.price:.2f}) — стакан разошёлся с фактом")
     else:
         log.error(f"Exit failed layer #{layer.layer_id}: {result['error']} — retrying next tick")
 

@@ -420,5 +420,55 @@ stG.ob_a.update([(97.50, 10, 0, 1), (100.50, 0, 10, 1)])
 stG.basis_calc.update_price_a(99.0)
 check("F-040 wide spread blocks", stG._orderbook_sane() is False)
 
+print("=== F-052: OB-vs-last sanity на realizable (инцидент GZZ6: фантомный ask) ===")
+# F-052-1: стакан B расходится с last на 0.7% (eps=0.5% фьючерс) -> realizable None
+stY = ArbitrageStrategy(ArbParams(**cfg))
+stY.basis_calc.update_price_a(99.75)
+stY.basis_calc.update_price_b(10350.0)
+stY.ob_a.update([(99.74, 10, 0, 1), (99.76, 0, 10, 1)])
+stY.ob_b.update([(10027.0, 10, 0, 1), (10028.0, 0, 10, 1)])  # ask=10028 при рынке 10350 — мусор GZZ6
+stY.open_layer(SHORT_BASIS, 99.70, 10420.0, 10, 1, z=2.0)
+rlY = stY._layer_realizable_pnl(stY.layers[0])
+check("F-052-1 OB B vs last B (0.7%) -> realizable None", rlY is None, f"rl={rlY}")
+check("F-052-1 mismatch blocks exit", stY.check_exit() is None)
+
+# F-052-2: стакан согласован с last -> тейк срабатывает после 3 тиков (регресс-тест гейта)
+stY2 = ArbitrageStrategy(ArbParams(**{**cfg, "min_profit_value": 25.0}))
+stY2.basis_calc.update_price_a(99.80)
+stY2.basis_calc.update_price_b(10450.0)
+stY2.ob_a.update([(99.80, 10, 0, 1), (99.82, 0, 10, 1)])
+stY2.ob_b.update([(10450.0, 10, 0, 1), (10451.0, 0, 10, 1)])
+stY2.open_layer(SHORT_BASIS, 99.75, 10500.0, 10, 1, z=2.0)
+rl2 = stY2._layer_realizable_pnl(stY2.layers[0])
+sigY = None
+for _ in range(3):
+    sigY = stY2.check_exit()
+check("F-052-2 consistent OB -> take fires after 3 ticks",
+      sigY is not None and sigY["reason"] == "profit_target", f"rl={rl2} sig={sigY}")
+
+# F-052-3: нога A (акция, eps=0.2%) расходится с last на 1.2% -> None
+stY3 = ArbitrageStrategy(ArbParams(**cfg))
+stY3.basis_calc.update_price_a(99.80)
+stY3.basis_calc.update_price_b(10320.0)
+stY3.ob_a.update([(98.50, 10, 0, 1), (98.60, 0, 10, 1)])
+stY3.ob_b.update([(10319.0, 10, 0, 1), (10320.0, 0, 10, 1)])
+stY3.open_layer(SHORT_BASIS, 99.70, 10400.0, 10, 1, z=2.0)
+check("F-052-3 OB A vs last A (1.2%) -> None",
+      stY3._layer_realizable_pnl(stY3.layers[0]) is None)
+
+# F-052-4: широкий, но согласованный стакан (BR-кейс) — интервальная форма пропускает
+stY4 = ArbitrageStrategy(ArbParams(**{**cfg, "ticker_a": "BRV6", "symbol_a": "BRV6@RTSX",
+                                      "ticker_b": "BRZ6", "symbol_b": "BRZ6@RTSX",
+                                      "lots_a": 1, "lots_b": 1, "hedge_ratio": 1.0,
+                                      "mult_a": 1.0, "mult_b": 1.0,
+                                      "expiration_date": (datetime.now() + timedelta(days=60)).strftime("%Y-%m-%d")}))
+stY4.basis_calc.update_price_a(105.60)
+stY4.basis_calc.update_price_b(95.70)
+stY4.ob_a.update([(105.50, 5, 0, 1), (105.75, 0, 5, 1)])   # широкий стакан: 0.24%
+stY4.ob_b.update([(95.60, 5, 0, 1), (95.80, 0, 5, 1)])
+stY4.open_layer(SHORT_BASIS, 105.60, 95.90, 1, 1, z=2.0)
+rl4 = stY4._layer_realizable_pnl(stY4.layers[0])
+check("F-052-4 wide-but-real OB passes", rl4 is not None, f"rl={rl4}")
+
 print(f"\n===== RESULTS: PASS={PASS} FAIL={FAIL} =====")
 sys.exit(0 if FAIL == 0 else 1)

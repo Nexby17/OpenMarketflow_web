@@ -759,6 +759,29 @@ def _execute_exit(signal: dict, force_market: bool = False):
         if not strategy.layers:
             return
         log.info(f"EXIT ALL {len(strategy.layers)} layers - reason={signal['reason']}")
+        # F-052: групповой гейт тейка по сумме — батч закрывается ТОЛЬКО если ВСЕ слои
+        # реально прибыльны и сумма >= порога. Частичное закрытие группы ломает баланс ног.
+        if signal["reason"] == "profit_target_total":
+            reals = [(l, strategy._layer_realizable_pnl(l)) for l in strategy.layers]
+            if any(r is None for _, r in reals):
+                log.warning("F-052 GATE exit_all: profit_target_total отменён — realizable=None "
+                            "(стакан протух или не согласован с last). Позиция удержана.")
+                return
+            total_r = sum(r for _, r in reals)
+            _thr = strategy.p.min_profit_value
+            if strategy.p.min_profit_type == "pct":
+                _gocb = getattr(strategy.p, "go_per_contract_b", 0.0)
+                _gocb = _gocb() if callable(_gocb) else _gocb
+                _cost = sum(abs(l.entry_price_a * l.lots_a * strategy.p.mult_a)
+                            + abs(l.entry_price_b * l.lots_b * _gocb) for l, _ in reals)
+                _ok_thr = _cost > 0 and (total_r / _cost * 100) >= _thr
+            else:
+                _ok_thr = total_r >= _thr
+            if not (all(r > 0 for _, r in reals) and _ok_thr):
+                log.warning(f"F-052 GATE exit_all: profit_target_total отменён — "
+                            f"total_realizable={total_r:.2f} < порога {_thr} {strategy.p.min_profit_type}, "
+                            f"layers={[(l.layer_id, round(r, 2)) for l, r in reals]}. Позиция удержана.")
+                return
         if PAPER_MODE:
             pa = strategy.basis_calc.price_a
             pb = strategy.basis_calc.price_b
@@ -791,6 +814,16 @@ def _execute_exit(signal: dict, force_market: bool = False):
 
 def _execute_single_exit(layer, reason: str, force_market: bool = True):
     """Execute exit for one layer: LIMIT (normal) or MARKET (force_market=emergency)."""
+    # F-052: повторная проверка тейка ПЕРЕД отправкой ордеров. Риск-выходы
+    # (stop_loss/daily_stop_loss) и ручные (manual_stop/cleanup) проходят всегда.
+    if reason == "profit_target":
+        _rl = strategy._layer_realizable_pnl(layer)
+        if not strategy._exit_qualifies(_rl, layer):
+            _rl_str = f"{_rl:.2f}" if _rl is not None else "None (стакан протух/несогласован)"
+            log.warning(f"F-052 GATE layer #{layer.layer_id}: profit_target отменён — "
+                        f"realizable={_rl_str} < порога {strategy.p.min_profit_value} "
+                        f"{strategy.p.min_profit_type}. Слой удержан.")
+            return
     price_a = strategy.basis_calc.price_a
     price_b = strategy.basis_calc.price_b
     ob_a = strategy.ob_a
@@ -850,7 +883,10 @@ def _execute_single_exit(layer, reason: str, force_market: bool = True):
         # Use actual fill prices from broker, not quote stream
         fill_a_price = result["leg_a"].price
         fill_b_price = result["leg_b"].price
-        strategy.close_layer(layer, fill_a_price, fill_b_price, reason)
+        _pnl_net = strategy.close_layer(layer, fill_a_price, fill_b_price, reason)
+        if reason == "profit_target" and _pnl_net < 0:
+            log.error(f"F-052 ALARM layer #{layer.layer_id}: тейк закрылся В МИНУС "
+                      f"{_pnl_net:+.2f}₽ (A@{fill_a_price:.2f} B@{fill_b_price:.2f}) — стакан разошёлся с фактом")
         # Log slippage vs quote
         slip_a = fill_a_price - price_a
         slip_b = fill_b_price - price_b
