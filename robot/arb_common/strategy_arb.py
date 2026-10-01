@@ -198,6 +198,26 @@ class ArbitrageStrategy:
 
     # === State ===
 
+    def _closing_basis(self) -> Optional[float]:
+        """F-057 (2026-10-01): базис закрытия по живому стакану — единый источник цен
+        с реализуемым PnL (_layer_realizable_pnl). Last-базис (basis) на тонких
+        фьючерсах отстаёт от стакана на десятки пунктов (GZZ6: принты реже стакана),
+        из-за чего UI показывал «Basis 290 при PnL −31» — цифры из разных миров.
+        SHORT (шорт базиса): закрытие = buy B @ ask + sell A @ bid → ask_B − bid_A×hedge
+        LONG  (лонг базиса): закрытие = sell B @ bid + buy A @ ask → bid_B − ask_A×hedge
+        FLAT: mid-базис стакана. None — стакана нет/неполон."""
+        bb_a, ba_a = self.ob_a.best_bid, self.ob_a.best_ask
+        bb_b, ba_b = self.ob_b.best_bid, self.ob_b.best_ask
+        if bb_a <= 0 or ba_a <= 0 or bb_b <= 0 or ba_b <= 0:
+            return None
+        h = self.p.hedge_ratio
+        side = self.layers[0].side if self.layers else FLAT
+        if side == SHORT_BASIS:
+            return ba_b - bb_a * h
+        if side == LONG_BASIS:
+            return bb_b - ba_a * h
+        return (bb_b + ba_b) / 2 - (bb_a + ba_a) / 2 * h
+
     def get_state(self) -> dict:
         return {
             "layers": [
@@ -236,6 +256,8 @@ class ArbitrageStrategy:
             "maxDd": round(self.max_dd, 2),
             "trades": len(self.trade_history),
             "basis": self.basis_calc.get_state(),
+            # F-057: базис закрытия по стакану (для UI — консистентен с реализуемым PnL)
+            "closing_basis": self._closing_basis(),
             "obA": self._ob_state(self.ob_a),
             "obB": self._ob_state(self.ob_b),
             "entryLock": self.entry_lock,

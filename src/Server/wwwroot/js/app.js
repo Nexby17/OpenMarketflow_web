@@ -8,6 +8,25 @@ function arbNum(v, fallback) {
     return isFinite(n) ? n : fallback;
 }
 
+// F-057: базис закрытия по стакану — единый источник цен с реализуемым PnL.
+// Last-базис расходился с реализуемым PnL на тонких фьючерсах (GZZ6 last-принт
+// отстаёт от стакана на десятки пунктов): «Basis 290.50 при PnL −31» — разные миры.
+// Правило (hedge = params.hedge_ratio):
+//   позиция SHORT (шорт базиса): закрытие = покупка B по аску + продажа A по биду → ask_B − bid_A×hedge
+//   позиция LONG  (лонг базиса): закрытие = продажа B по биду + покупка A по аску → bid_B − ask_A×hedge
+//   флэт: mid-базис стакана.
+// null — стакана нет/не полон: вызывающий код показывает last-базис с префиксом «≈».
+function arbClosingBasis(d) {
+    if (!d) return null;
+    const hedge = d.params ? d.params.hedge_ratio : null;
+    const A = d.obA || {}, B = d.obB || {};
+    if (!hedge || !(A.bestBid > 0 && A.bestAsk > 0 && B.bestBid > 0 && B.bestAsk > 0)) return null;
+    const side = d.position ? d.position.side : 0;
+    if (side === -1) return B.bestAsk - A.bestBid * hedge;
+    if (side === 1)  return B.bestBid - A.bestAsk * hedge;
+    return (B.bestBid + B.bestAsk) / 2 - (A.bestBid + A.bestAsk) / 2 * hedge;
+}
+
 // ==================== F-033: единая система панелей арб-роботов ====================
 // arbArbInstances: пары инстансов (identity), arbPanelInstance — какой робот сейчас редактируется
 const ARB_INSTANCE_MAP = {
@@ -129,13 +148,13 @@ function arbInstancePanel(inst) {
     }).catch(e => { console.error('panel open failed', e); });
 }
 
-// F-035: тик обновления метрик открытой панели каждые 2с
+// F-057: тик обновления метрик открытой панели 1с (было 2с)
 setInterval(() => {
     if (!arbPanelInstance) return;
     const api = window['arbApi_' + arbPanelInstance];
     if (!api) return;
     api.refresh().then(() => arbPanelUpdateMetrics()).catch(() => {});
-}, 2000);
+}, 1000);
 
 function arbPyEditPanel() { arbInstancePanel('gazp'); }
 function sberEditPanel() { arbInstancePanel('sber'); }
@@ -3707,7 +3726,20 @@ function createArbInstance(prefix, port) {
         // Metrics
         const pair = `${d.tickerA||p.ticker_a||'—'} / ${d.tickerB||p.ticker_b||'—'}`;
         if (el(prefix+'Pair')) el(prefix+'Pair').textContent = pair;
-        if (el(prefix+'Basis')) el(prefix+'Basis').textContent = basis.spread_rub != null ? `${basis.spread_rub>=0?'+':''}${basis.spread_rub.toFixed(2)} ₽` : '—';
+        // F-057: Basis в шапке = базис закрытия по стакану (тот же источник, что и
+        // реализуемый Unrealized PnL). Серверное closing_basis (после рестарта робота)
+        // приоритетно; далее локальный расчёт; last — только fallback с «≈».
+        const closeBasis = (d.closing_basis != null) ? d.closing_basis : arbClosingBasis(d);
+        if (el(prefix+'Basis')) {
+            const eB = el(prefix+'Basis');
+            if (closeBasis != null) {
+                eB.textContent = `${closeBasis>=0?'+':''}${closeBasis.toFixed(1)} ₽`;
+                eB.title = 'Базис закрытия по стакану (консистентен с Unrealized PnL).\nLast-базис: ' + (basis.spread_rub != null ? basis.spread_rub.toFixed(2) : '—') + ' ₽';
+            } else {
+                eB.textContent = basis.spread_rub != null ? `≈${basis.spread_rub>=0?'+':''}${basis.spread_rub.toFixed(2)} ₽` : '—';
+                eB.title = 'Стакан недоступен — показан last-базис (может отставать от рынка)';
+            }
+        }
         if (el(prefix+'Z')) {
             const z = basis.zscore || 0;
             el(prefix+'Z').textContent = z.toFixed(3);
@@ -3748,7 +3780,7 @@ function createArbInstance(prefix, port) {
         if (el(prefix+'RbPos')) el(prefix+'RbPos').textContent = pos ? `${pos.side===1?'LONG':'SHORT'} ${pos.lotsA}×${pos.lotsB}` : '—';
         if (el(prefix+'RbPnl')) el(prefix+'RbPnl').textContent = (d.totalPnl||0).toFixed(0) + ' ₽';
         if (el(prefix+'RbZ')) el(prefix+'RbZ').textContent = (basis.zscore||0).toFixed(2);
-        if (el(prefix+'RbBasis')) el(prefix+'RbBasis').textContent = (basis.basis||0).toFixed(2);
+        if (el(prefix+'RbBasis')) el(prefix+'RbBasis').textContent = closeBasis != null ? closeBasis.toFixed(2) : (basis.basis!=null?basis.basis.toFixed(2):'—');
         if (el(prefix+'RbStatus')) el(prefix+'RbStatus').textContent = d.mode==='running' ? '🟢' : d.mode==='paused' ? '🟡' : '⚪';
     }
 
@@ -4091,7 +4123,8 @@ function arbRenderJournal() {
 }
 
 // Init arb polling
-setInterval(() => { if (el('arbPyStatus')) arbPyRefresh(); }, 3000);
+// F-057: шапка арб-роботов обновляется каждые 1с (было 3с — «отстаёт от рынка»)
+setInterval(() => { if (el('arbPyStatus')) arbPyRefresh(); }, 1000);
 setTimeout(() => { if (el('arbPyStatus')) arbPyRefresh(); }, 2000);
 
 // === Init ===
