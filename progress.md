@@ -254,3 +254,5 @@ finam_hub терял атрибут websockets.connect в потоке (с 25.09
 - Старт роботов НЕ выполнялся (R-001 — только Дмитрий).
 
 - 10:43 b7dd4b6: UI-дополнения — панель SYNC лотов с брокером (GET /sync?lots=N absolute), кнопка Применить для close_price_all (0=выкл), метрика OB-ликвидности, ретраи старта (4х3.5с под ~15с коннект Finam), confirm на стоп, TDZ-примечание для OF_BR_INSTANCE_ORDER. node --check OK, скопировано в bin wwwroot.
+
+- 16:02 749b6b8: finam_compat fix — SubscribeOrderTrade bidi-стрим требует request-итератор (итератор итератора ошибок OrderTradeRequest не iterable). Обнаружено при запуске BR-edp :5083; после фикса все 5 стримов стабильны (LatestTrades/OB/Bars/Quotes/OrderTrade).

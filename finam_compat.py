@@ -366,8 +366,11 @@ class FinamPyCompat:
         while True:
             try:
                 # F-047: streams require explicit authorization metadata
+                # F-055 fix: SubscribeOrderTrade is a bidi stream — server expects a request ITERATOR,
+                # not a single request (error: 'OrderTradeRequest object is not an iterator').
+                req_iter = iter([req])
                 stream = self.client.orders.SubscribeOrderTrade(
-                    req, metadata=[("authorization", self.client.get_token())])
+                    req_iter, metadata=[("authorization", self.client.get_token())])
                 for response in stream:
                     if params.get("trades"):
                         for t in response.trades:
