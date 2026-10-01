@@ -528,7 +528,7 @@ app.MapPost("/api/of/process/{name}/{action}", async (string name, string action
 // === F-010: OF robot params proxy (works when robot offline) ===
 app.MapGet("/api/of/config/{name}", (string name) =>
 {
-    var files = new Dictionary<string, string> { { "of", "of_config.json" }, { "of_mx", "of_config_mx.json" } };
+    var files = new Dictionary<string, string> { { "of", "of_config.json" }, { "of_mx", "of_config_mx.json" }, { "of_br", "of_config_br.json" }, { "of_br_edp", "of_config_br_edp.json" } };
     if (!files.TryGetValue(name, out var fname)) return Results.Json(new { error = "unknown robot" }, statusCode: 400);
     var dir = new System.IO.DirectoryInfo(AppContext.BaseDirectory);
     for (int i = 0; i < 8 && dir != null; i++)
@@ -545,7 +545,7 @@ app.MapGet("/api/of/config/{name}", (string name) =>
 });
 app.MapPost("/api/of/config/{name}", async (string name, HttpRequest req) =>
 {
-    var files = new Dictionary<string, string> { { "of", "of_config.json" }, { "of_mx", "of_config_mx.json" } };
+    var files = new Dictionary<string, string> { { "of", "of_config.json" }, { "of_mx", "of_config_mx.json" }, { "of_br", "of_config_br.json" }, { "of_br_edp", "of_config_br_edp.json" } };
     if (!files.TryGetValue(name, out var fname)) return Results.Json(new { error = "unknown robot" }, statusCode: 400);
     try
     {
@@ -2312,6 +2312,10 @@ public static class RobotProcessManager
     {
         "of" => ("main_of.py", 5080, ""),
         "of_mx" => ("main_of_mx.py", 5081, ""),
+        // OF BR robots: один код main_of_br.py на два инстанса; сессия/счёт задаются env
+        // (of_br = main 1225953, of_br_edp = edp 2049688, см. StartAsync ниже)
+        "of_br" => ("main_of_br.py", 5082, ""),
+        "of_br_edp" => ("main_of_br.py", 5083, ""),
         // Arb robots: pair set via env ARB_SYMBOL_A/B per instance (start = Dmitry only, via UI)
         "arb_gazp" => ("main_arb.py", 5090, ""),
         "arb_sber" => ("main_arb.py", 5091, ""),
@@ -2395,6 +2399,13 @@ public static class RobotProcessManager
         psi.StandardErrorEncoding = System.Text.Encoding.UTF8;
         psi.EnvironmentVariables["PYTHONIOENCODING"] = "utf-8";
         psi.EnvironmentVariables["PYTHONUTF8"] = "1";
+        if (name == "of_br" || name == "of_br_edp")
+        {
+            // F-012: BR-инстансы — один код main_of_br.py, различие через env
+            // (суффикс state/конфиг-файлов + активный счёт читает сам робот)
+            psi.EnvironmentVariables["ROBOT_STATE_SUFFIX_BR"] = name == "of_br_edp" ? "_edp" : "";
+            psi.EnvironmentVariables["ROBOT_ACTIVE_ACCOUNT_BR"] = name == "of_br_edp" ? "edp" : "";
+        }
         if (name.StartsWith("arb_"))
         {
             // F-020: per-instance config file (pair + params live in UI-saved JSON per instance)

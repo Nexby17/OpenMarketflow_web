@@ -2478,7 +2478,58 @@ async function renderRobots() {
         </tr>`;
     }
 
-    const allRows = [...serverStrategies, ...localRows, pythonRobotRow, ofRobotRow, ofMxRobotRow];
+    // Order Flow BR robot rows (два инстанса: main :5082 счёт 1225953, edp :5083 счёт 2049688)
+    // Инструмент — READ-ONLY бэдж BRV6 (переключение инструмента для BR не поддерживается: символ из env сервиса)
+    const OF_BR_INSTANCE_ORDER = ['main', 'edp'];
+    const ofBrRows = OF_BR_INSTANCE_ORDER.map(inst => {
+        const cfg = OF_BR_INSTANCES[inst];
+        const s = window['ofBrRobot_' + inst];
+        const instLabel = cfg.label;
+        if (s) {
+            const mode = s.mode || 'stopped';
+            const modeText = mode === 'running' ? '🟢 Работает' : mode === 'paused' ? '🟡 Пауза' : '🔴 Остановлен';
+            const modeCls = mode === 'running' ? 'green' : mode === 'paused' ? 'yellow' : 'red';
+            const dirText = s.direction === 'LONG' ? 'Лонг' : s.direction === 'SHORT' ? 'Шорт' : 'Флэт';
+            const dirCls = s.direction === 'LONG' ? 'green' : s.direction === 'SHORT' ? 'red' : '';
+            const pnlCls = v => v >= 0 ? 'green' : 'red';
+            const pnl = s.realizedPnL || 0;
+            const paper = s.paper ? ' <span class="badge" style="background:#ff9800">PAPER</span>' : '';
+            return `<tr ondblclick="ofBrRobotEditPanel('${inst}')" style="cursor:pointer" title="Двойной клик — настройки робота">
+            <td><span class="badge" style="background:#1a2332;border:1px solid #007ACC;color:#FF9800;font-weight:bold" title="Символ задаётся env сервиса (переключение из UI не поддерживается)">${cfg.symbol}</span></td>
+            <td><strong>Order Flow</strong> <span class="badge" style="background:${cfg.badgeColor}">${cfg.badge}</span>${paper}</td>
+            <td><span style="font-size:12px;color:#9CA3AF" title="Счёт инстанса (фиксирован env)">${cfg.account}</span></td>
+            <td class="${dirCls}">${dirText}${s.avgPrice > 0 ? ' @ ' + s.avgPrice.toFixed(2) : ''}</td>
+            <td>—</td>
+            <td class="${pnlCls(pnl)}">${pnl >= 0 ? '+' : ''}${pnl.toFixed(0)} ₽</td>
+            <td>${s.totalLots || 0}</td>
+            <td>—</td>
+            <td>
+                <button class="btn btn-success btn-sm" onclick="ofBrRobotApi('${inst}','start')" ${mode==='running'?'disabled':''}>▶</button>
+                <button class="btn btn-warning btn-sm" onclick="ofBrRobotApi('${inst}','pause')" ${mode!=='running'?'disabled':''}>⏸</button>
+                <button class="btn btn-danger btn-sm" onclick="ofBrRobotApi('${inst}','stop')" ${mode==='stopped'?'disabled':''}>⏹</button>
+                <button class="btn btn-sm" style="background:#2196F3;color:#fff" title="Регламентный рестарт (FLAT-чек, cooldown 90с)" onclick="ofBrRobotRestart('${inst}')" ${window['_ofBrRestarting_'+inst]?'disabled':''}>${window['_ofBrRestarting_'+inst]?'⏳':'🔄'}</button>
+            </td>
+            <td class="${modeCls}">${modeText}</td>
+        </tr>`;
+        } else {
+            return `<tr ondblclick="ofBrRobotEditPanel('${inst}')" style="cursor:pointer" title="Двойной клик — настройки робота">
+            <td><span class="badge" style="background:#1a2332;border:1px solid #007ACC;color:#FF9800;font-weight:bold" title="Символ задаётся env сервиса (переключение из UI не поддерживается)">${cfg.symbol}</span></td>
+            <td><strong>Order Flow</strong> <span class="badge" style="background:${cfg.badgeColor}">${cfg.badge}</span></td>
+            <td><span style="font-size:12px;color:#9CA3AF" title="Счёт инстанса (фиксирован env)">${cfg.account}</span></td>
+            <td>—</td>
+            <td>—</td>
+            <td>—</td>
+            <td>0</td>
+            <td>—</td>
+            <td>
+                <button class="btn btn-success btn-sm" onclick="ofBrRobotApi('${inst}','start')">▶</button>
+            </td>
+            <td class="red">🔴 Не запущен</td>
+        </tr>`;
+        }
+    }).join('');
+
+    const allRows = [...serverStrategies, ...localRows, pythonRobotRow, ofRobotRow, ofMxRobotRow, ofBrRows];
     if (!allRows.filter(r=>r).length) { tbody.innerHTML = ''; if (noMsg) noMsg.style.display = 'block'; return; }
     if (noMsg) noMsg.style.display = 'none';
     tbody.innerHTML = allRows.join('');
@@ -6549,3 +6600,658 @@ function arbCopyPositionDialog(inst) {
     const cfg = ARB_INSTANCE_MAP[inst] || ARB_INSTANCE_MAP.gazp;
     arbLog(inst, '📋 Копирование параметров ' + cfg.label + ': выберите робота-приёмник', 'INFO');
 }
+
+// ============================================================================
+// === ORDER FLOW BR (Brent) — два инстанса: main :5082 (счёт 1225953), edp :5083 (счёт 2049688)
+// === Счёт жёстко привязан к инстансу (env), POST /account НЕ используется (защита от двойной торговли).
+// === Инструмент BRV6 — read-only (символ задаётся env сервиса, переключение из UI не поддерживается).
+// === Цены BR дробные (шаг 0.01) — все ценовые поля toFixed(2), инпуты step="0.01".
+// ============================================================================
+
+const OF_BR_INSTANCES = {
+    main: { port: 5082, api: () => 'http://' + window.location.hostname + ':5082',
+            account: '1225953', symbol: 'BRV6', badge: 'BR', badgeColor: '#E65100',
+            stateKey: 'ofBrRobot_main', cfgName: 'of_br', label: 'BRV6', procName: 'of_br' },
+    edp:  { port: 5083, api: () => 'http://' + window.location.hostname + ':5083',
+            account: '2049688', symbol: 'BRV6', badge: 'BR-edp', badgeColor: '#007ACC',
+            stateKey: 'ofBrRobot_edp', cfgName: 'of_br_edp', label: 'BRV6 edp', procName: 'of_br_edp' }
+};
+OF_BR_INSTANCE_ORDER.forEach(k => { window['ofBrRobot_' + k] = null; window['_ofBrWasOnline_' + k] = false; });
+let _ofBrJournalTrades = [];
+let _ofBrJournalInst = null;
+let _ofBrPanelInst = null;
+
+function ofBrCfg(inst) { return OF_BR_INSTANCES[inst] || OF_BR_INSTANCES.main; }
+
+async function ofBrRobotPoll(inst) {
+    const cfg = ofBrCfg(inst);
+    try {
+        const resp = await fetch(cfg.api() + '/status', {signal: AbortSignal.timeout(2000)});
+        window[cfg.stateKey] = await resp.json();
+        // Робот только что поднялся → досинхронизировать параметры, сохранённые при офлайне
+        if (!window['_ofBrWasOnline_' + inst]) {
+            window['_ofBrWasOnline_' + inst] = true;
+            const saved = localStorage.getItem('ofBrSavedParams_' + inst);
+            if (saved) {
+                try {
+                    const params = JSON.parse(saved);
+                    await fetch(cfg.api() + '/params', {method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(params)});
+                    addLog(nowTime(), 'INFO', 'OF-BR[' + cfg.label + ']: параметры синхронизированы из localStorage');
+                    localStorage.removeItem('ofBrSavedParams_' + inst);
+                } catch(e) {}
+            }
+        }
+    } catch(e) {
+        window[cfg.stateKey] = null;
+        window['_ofBrWasOnline_' + inst] = false;
+    }
+}
+
+async function ofBrSetDirection(inst, value) {
+    const cfg = ofBrCfg(inst);
+    try {
+        await fetch(cfg.api() + '/params', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({direction_filter: value})});
+        await ofBrRobotPoll(inst);
+        addLog(nowTime(), 'INFO', 'OF-BR[' + cfg.label + '] direction filter → ' + value.toUpperCase());
+    } catch(e) {
+        addLog(nowTime(), 'ERROR', 'OF-BR[' + cfg.label + '] direction filter failed: ' + e.message);
+    }
+}
+
+async function toggleOfBrSignal(inst, param, value) {
+    const cfg = ofBrCfg(inst);
+    try {
+        const resp = await fetch(cfg.api() + '/params', {method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({[param]: value})});
+        await resp.json();
+        addLog(nowTime(), 'INFO', 'OF-BR[' + cfg.label + '] signal ' + param + '=' + value);
+    } catch(e) {
+        addLog(nowTime(), 'ERROR', 'OF-BR[' + cfg.label + '] toggle failed: ' + e.message);
+    }
+}
+
+async function ofBrRobotApi(inst, action) {
+    const cfg = ofBrCfg(inst);
+    try {
+        // F-012: одна кнопка = поднять процесс + включить (как MXU6)
+        if (action === 'start') {
+            showToast('⏳ Поднимаю процесс ' + cfg.label + ' (подключение к Finam ~15с)...', 'info');
+            try {
+                const pr = await fetch('/api/of/process/' + cfg.procName + '/start', {method: 'POST', signal: AbortSignal.timeout(35000)});
+                const pd = await pr.json();
+                if (!pd.ok) {
+                    showToast('❌ Процесс ' + cfg.label + ' не поднялся: ' + (pd.error || '?'), 'error');
+                    addLog(nowTime(), 'ERROR', cfg.label + ' process start failed: ' + (pd.error || '?'));
+                    return;
+                }
+                showToast('🟢 Процесс ' + cfg.label + ' поднят' + (pd.alreadyRunning ? ' (уже работал)' : '') + ' — включаю робота', 'ok');
+            } catch(pe) {
+                showToast('❌ Не удалось поднять процесс ' + cfg.label + ': ' + pe.message, 'error');
+                addLog(nowTime(), 'ERROR', cfg.label + ' process start error: ' + pe.message);
+                return;
+            }
+        }
+        const resp = await fetch(cfg.api() + '/' + action, {method: 'POST'});
+        const data = await resp.json().catch(() => ({}));
+        addLog(nowTime(), 'INFO', 'OF-BR[' + cfg.label + '] ' + action + ': ' + JSON.stringify(data).slice(0, 120));
+        setTimeout(async () => { await ofBrRobotPoll(inst); renderRobots(); }, 500);
+    } catch(e) {
+        // F-011: робот offline — видимая обратная связь
+        addLog(nowTime(), 'ERROR', 'Робот ' + cfg.label + ' недоступен (' + action + ' не отправлено)');
+        showToast('⚠ Робот ' + cfg.label + ' не отвечает — попробуй ещё раз через ~15с (процесс мог ещё подниматься)', 'error');
+    }
+}
+
+async function ofBrRobotRestart(inst) {
+    const cfg = ofBrCfg(inst);
+    if (window['_ofBrRestarting_' + inst]) return;
+    window['_ofBrRestarting_' + inst] = true;
+    try {
+        showToast('🔄 Регламентный рестарт ' + cfg.label + ' (FLAT-чек + cooldown 90с)...', 'info');
+        const resp = await fetch(cfg.api() + '/restart', {method: 'POST', signal: AbortSignal.timeout(10000)});
+        const data = await resp.json().catch(() => ({}));
+        if (resp.status === 409) {
+            showToast(`⛔ Рестарт отклонён: позиция открыта (${data.lots} лот.) — сначала закрыть`, 'error');
+            addLog(nowTime(), 'WARN', 'OF-BR[' + cfg.label + '] restart 409: position open (' + data.lots + ')');
+            return;
+        }
+        if (resp.status === 429) {
+            showToast(`⏳ Cooldown: рестарт через ${data.retry_after_sec || 90}с`, 'error');
+            addLog(nowTime(), 'WARN', 'OF-BR[' + cfg.label + '] restart cooldown ' + (data.retry_after_sec || 90) + 's');
+            return;
+        }
+        if (!resp.ok) {
+            showToast('❌ Рестарт не принят: ' + (data.error || resp.status), 'error');
+            addLog(nowTime(), 'ERROR', 'OF-BR[' + cfg.label + '] restart failed: ' + (data.error || resp.status));
+            return;
+        }
+        showToast('✅ Рестарт принят — ' + cfg.label + ' перезапустится через ~10-20с', 'ok');
+        addLog(nowTime(), 'INFO', 'OF-BR[' + cfg.label + '] restart: ' + JSON.stringify(data).slice(0, 100));
+        setTimeout(async () => { try { await ofBrRobotPoll(inst); } catch(e) {} renderRobots(); }, 15000);
+        setTimeout(async () => { try { await ofBrRobotPoll(inst); } catch(e) {} renderRobots(); }, 25000);
+    } catch(e) {
+        showToast('❌ Рестарт не принят (' + e.message + ')', 'error');
+        addLog(nowTime(), 'ERROR', 'OF-BR[' + cfg.label + '] restart error: ' + e.message);
+    } finally {
+        setTimeout(() => { window['_ofBrRestarting_' + inst] = false; renderRobots(); }, 30000);
+    }
+}
+
+// === BR Trade Journal ===
+async function ofBrResetStats(inst) {
+    const cfg = ofBrCfg(inst);
+    if (!confirm('Сбросить статистику ' + cfg.label + '? Realized PnL → 0, история сделок очищена.')) return;
+    const r = await fetch(cfg.api() + '/reset-stats', {method:'POST'});
+    if (r && r.ok) ofBrLoadJournal(inst);
+}
+
+async function ofBrLoadJournal(inst) {
+    inst = inst || _ofBrJournalInst || 'main';
+    const cfg = ofBrCfg(inst);
+    const body = el('ofBrJournalBody');
+    if (!body) return;
+    try {
+        const resp = await fetch(cfg.api() + '/status', {signal: AbortSignal.timeout(2000)});
+        const data = await resp.json();
+        _ofBrJournalTrades = data.tradeHistory || data.trades || [];
+        _ofBrJournalInst = inst;
+        if (!_ofBrJournalTrades.length) {
+            body.innerHTML = '<tr><td colspan="9" style="text-align:center;padding:24px;color:#9CA3AF">Нет закрытых сделок</td></tr>';
+            ofBrRenderJournalSummary(0, 0, 0, 0);
+            return;
+        }
+        ofBrRenderJournal();
+    } catch(e) {
+        body.innerHTML = '<tr><td colspan="9" style="text-align:center;padding:24px;color:#9CA3AF">Робот недоступен</td></tr>';
+    }
+}
+
+function ofBrRenderJournal() {
+    const body = el('ofBrJournalBody');
+    if (!body) return;
+    const filter = el('ofBrJournalFilter')?.value || 'all';
+    const dateFrom = el('ofBrJournalDateFrom')?.value;
+    const dateTo = el('ofBrJournalDateTo')?.value;
+    let trades = [..._ofBrJournalTrades];
+    if (dateFrom || dateTo) {
+        trades = trades.filter(t => {
+            const dEntry = t.entryTime ? t.entryTime.slice(0,10) : null;
+            const dExit = t.exitTime ? t.exitTime.slice(0,10) : null;
+            const afterStart = !dateFrom || (dEntry && dEntry >= dateFrom) || (dExit && dExit >= dateFrom);
+            const beforeEnd = !dateTo || (dEntry && dEntry <= dateTo) || (dExit && dExit <= dateTo);
+            return afterStart && beforeEnd;
+        });
+    }
+    if (filter === 'LONG') trades = trades.filter(t => t.direction === 'LONG' || t.direction > 0);
+    else if (filter === 'SHORT') trades = trades.filter(t => t.direction === 'SHORT' || t.direction < 0);
+    else if (filter === 'win') trades = trades.filter(t => t.pnl > 0);
+    else if (filter === 'loss') trades = trades.filter(t => t.pnl < 0);
+    if (!trades.length) {
+        body.innerHTML = '<tr><td colspan="9" style="text-align:center;padding:16px;color:#9CA3AF">Нет сделок по фильтру</td></tr>';
+        return;
+    }
+    let cumulative = 0;
+    const rows = trades.map(t => {
+        cumulative += (t.pnl || 0);
+        const dtOut = t.exitTime ? new Date(t.exitTime) : null;
+        const dateStr = dtOut ? dtOut.toLocaleDateString('ru-RU') : '—';
+        const timeIn = t.entryTime ? new Date(t.entryTime).toLocaleTimeString('ru-RU', {hour:'2-digit',minute:'2-digit'}) : '—';
+        const timeOut = dtOut ? dtOut.toLocaleTimeString('ru-RU', {hour:'2-digit',minute:'2-digit'}) : '—';
+        const dir = t.direction === 'LONG' || t.direction > 0 ? '🟢 L' : '🔴 S';
+        const pnlCls = (t.pnl || 0) >= 0 ? 'green' : 'red';
+        const cumCls = cumulative >= 0 ? 'green' : 'red';
+        return '<tr style="border-bottom:1px solid var(--border-color)">' +
+            '<td style="padding:6px">' + dateStr + '</td>' +
+            '<td style="padding:6px">' + timeIn + '</td>' +
+            '<td style="padding:6px">' + timeOut + '</td>' +
+            '<td style="padding:6px;text-align:center">' + dir + '</td>' +
+            '<td style="padding:6px;text-align:right">' + (t.entryPrice||0).toFixed(2) + '</td>' +
+            '<td style="padding:6px;text-align:right">' + (t.exitPrice||0).toFixed(2) + '</td>' +
+            '<td style="padding:6px;text-align:right">' + (t.lots||1) + '</td>' +
+            '<td style="padding:6px;text-align:right" class="' + pnlCls + '">' + ((t.pnl||0) >= 0 ? '+' : '') + (t.pnl||0).toFixed(0) + '₽</td>' +
+            '<td style="padding:6px;text-align:right" class="' + cumCls + '">' + (cumulative >= 0 ? '+' : '') + cumulative.toFixed(0) + '₽</td>' +
+        '</tr>';
+    });
+    body.innerHTML = rows.join('');
+    const totalPnl = trades.reduce((s, t) => s + (t.pnl || 0), 0);
+    const wins = trades.filter(t => (t.pnl || 0) > 0).length;
+    const losses = trades.filter(t => (t.pnl || 0) < 0).length;
+    ofBrRenderJournalSummary(trades.length, wins, losses, totalPnl);
+}
+
+function ofBrRenderJournalSummary(total, wins, losses, totalPnl) {
+    const el2 = el('ofBrJournalSummary');
+    if (!el2) return;
+    const inst = _ofBrJournalInst || 'main';
+    const wr = total > 0 ? ((wins / total) * 100).toFixed(0) + '%' : '—';
+    const winPnl = _ofBrJournalTrades.filter(t => (t.pnl||0) > 0).reduce((s,t) => s+(t.pnl||0), 0);
+    const lossPnl = _ofBrJournalTrades.filter(t => (t.pnl||0) < 0).reduce((s,t) => s+(t.pnl||0), 0);
+    const avgWin = wins > 0 ? (winPnl / wins).toFixed(0) : '—';
+    const avgLoss = losses > 0 ? (lossPnl / losses).toFixed(0) : '—';
+    const cls = totalPnl >= 0 ? 'green' : 'red';
+    el2.innerHTML = '' +
+        '<div class="metric-card"><div class="metric-label">Всего сделок</div><div style="font-size:16px;font-weight:bold">' + total + '</div></div>' +
+        '<div class="metric-card"><div class="metric-label">Win Rate</div><div style="font-size:16px;font-weight:bold">' + wr + '</div></div>' +
+        '<div class="metric-card"><div class="metric-label">Wins / Loss</div><div style="font-size:16px;font-weight:bold"><span class="green">' + wins + '</span> / <span class="red">' + losses + '</span></div></div>' +
+        '<div class="metric-card"><div class="metric-label">Avg Win</div><div style="font-size:16px;font-weight:bold" class="green">' + (avgWin !== '—' ? '+' + avgWin + '₽' : '—') + '</div></div>' +
+        '<div class="metric-card"><div class="metric-label">Avg Loss</div><div style="font-size:16px;font-weight:bold" class="red">' + (avgLoss !== '—' ? avgLoss + '₽' : '—') + '</div></div>' +
+        '<div class="metric-card"><div class="metric-label">Итог PnL</div><div style="font-size:16px;font-weight:bold" class="' + cls + '">' + (totalPnl >= 0 ? '+' : '') + totalPnl.toFixed(0) + '₽</div></div>' +
+        '<div class="metric-card" style="border:1px solid var(--border-color)"><div class="metric-label">&nbsp;</div><button class="btn btn-danger btn-sm" onclick="ofBrResetStats(\'' + inst + '\')" style="font-size:12px">🗑 Сбросить</button></div>';
+}
+
+// === Ручная коррекция позиции (state-only, без ордеров) ===
+async function ofBrPositionAdjust(inst) {
+    inst = inst || _ofBrPanelInst || 'main';
+    const cfg = ofBrCfg(inst);
+    const lots = parseInt(el('ofBrAdjLots')?.value);
+    const price = parseFloat(el('ofBrAdjPrice')?.value);
+    if (!lots || !price) { alert('Заполни: лоты (±N) и цену'); return; }
+    const s = window[cfg.stateKey] || {};
+    const wasDir = s.direction === 'LONG' ? 'LONG' : s.direction === 'SHORT' ? 'SHORT' : 'FLAT';
+    const msg = 'Ручная корректировка ' + cfg.label + '\n\n' +
+        'Было: ' + wasDir + ' ' + (s.totalLots || 0) + ' лот. @ ' + (s.avgPrice > 0 ? s.avgPrice.toFixed(2) : '—') +
+        (s.brokerMismatch ? '\n⚠️ ВНИМАНИЕ: сейчас рассинхрон с брокером (робот: ' + (s.totalLots||0) + ', брокер: ' + s.brokerLots + ')' : '') +
+        '\nКоманда: ' + (lots > 0 ? '+' : '') + lots + ' @ ' + price +
+        '\n\nРобот НЕ выставляет ордера — только принимает позицию в управление.\nСразу начнёт управлять: partial TP, стоп-лосс, усреднение.\n\nПодтверждаешь?';
+    if (!confirm(msg)) return;
+    try {
+        const r = await fetch(cfg.api() + '/position/adjust', {
+            method: 'POST', headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({lots, price}), signal: AbortSignal.timeout(8000)
+        });
+        const j = await r.json();
+        if (!r.ok) { alert('Ошибка: ' + (j.error || r.status)); return; }
+        const d = v => v > 0 ? 'LONG' : v < 0 ? 'SHORT' : 'FLAT';
+        addLog(nowTime(), j.brokerMismatch ? 'WARN' : 'INFO',
+            '✏️ ' + cfg.label + ' коррекция: ' + d(j.before.dir) + ' ' + j.before.lots + ' → ' + d(j.after.dir) + ' ' + j.after.lots +
+            (j.recordedPnL ? ' | PnL ' + j.recordedPnL.toFixed(1) + '₽' : '') +
+            (j.brokerMismatch ? ' | ⚠️ ДЕСИНК: брокер ' + j.brokerLots : ''));
+        if (j.brokerMismatch) alert('⚠️ Рассинхрон с брокером: робот ' + j.after.lots + ', брокер ' + j.brokerLots + '. Проверь терминал!');
+        el('ofBrAdjLots').value = ''; el('ofBrAdjPrice').value = '';
+        ofBrRobotPoll(inst);
+    } catch(e) { alert('Сеть: ' + e.message); }
+}
+
+// === Панель параметров BR (все параметры §11 документации) ===
+function ofBrRobotEditPanel(inst) {
+    inst = inst || 'main';
+    _ofBrPanelInst = inst;
+    const existing = el('ofBrRobotEditPanel');
+    if (existing) { existing.remove(); }
+    const cfg = ofBrCfg(inst);
+    const s = window[cfg.stateKey] || {};
+    let p = s.params || null;
+    let cfgSrc = 'robot';
+    if (!p) {
+        // F-010: робот offline — параметры из config через серверный прокси (реальные сохранённые)
+        p = null;
+    }
+    // Синхронно параметры не достать — рендерим каркас, параметры подгрузим ниже
+    const div = document.createElement('div');
+    div.id = 'ofBrRobotEditPanel';
+    div.className = 'card';
+    div.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);z-index:1000;width:960px;max-height:92vh;overflow-y:auto;box-shadow:0 8px 32px rgba(0,0,0,.5)';
+    div.innerHTML = `
+        <div class="card-header row gap-8">
+            📈 ${cfg.label} Order Flow (PYTHON) <span style="color:#9CA3AF;font-size:12px">счёт ${cfg.account}</span>
+            <select id="ofBrPanelInst" class="input" style="width:110px;font-size:12px" onchange="ofBrSwitchPanelInstance(this.value)">
+                <option value="main" ${inst==='main'?'selected':''}>BR main :5082</option>
+                <option value="edp" ${inst==='edp'?'selected':''}>BR edp :5083</option>
+            </select>
+            <button class="btn btn-primary btn-sm" onclick="ofBrRobotSaveFromPanel()">💾 Сохранить</button>
+            <span id="ofBrCfgSrcBadge" style="font-size:11px;padding:2px 8px;border-radius:10px;opacity:.85"></span>
+            <button class="btn btn-secondary btn-sm" onclick="if(window._ofBrVpTimer){clearInterval(window._ofBrVpTimer);window._ofBrVpTimer=null;}el('ofBrRobotEditPanel')?.remove()">✕</button>
+        </div>
+        <div style="padding:12px" id="ofBrPanelBody">
+            <div style="text-align:center;color:#9CA3AF;padding:30px">Загрузка параметров…</div>
+        </div>
+    `;
+    document.body.appendChild(div);
+    // Асинхронно: параметры из робота (живого) или из config-прокси (офлайн)
+    (async () => {
+        let params = s.params || null;
+        if (!params) {
+            try {
+                const r = await fetch('/api/of/config/' + cfg.cfgName, {signal: AbortSignal.timeout(2500)});
+                if (r.ok) { params = await r.json(); cfgSrc = 'config'; }
+            } catch(e) {}
+        }
+        params = params || {};
+        const body = el('ofBrPanelBody');
+        if (!body) return;
+        body.innerHTML = ofBrPanelBodyHtml(inst, params);
+        // Инициализация контролов
+        const sel = el('ofBrDirFilter'); if (sel && params.direction_filter) sel.value = params.direction_filter;
+        const tCvd = el('toggleBrCvd'); if (tCvd) tCvd.checked = params.use_cvd !== false;
+        const tDm = el('toggleBrDmWall'); if (tDm) tDm.checked = params.use_dm_wall === true;
+        const tAcc = el('toggleBrCvdAccel'); if (tAcc) tAcc.checked = params.use_cvd_accel !== false;
+        const badge = el('ofBrCfgSrcBadge');
+        if (badge) {
+            badge.textContent = cfgSrc === 'config' ? 'источник: config (робот offline)' : 'источник: robot (live)';
+            badge.style.background = cfgSrc === 'config' ? '#78350f' : '#14532d';
+        }
+        ofBrUpdateLive(inst);
+        ofBrLoadJournal(inst);
+        if (window._ofBrVpTimer) clearInterval(window._ofBrVpTimer);
+        window._ofBrVpTimer = setInterval(() => ofBrUpdateLive(_ofBrPanelInst || inst), 1000);
+    })();
+}
+
+function ofBrSwitchPanelInstance(inst) {
+    ofBrRobotEditPanel(inst);
+}
+
+function ofBrPanelBodyHtml(inst, p) {
+    const num = (id, label, val, opts) => {
+        opts = opts || {};
+        return '<div class="metric-card"><div class="metric-label">' + label + '</div>' +
+            '<input id="' + id + '" class="input" type="number" value="' + (val !== undefined && val !== null && val !== '' ? val : (opts.def !== undefined ? opts.def : '')) + '"' +
+            (opts.step ? ' step="' + opts.step + '"' : '') + (opts.min !== undefined ? ' min="' + opts.min + '"' : '') +
+            ' style="width:' + (opts.w || 70) + 'px"></div>';
+    };
+    const chk = (id, label, val, color) =>
+        '<div class="metric-card" style="display:flex;align-items:center;gap:8px"><label style="display:flex;align-items:center;gap:6px;cursor:pointer">' +
+        '<input id="' + id + '" type="checkbox" ' + (val ? 'checked' : '') + ' style="width:18px;height:18px;cursor:pointer">' +
+        '<span style="font-size:13px;' + (color ? 'font-weight:bold;color:' + color : '') + '">' + label + '</span></label></div>';
+    return `
+        <!-- Живые индикаторы -->
+        <div class="metrics-row" style="flex-wrap:wrap;margin-bottom:12px">
+            <div class="metric-card" style="background:#1a2332;border:1px solid #007ACC;display:flex;flex-direction:column;align-items:center;gap:2px"><div style="display:flex;align-items:center;gap:4px"><input id="toggleBrCvd" type="checkbox" style="width:14px;height:14px;cursor:pointer" onchange="toggleOfBrSignal('${inst}','use_cvd', this.checked)"><div class="metric-label" style="color:#CE93D8">CVD Trend</div></div><div id="ofBrCvd" style="font-size:18px;font-weight:bold;color:#CE93D8">—</div></div>
+            <div class="metric-card" style="background:#1a2332;border:1px solid #007ACC;display:flex;flex-direction:column;align-items:center;gap:2px"><div style="display:flex;align-items:center;gap:4px"><input id="toggleBrDmWall" type="checkbox" style="width:14px;height:14px;cursor:pointer" onchange="toggleOfBrSignal('${inst}','use_dm_wall', this.checked)"><div class="metric-label" style="color:#FF7043">dm_wall</div></div><div id="ofBrDelta" style="font-size:18px;font-weight:bold;color:#FF7043">—</div></div>
+            <div class="metric-card" style="background:#1a2332;border:1px solid #007ACC;display:flex;flex-direction:column;align-items:center;gap:2px"><div style="display:flex;align-items:center;gap:4px"><input id="toggleBrCvdAccel" type="checkbox" style="width:14px;height:14px;cursor:pointer" onchange="toggleOfBrSignal('${inst}','use_cvd_accel', this.checked)"><div class="metric-label" style="color:#66BB6A">CVD Accel</div></div><div id="ofBrCvdAccel" style="font-size:18px;font-weight:bold;color:#66BB6A">—</div></div>
+            <div class="metric-card" style="display:flex;flex-direction:column;align-items:center;gap:2px"><div class="metric-label" style="color:#42A5F5">VAH</div><div id="ofBrVah" style="font-size:18px;font-weight:bold;color:#42A5F5">—</div></div>
+            <div class="metric-card" style="display:flex;flex-direction:column;align-items:center;gap:2px"><div class="metric-label" style="color:#FFB74D">POC</div><div id="ofBrPoc" style="font-size:18px;font-weight:bold;color:#FFB74D">—</div></div>
+            <div class="metric-card" style="display:flex;flex-direction:column;align-items:center;gap:2px"><div class="metric-label" style="color:#42A5F5">VAL</div><div id="ofBrVal" style="font-size:18px;font-weight:bold;color:#42A5F5">—</div></div>
+            <div class="metric-card" style="background:#1a2332;border:1px solid #607D8B;display:flex;flex-direction:column;align-items:center;gap:2px"><div class="metric-label" style="color:#B0BEC5">Фильтр</div><select id="ofBrDirFilter" class="input" style="width:80px;font-size:13px;font-weight:bold;background:transparent;color:#fff;border:1px solid #607D8B;text-align:center;cursor:pointer" onchange="ofBrSetDirection('${inst}', this.value)"><option value="both" style="color:#000">ОБА</option><option value="long" style="color:#000">LONG</option><option value="short" style="color:#000">SHORT</option></select></div>
+            <div class="metric-card"><div class="metric-label">Цена</div><div id="ofBrPrice" style="font-size:18px;font-weight:bold">—</div></div>
+            <div class="metric-card"><div class="metric-label">Позиция</div><div id="ofBrDir" style="font-size:18px;font-weight:bold">—</div></div>
+            <div class="metric-card"><div class="metric-label">Лоты</div><div id="ofBrLots" style="font-size:18px;font-weight:bold">0</div></div>
+            <div class="metric-card"><div class="metric-label">Ср. цена</div><div id="ofBrAvgPrice" style="font-size:18px;font-weight:bold">—</div></div>
+            <div class="metric-card"><div class="metric-label">PnL/лот</div><div id="ofBrPnlPerLot" style="font-size:18px;font-weight:bold">—</div></div>
+            <div class="metric-card"><div class="metric-label">PnL нереал.</div><div id="ofBrPnlUnreal" style="font-size:18px;font-weight:bold">—</div></div>
+            <div class="metric-card"><div class="metric-label">Realized</div><div id="ofBrRealized" style="font-size:18px;font-weight:bold">0₽</div></div>
+            <div class="metric-card"><div class="metric-label">Сигнал</div><div id="ofBrSignal" style="font-size:16px;font-weight:bold">—</div></div>
+            <div class="metric-card"><div class="metric-label">Hold</div><div id="ofBrHold" style="font-size:18px;font-weight:bold">0 мин</div></div>
+            <div class="metric-card"><div class="metric-label">Avg Levels</div><div id="ofBrAvgLvl" style="font-size:18px;font-weight:bold">0</div></div>
+            <div class="metric-card"><div class="metric-label">Pyr Levels</div><div id="ofBrPyrLvl" style="font-size:18px;font-weight:bold">0</div></div>
+            <div class="metric-card"><div class="metric-label">RT</div><div id="ofBrRt" style="font-size:18px;font-weight:bold">0</div></div>
+            <div class="metric-card"><div class="metric-label">Брокер лоты</div><div id="ofBrBrokerLots" style="font-size:18px;font-weight:bold">—</div></div>
+        </div>
+        <!-- Ручная коррекция позиции -->
+        <div class="metrics-row" style="flex-wrap:wrap;margin-bottom:12px;align-items:center;border:1px dashed #FF7043;border-radius:8px;padding:8px">
+            <div style="font-size:13px;color:#FF7043;font-weight:bold">✏️ Ручная корректировка (без ордеров — принять позицию в управление):</div>
+            <input id="ofBrAdjLots" class="input" type="number" placeholder="+3 / -3" style="width:90px" title="+N = добавить лонг, -N = шорт/закрытие">
+            <input id="ofBrAdjPrice" class="input" type="number" step="0.01" placeholder="Цена 97.50" style="width:120px">
+            <button class="btn btn-primary btn-sm" onclick="ofBrPositionAdjust('${inst}')">Корректировать</button>
+        </div>
+        <hr style="border-color:#2D2D44;margin:12px 0">
+        <!-- ТОРГОВЛЯ -->
+        <div style="font-size:12px;color:#9CA3AF;margin-bottom:6px;font-weight:bold">ТОРГОВЛЯ</div>
+        <div class="metrics-row" style="flex-wrap:wrap;margin-bottom:12px">
+            ${num('editOfBrLots','Lots',p.lots,{def:1,w:60})}
+            ${num('editOfBrMaxPyr','Max Pyramid',p.max_pyramid_levels,{def:1,w:60})}
+            ${num('editOfBrMaxAvg','Max Average',p.max_average_levels,{def:5,w:60})}
+            ${num('editOfBrStepAvg','Step Avg ($)',p.step_average,{def:0.35,step:'0.01',min:0.01,w:70})}
+            ${num('editOfBrStepPyr','Step Pyr ($)',p.step_pyramid,{def:25,step:'0.01',w:70})}
+            ${num('editOfBrMargin','Margin/лот ₽',p.margin_per_lot,{def:7000,w:80})}
+            ${num('editOfBrCommission','Комиссия ₽/сторона',p.commission,{def:0.9,step:'0.05',w:80})}
+            <div class="metric-card"><div class="metric-label">Timeframe</div><select id="editOfBrTf" class="input" style="width:70px"><option value="M1" ${p.timeframe==='M1'?'selected':''}>M1</option><option value="M5" ${(p.timeframe||'M5')==='M5'?'selected':''}>M5</option><option value="M15" ${p.timeframe==='M15'?'selected':''}>M15</option><option value="M30" ${p.timeframe==='M30'?'selected':''}>M30</option></select></div>
+            ${num('editOfBrSessionStart','Сессия с (HH:MM)',p.session_start,{def:'',w:80})}
+            ${num('editOfBrSessionEnd','Сессия до (HH:MM)',p.session_end,{def:'',w:80})}
+            ${num('editOfBrClosePriceAll','Close price All',p.close_price_all,{def:'',step:'0.01',w:90})}
+        </div>
+        <!-- РИСК -->
+        <div style="font-size:12px;color:#9CA3AF;margin-bottom:6px;font-weight:bold">РИСК</div>
+        <div class="metrics-row" style="flex-wrap:wrap;margin-bottom:12px">
+            <div class="metric-card"><div class="metric-label">SL Mode</div><select id="editOfBrSlMode" class="input" style="width:70px"><option value="rub" ${(p.stop_loss_mode||'rub')==='rub'?'selected':''}>₽</option><option value="pct" ${p.stop_loss_mode==='pct'?'selected':''}>%</option><option value="pts" ${p.stop_loss_mode==='pts'?'selected':''}>пт</option></select></div>
+            ${num('editOfBrSlValue','SL Value',p.stop_loss_value,{def:1000,step:'0.01',min:0,w:80})}
+            ${chk('editOfBrDailyStop','Daily Stop',p.enable_daily_stop!==false)}
+            ${num('editOfBrMinProfit','Min Profit/Lot $',p.min_profit_per_lot,{def:0.30,step:'0.01',min:0.01,w:70})}
+            ${num('editOfBrMaxHold','Max Hold (мин)',p.max_hold_minutes,{def:999,w:80})}
+        </div>
+        <!-- PARTIAL TP -->
+        <div style="font-size:12px;color:#9CA3AF;margin-bottom:6px;font-weight:bold">PARTIAL TP (LIFO)</div>
+        <div class="metrics-row" style="flex-wrap:wrap;margin-bottom:12px">
+            ${chk('editOfBrPartialTp','Partial TP',p.partial_tp!==false,'#66BB6A')}
+            ${num('editOfBrSpread','Spread $ (TP/лот)',p.spread,{def:0.15,step:'0.01',min:0.01,w:70})}
+            <div class="metric-card"><div class="metric-label">Close % All</div><select id="editOfBrCloseHalfPct" class="input" style="width:70px"><option value="0" ${(!p.close_half_pct)?'selected':''}>OFF</option><option value="50" ${p.close_half_pct===50?'selected':''}>50%</option><option value="40" ${p.close_half_pct===40?'selected':''}>40%</option><option value="30" ${p.close_half_pct===30?'selected':''}>30%</option><option value="20" ${p.close_half_pct===20?'selected':''}>20%</option><option value="10" ${p.close_half_pct===10?'selected':''}>10%</option></select></div>
+        </div>
+        <!-- СИГНАЛЫ -->
+        <div style="font-size:12px;color:#9CA3AF;margin-bottom:6px;font-weight:bold">СИГНАЛЫ</div>
+        <div class="metrics-row" style="flex-wrap:wrap;margin-bottom:12px">
+            ${chk('editOfBrUseCvdAccel','CVD Accel',p.use_cvd_accel!==false,'#66BB6A')}
+            ${num('editOfBrCvdAccelPeriod','Accel Period (бар)',p.cvd_accel_period,{def:10,w:60})}
+            ${num('editOfBrCvdAccelThresh','Accel Threshold',p.cvd_accel_threshold,{def:150,w:80})}
+            ${num('editOfBrCvdLookback','CVD Lookback',p.cvd_lookback,{def:10,w:60})}
+            ${chk('editOfBrUseCvd','CVD Trend EMA',p.use_cvd!==false,'#CE93D8')}
+            ${num('editOfBrCvdEmaF','CVD EMA Fast',p.cvd_ema_fast,{def:5,w:60})}
+            ${num('editOfBrCvdEmaS','CVD EMA Slow',p.cvd_ema_slow,{def:25,w:60})}
+            ${chk('editOfBrUseAggRatio','Agg Ratio Filter',p.use_agg_ratio!==false)}
+            ${num('editOfBrAggWindow','Agg Window (бар)',p.agg_window,{def:10,w:60})}
+            ${num('editOfBrAggRatioThresh','Agg Ratio Thr',p.agg_ratio_threshold,{def:0.35,step:'0.05',w:70})}
+            ${chk('editOfBrUseDmWall','dm_wall',p.use_dm_wall===true,'#FF7043')}
+            ${num('editOfBrDmLb','DM Lookback',p.dm_lookback,{def:5,w:60})}
+            ${num('editOfBrWallWin','Wall Window (с)',p.wall_window,{def:120,w:60})}
+            ${num('editOfBrWallMult','Wall Mult',p.wall_multiplier,{def:3,step:'0.5',w:60})}
+            ${num('editOfBrConfirm','Confirm In',p.signal_confirm_count,{def:1,min:1,w:50})}
+            ${num('editOfBrConfirmOut','Confirm Out',p.signal_confirm_exit,{def:18,min:1,w:50})}
+        </div>
+        <!-- ФИЛЬТРЫ -->
+        <div style="font-size:12px;color:#9CA3AF;margin-bottom:6px;font-weight:bold">ФИЛЬТРЫ</div>
+        <div class="metrics-row" style="flex-wrap:wrap;margin-bottom:12px">
+            ${chk('editOfBrUseVahVal','VAH/VAL Filter (range)',p.use_vah_val===true,'#42A5F5')}
+            ${num('editOfBrVahValPct','Value Area %',p.vah_val_pct,{def:95,min:50,w:60})}
+            ${num('editOfBrVahValBin','VP Bin Size $',p.vah_val_bin_size,{def:0.35,step:'0.01',min:0.01,w:70})}
+            <div class="metric-card"><div class="metric-label">VP Mode</div><select id="editOfBrVahValMode" class="input" style="width:90px;font-size:12px"><option value="fade" ${(p.vah_val_mode||'')==='fade'?'selected':''}>Fade</option><option value="breakout" ${p.vah_val_mode==='breakout'?'selected':''}>Breakout</option><option value="range" ${(p.vah_val_mode||'range')==='range'?'selected':''}>Range</option></select></div>
+            ${chk('editOfBrUseHl','HL Filter',p.hl_filter===true,'#66BB6A')}
+            ${num('editOfBrHlWindow','HL Окно (бар M5)',p.hl_window,{def:24,min:2,w:60})}
+            ${num('editOfBrHlDelta','HL Δ близости',p.hl_delta,{def:120,w:70})}
+            ${chk('editOfBrUseOb','OB Filter',p.enable_ob_filter!==false)}
+            ${num('editOfBrObMinLots','OB мин лотов',p.ob_min_lots,{def:20,w:60})}
+            ${num('editOfBrObRadius','OB радиус (пт)',p.ob_scan_radius,{def:50,w:60})}
+            ${chk('editOfBrVpFilter','VP Filter',p.vp_filter===true)}
+            <div class="metric-card" style="min-width:150px"><div class="metric-label">HL вердикт</div><div id="ofBrHlVerdict" style="font-size:14px;font-weight:bold;color:#9CA3AF">—</div></div>
+        </div>
+        <!-- VWEMA -->
+        <div style="font-size:12px;color:#9CA3AF;margin-bottom:6px;font-weight:bold">VWEMA (edp: вкл, main: выкл)</div>
+        <div class="metrics-row" style="flex-wrap:wrap;margin-bottom:12px">
+            ${chk('editOfBrUseVwema','VWEMA Filter',p.use_vwema===true,'#FF9800')}
+            ${num('editOfBrVwemaFast','VWEMA Fast',p.vwema_fast,{def:20,w:60})}
+            ${num('editOfBrVwemaSlow','VWEMA Slow',p.vwema_slow,{def:40,w:60})}
+            ${num('editOfBrVwemaFlat','Flat Threshold',p.vwema_flat_th,{def:1,step:'0.1',w:60})}
+            ${chk('editOfBrVwemaBlock','Block counter-trend',p.vwema_block_counter!==false)}
+            ${chk('editOfBrVwemaAvgExit','VWEMA Avg Exit',p.vwema_avg_exit===true)}
+            <div class="metric-card" style="min-width:120px"><div class="metric-label">VWEMA Trend</div><div id="ofBrVwemaTrend" style="font-size:16px;font-weight:bold;color:#9CA3AF">—</div></div>
+        </div>
+        <hr style="border-color:#2D2D44;margin:12px 0">
+        <!-- Журнал -->
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+            <strong>📉 Торговый журнал</strong>
+        </div>
+        <div id="ofBrJournalSummary" class="metrics-row" style="flex-wrap:wrap;margin-bottom:12px"></div>
+        <div style="display:flex;gap:8px;margin-bottom:12px;align-items:center">
+            <select id="ofBrJournalFilter" class="input" style="width:120px" onchange="ofBrRenderJournal()">
+                <option value="all">Все позиции</option>
+                <option value="LONG">Лонги</option>
+                <option value="SHORT">Шорты</option>
+                <option value="win">Прибыльные</option>
+                <option value="loss">Убыточные</option>
+            </select>
+            <span style="color:#9CA3AF;font-size:13px">с</span>
+            <input id="ofBrJournalDateFrom" class="input" type="date" style="width:130px" onchange="ofBrRenderJournal()">
+            <span style="color:#9CA3AF;font-size:13px">по</span>
+            <input id="ofBrJournalDateTo" class="input" type="date" style="width:130px" onchange="ofBrRenderJournal()">
+            <button class="btn btn-secondary btn-sm" onclick="ofBrLoadJournal('${inst}')">🔄 Обновить</button>
+        </div>
+        <table class="data-table" style="font-size:13px">
+            <thead><tr><th>Дата</th><th>Вход</th><th>Выход</th><th>Напр.</th><th>Цена вх.</th><th>Цена вых.</th><th>Лоты</th><th>PnL</th><th>Σ</th></tr></thead>
+            <tbody id="ofBrJournalBody"></tbody>
+        </table>
+    `;
+}
+
+function ofBrUpdateLive(inst) {
+    inst = inst || _ofBrPanelInst || 'main';
+    const s = window[ofBrCfg(inst).stateKey];
+    if (!s) return;
+    const setText = (id, val) => { const e = el(id); if (e) e.textContent = val; };
+    const setColor = (id, val) => {
+        const e = el(id); if (!e) return;
+        e.textContent = val >= 0 ? '+' + val.toFixed(0) : val.toFixed(0);
+        e.className = val >= 0 ? 'green' : 'red';
+    };
+    const price = s.currentPrice || 0;
+    setText('ofBrPrice', price > 0 ? price.toFixed(2) : '—');
+    const dirText = s.direction === 'LONG' ? '🟢 LONG' : s.direction === 'SHORT' ? '🔴 SHORT' : 'FLAT';
+    setText('ofBrDir', dirText);
+    setText('ofBrLots', s.totalLots || 0);
+    setText('ofBrAvgPrice', s.avgPrice > 0 ? s.avgPrice.toFixed(2) : '—');
+    const sgn = s.direction === 'SHORT' ? -1 : 1;
+    const pnlPerLot = price > 0 && s.avgPrice > 0 ? (price - s.avgPrice) * sgn : 0;
+    setText('ofBrPnlPerLot', pnlPerLot !== 0 ? (pnlPerLot > 0 ? '+' : '') + pnlPerLot.toFixed(2) + ' $' : '—');
+    setColor('ofBrPnlUnreal', s.unrealizedPnL || 0);
+    setText('ofBrRealized', (s.realizedPnL || 0).toFixed(0) + '₽');
+    setText('ofBrSignal', s.signalType || '—');
+    setText('ofBrHold', s.holdMinutes ? s.holdMinutes + ' мин' : '0 мин');
+    setText('ofBrAvgLvl', s.averageLevels || 0);
+    setText('ofBrPyrLvl', s.pyramidLevels || 0);
+    setText('ofBrRt', s.roundTrips || 0);
+    if (el('ofBrBrokerLots')) {
+        const bl = s.brokerLots;
+        const be = el('ofBrBrokerLots');
+        be.textContent = (bl === null || bl === undefined) ? '—' : (bl + (s.brokerMismatch ? ' ⚠️' : ''));
+        be.style.color = s.brokerMismatch ? 'var(--red)' : '';
+    }
+    if (s.vp) {
+        setText('ofBrVah', s.vp.vah ? s.vp.vah.toFixed(2) : '—');
+        setText('ofBrPoc', s.vp.poc ? s.vp.poc.toFixed(2) : '—');
+        setText('ofBrVal', s.vp.val ? s.vp.val.toFixed(2) : '—');
+    } else {
+        setText('ofBrVah', '—'); setText('ofBrPoc', '—'); setText('ofBrVal', '—');
+    }
+    if (s.cvdTrend) {
+        const cvdDir = s.cvdTrend.direction > 0 ? '↑' : s.cvdTrend.direction < 0 ? '↓' : '→';
+        const cvdVal = s.cvdTrend.emaFast !== null && s.cvdTrend.emaFast !== undefined ? cvdDir + ' ' + s.cvdTrend.emaFast.toFixed(0) : '—';
+        setText('ofBrCvd', cvdVal);
+    }
+    if (s.cvdAccel) {
+        const accelVal = (s.cvdAccel.value !== null && s.cvdAccel.value !== undefined) ? s.cvdAccel.value.toFixed(0) + ' (' + (s.cvdAccel.aggRatio || '—') + ')' : '—';
+        setText('ofBrCvdAccel', accelVal);
+    }
+    if (s.vwema) {
+        const vwDir = s.vwema.direction > 0 ? '↑ UP' : s.vwema.direction < 0 ? '↓ DOWN' : '→ FLAT';
+        setText('ofBrVwemaTrend', vwDir + ' (f=' + (s.vwema.ema_f ? s.vwema.ema_f.toFixed(0) : '—') + ' s=' + (s.vwema.ema_s ? s.vwema.ema_s.toFixed(0) : '—') + ')');
+    }
+    if (el('ofBrHlVerdict')) {
+        const hl = s.hl;
+        const v = el('ofBrHlVerdict');
+        if (!hl || !hl.enabled) { v.textContent = 'OFF'; v.style.color = '#6B7280'; }
+        else if (!hl.ready) { v.textContent = '⏳ прогрев окна'; v.style.color = '#9CA3AF'; }
+        else if (hl.verdict === 'both' || (hl.nearHigh && hl.nearLow)) { v.textContent = `🔀 любые (окно ${Math.round((hl.winHigh||0)-(hl.winLow||0))} ≤ Δ${hl.delta})`; v.style.color = '#9C27B0'; }
+        else if (hl.verdict === 'short_only') { v.textContent = `🔴 SHORT only (${(hl.winHigh||0).toFixed(2)})`; v.style.color = '#F44336'; }
+        else if (hl.verdict === 'long_only') { v.textContent = `🟢 LONG only (${(hl.winLow||0).toFixed(2)})`; v.style.color = '#4CAF50'; }
+        else { v.textContent = `✖ блок ${hl.winLow != null ? hl.winLow.toFixed(2) : '—'}–${hl.winHigh != null ? hl.winHigh.toFixed(2) : '—'}`; v.style.color = '#FF9800'; }
+    }
+}
+
+async function ofBrRobotSaveFromPanel() {
+    const inst = _ofBrPanelInst || 'main';
+    const cfg = ofBrCfg(inst);
+    const numOrNull = (id, cast, def) => {
+        const v = el(id)?.value;
+        if (v === undefined || v === '') return def;
+        const n = cast(v);
+        return isNaN(n) ? def : n;
+    };
+    const body = {
+        lots: numOrNull('editOfBrLots', parseInt, 1),
+        max_pyramid_levels: numOrNull('editOfBrMaxPyr', parseInt, 1),
+        max_average_levels: numOrNull('editOfBrMaxAvg', parseInt, 5),
+        step_average: numOrNull('editOfBrStepAvg', parseFloat, 0.35),
+        step_pyramid: numOrNull('editOfBrStepPyr', parseFloat, 25),
+        margin_per_lot: numOrNull('editOfBrMargin', parseFloat, 7000),
+        commission: numOrNull('editOfBrCommission', parseFloat, 0.9),
+        timeframe: el('editOfBrTf')?.value || 'M5',
+        session_start: el('editOfBrSessionStart')?.value || '',
+        session_end: el('editOfBrSessionEnd')?.value || '',
+        close_price_all: numOrNull('editOfBrClosePriceAll', parseFloat, 0),
+        stop_loss_mode: el('editOfBrSlMode')?.value || 'rub',
+        stop_loss_value: numOrNull('editOfBrSlValue', parseFloat, 1000),
+        enable_daily_stop: el('editOfBrDailyStop')?.checked !== false,
+        min_profit_per_lot: numOrNull('editOfBrMinProfit', parseFloat, 0.30),
+        max_hold_minutes: numOrNull('editOfBrMaxHold', parseInt, 999),
+        partial_tp: el('editOfBrPartialTp')?.checked !== false,
+        spread: numOrNull('editOfBrSpread', parseFloat, 0.15),
+        close_half_pct: parseInt(el('editOfBrCloseHalfPct')?.value) || 0,
+        use_cvd_accel: el('editOfBrUseCvdAccel')?.checked !== false,
+        cvd_accel_period: numOrNull('editOfBrCvdAccelPeriod', parseInt, 10),
+        cvd_accel_threshold: numOrNull('editOfBrCvdAccelThresh', parseFloat, 150),
+        cvd_lookback: numOrNull('editOfBrCvdLookback', parseInt, 10),
+        use_cvd: el('editOfBrUseCvd')?.checked !== false,
+        cvd_ema_fast: numOrNull('editOfBrCvdEmaF', parseInt, 5),
+        cvd_ema_slow: numOrNull('editOfBrCvdEmaS', parseInt, 25),
+        use_agg_ratio: el('editOfBrUseAggRatio')?.checked !== false,
+        agg_window: numOrNull('editOfBrAggWindow', parseInt, 10),
+        agg_ratio_threshold: numOrNull('editOfBrAggRatioThresh', parseFloat, 0.35),
+        use_dm_wall: el('editOfBrUseDmWall')?.checked === true,
+        dm_lookback: numOrNull('editOfBrDmLb', parseInt, 5),
+        wall_window: numOrNull('editOfBrWallWin', parseInt, 120),
+        wall_multiplier: numOrNull('editOfBrWallMult', parseFloat, 3),
+        signal_confirm_count: numOrNull('editOfBrConfirm', parseInt, 1),
+        signal_confirm_exit: numOrNull('editOfBrConfirmOut', parseInt, 18),
+        use_vah_val: el('editOfBrUseVahVal')?.checked === true,
+        vah_val_pct: numOrNull('editOfBrVahValPct', parseInt, 95),
+        vah_val_bin_size: numOrNull('editOfBrVahValBin', parseFloat, 0.35),
+        vah_val_mode: el('editOfBrVahValMode')?.value || 'range',
+        hl_filter: el('editOfBrUseHl')?.checked === true,
+        hl_window: numOrNull('editOfBrHlWindow', parseInt, 24),
+        hl_delta: numOrNull('editOfBrHlDelta', parseFloat, 120),
+        enable_ob_filter: el('editOfBrUseOb')?.checked !== false,
+        ob_min_lots: numOrNull('editOfBrObMinLots', parseInt, 20),
+        ob_scan_radius: numOrNull('editOfBrObRadius', parseInt, 50),
+        vp_filter: el('editOfBrVpFilter')?.checked === true,
+        use_vwema: el('editOfBrUseVwema')?.checked === true,
+        vwema_fast: numOrNull('editOfBrVwemaFast', parseInt, 20),
+        vwema_slow: numOrNull('editOfBrVwemaSlow', parseInt, 40),
+        vwema_flat_th: numOrNull('editOfBrVwemaFlat', parseFloat, 1),
+        vwema_block_counter: el('editOfBrVwemaBlock')?.checked !== false,
+        vwema_avg_exit: el('editOfBrVwemaAvgExit')?.checked === true,
+        direction_filter: el('ofBrDirFilter')?.value || 'both',
+    };
+    // 1) localStorage (offline-буфер)
+    localStorage.setItem('ofBrSavedParams_' + inst, JSON.stringify(body));
+    // 2) живой робот
+    try {
+        const resp = await fetch(cfg.api() + '/params', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body), signal: AbortSignal.timeout(4000)});
+        await resp.json();
+        localStorage.removeItem('ofBrSavedParams_' + inst);
+        const badge = el('ofBrCfgSrcBadge');
+        if (badge) { badge.textContent = 'источник: robot (live)'; badge.style.background = '#14532d'; }
+        addLog(nowTime(), 'INFO', '💾 OF-BR[' + cfg.label + '] конфиг сохранён в робота');
+        showToast('💾 Параметры ' + cfg.label + ' сохранены', 'ok');
+    } catch(e) {
+        // 3) робот offline → persist через серверный прокси в json
+        try {
+            const r2 = await fetch('/api/of/config/' + cfg.cfgName, {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body), signal: AbortSignal.timeout(4000)});
+            if (r2.ok) {
+                localStorage.removeItem('ofBrSavedParams_' + inst);
+                addLog(nowTime(), 'INFO', '💾 OF-BR[' + cfg.label + '] конфиг сохранён в json (робот offline)');
+                showToast('💾 Параметры ' + cfg.label + ' сохранены в конфиг (робот offline)', 'ok');
+            } else {
+                addLog(nowTime(), 'WARN', '💾 OF-BR[' + cfg.label + '] конфиг в localStorage (робот и прокси недоступны)');
+                showToast('⚠ Робот offline — параметры сохранены локально, применятся при старте', 'warn');
+            }
+        } catch(e2) {
+            addLog(nowTime(), 'WARN', '💾 OF-BR[' + cfg.label + '] конфиг в localStorage');
+            showToast('⚠ Робот offline — параметры сохранены локально, применятся при старте', 'warn');
+        }
+    }
+}
+
+// Auto-poll BR: оба инстанса каждые 2с
+(function() {
+    OF_BR_INSTANCE_ORDER.forEach(k => ofBrRobotPoll(k));
+    setInterval(async () => {
+        for (const k of OF_BR_INSTANCE_ORDER) await ofBrRobotPoll(k);
+        renderRobots();
+    }, 2000);
+})();
