@@ -6,7 +6,9 @@
 
 ---
 
-## Архитектура (актуально на 2026-08-19)
+## Архитектура
+
+**Полная актуальная архитектура — [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** (схема, потоки данных, порты, инварианты). Документация роботов: [docs/arbitrage_robot.md](docs/arbitrage_robot.md), [docs/orderflow_robot_si.md](docs/orderflow_robot_si.md), [docs/dataprovider.md](docs/dataprovider.md). Операционные правила: [RULES.md](RULES.md).
 
 ```
                     ┌────────────────────────────┐
