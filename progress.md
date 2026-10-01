@@ -235,3 +235,5 @@ finam_hub терял атрибут websockets.connect в потоке (с 25.09
 - UI: две строки BR в таблице роботов (read-only BRV6 бэдж), панель всех параметров §11, журнал с фильтрами, коррекция позиции, сохранение в робота или json при офлайне.
 - Тесты: test_of_br_params (48 по §11), test_of_br_logic (11) PASS; регрессия arb_fair 32/32, pos_sync 32/32, C# 24/24; сборка 0 ошибок; node --check OK.
 - Старт роботов НЕ выполнялся (R-001 — только Дмитрий).
+
+- 10:43 b7dd4b6: UI-дополнения — панель SYNC лотов с брокером (GET /sync?lots=N absolute), кнопка Применить для close_price_all (0=выкл), метрика OB-ликвидности, ретраи старта (4х3.5с под ~15с коннект Finam), confirm на стоп, TDZ-примечание для OF_BR_INSTANCE_ORDER. node --check OK, скопировано в bin wwwroot.
