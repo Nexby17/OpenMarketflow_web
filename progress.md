@@ -258,3 +258,5 @@ finam_hub терял атрибут websockets.connect в потоке (с 25.09
 - 16:02 749b6b8: finam_compat fix — SubscribeOrderTrade bidi-стрим требует request-итератор (итератор итератора ошибок OrderTradeRequest не iterable). Обнаружено при запуске BR-edp :5083; после фикса все 5 стримов стабильны (LatestTrades/OB/Bars/Quotes/OrderTrade).
 
 - 16:11 Рестарт C#-сервера (PID 11920 вместо 13948) с новой DLL (of_br/of_br_edp spec в RobotProcessManager). Причина: кнопка ▶ BR-edp в UI давала unknown robot — старый процесс держал DLL от 25.09. Копирование сборки в bin, DOTNET_ROOT=C:\Program Files\dotnet обязателен (D:\AutoClaw runtime 8.0 не тянет net10). Все python-роботы пережили: 5080 SI, 5081 MX, 5090/5091/5092 arb, 5083 BR-edp (мой ручной процесс 23596). Зомби: 17884 (старый main_of_mx без порта).
+
+- 16:26 16917d2: BR contract rollover BRV6->BRX6 (BR-11.26 фронт, октябрь истёк). config_of_br defaults + UI бэджи + перезапуск edp :5083 (mode=stopped, стримы BRX6 живые: цена 99.975, VP/POC 99.9, 30 баров). tradeHistory (67 сделок, realizedPnL -129.58) восстановлена из git-стейта после перезаписи процессом. Арб BRV6/BRZ6 календарь НЕ переведён (отдельное решение).
