@@ -2480,11 +2480,10 @@ async function renderRobots() {
 
     // Order Flow BR robot rows (два инстанса: main :5082 счёт 1225953, edp :5083 счёт 2049688)
     // Инструмент — READ-ONLY бэдж BRV6 (переключение инструмента для BR не поддерживается: символ из env сервиса)
-    const OF_BR_INSTANCE_ORDER = ['main', 'edp'];
+    // OF_BR_INSTANCE_ORDER/OF_BR_INSTANCES определены в BR-блоке внизу файла (renderRobots вызывается только после полной загрузки скрипта — TDZ не задеваем)
     const ofBrRows = OF_BR_INSTANCE_ORDER.map(inst => {
         const cfg = OF_BR_INSTANCES[inst];
         const s = window['ofBrRobot_' + inst];
-        const instLabel = cfg.label;
         if (s) {
             const mode = s.mode || 'stopped';
             const modeText = mode === 'running' ? '🟢 Работает' : mode === 'paused' ? '🟡 Пауза' : '🔴 Остановлен';
@@ -6616,6 +6615,7 @@ const OF_BR_INSTANCES = {
             account: '2049688', symbol: 'BRV6', badge: 'BR-edp', badgeColor: '#007ACC',
             stateKey: 'ofBrRobot_edp', cfgName: 'of_br_edp', label: 'BRV6 edp', procName: 'of_br_edp' }
 };
+const OF_BR_INSTANCE_ORDER = ['main', 'edp'];
 OF_BR_INSTANCE_ORDER.forEach(k => { window['ofBrRobot_' + k] = null; window['_ofBrWasOnline_' + k] = false; });
 let _ofBrJournalTrades = [];
 let _ofBrJournalInst = null;
@@ -6671,6 +6671,7 @@ async function toggleOfBrSignal(inst, param, value) {
 
 async function ofBrRobotApi(inst, action) {
     const cfg = ofBrCfg(inst);
+    if (action === 'stop' && !confirm('Стоп ' + cfg.label + '? Снимет ордера и закроет позицию по рынку.')) return;
     try {
         // F-012: одна кнопка = поднять процесс + включить (как MXU6)
         if (action === 'start') {
@@ -6690,8 +6691,22 @@ async function ofBrRobotApi(inst, action) {
                 return;
             }
         }
-        const resp = await fetch(cfg.api() + '/' + action, {method: 'POST'});
-        const data = await resp.json().catch(() => ({}));
+        // POST /start с ретраями: после подъёма процесса роботу нужно ~15с на коннект Finam,
+        // поэтому при офлайне — пара попыток с задержкой 3.5с (только для start)
+        const maxAttempts = action === 'start' ? 4 : 1;
+        let resp = null, data = {};
+        for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+            try {
+                resp = await fetch(cfg.api() + '/' + action, {method: 'POST', signal: AbortSignal.timeout(5000)});
+                data = await resp.json().catch(() => ({}));
+                break;
+            } catch(re) {
+                if (attempt < maxAttempts) {
+                    addLog(nowTime(), 'INFO', 'OF-BR[' + cfg.label + '] ' + action + ': попытка ' + attempt + ' не удалась (робот поднимается), retry через 3.5с');
+                    await new Promise(r => setTimeout(r, 3500));
+                } else { throw re; }
+            }
+        }
         addLog(nowTime(), 'INFO', 'OF-BR[' + cfg.label + '] ' + action + ': ' + JSON.stringify(data).slice(0, 120));
         setTimeout(async () => { await ofBrRobotPoll(inst); renderRobots(); }, 500);
     } catch(e) {
@@ -6871,6 +6886,51 @@ async function ofBrPositionAdjust(inst) {
     } catch(e) { alert('Сеть: ' + e.message); }
 }
 
+// === Sync лотов с брокером (GET /sync?lots=N — жёсткая подгонка внутреннего счёта лотов, absolute) ===
+async function ofBrSyncLots(inst) {
+    inst = inst || _ofBrPanelInst || 'main';
+    const cfg = ofBrCfg(inst);
+    const raw = el('ofBrSyncLots')?.value;
+    const lots = parseInt(raw);
+    if (raw === undefined || raw === null || raw === '' || isNaN(lots) || lots < 0) { alert('Введи абсолютное кол-во лотов у брокера (0…N)'); return; }
+    const s = window[cfg.stateKey] || {};
+    if (!confirm('SYNC ' + cfg.label + ': внутренний счёт лотов робота будет приведён к ' + lots +
+        ' (сейчас робот: ' + (s.totalLots || 0) + ', брокер: ' + (s.brokerLots != null ? s.brokerLots : '?') + ').\nПродолжить?')) return;
+    try {
+        const r = await fetch(cfg.api() + '/sync?lots=' + lots, {signal: AbortSignal.timeout(8000)});
+        const j = await r.json();
+        if (!r.ok) { alert('Ошибка: ' + (j.error || r.status)); return; }
+        addLog(nowTime(), 'INFO', '🔧 ' + cfg.label + ' SYNC: lots ' + j.old_lots + ' → ' + j.new_lots + ' (avg ' + (j.avg_price || 0).toFixed(2) + ')');
+        showToast('🔧 SYNC ' + cfg.label + ': ' + j.old_lots + ' → ' + j.new_lots + ' лот.', 'ok');
+        if (el('ofBrSyncLots')) el('ofBrSyncLots').value = '';
+        ofBrRobotPoll(inst);
+    } catch(e) { alert('Сеть: ' + e.message); }
+}
+
+// === Ручная цена close_price_all (0 = выключено; применить сразу и в робота, и в конфиг) ===
+async function ofBrApplyClosePriceAll(inst) {
+    inst = inst || _ofBrPanelInst || 'main';
+    const cfg = ofBrCfg(inst);
+    const raw = el('editOfBrClosePriceAll')?.value;
+    const price = (raw === '' || raw === undefined || raw === null) ? 0 : parseFloat(raw);
+    if (isNaN(price) || price < 0) { alert('Цена должна быть числом ≥ 0 (0 = выключено)'); return; }
+    if (price > 0 && !confirm('Выставить ручную цель ' + cfg.label + ': закрыть ВСЮ позицию по рынку при достижении цены ' + price.toFixed(2) + '?')) return;
+    if (price === 0 && !confirm('Отключить ручную цель close_price_all (0)?')) return;
+    try {
+        const r = await fetch(cfg.api() + '/params', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({close_price_all: price}), signal: AbortSignal.timeout(4000)});
+        await r.json();
+        addLog(nowTime(), 'INFO', '🎯 ' + cfg.label + ' close_price_all = ' + price + (price === 0 ? ' (выкл)' : ''));
+        showToast('🎯 close_price_all = ' + price + (price === 0 ? ' (выключено)' : ''), 'ok');
+    } catch(e) {
+        try {
+            const r2 = await fetch('/api/of/config/' + cfg.cfgName, {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({close_price_all: price}), signal: AbortSignal.timeout(4000)});
+            if (r2.ok) { showToast('🎯 close_price_all = ' + price + ' сохранён в конфиг (робот offline)', 'ok'); }
+            else { showToast('⚠ Не сохранить close_price_all', 'error'); return; }
+        } catch(e2) { showToast('⚠ Робот offline, прокси недоступен — close_price_all не применён', 'error'); return; }
+    }
+    ofBrRobotPoll(inst);
+}
+
 // === Панель параметров BR (все параметры §11 документации) ===
 function ofBrRobotEditPanel(inst) {
     inst = inst || 'main';
@@ -6983,6 +7043,13 @@ function ofBrPanelBodyHtml(inst, p) {
             <input id="ofBrAdjPrice" class="input" type="number" step="0.01" placeholder="Цена 97.50" style="width:120px">
             <button class="btn btn-primary btn-sm" onclick="ofBrPositionAdjust('${inst}')">Корректировать</button>
         </div>
+        <!-- Sync лотов с брокером -->
+        <div class="metrics-row" style="flex-wrap:wrap;margin-bottom:12px;align-items:center;border:1px dashed #607D8B;border-radius:8px;padding:8px">
+            <div style="font-size:13px;color:#B0BEC5;font-weight:bold">🔧 SYNC лотов с брокером (жёсткая подгонка счёта робота, absolute):</div>
+            <input id="ofBrSyncLots" class="input" type="number" min="0" step="1" placeholder="лотов у брокера" style="width:130px" title="Абсолютное кол-во лотов по брокеру — очередь робота будет подогнана (0 = флэт)">
+            <button class="btn btn-warning btn-sm" onclick="ofBrSyncLots('${inst}')">SYNC</button>
+            <span id="ofBrSyncHint" style="font-size:12px;color:#9CA3AF">робот: <span id="ofBrSyncRobotLots">—</span> | брокер: <span id="ofBrSyncBrokerLots">—</span></span>
+        </div>
         <hr style="border-color:#2D2D44;margin:12px 0">
         <!-- ТОРГОВЛЯ -->
         <div style="font-size:12px;color:#9CA3AF;margin-bottom:6px;font-weight:bold">ТОРГОВЛЯ</div>
@@ -6995,9 +7062,10 @@ function ofBrPanelBodyHtml(inst, p) {
             ${num('editOfBrMargin','Margin/лот ₽',p.margin_per_lot,{def:7000,w:80})}
             ${num('editOfBrCommission','Комиссия ₽/сторона',p.commission,{def:0.9,step:'0.05',w:80})}
             <div class="metric-card"><div class="metric-label">Timeframe</div><select id="editOfBrTf" class="input" style="width:70px"><option value="M1" ${p.timeframe==='M1'?'selected':''}>M1</option><option value="M5" ${(p.timeframe||'M5')==='M5'?'selected':''}>M5</option><option value="M15" ${p.timeframe==='M15'?'selected':''}>M15</option><option value="M30" ${p.timeframe==='M30'?'selected':''}>M30</option></select></div>
-            ${num('editOfBrSessionStart','Сессия с (HH:MM)',p.session_start,{def:'',w:80})}
-            ${num('editOfBrSessionEnd','Сессия до (HH:MM)',p.session_end,{def:'',w:80})}
-            ${num('editOfBrClosePriceAll','Close price All',p.close_price_all,{def:'',step:'0.01',w:90})}
+            ${num('editOfBrSessionStart','Сессия с (пусто = вся)',p.session_start,{def:'',w:80})}
+            ${num('editOfBrSessionEnd','Сессия до (пусто = вся)',p.session_end,{def:'',w:80})}
+            ${num('editOfBrClosePriceAll','Close price All (0=выкл)',p.close_price_all,{def:'',step:'0.01',w:90})}
+            <div class="metric-card" style="display:flex;align-items:center;gap:6px"><button class="btn btn-primary btn-sm" onclick="ofBrApplyClosePriceAll('${inst}')" title="Применить ручную цель закрытия всей позиции сразу (0 = выключено)">🎯 Применить</button></div>
         </div>
         <!-- РИСК -->
         <div style="font-size:12px;color:#9CA3AF;margin-bottom:6px;font-weight:bold">РИСК</div>
@@ -7050,6 +7118,7 @@ function ofBrPanelBodyHtml(inst, p) {
             ${num('editOfBrObRadius','OB радиус (пт)',p.ob_scan_radius,{def:50,w:60})}
             ${chk('editOfBrVpFilter','VP Filter',p.vp_filter===true)}
             <div class="metric-card" style="min-width:150px"><div class="metric-label">HL вердикт</div><div id="ofBrHlVerdict" style="font-size:14px;font-weight:bold;color:#9CA3AF">—</div></div>
+            <div class="metric-card" style="min-width:110px"><div class="metric-label">OB ликвидность</div><div id="ofBrObNear" style="font-size:14px;font-weight:bold;color:#9CA3AF">—</div></div>
         </div>
         <!-- VWEMA -->
         <div style="font-size:12px;color:#9CA3AF;margin-bottom:6px;font-weight:bold">VWEMA (edp: вкл, main: выкл)</div>
@@ -7139,8 +7208,23 @@ function ofBrUpdateLive(inst) {
     }
     if (s.vwema) {
         const vwDir = s.vwema.direction > 0 ? '↑ UP' : s.vwema.direction < 0 ? '↓ DOWN' : '→ FLAT';
-        setText('ofBrVwemaTrend', vwDir + ' (f=' + (s.vwema.ema_f ? s.vwema.ema_f.toFixed(0) : '—') + ' s=' + (s.vwema.ema_s ? s.vwema.ema_s.toFixed(0) : '—') + ')');
+        setText('ofBrVwemaTrend', vwDir + ' (f=' + (s.vwema.ema_f != null ? s.vwema.ema_f.toFixed(0) : '—') + ' s=' + (s.vwema.ema_s != null ? s.vwema.ema_s.toFixed(0) : '—') + ')');
     }
+    // CVD-сырое значение (для заголовка панели)
+    if (el('ofBrCvdVal') && s.cvd !== null && s.cvd !== undefined) el('ofBrCvdVal').textContent = (s.cvd > 0 ? '+' : '') + s.cvd.toFixed(0);
+    // OB-ликвидность (near_buy + near_sell вокруг mid, из /status при наличии)
+    if (el('ofBrObNear')) {
+        const v = el('ofBrObNear');
+        if (s.ob && (s.ob.near_buy !== undefined || s.ob.near_sell !== undefined)) {
+            const near = (s.ob.near_buy || 0) + (s.ob.near_sell || 0);
+            const minLots = (s.params && s.params.ob_min_lots) || 20;
+            v.textContent = near + ' лот. (B' + (s.ob.near_buy || 0) + '/S' + (s.ob.near_sell || 0) + ')';
+            v.style.color = near >= minLots ? 'var(--green)' : 'var(--red)';
+        } else { v.textContent = '—'; v.style.color = '#9CA3AF'; }
+    }
+    // SYNC-хинт (робот vs брокер лоты)
+    if (el('ofBrSyncRobotLots')) el('ofBrSyncRobotLots').textContent = s.totalLots || 0;
+    if (el('ofBrSyncBrokerLots')) el('ofBrSyncBrokerLots').textContent = (s.brokerLots !== null && s.brokerLots !== undefined) ? s.brokerLots : '?';
     if (el('ofBrHlVerdict')) {
         const hl = s.hl;
         const v = el('ofBrHlVerdict');
