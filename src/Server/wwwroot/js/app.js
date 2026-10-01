@@ -2479,7 +2479,7 @@ async function renderRobots() {
     }
 
     // Order Flow BR robot rows (два инстанса: main :5082 счёт 1225953, edp :5083 счёт 2049688)
-    // Инструмент — READ-ONLY бэдж BRV6 (переключение инструмента для BR не поддерживается: символ из env сервиса)
+    // Инструмент — READ-ONLY бэдж BRX6 (переключение инструмента для BR не поддерживается: символ из env сервиса)
     // OF_BR_INSTANCE_ORDER/OF_BR_INSTANCES определены в BR-блоке внизу файла (renderRobots вызывается только после полной загрузки скрипта — TDZ не задеваем)
     const ofBrRows = OF_BR_INSTANCE_ORDER.map(inst => {
         const cfg = OF_BR_INSTANCES[inst];
@@ -6603,17 +6603,17 @@ function arbCopyPositionDialog(inst) {
 // ============================================================================
 // === ORDER FLOW BR (Brent) — два инстанса: main :5082 (счёт 1225953), edp :5083 (счёт 2049688)
 // === Счёт жёстко привязан к инстансу (env), POST /account НЕ используется (защита от двойной торговли).
-// === Инструмент BRV6 — read-only (символ задаётся env сервиса, переключение из UI не поддерживается).
+// === Инструмент BRX6 — read-only (символ задаётся env сервиса, переключение из UI не поддерживается).
 // === Цены BR дробные (шаг 0.01) — все ценовые поля toFixed(2), инпуты step="0.01".
 // ============================================================================
 
 const OF_BR_INSTANCES = {
     main: { port: 5082, api: () => 'http://' + window.location.hostname + ':5082',
-            account: '1225953', symbol: 'BRV6', badge: 'BR', badgeColor: '#E65100',
-            stateKey: 'ofBrRobot_main', cfgName: 'of_br', label: 'BRV6', procName: 'of_br' },
+            account: '1225953', symbol: 'BRX6', badge: 'BR', badgeColor: '#E65100',
+            stateKey: 'ofBrRobot_main', cfgName: 'of_br', label: 'BRX6', procName: 'of_br' },
     edp:  { port: 5083, api: () => 'http://' + window.location.hostname + ':5083',
-            account: '2049688', symbol: 'BRV6', badge: 'BR-edp', badgeColor: '#007ACC',
-            stateKey: 'ofBrRobot_edp', cfgName: 'of_br_edp', label: 'BRV6 edp', procName: 'of_br_edp' }
+            account: '2049688', symbol: 'BRX6', badge: 'BR-edp', badgeColor: '#007ACC',
+            stateKey: 'ofBrRobot_edp', cfgName: 'of_br_edp', label: 'BRX6 edp', procName: 'of_br_edp' }
 };
 const OF_BR_INSTANCE_ORDER = ['main', 'edp'];
 OF_BR_INSTANCE_ORDER.forEach(k => { window['ofBrRobot_' + k] = null; window['_ofBrWasOnline_' + k] = false; });
@@ -6934,6 +6934,8 @@ async function ofBrApplyClosePriceAll(inst) {
 // === Панель параметров BR (все параметры §11 документации) ===
 function ofBrRobotEditPanel(inst) {
     inst = inst || 'main';
+    // Не оставлять висящий таймер прошлой панели (при переключении инстанса тоже)
+    if (window._ofBrVpTimer) { clearInterval(window._ofBrVpTimer); window._ofBrVpTimer = null; }
     _ofBrPanelInst = inst;
     const existing = el('ofBrRobotEditPanel');
     if (existing) { existing.remove(); }
@@ -6959,6 +6961,7 @@ function ofBrRobotEditPanel(inst) {
             </select>
             <button class="btn btn-primary btn-sm" onclick="ofBrRobotSaveFromPanel()">💾 Сохранить</button>
             <span id="ofBrCfgSrcBadge" style="font-size:11px;padding:2px 8px;border-radius:10px;opacity:.85"></span>
+            <span style="font-size:11px;color:#9CA3AF" title="Сырое значение CVD">CVD: <span id="ofBrCvdVal" style="font-weight:bold;color:#CE93D8">—</span></span>
             <button class="btn btn-secondary btn-sm" onclick="if(window._ofBrVpTimer){clearInterval(window._ofBrVpTimer);window._ofBrVpTimer=null;}el('ofBrRobotEditPanel')?.remove()">✕</button>
         </div>
         <div style="padding:12px" id="ofBrPanelBody">
@@ -7018,7 +7021,7 @@ function ofBrPanelBodyHtml(inst, p) {
             <div class="metric-card" style="background:#1a2332;border:1px solid #007ACC;display:flex;flex-direction:column;align-items:center;gap:2px"><div style="display:flex;align-items:center;gap:4px"><input id="toggleBrCvd" type="checkbox" style="width:14px;height:14px;cursor:pointer" onchange="toggleOfBrSignal('${inst}','use_cvd', this.checked)"><div class="metric-label" style="color:#CE93D8">CVD Trend</div></div><div id="ofBrCvd" style="font-size:18px;font-weight:bold;color:#CE93D8">—</div></div>
             <div class="metric-card" style="background:#1a2332;border:1px solid #007ACC;display:flex;flex-direction:column;align-items:center;gap:2px"><div style="display:flex;align-items:center;gap:4px"><input id="toggleBrDmWall" type="checkbox" style="width:14px;height:14px;cursor:pointer" onchange="toggleOfBrSignal('${inst}','use_dm_wall', this.checked)"><div class="metric-label" style="color:#FF7043">dm_wall</div></div><div id="ofBrDelta" style="font-size:18px;font-weight:bold;color:#FF7043">—</div></div>
             <div class="metric-card" style="background:#1a2332;border:1px solid #007ACC;display:flex;flex-direction:column;align-items:center;gap:2px"><div style="display:flex;align-items:center;gap:4px"><input id="toggleBrCvdAccel" type="checkbox" style="width:14px;height:14px;cursor:pointer" onchange="toggleOfBrSignal('${inst}','use_cvd_accel', this.checked)"><div class="metric-label" style="color:#66BB6A">CVD Accel</div></div><div id="ofBrCvdAccel" style="font-size:18px;font-weight:bold;color:#66BB6A">—</div></div>
-            <div class="metric-card" style="display:flex;flex-direction:column;align-items:center;gap:2px"><div class="metric-label" style="color:#42A5F5">VAH</div><div id="ofBrVah" style="font-size:18px;font-weight:bold;color:#42A5F5">—</div></div>
+            <div class="metric-card" style="display:flex;flex-direction:column;align-items:center;gap:2px"><div style="display:flex;align-items:center;gap:4px"><input id="toggleBrVp" type="checkbox" style="width:14px;height:14px;cursor:pointer" onchange="toggleOfBrSignal('${inst}','use_vah_val', this.checked)"><div class="metric-label" style="color:#42A5F5">VAH</div></div><div id="ofBrVah" style="font-size:18px;font-weight:bold;color:#42A5F5">—</div></div>
             <div class="metric-card" style="display:flex;flex-direction:column;align-items:center;gap:2px"><div class="metric-label" style="color:#FFB74D">POC</div><div id="ofBrPoc" style="font-size:18px;font-weight:bold;color:#FFB74D">—</div></div>
             <div class="metric-card" style="display:flex;flex-direction:column;align-items:center;gap:2px"><div class="metric-label" style="color:#42A5F5">VAL</div><div id="ofBrVal" style="font-size:18px;font-weight:bold;color:#42A5F5">—</div></div>
             <div class="metric-card" style="background:#1a2332;border:1px solid #607D8B;display:flex;flex-direction:column;align-items:center;gap:2px"><div class="metric-label" style="color:#B0BEC5">Фильтр</div><select id="ofBrDirFilter" class="input" style="width:80px;font-size:13px;font-weight:bold;background:transparent;color:#fff;border:1px solid #607D8B;text-align:center;cursor:pointer" onchange="ofBrSetDirection('${inst}', this.value)"><option value="both" style="color:#000">ОБА</option><option value="long" style="color:#000">LONG</option><option value="short" style="color:#000">SHORT</option></select></div>
@@ -7062,8 +7065,8 @@ function ofBrPanelBodyHtml(inst, p) {
             ${num('editOfBrMargin','Margin/лот ₽',p.margin_per_lot,{def:7000,w:80})}
             ${num('editOfBrCommission','Комиссия ₽/сторона',p.commission,{def:0.9,step:'0.05',w:80})}
             <div class="metric-card"><div class="metric-label">Timeframe</div><select id="editOfBrTf" class="input" style="width:70px"><option value="M1" ${p.timeframe==='M1'?'selected':''}>M1</option><option value="M5" ${(p.timeframe||'M5')==='M5'?'selected':''}>M5</option><option value="M15" ${p.timeframe==='M15'?'selected':''}>M15</option><option value="M30" ${p.timeframe==='M30'?'selected':''}>M30</option></select></div>
-            ${num('editOfBrSessionStart','Сессия с (пусто = вся)',p.session_start,{def:'',w:80})}
-            ${num('editOfBrSessionEnd','Сессия до (пусто = вся)',p.session_end,{def:'',w:80})}
+            <div class="metric-card"><div class="metric-label">Сессия с (HH:MM)</div><input id="editOfBrSessionStart" class="input" type="text" placeholder="09:10" value="${p.session_start||''}" style="width:80px" title="Пусто = вся сессия"></div>
+            <div class="metric-card"><div class="metric-label">Сессия до (HH:MM)</div><input id="editOfBrSessionEnd" class="input" type="text" placeholder="23:45" value="${p.session_end||''}" style="width:80px" title="Пусто = вся сессия"></div>
             ${num('editOfBrClosePriceAll','Close price All (0=выкл)',p.close_price_all,{def:'',step:'0.01',w:90})}
             <div class="metric-card" style="display:flex;align-items:center;gap:6px"><button class="btn btn-primary btn-sm" onclick="ofBrApplyClosePriceAll('${inst}')" title="Применить ручную цель закрытия всей позиции сразу (0 = выключено)">🎯 Применить</button></div>
         </div>
@@ -7113,6 +7116,8 @@ function ofBrPanelBodyHtml(inst, p) {
             ${chk('editOfBrUseHl','HL Filter',p.hl_filter===true,'#66BB6A')}
             ${num('editOfBrHlWindow','HL Окно (бар M5)',p.hl_window,{def:24,min:2,w:60})}
             ${num('editOfBrHlDelta','HL Δ близости',p.hl_delta,{def:120,w:70})}
+            ${chk('editOfBrStepAtr','Step ATR (сетка по ATR)',p.step_atr===true)}
+            ${num('editOfBrAtrPeriod','ATR Period',p.atr_period,{def:14,w:60})}
             ${chk('editOfBrUseOb','OB Filter',p.enable_ob_filter!==false)}
             ${num('editOfBrObMinLots','OB мин лотов',p.ob_min_lots,{def:20,w:60})}
             ${num('editOfBrObRadius','OB радиус (пт)',p.ob_scan_radius,{def:50,w:60})}
@@ -7210,6 +7215,13 @@ function ofBrUpdateLive(inst) {
         const vwDir = s.vwema.direction > 0 ? '↑ UP' : s.vwema.direction < 0 ? '↓ DOWN' : '→ FLAT';
         setText('ofBrVwemaTrend', vwDir + ' (f=' + (s.vwema.ema_f != null ? s.vwema.ema_f.toFixed(0) : '—') + ' s=' + (s.vwema.ema_s != null ? s.vwema.ema_s.toFixed(0) : '—') + ')');
     }
+    // Синхронизация тумблеров шапки и фильтра направления из живых параметров робота (как у SI)
+    const p = s.params || {};
+    if (el('toggleBrCvd')) el('toggleBrCvd').checked = p.use_cvd !== false;
+    if (el('toggleBrDmWall')) el('toggleBrDmWall').checked = p.use_dm_wall === true;
+    if (el('toggleBrCvdAccel')) el('toggleBrCvdAccel').checked = p.use_cvd_accel !== false;
+    if (el('toggleBrVp')) el('toggleBrVp').checked = (p.use_vah_val === true);
+    if (el('ofBrDirFilter') && s.directionFilter) el('ofBrDirFilter').value = s.directionFilter;
     // CVD-сырое значение (для заголовка панели)
     if (el('ofBrCvdVal') && s.cvd !== null && s.cvd !== undefined) el('ofBrCvdVal').textContent = (s.cvd > 0 ? '+' : '') + s.cvd.toFixed(0);
     // OB-ликвидность (near_buy + near_sell вокруг mid, из /status при наличии)
@@ -7289,6 +7301,8 @@ async function ofBrRobotSaveFromPanel() {
         hl_filter: el('editOfBrUseHl')?.checked === true,
         hl_window: numOrNull('editOfBrHlWindow', parseInt, 24),
         hl_delta: numOrNull('editOfBrHlDelta', parseFloat, 120),
+        step_atr: el('editOfBrStepAtr')?.checked === true,
+        atr_period: numOrNull('editOfBrAtrPeriod', parseInt, 14),
         enable_ob_filter: el('editOfBrUseOb')?.checked !== false,
         ob_min_lots: numOrNull('editOfBrObMinLots', parseInt, 20),
         ob_scan_radius: numOrNull('editOfBrObRadius', parseInt, 50),
