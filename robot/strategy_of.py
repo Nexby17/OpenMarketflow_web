@@ -1279,15 +1279,24 @@ class OrderFlowStrategy:
         self._signal_type = ""
         self._broker_avg_price = 0.0
 
-    def _effective_step(self, average: bool = True) -> int:
-        """Get effective step (with optional ATR adaptation)."""
+    def _effective_step(self, average: bool = True) -> float:
+        """Get effective step (with optional ATR adaptation).
+
+        F-055 fix: BR steps are fractional (0.35-0.40$); the old int() math
+        (int(base * atr/50)) collapsed them to 0 -> ZeroDivisionError in
+        _check_averaging. Keep float math and clamp to a 1-tick minimum (0.01).
+        SI behavior unchanged for integer steps (ATR ~ step scale)."""
+        base = self.p.step_average if average else self.p.step_pyramid
         if not self.p.step_atr:
-            return self.p.step_average if average else self.p.step_pyramid
+            return base
         # ATR-adaptive: step = base × (ATR / 50), clamped to [base/2, base×3]
         atr = self.signals._get_atr()
-        base = self.p.step_average if average else self.p.step_pyramid
-        adapted = int(base * (atr / 50.0))
-        return max(base // 2, min(adapted, base * 3))
+        if not atr or atr <= 0:
+            return base
+        adapted = base * (atr / 50.0)
+        clamped = max(base / 2.0, min(adapted, base * 3.0))
+        # Never below one price tick (BR 0.01; SI integer steps unaffected)
+        return max(clamped, 0.01)
 
     # ---------- State persistence ----------
 
