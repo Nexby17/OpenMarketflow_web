@@ -1005,6 +1005,16 @@
       "commit": "75e18a9,b7dd4b6",
       "date": "2026-10-01",
       "notes": "Two instances :5082 main/1225953 and :5083 edp/2049688; F-048 finam_compat streams; UI panel covers doc S11 fully + sync lots, close_price_all button, OB liquidity, start retries"
+    },
+    {
+      "id": "F-056",
+      "name": "Уборка проекта: −5,6 ГБ мусора, код-зомби удалён, папки-инстансы сжаты до examples",
+      "area": "infra/cleanup",
+      "status": "done",
+      "owner": "main",
+      "commits": [],
+      "summary": "01.10 (поручение Дмитрия, план утверждён): удалены soak-логи robot/*.txt (5398 МБ), *.phase1.bak, corrupt-state, paper_lab артефакты, .openclaw-build.log, of_pt.json. Из git: main_patch.py/collector.py/orders_grpc.py (без импортов; gRPC запрещён) и arb_lkoh_lku6/ (старая схема, не запускался). arb_sber_sru6/arb_br_calendar сжаты до *.example (устаревшие копии main_arb.py удалены; живые 5091/5092 используют корневой main_arb.py). robot/README.md — таблица под env-схему. Правило R-020: ротация логов 30 дней (удалено 53 файла/208 МБ). Боевые роботы не затронуты.",
+      "date": "2026-10-01"
     }
   ]
 }

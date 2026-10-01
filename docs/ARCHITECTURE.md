@@ -52,7 +52,13 @@ ASP.NET Minimal API (top-level Program.cs), порт 5050, cookie-аутенти
 - **ChartController + wwwroot** (`js/app.js` v115+) — веб-дашборд: график (LightweightCharts, UTC+10800 MSK), стакан, панели роботов (arb/of/of_mx), аккаунты, журнал сделок.
 - **RobotProcessManager** — старт/стоп процессов Python-роботов из UI (`/api/of/process/{name}/start|stop`); запуск боевых — только Дмитрием (R-001).
 - **FinamConnector — REST-only**: gRPC из C# удалён 2026-08-17 (см. README «Актуально»).
-- **AlfaBridge** (`src/AlfaBridge`) — мост Альфа-Директ PRO API (WS 127.0.0.1:3366): в проде не используется, сохранён как эксперимент.
+- **AlfaBridge** (`src/AlfaBridge`) — мост Альфа-Директ PRO API (WS 127.0.0.1:3366): **legacy, в проде не используется**.
+
+### Legacy-слои (в solution, но не в прод-контуре)
+
+- `src/UI` — WPF-клиент OpenMarketflow (в .sln, собирается; прод-интерфейс = веб-дашборд :5050)
+- `src/Brokers/Transaq` — TransaqConnector.cs (запрещён к восстановлению; C# коннектор REST-only)
+- `src/Strategies` — ранние C#-версии стратегий; рабочие стратегии живут в Python-роботах и Core
 
 ### WS-хаб (`finam_hub.py`, корень)
 

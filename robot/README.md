@@ -7,15 +7,18 @@ Python-роботы: Order Flow скальперы, VP-сетка, арбитр�
 
 ## Состав
 
-| Робот | Файл | Порт | Инструмент | Стратегия | Статус |
+| Робот | Файл | Порт | Инструмент | Стратегия | Статус (01.10) |
 |---|---|---|---|---|---|
-| OF Si | `main_of.py` | 5080 | SiU6@RTSX | Order Flow: CVD/VWEMA/absorption/DM-wall/VAH-VAL | Код готов; ждёт Этап 5 |
-| OF MX | `main_of_mx.py` | 5081 | MXU6@RTSX | + VWEMA Avg Exit (B2), VA-breakout stop, /reset-stats | Код готов; ждёт Этап 5 |
-| VP Scalp Grid | `main.py` | 5070 | SiU6@RTSX | Volume Profile сетка (вход вне VA, TP к POC) | Код готов |
-| Арбитраж SBER | `arb_sber_sru6/` | 5090 | SBER/SRU6 | Z-score базиса, LIMIT+MARKET ноги | Код готов (общий `arb_common/`) |
-| Арбитраж LKOH | `arb_lkoh_lku6/` | 5093 | LKOH/LKU6 | Z-score базиса | Код готов |
-| Арбитраж BR | `arb_br_calendar/` | 5092 | BRQ6/BRU6 | Календарный спред | Код готов |
-| **Paper Lab** | `paper_lab/` | 5181 | MXU6 | Лаборатория нового стека (WS+REST4) | 🟡 Soak PC-005 |
+| OF Si | `main_of.py` | 5080 | SiZ6@RTSX | Order Flow: CVD/VWEMA/absorption/DM-wall/VAH-VAL | 🟢 боевой (real) |
+| OF MX | `main_of_mx.py` | 5081 | MXZ6@RTSX | + VWEMA Avg Exit (B2) | 🟢 боевой (real) |
+| Арб GAZP | `main_arb.py` | 5090 | GAZP@MISX × GZZ6@RTSX | Квазиарб базиса, Z(dev) вход, слои FIFO | 🟢 боевой (real) |
+| Арб SBER | `main_arb.py` | 5091 | SBER@MISX × SBRF | То же | 🟢 работает |
+| Арб BR | `main_arb.py` | 5092 | BR-календарь | Календарный спред | 🟢 работает |
+| VP Scalp Grid | `main.py` | 5070 | SiZ6@RTSX | VP сетка (не запускался с 08.19) | ⚪ код готов |
+| Paper Lab | `paper_lab/` | 5181 | MXU6 | Лаборатория нового стека (WS+REST4) | ⚪ журнал: papercuts.md |
+
+**Схема инстансов (с 29.09):** один `main_arb.py` + env `ARB_CONFIG_FILE`/`ARB_STATE_FILE` на инстанс — см. [docs/arbitrage_robot.md](../docs/arbitrage_robot.md). Папки arb_*/ содержат только примеры конфигов (`*.example`). Старт боевых роботов — только Дмитрием (RULES.md R-001).
+
 
 ## API роботов (единый для OF)
 

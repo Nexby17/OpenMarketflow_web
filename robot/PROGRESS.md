@@ -73,6 +73,14 @@
 3. DataProvider :5060 — вывод из эксплуатации после Этапа 5
 
 
+## 2026-10-01 — Уборка robot/: −5,6 ГБ, код-зомби удалён, R-020 ротация логов
+
+- Удалены soak-логи (5398 МБ txt от soak-прогонов августа), *.phase1.bak, corrupt-state bak.
+- Из git: main_patch.py, collector.py, orders_grpc.py (никем не импортируются; gRPC запрещён), arb_lkoh_lku6/ (старая схема, не запускался).
+- arb_sber_sru6/ и arb_br_calendar/ сжаты до *.example конфигов (устаревшие копии main_arb.py без F-048/F-050 удалены; живые 5091/5092 работают с корневым robot/main_arb.py).
+- README.md: таблица роботов приведена к env-схеме инстансов, LKOH убран.
+- Логи: R-020 (30 дней) — удалено 53 файла (208 МБ).
+
 ## 2026-09-29/30 — Арб-роботы: F-048 журнал = цены брокера, раскорреляция L14, F-050 логи режимов
 
 - **F-048 (29.09):** журнал арба писал оценки (leg A лимитка, leg B стакан) — gRPC-стримы Finam без auth metadata (12607 ошибок/день), в proto Order нет average_price. Фикс: auth во все стримы (finam_compat.py), _resolve_fill_price (trade sub → REST GetTrades → gRPC → оценка с флагом is_real) в orders_arb.py, order_id/priceSource в журнале (strategy_arb.py), авто-ресинк при старте + POST /reload-state (main_arb.py), robot/resync_journal.py (dry-run/--apply). Реальный итог 29.09: −69.62₽ вместо +644.19₽. Тесты 25/25. Перезапуск 17:52 — API подтвердил broker-цены.
