@@ -226,3 +226,12 @@ finam_hub терял атрибут websockets.connect в потоке (с 25.09
 Рестарт 18:32-18:35 по явному «делай» Дмитрия (R-001): все три арб-инстанса переведены на новый код методом kill /F + spawn с per-instance env (зеркало RobotProcessManager). on_shutdown при SIGTERM ставит mode=stopped → при следующем старте cleanup закроет слои по рынку — поэтому SIGTERM//stop для рестарта с позициями НЕ применять, только kill /F при свежем state (periodic save каждые 30 с, порог свежести 40 с) — соответствует R-008. Итог: 5090 GAZP/GZZ6 реал (PID 23636, 2 SHORT-слоя, −103.15₽, 18 сделок), 5091 SBER/SRZ6 paper (PID 34236, 1 слой, +2283.22₽), 5092 BRV6/BRZ6 paper (PID 716, 4 слоя, +50.42₽). У всех OB_A/OB_B живые, F-048-ресинк 0 правок, state загружен 1-в-1.
 
 Открыто: (a) R-016-подобная проблема 11:52 — daily_stop сработал по легаси-битому state (−93 701₽ → ресинк −79₽) — к F-052 не относится, Dmitriy уведомлён; (b) серверный UI-пароль (APP_PASS_HASH в src/.env) не дефолт — /api/login admin/admin 401, агенту недоступен, direct spawn работает без него.
+
+## 2026-10-01 — F-055: Order Flow BR (Brent) — портирование + интеграция
+- Перенос продакшен BR-робота из server-main в main (коммит 75e18a9, ветка feature/of-br-robot): main_of_br.py, config_of_br.py, конфиги/стейты двух инстансов (:5082 main/1225953, :5083 edp/2049688).
+- strategy_of.py смержен с серверным (fmt_price, session-окно, manual_adjust, float VP bins), наш фикс daily-stop close сохранён.
+- F-048: стримы BR переведены на finam_compat (auth interceptor) вместо сырого FinamPy; proto через вендоренный finam_trade_api.
+- C# RobotProcessManager: spec of_br/of_br_edp + env ROBOT_STATE_SUFFIX_BR/ROBOT_ACTIVE_ACCOUNT_BR; /api/of/config/{of_br,of_br_edp} прокси.
+- UI: две строки BR в таблице роботов (read-only BRV6 бэдж), панель всех параметров §11, журнал с фильтрами, коррекция позиции, сохранение в робота или json при офлайне.
+- Тесты: test_of_br_params (48 по §11), test_of_br_logic (11) PASS; регрессия arb_fair 32/32, pos_sync 32/32, C# 24/24; сборка 0 ошибок; node --check OK.
+- Старт роботов НЕ выполнялся (R-001 — только Дмитрий).

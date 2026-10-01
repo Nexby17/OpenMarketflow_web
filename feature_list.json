@@ -997,6 +997,14 @@
       ],
       "summary": "30.09 инцидент GZZ6 (запрос Дмитрия «запретил закрывать с убытком»): 15/18 сделок GAZP-арба reason=profit_target с PnL −2..−14₽, realized −103.15₽. Механизм: MOEX ISS-поллер в main_arb.py подставлял ask=LAST при OFFER=null (BID=10083/OFFER=null по GZZ6), gRPC-стакан в 429-бэкоффе → realizable считался по фантомному аску (15:31:27 realizable=+51.89 при last-unreal=−11.60, факт −13.10₽); на выходе sanity не было (на входе F-040 был). Фикс: (1) ISS-поллер обеих ног (futures A и B) пушит в OrderBookTracker только реальные строки — нет OFFER → best_ask=0 → realizable=None; (2) strategy_arb._layer_realizable_pnl: sanity last∈[bid×(1−eps), ask×(1+eps)], eps 0.5% фьючерсы / 0.2% акции, интервальная форма (широкий реальный стакан BR проходит); (3) гейт profit_target в _execute_single_exit перед отправкой ордеров — повторная квалификация по живому стакану (main_arb + arb_sber_sru6 + arb_br_calendar); (4) групповой гейт profit_target_total в exit_all: батч закрывается только если ВСЕ слои >0 и сумма ≥ порога; (5) F-052 ALARM в логе, если тейк всё же закрылся в минус. Риск-выходы (stop_loss/daily_stop_loss) и manual_stop/cleanup без гейта. Тесты: блок F-052 в test_arb_fair.py, 62/62 PASS. Торговая логика входов не тронута (R-002).",
       "date": "2026-09-30"
+    },
+    {
+      "id": "F-055",
+      "title": "Order Flow BR robot (Brent): port from server-main + Windows/UI integration",
+      "status": "done",
+      "commit": "75e18a9",
+      "date": "2026-10-01",
+      "notes": "Two instances :5082 main/1225953 and :5083 edp/2049688; F-048 finam_compat streams; UI panel covers doc §11 fully"
     }
   ]
 }

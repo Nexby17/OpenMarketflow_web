@@ -313,3 +313,12 @@
 Тесты: +4 кейса F-052 в robot/test_arb_fair.py (мусорный OB → None и блок выхода; согласованный OB → тейк после 3 тиков; акция-нога 1.2% рассинхрона → None; широкий реальный OB проходит). Итого 62/62 PASS, py_compile 5/5.
 
 Рестарт 18:32-18:35 (явное «делай» Дмитрия, R-001): kill /F + spawn с per-instance env (ARB_CONFIG_FILE/ARB_STATE_FILE/ARB_SYMBOL_* — зеркало RobotProcessManager Program.cs). Ключевой нюанс: on_shutdown (SIGTERM//stop) ставит mode=stopped → при старте cleanup закроет слои по рынку; рестарт с позициями — только kill /F при свежем state (<40 с, periodic save 30 с). Результат: 5090 GAZP/GZZ6 real PID 23636 (2 SHORT-слоя, −103.15₽), 5091 SBER/SRZ6 paper PID 34236 (1 слой, +2283.22₽), 5092 BRV6/BRZ6 paper PID 716 (4 слоя, +50.42₽); OB живые, state загружен 1-в-1, F-048-ресинк 0 правок. Смена бронирования: R-011 (раздельные логи) → F-054; F-052 закреплён за этим фиксом.
+
+## 2026-10-01 — F-055: Order Flow BR (Brent) — портирование + интеграция
+- Перенос продакшен BR-робота из server-main в main (коммит 75e18a9, ветка feature/of-br-robot): main_of_br.py, config_of_br.py, конфиги/стейты двух инстансов (:5082 main/1225953, :5083 edp/2049688).
+- strategy_of.py смержен с серверным (fmt_price, session-окно, manual_adjust, float VP bins), наш фикс daily-stop close сохранён.
+- F-048: стримы BR переведены на finam_compat (auth interceptor) вместо сырого FinamPy; proto через вендоренный finam_trade_api.
+- C# RobotProcessManager: spec of_br/of_br_edp + env ROBOT_STATE_SUFFIX_BR/ROBOT_ACTIVE_ACCOUNT_BR; /api/of/config/{of_br,of_br_edp} прокси.
+- UI: две строки BR в таблице роботов (read-only BRV6 бэдж), панель всех параметров §11, журнал с фильтрами, коррекция позиции, сохранение в робота или json при офлайне.
+- Тесты: test_of_br_params (48 по §11), test_of_br_logic (11) PASS; регрессия arb_fair 32/32, pos_sync 32/32, C# 24/24; сборка 0 ошибок; node --check OK.
+- Старт роботов НЕ выполнялся (R-001 — только Дмитрий).
