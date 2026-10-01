@@ -1,10 +1,19 @@
-"""DataProvider — FastAPI app serving cached Finam data via REST."""
+"""DataProvider - FastAPI app serving cached Finam data via REST."""
 import logging
 import os
 import sys
 import time
 
-os.chdir(os.path.dirname(os.path.abspath(__file__)))
+# Bootstrap: isolated python build (D:\AutoClaw) does not add script dir/cwd to sys.path
+# and ignores PYTHONPATH — add project root (finam_compat) + this dir (cache/config/provider) + robot/py4 (SDK) manually.
+_DP_DIR = os.path.dirname(os.path.abspath(__file__))
+_PROJ_DIR = os.path.dirname(_DP_DIR)
+_PY4_DIR = os.path.join(_PROJ_DIR, "robot", "py4")
+for _p in (_PROJ_DIR, _DP_DIR, _PY4_DIR):
+    if os.path.isdir(_p) and _p not in sys.path:
+        sys.path.insert(0, _p)
+
+os.chdir(_DP_DIR)
 
 from contextlib import asynccontextmanager
 
@@ -79,7 +88,7 @@ def get_quote(symbol: str):
 
 @app.post("/invalidate")
 def invalidate_cache(account: str = ""):
-    """Invalidate all caches for an account — force fresh fetch on next request."""
+    """Invalidate all caches for an account - force fresh fetch on next request."""
     if the_provider:
         with the_provider._pos_lock:
             the_provider._pos_cache.clear()
@@ -124,7 +133,7 @@ def get_recent_fills(account: str = "", symbol: str = ""):
     now = time.time()
     # Prune expired fills on every read
     with the_cache._lock:
-        the_cache.recent_fills = {k: v for k, v in the_cache.recent_fills.items() 
+        the_cache.recent_fills = {k: v for k, v in the_cache.recent_fills.items()
                                    if now - v.get("fill_ts", 0) < 10}
     fills = []
     with the_cache._lock:
@@ -288,7 +297,7 @@ def get_pnl(account: str = Query(default=""), symbol: str = Query(default="")):
                 sell_total += price * qty
             count += 1
         # Commission: 0.90₽ per lot RT = 0.45₽ per side
-        # Not counted here — trade count × 0.90
+        # Not counted here - trade count × 0.90
         commission = count * 0.90
         pnl = sell_total - buy_total - commission
         return {"pnl": round(pnl, 2), "trades": count}
