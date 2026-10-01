@@ -484,13 +484,36 @@ def _set_current_price(price: float):
         _current_price = price
 
 
+def _broker_sync_once(sync_account: str):
+    """F-055 perf: one broker price-sync pass, off the tick loop.
+    Reads position (avg/current price only), updates strategy + desync monitor.
+    Reads/writes only: strategy.sync_from_broker (has own lock), _last_broker_lots."""
+    global _last_broker_lots
+    try:
+        import requests
+        r = requests.get(f"{DP_URL}/position",
+                         params={"account": sync_account, "ticker": SYMBOL},
+                         timeout=5)
+        if r.status_code == 200:
+            bd = r.json()
+            strategy.sync_from_broker(bd)
+            bl = bd.get('lots', 0)
+            _last_broker_lots = bl
+            rl = strategy._total_lots
+            if rl != bl:
+                log.warning(f"DESYNC: robot={rl} broker={bl} avg_robot={fmt_price(strategy._avg_price)} avg_broker={fmt_price(bd.get('avg_price',0))} — manual fix needed")
+    except Exception as e:
+        log.debug(f"Price sync: {e}")
+
+
 def main_loop():
     """Main strategy loop — poll price + process ticks."""
-    global _mode, _fill_sub_thread, _last_broker_lots
+    global _mode, _fill_sub_thread, _last_broker_lots, _broker_sync_thread
 
     log.info("Main loop started")
     last_save = time.time()
     last_price_sync = 0.0
+    _broker_sync_thread = None
 
     while _running:
         try:
@@ -543,25 +566,18 @@ def main_loop():
 
             # === BROKER PRICE SYNC: avg_price + current_price only ===
             # Does NOT touch position state (lots, dir, lot_queue)
+            # F-055 perf: performed in a background thread — slow DP responses (up to 5s timeout)
+            # no longer stall the 50ms tick loop; sync interval 30s unchanged.
             if time.time() - last_price_sync > 30.0:
-                try:
-                    sync_account = ACCOUNTS.get(ACTIVE_ACCOUNT_KEY, ACCOUNT)
-                    import requests
-                    r = requests.get(f"{DP_URL}/position",
-                                     params={"account": sync_account, "ticker": SYMBOL},
-                                     timeout=5)
-                    if r.status_code == 200:
-                        bd = r.json()
-                        strategy.sync_from_broker(bd)
-                        # Passive desync monitor
-                        bl = bd.get('lots', 0)
-                        _last_broker_lots = bl
-                        rl = strategy._total_lots
-                        if rl != bl:
-                            log.warning(f"DESYNC: robot={rl} broker={bl} avg_robot={fmt_price(strategy._avg_price)} avg_broker={fmt_price(bd.get('avg_price',0))} — manual fix needed")
-                except Exception as e:
-                    log.debug(f"Price sync: {e}")
-                last_price_sync = time.time()
+                if _broker_sync_thread is None or not _broker_sync_thread.is_alive():
+                    last_price_sync = time.time()  # reserve slot immediately (no double-spawn)
+                    _broker_sync_thread = threading.Thread(
+                        target=_broker_sync_once,
+                        args=(ACCOUNTS.get(ACTIVE_ACCOUNT_KEY, ACCOUNT),),
+                        daemon=True,
+                        name="broker-sync",
+                    )
+                    _broker_sync_thread.start()
 
             # === WATCHDOG: reconnect FinamPy if price stale > 60s ===
             if strategy._is_price_stale(max_age_sec=60):
@@ -854,8 +870,8 @@ class APIHandler(BaseHTTPRequestHandler):
             end_date = params_url.get('endDate', [None])[0]
             all_trades = params_url.get('all', ['false'])[0].lower() == 'true'
             
-            # Log the request
-            log.info(f"API GET /status with query: {parsed.query} | filters: startDate={start_date}, endDate={end_date}, all={all_trades}")
+            # Log the request — F-055 perf: DEBUG (poll hits 2/s = 86K lines/day of noise + disk I/O)
+            log.debug(f"API GET /status with query: {parsed.query} | filters: startDate={start_date}, endDate={end_date}, all={all_trades}")
             
             original_trades = status.get("tradeHistory", [])
             
@@ -864,7 +880,7 @@ class APIHandler(BaseHTTPRequestHandler):
                 status["tradeHistory"] = original_trades
                 status["tradesFiltered"] = False
                 status["filters"] = {}
-                log.info(f"Returning all {len(original_trades)} trades (all=true)")
+                log.debug(f"Returning all {len(original_trades)} trades (all=true)")
             elif start_date or end_date:
                 # Filter by date
                 filtered_trades = []
