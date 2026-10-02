@@ -7358,7 +7358,7 @@ async function ofBrRobotSaveFromPanel() {
         hl_filter: el('editOfBrUseHl')?.checked === true,
         hl_window: numOrNull('editOfBrHlWindow', parseInt, 24),
         hl_delta: numOrNull('editOfBrHlDelta', parseFloat, 120),
-        step_atr: el('editOfBrStepAtr')?.checked === true,
+        step_atr: false,  // F-055: fixed off for BR (ATR adaptation zeroes fractional step) — config-only
         atr_period: numOrNull('editOfBrAtrPeriod', parseInt, 14),
         enable_ob_filter: el('editOfBrUseOb')?.checked !== false,
         ob_min_lots: numOrNull('editOfBrObMinLots', parseInt, 20),
