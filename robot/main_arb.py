@@ -247,8 +247,10 @@ def load_state_from_disk():
             with open(STATE_FILE) as f:
                 state = json.load(f)
             strategy.load_state(state)
-            _mode = state.get("mode", "stopped")
-            log.info(f"State loaded: pnl={state.get('realized_pnl', 0):.0f} trades={len(state.get('trade_history', []))} mode={_mode}")
+            # F-059: startup always stopped — возобновление торговли только по явному /start
+            # (инцидент 02.10: процесс, поднятый не кнопкой, продолжал вести позицию сам).
+            _mode = "stopped"
+            log.info(f"State loaded: pnl={state.get('realized_pnl', 0):.0f} trades={len(state.get('trade_history', []))} mode={_mode} (F-059: startup stopped)")
         except Exception as e:
             log.error(f"Load state error: {e}")
 
@@ -1382,6 +1384,15 @@ sig_module.signal(sig_module.SIGINT, on_shutdown)
 # ========== Start ==========
 
 if __name__ == "__main__":
+    # F-059: single-instance guard per arb instance (конфиг/стейт через ARB_*_FILE env:
+    # arb_gazp/arb_sber/arb_br), иначе дубли слушают один порт и торгуют в параллель.
+    from instance_lock import acquire_instance_lock
+    _arb_key = (os.environ.get("ARB_CONFIG_FILE") or "arb_config.json")
+    _arb_key = os.path.splitext(os.path.basename(_arb_key))[0].replace("arb_config_", "")
+    if not acquire_instance_lock(f"arb_{_arb_key}", port=PORT, log=log):
+        log.error("Arb robot already running - duplicate instance exit")
+        sys.exit(2)
+
     log.info(f"=== Arbitrage Robot v1 ===")
     log.info(f"Pair: {params.ticker_a} / {params.ticker_b}")
     log.info(f"Account: {ACCOUNT} | Port: {PORT} | Paper: {PAPER_MODE}")

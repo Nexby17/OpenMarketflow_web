@@ -215,9 +215,11 @@ def load_state_from_disk():
             with open(STATE_FILE) as f:
                 state = json.load(f)
             strategy.load_state(state)
-            _mode = state.get("mode", "stopped")
+            # F-059: startup always stopped — возобновление торговли только по явному /start
+            # (инцидент 02.10: процесс, поднятый не кнопкой, продолжал вести позицию сам).
+            _mode = "stopped"
             params.direction_filter = state.get("direction_filter", "both")
-            log.info(f"State loaded: dir={state.get('dir', 0)} lots={state.get('totalLots', 0)} mode={_mode} dirFilter={params.direction_filter}")
+            log.info(f"State loaded: dir={state.get('dir', 0)} lots={state.get('totalLots', 0)} mode={_mode} (F-059: startup stopped) dirFilter={params.direction_filter}")
         except Exception as e:
             log.error(f"Load state error: {e}")
 
@@ -1275,6 +1277,13 @@ sig_module.signal(sig_module.SIGINT, on_shutdown)
 # ========== Start ==========
 
 if __name__ == "__main__":
+    # F-059: single-instance guard — второй экземпляр этого робота не запустится,
+    # пока жив первый (инцидент 02.10: 3 копии на :5081 торговали после «Стоп»).
+    from instance_lock import acquire_instance_lock
+    if not acquire_instance_lock("of_mx", port=PORT, log=log):
+        log.error("MX robot already running - duplicate instance exit")
+        sys.exit(2)
+
     log.info(f"=== Order Flow Robot MX v2 ===")
     log.info(f"Symbol: {SYMBOL} | Account: {ACCOUNT} | Port: {PORT}")
     log.info(f"Params: lots={params.lots} stepAvg={params.step_average} stepPyr={params.step_pyramid}")

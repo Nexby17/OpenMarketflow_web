@@ -2102,15 +2102,40 @@ app.MapPost("/api/instance/stop", async (HttpRequest req) => {
                 await http.PostAsync($"http://127.0.0.1:{port}/stop", null);
             } catch {}
         }
-        // Kill by port using fuser
+        // Kill by port. F-059: cross-platform — раньше только Linux fuser, на Windows
+        // молча не работал и зомби-копии переживали «Стоп» (инцидент 02.10, :5081).
         if (port > 0) {
             try {
-                var killPsi = new System.Diagnostics.ProcessStartInfo {
-                    FileName = "/bin/bash",
-                    Arguments = $"-c \"fuser -k {port}/tcp 2>/dev/null\"",
-                    UseShellExecute = false
-                };
-                System.Diagnostics.Process.Start(killPsi)?.WaitForExit(3000);
+                if (System.Runtime.InteropServices.RuntimeInformation.IsOSPlatform(System.Runtime.InteropServices.OSPlatform.Windows)) {
+                    var npsi = new System.Diagnostics.ProcessStartInfo {
+                        FileName = "netstat", Arguments = "-ano",
+                        RedirectStandardOutput = true, UseShellExecute = false, CreateNoWindow = true
+                    };
+                    var np = System.Diagnostics.Process.Start(npsi);
+                    if (np != null) {
+                        var output = np.StandardOutput.ReadToEnd();
+                        np.WaitForExit(3000);
+                        foreach (var line in output.Split('\n')) {
+                            var parts = line.Split(' ', System.StringSplitOptions.RemoveEmptyEntries);
+                            if (parts.Length >= 5 && parts[0] == "TCP" && parts[3] == "LISTENING"
+                                && parts[1].EndsWith(":" + port, System.StringComparison.Ordinal)
+                                && int.TryParse(parts[4], out var killPid)) {
+                                var kpsi = new System.Diagnostics.ProcessStartInfo {
+                                    FileName = "taskkill", Arguments = $"/F /T /PID {killPid}",
+                                    UseShellExecute = false, CreateNoWindow = true
+                                };
+                                System.Diagnostics.Process.Start(kpsi)?.WaitForExit(3000);
+                            }
+                        }
+                    }
+                } else {
+                    var killPsi = new System.Diagnostics.ProcessStartInfo {
+                        FileName = "/bin/bash",
+                        Arguments = $"-c \"fuser -k {port}/tcp 2>/dev/null\"",
+                        UseShellExecute = false
+                    };
+                    System.Diagnostics.Process.Start(killPsi)?.WaitForExit(3000);
+                }
             } catch {}
         }
         // Also try pid file
@@ -2378,6 +2403,15 @@ public static class RobotProcessManager
             if (_procs.TryGetValue(name, out var existing) && existing != null && !existing.HasExited)
                 return new { ok = true, alreadyRunning = true, pid = existing.Id };
         }
+        // F-059: probe before spawn — если на порту уже отвечает живой робот, копию НЕ спавним
+        // (инцидент 02.10: три копии на :5081 одновременно, «Стоп» гасил одну, зомби торговали).
+        try
+        {
+            using var probe = new System.Net.Http.HttpClient { Timeout = TimeSpan.FromSeconds(2) };
+            var hr = await probe.GetAsync("http://127.0.0.1:" + port + "/health");
+            if (hr.IsSuccessStatusCode) return new { ok = true, alreadyOnPort = true };
+        }
+        catch { }
         var root = FindRobotDir();
         if (root == null) return new { ok = false, error = "robot dir not found" };
         var psi = new System.Diagnostics.ProcessStartInfo

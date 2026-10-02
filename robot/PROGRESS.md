@@ -350,3 +350,19 @@
 - 02.10 14:30 31378d5 КРИТИЧНЫЙ фикс пирамидинга: manual_adjust (панель, кнопка Применить) при FLAT->позиция оставлял _last_pyramid_price=0.0 от _reset_position → distance=price-0=гигантская → мгновенный ложный PYRAMID на следующем тике (14:14:29 buy @100.25 через 19 минут после ADJUST +4 @100.24 — Дмитрий видел как «пирамидинг без шага»). Фикс: _last_pyramid_price инициализируется ценой adjust. Тест: dist 0.01 → None; dist 25 → pyramid. Регрессия зелёная.
 
 - 02.10 14:35 UI: панель BR-edp переразложена в раскладку SiU6 (по скрину Дмитрия): 6-колоночные ряды Lots..Timeframe, VWEMA-группа по центру с трендом, HL-строка с вердиктом, VAH/VAL-строка; BR-специфика (margin/commission/daily stop/partial TP/CVD Accel период/сессия/OB/VP filter) сгруппирована в блок BR-ДОПОЛНИТЕЛЬНО внизу. Чекбокс Step ATR удалён из панели и зашит false в save — параметр управляется только конфигом (защита от вчерашнего цикла). use_cvd save читает шапочный toggleBrCvd. node --check OK, живой сервер отдаёт новую панель.
+
+## 2026-10-02 — F-059: инцидент «Стоп не останавливает» → single-instance lock
+
+**Инцидент.** Дмитрий выключил MXU6 кнопкой Стоп — робот продолжил торговать. Расследование: на :5081 одновременно LISTENING 3 копии main_of_mx.py (30.09 13:26, 30.09 15:32, 02.10 10:04). Windows разрешает повторный bind с allow_reuse_address=True (ставился ради «бесшовного» рестарта). Стоп/старт через UI попадали в случайную копию; зомби-копии продолжали торговлю: после /stop 10:55 зомби снова вошёл в short 11:10, усреднился до 3 лотов; сироты на счёте edp: MXZ6 −2, BRX6 +4 (подтверждено REST GetTrades). /api/instance/stop убивал процесс через Linux fuser — на Windows молча не работал.
+
+**Фикс (4 робота + сервер).**
+1. robot/instance_lock.py — эксклюзивный файловый лок per (robot_key, port) (msvcrt.locking/flock), второй экземпляр завершается sys.exit(2) ДО подписок/ордеров/стейта. Вставлен в main_of.py, main_of_mx.py, main_of_br.py (per suffix), main_arb.py (per instance из ARB_CONFIG_FILE).
+2. Startup always stopped: load_state_from_disk() у всех 4 роботов больше не возобновляет mode=running после смерти процесса; позиция восстанавливается в журнал, торговля — только по явному POST /start. Причина: зомби-BR, поднятый в 14:22 (не кнопкой), загрузил стейт running и продолжил вести позицию 7 лотов без единого /start.
+3. /api/instance/stop (Program.cs): на Windows kill всех LISTENING-процессов порта через netstat -ano + taskkill /F /T (раньше только /bin/bash fuser).
+4. RobotProcessManager.StartAsync: probe GET /health перед спавном — живой робот на порту не дублируется.
+
+**Операции 02.10.** Убиты 3 зомби-MX + зомби-BR (вчерашний), BR-edp 14:22 остановлен штатно (/stop закрыл 7 лотов BRX6, затем kill процесса). Стейты of_state_mx / of_state_br_edp сброшены в stopped/flat (зомби-позиции НЕ переносились). Счёт edp сверен: MXZ6 0, BRX6 0, GZZ6 −1 (legit arb_br), активных заявок нет.
+
+**Тесты.** instance_lock: 1-й захват OK, 2-й в child отклонён (rc=7), после release OK — PASS. py_compile 4/4. dotnet build Server: 0 errors (72 warnings — превалид). test_of_br_logic PASS; test_of_br_params 9 FAIL — превалид (устаревшие BRV6→BRX6 ожидания после F-055, к F-059 не относятся).
+
+**Рестарты не выполнялись (R-001).** Фиксы подхватятся при следующем старте роботов.
