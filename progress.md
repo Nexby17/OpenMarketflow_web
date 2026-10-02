@@ -308,3 +308,5 @@ finam_hub терял атрибут websockets.connect в потоке (с 25.09
 **Файлы:** robot/arb_common/strategy_arb.py, orders_arb.py, robot/main_arb.py (гейт тейка spread/pnl, whitelist /params, leg_a_limit_seconds wiring), robot/arb_config_gazp.json, src/Server/wwwroot/js/app.js (панель: режим выхода + 5 полей гибрида, save-контракт).
 
 **Ввод в бой:** код подхватится при следующем старте инстанса arb_gazp (R-001 — старт только Дмитрием). Открытые слои #5/#7 при старте НЕ трогаются (side/entry_basis персистентны, тейк посчитается от их entry_basis).
+
+- 02.10 14:30 31378d5 КРИТИЧНЫЙ фикс пирамидинга: manual_adjust (панель, кнопка Применить) при FLAT->позиция оставлял _last_pyramid_price=0.0 от _reset_position → distance=price-0=гигантская → мгновенный ложный PYRAMID на следующем тике (14:14:29 buy @100.25 через 19 минут после ADJUST +4 @100.24 — Дмитрий видел как «пирамидинг без шага»). Фикс: _last_pyramid_price инициализируется ценой adjust. Тест: dist 0.01 → None; dist 25 → pyramid. Регрессия зелёная.
