@@ -1082,6 +1082,12 @@ class OrderFlowStrategy:
             self._average_levels = max(0, self._total_lots - 1)
             self._pyramid_levels = min(self._pyramid_levels, self._total_lots - 1) if self._total_lots > 1 else 0
             self._peak_lots = max(self._peak_lots, self._total_lots)
+            # F-055 fix: after FLAT->position adjust, _last_pyramid_price stayed at
+            # _reset_position() 0.0 -> distance = price - 0 = huge -> instant bogus PYRAMID
+            # on the very next tick (14:14:29 buy @100.25 right after 13:55 ADJUST +4).
+            # Initialize from current price — first pyramid then requires a real step move.
+            if before["dir"] == 0 or self._last_pyramid_price <= 0:
+                self._last_pyramid_price = price
         else:
             # Fully closed by hand
             self._round_trips += 1
