@@ -34,7 +34,7 @@ const ARB_INSTANCE_MAP = {
             sufA: '@MISX', sufB: '@RTSX', logId: 'arbPyLogContainer' },
     sber: { port: 5091, procName: 'arb_sber', label: 'SBER/SRZ6', symA: 'SBER', symB: 'SRZ6',
             sufA: '@MISX', sufB: '@RTSX', logId: 'arbPyLogContainer' },
-    br:   { port: 5092, procName: 'arb_br', label: 'BRV6/BRZ6', symA: 'BRV6', symB: 'BRZ6',
+    br:   { port: 5092, procName: 'arb_br', label: 'BRX6/BRZ6', symA: 'BRX6', symB: 'BRZ6',
             sufA: '@RTSX', sufB: '@RTSX', logId: 'arbPyLogContainer' },
 };
 let arbPanelInstance = null;
