@@ -54,5 +54,6 @@
   "vwema_flat_th": 1,
   "vwema_slow": 40,
   "wall_multiplier": 3,
-  "wall_window": 120
+  "wall_window": 120,
+  "_doc_note": "step_atr must stay false for BR: ATR adaptation (int base*atr/50, ref50) zeroes fractional 0.4 step — per Dmitry 01.10.2026. Document step = 0.4 exact."
 }
