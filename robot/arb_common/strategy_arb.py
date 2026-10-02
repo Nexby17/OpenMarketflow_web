@@ -47,6 +47,13 @@ class ArbParams:
     dev_lookback: int = 2500       # deviation history pushes (~5 trading days @ 60s)
     dev_push_interval: float = 60.0  # seconds between deviation history pushes
 
+    # F-058 (2026-10-01, решение Дмитрия — гибрид C): вход/выход в ₽ раздвижки
+    entry_dev_rub: float = 0.0     # вход SHORT: realizable_spread − fair ≥ this ₽; LONG: fair − long_spread ≥ this ₽ (0=off)
+    entry_z_sigma: float = 0.0     # sigma-фильтр шума: dev − dev_mean ≥ this×dev_std (0=off)
+    stop_dev_rub: float = 0.0      # послойный стоп по раздвижке: closing хуже entry на this ₽ (0=off)
+    time_stop_min: float = 0.0     # послойный time-stop, минуты (0=off)
+    exit_mode: str = "spread"      # "spread": послойный тейк по раздвижке (entry_basis ∓ min_profit); "pnl": легаси по realizable-PnL
+
     # Entry mode: "zscore" (deviation-annualized, default) | "spread_rub" (absolute ₽ thresholds)
     entry_mode: str = "zscore"
     spread_rub_high: float = 400.0   # SHORT when spread_rub > this (spread_rub mode)
@@ -76,6 +83,8 @@ class ArbParams:
 
     # Execution
     leg_a_timeout: int = 5
+    # F-058 (гибрид C): время жизни лимитки выхода до маркет-фолбэка, сек
+    leg_a_limit_seconds: float = 2.0
     min_fill_ratio: float = 0.5
     slippage_bps: float = 5.0
 
@@ -427,6 +436,21 @@ class ArbitrageStrategy:
         else:
             signal = self._check_entry_zscore()
 
+        if signal is None:
+            return None
+
+        # F-058 (гибрид C): в ₽-режиме сигнал обязан пройти gates по РЕАЛИЗУЕМОЙ раздвижке
+        # (стакан, а не last — урок инцидента 11:52, last-гэп GZZ6 ~46 п.)
+        if self.p.exit_mode == "spread":
+            gate = self._entry_gate_rub(signal["side"])
+            if gate is not None:
+                log.info(f"F-058 entry gate: {gate} (side={signal['side']}, real_spread={self.basis_calc.spread_rub:.1f}, fair={self.basis_calc.fair_spread:.1f})")
+                return None
+            sig_dev = (self.basis_calc.spread_rub if signal["side"] == "short_basis" else self.basis_calc.spread_long_rub) - self.basis_calc.fair_spread
+            if signal["side"] == "long_basis":
+                sig_dev = self.basis_calc.fair_spread - self.basis_calc.spread_long_rub
+            signal["dev_rub"] = sig_dev
+
         if signal and self._is_duplicate_entry(signal["side"], signal["z"]):
             return None
 
@@ -480,6 +504,30 @@ class ArbitrageStrategy:
         if side == SHORT_BASIS:
             return basis_now if basis_now > last.entry_basis else None
         return basis_now if basis_now < last.entry_basis else None
+
+    def _entry_gate_rub(self, side: str) -> Optional[str]:
+        """F-058 (гибрид C): входные гейты в ₽ по реализуемой раздвижке.
+        Возвращает строку-причину отказа или None (пропустить).
+        SHORT: realizable_short = bid_B − ask_A×hedge; вход если realizable − fair ≥ entry_dev_rub.
+        LONG:  realizable_long = ask_B − bid_A×hedge; вход если fair − realizable ≥ entry_dev_rub.
+        Плюс sigma-фильтр шума: dev относительно СРЕЙНЕГО (dev_mean) ≥ entry_z_sigma × dev_std.
+        Оба порога в ₽ — сопоставимы с комиссией и slippage напрямую."""
+        fair = self.basis_calc.fair_spread
+        if side == "short_basis":
+            dev = self.basis_calc.spread_rub - fair
+        else:
+            dev = fair - self.basis_calc.spread_long_rub
+        if self.p.entry_dev_rub > 0 and dev < self.p.entry_dev_rub:
+            return f"dev {dev:.1f} < entry_dev_rub {self.p.entry_dev_rub:.1f}"
+        if self.p.entry_z_sigma > 0:
+            mean, std = self.basis_calc._deviation_stats()
+            if std > 1e-9:
+                dev_rel = self.basis_calc.deviation - mean
+                if dev_rel < self.p.entry_z_sigma * std:
+                    return f"dev_rel {dev_rel:.1f} < {self.p.entry_z_sigma:.1f}xσ ({self.p.entry_z_sigma*std:.1f})"
+            else:
+                return "dev history degenerate (std≈0)"
+        return None
 
     def _check_entry_zscore(self) -> Optional[dict]:
         """Variant 2 (default, Fix #1): annualized deviation-from-fair entry.
@@ -550,32 +598,73 @@ class ArbitrageStrategy:
         return None
 
     def check_exit(self) -> Optional[dict]:
-        """F-032 (2026-09-23): Exit signal — FIFO по слоям (закрываем так же, как набирали).
+        """F-058 (2026-10-02, решение Дмитрия — гибрид C): FIFO по слоям.
 
-        Правила:
-          - Тейк-профит считается по РЕАЛИЗУЕМОМУ PnL (стакан bid/ask − slippage − комиссии);
-            при отсутствии/протухании стакана решение НЕ принимается (ждём свежий стакан).
-          - Тейк требует подтверждения: условие должно держаться _EXIT_CONFIRM_TICKS тиков
-            подряд (~1.5 c при цикле 0.5 c) — фильтр одиночных выбросов стакана.
-          - Риск-выходы (stop_loss, daily_stop, time_stop, max_dd) — без подтверждения,
-            считаются по прежней last-математике (защита от падения фида).
+        exit_mode="spread" (новый, по умолчанию для гибрида):
+          Тейк ПОСЛОЙНО по РАЗДВИЖКЕ: слой закрывается только когда реализуемая
+          раздвижка вернулась НИЖЕ/ВЫШЕ входной на величину мин. профита:
+            SHORT: realizable_spread ≤ entry_basis − min_profit  (зашёл высоко — выйди ниже)
+            LONG:  realizable_spread ≥ entry_basis + min_profit  (зашёл низко — выйди выше)
+          Требует 3 подтверждённых тика (F-032). Групповой выход profit_target_total
+          в этом режиме отключён (послойность — требование Дмитрия).
+        exit_mode="pnl" (легаси): тейк по реализуемому PnL слоя/группы, как в F-032.
+
+        Общие для обоих режимов:
+          - стоп по раздвижке stop_dev_rub (послойно, closing хуже entry на N ₽) → exit_all
+          - time_stop_min (послойно, минуты) → exit_all
+          - прежние риск-выходы (stop_loss_rub/max_dd/daily_stop) — по last-математике.
         """
         if not self.layers:
             self._exit_confirm.clear()
             self._exit_total_confirm = 0
             return None
 
-        # ---- 1) Тейк по одному слою, FIFO от старейшего ----
         alive_ids = {l.layer_id for l in self.layers}
         for k in [k for k in self._exit_confirm if k not in alive_ids]:
             del self._exit_confirm[k]
 
+        # ---- 0) F-058: стоп по раздвижке и time-stop (послойно, без подтверждения) ----
+        if self.p.exit_mode == "spread" and self.p.stop_dev_rub > 0:
+            for layer in self.layers:
+                rs = self._layer_realizable_spread(layer)
+                if rs is None:
+                    continue
+                worse = (rs - layer.entry_basis) if layer.side == SHORT_BASIS else (layer.entry_basis - rs)
+                if worse >= self.p.stop_dev_rub:
+                    hold_m = (time.time() - layer.entry_time) / 60
+                    log.info(f"F-058 DEV STOP layer #{layer.layer_id}: realizable_spread={rs:.1f} worse than entry {layer.entry_basis:.1f} by {worse:.1f} >= {self.p.stop_dev_rub:.1f}")
+                    return {
+                        "action": "exit_all",
+                        "reason": "dev_stop",
+                        "pnl": self._calc_unrealized_pnl(),
+                        "hold_min": hold_m,
+                        "layer_id": None,
+                    }
+        if self.p.exit_mode == "spread" and self.p.time_stop_min > 0:
+            for layer in self.layers:
+                hold_min = (time.time() - layer.entry_time) / 60
+                if hold_min >= self.p.time_stop_min:
+                    log.info(f"F-058 TIME STOP layer #{layer.layer_id}: hold {hold_min:.0f}min >= {self.p.time_stop_min:.0f}min")
+                    return {
+                        "action": "exit_all",
+                        "reason": "time_stop",
+                        "pnl": self._calc_unrealized_pnl(),
+                        "hold_min": hold_min,
+                        "layer_id": None,
+                    }
+
+        # ---- 1) Тейк по одному слою, FIFO от старейшего ----
+        spread_mode = self.p.exit_mode == "spread"
         for layer in sorted(self.layers, key=lambda l: (l.entry_time, l.layer_id)):
             unrealized = self._layer_unrealized_pnl(layer)          # для логов/UI
-            realizable = self._layer_realizable_pnl(layer)          # для решения
+            realizable = self._layer_realizable_pnl(layer)          # для решения (pnl-режим)
+            rs = self._layer_realizable_spread(layer)               # для решения (spread-режим)
             hold_min = (time.time() - layer.entry_time) / 60
 
-            qualifies = self._exit_qualifies(realizable, layer)
+            if spread_mode:
+                qualifies = self._spread_take_qualifies(rs, layer)
+            else:
+                qualifies = self._exit_qualifies(realizable, layer)
             if not qualifies:
                 self._exit_confirm.pop(layer.layer_id, None)
                 continue
@@ -583,21 +672,25 @@ class ArbitrageStrategy:
             n = self._exit_confirm.get(layer.layer_id, 0) + 1
             if n < self._EXIT_CONFIRM_TICKS:
                 self._exit_confirm[layer.layer_id] = n
-                log.debug(f"EXIT confirm {n}/{self._EXIT_CONFIRM_TICKS} layer #{layer.layer_id} realizable={realizable:.2f}")
+                _rl_str = f"{realizable:.2f}" if realizable is not None else "None"
+                log.debug(f"EXIT confirm {n}/{self._EXIT_CONFIRM_TICKS} layer #{layer.layer_id} realizable={_rl_str}")
                 continue
 
             self._exit_confirm.pop(layer.layer_id, None)
-            log.info(f"EXIT layer #{layer.layer_id} (FIFO) confirmed: realizable={realizable:.2f} >= {self.p.min_profit_value} (last-unreal={unrealized:.2f}) hold={hold_min:.1f}min")
+            if spread_mode:
+                log.info(f"EXIT layer #{layer.layer_id} (FIFO) confirmed: spread {rs:.1f} crossed entry {layer.entry_basis:.1f} ∓ {self.p.min_profit_value} (last-unreal={unrealized:.2f}) hold={hold_min:.1f}min")
+            else:
+                log.info(f"EXIT layer #{layer.layer_id} (FIFO) confirmed: realizable={realizable:.2f} >= {self.p.min_profit_value} (last-unreal={unrealized:.2f}) hold={hold_min:.1f}min")
             return {
                 "action": "exit",
                 "reason": "profit_target",
-                "pnl": realizable,
+                "pnl": realizable if realizable is not None else unrealized,
                 "hold_min": hold_min,
                 "layer_id": layer.layer_id,
             }
 
-        # ---- 2) Групповой выход: все слои в плюсе и сумма >= порога (тип-порога rub/pct) ----
-        if len(self.layers) > 1 and self.p.min_profit_type != "pts":
+        # ---- 2) Групповой выход: только в pnl-режиме (в spread-режиме выход послойный) ----
+        if not spread_mode and len(self.layers) > 1 and self.p.min_profit_type != "pts":
             reals = [(l, self._layer_realizable_pnl(l)) for l in self.layers]
             if all(r is not None and r > 0 for _, r in reals):
                 total_r = sum(r for _, r in reals)
@@ -648,6 +741,48 @@ class ArbitrageStrategy:
             }
 
         return None
+
+    def _layer_realizable_spread(self, layer: ArbLayer) -> Optional[float]:
+        """F-058: реализуемая раздвижка закрытия для конкретного слоя, по живому стакану.
+        SHORT закрывается: sell A @ bid, buy B @ ask → ask_B − bid_A×hedge.
+        LONG закрывается: buy A @ ask, sell B @ bid → bid_B − ask_A×hedge.
+        None — стакан протух/несогласован (F-052): решение не принимается."""
+        ob_stale_sec = 3.0
+        bb_a, ba_a = self.ob_a.best_bid, self.ob_a.best_ask
+        bb_b, ba_b = self.ob_b.best_bid, self.ob_b.best_ask
+        if self.ob_a.ts <= 0 or self.ob_b.ts <= 0:
+            return None
+        if time.time() - self.ob_a.ts > ob_stale_sec or time.time() - self.ob_b.ts > ob_stale_sec:
+            return None
+        if bb_a <= 0 or ba_a <= 0 or bb_b <= 0 or ba_b <= 0:
+            return None
+        # F-052 sanity: last обеих ног внутри интервала стакана (eps: 0.5% фьюч / 0.2% акция)
+        eps_a = 0.005 if self._is_futures(self.p.ticker_a) else 0.002
+        eps_b = 0.005 if self._is_futures(self.p.ticker_b) else 0.002
+        for _last, _eps, _bb, _ba in (
+            (self.basis_calc.price_a, eps_a, bb_a, ba_a),
+            (self.basis_calc.price_b, eps_b, bb_b, ba_b),
+        ):
+            if _last > 0 and not (_bb * (1 - _eps) <= _last <= _ba * (1 + _eps)):
+                return None
+        if layer.side == SHORT_BASIS:
+            return ba_b - bb_a * self.p.hedge_ratio
+        return bb_b - ba_a * self.p.hedge_ratio
+
+    def _spread_take_qualifies(self, rs: Optional[float], layer: ArbLayer) -> bool:
+        """F-058: тейк слоя по раздвижке — формулировка Дмитрия:
+        «выход послойно только при условии что раздвижка ниже/выше той что при
+        входе на величину мин профита».
+        SHORT (зашли при высокой раздвижке): rs ≤ entry_basis − min_profit
+        LONG  (зашли при низкой раздвижке): rs ≥ entry_basis + min_profit
+        rs is None (стакан протух) → не квалифицируется.
+        Порог всегда в ₽ (min_profit_type игнорируется в spread-режиме — раздвижка в пунктах ₽)."""
+        if rs is None:
+            return False
+        v = self.p.min_profit_value
+        if layer.side == SHORT_BASIS:
+            return rs <= layer.entry_basis - v
+        return rs >= layer.entry_basis + v
 
     def _exit_qualifies(self, realizable, layer: ArbLayer) -> bool:
         """F-032: квалификация тейка с учётом типа порога.

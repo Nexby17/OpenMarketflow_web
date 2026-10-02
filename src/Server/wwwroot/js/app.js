@@ -80,6 +80,12 @@ document.addEventListener('click', function(ev) {
             min_fill_ratio: arbNum(el('arbMinFill')?.value, 0.5),
             min_profit_type: el('arbMinProfitType')?.value || 'rub',
             min_profit_value: arbNum(el('arbMinProfitVal')?.value, 30),
+            exit_mode: el('arbExitMode')?.value || 'spread',
+            entry_dev_rub: arbNum(el('arbEntryDevRub')?.value, 0),
+            entry_z_sigma: arbNum(el('arbEntryZSigma')?.value, 0),
+            stop_dev_rub: arbNum(el('arbStopDevRub')?.value, 0),
+            time_stop_min: arbNum(el('arbTimeStopMin')?.value, 0),
+            leg_a_limit_seconds: arbNum(el('arbLegALimitSec')?.value, 2),
             risk_type: el('arbRiskType')?.value || 'stop_loss_rub',
             risk_value: arbNum(el('arbRiskVal')?.value, 5000),
             allow_long_basis: el('arbAllowLong')?.checked || false,
@@ -6408,6 +6414,23 @@ function PANEL_TEMPLATE_HTML(cfg, p, data) {
                     </select>
                 </div>
                 <div class="metric-card"><div class="metric-label">Значение</div><input id="arbMinProfitVal" class="input" type="number" step="0.1" value="${p.min_profit_value||20}" style="width:90px"></div>
+            </div>
+
+            <hr style="border-color:var(--border-color)">
+
+            <!-- F-058: гибрид C — раздвижечный вход/выход -->
+            <div class="metrics-row" style="flex-wrap:wrap;align-items:flex-end">
+                <div class="metric-card" style="min-width:210px"><div class="metric-label">Режим выхода (F-058)</div>
+                    <select id="arbExitMode" class="input" style="width:190px">
+                        <option value="spread" ${p.exit_mode!=='pnl'?'selected':''}>По раздвижке (послойно)</option>
+                        <option value="pnl" ${p.exit_mode==='pnl'?'selected':''}>По PnL (легаси)</option>
+                    </select>
+                </div>
+                <div class="metric-card"><div class="metric-label">Вход: dev от fair (₽)</div><input id="arbEntryDevRub" class="input" type="number" step="1" value="${p.entry_dev_rub!=null?p.entry_dev_rub:0}" style="width:70px" title="SHORT: реализуемая раздвижка − fair ≥ N ₽; LONG: fair − реализуемая ≥ N ₽ (0=выкл)"></div>
+                <div class="metric-card"><div class="metric-label">Вход: σ-фильтр</div><input id="arbEntryZSigma" class="input" type="number" step="0.1" value="${p.entry_z_sigma!=null?p.entry_z_sigma:0}" style="width:60px" title="Отклонение от среднего ≥ N×dev_std (0=выкл)"></div>
+                <div class="metric-card"><div class="metric-label">Стоп по раздвижке (₽)</div><input id="arbStopDevRub" class="input" type="number" step="1" value="${p.stop_dev_rub!=null?p.stop_dev_rub:0}" style="width:70px" title="Закрыть всё, если раздвижка хуже входной на N ₽ (0=выкл)"></div>
+                <div class="metric-card"><div class="metric-label">Time-stop (мин)</div><input id="arbTimeStopMin" class="input" type="number" step="10" value="${p.time_stop_min!=null?p.time_stop_min:0}" style="width:70px" title="Закрыть всё по истечении N минут (0=выкл)"></div>
+                <div class="metric-card"><div class="metric-label">Лимитка выхода (сек) → маркет</div><input id="arbLegALimitSec" class="input" type="number" step="0.5" value="${p.leg_a_limit_seconds!=null?p.leg_a_limit_seconds:2}" style="width:70px" title="Нога A: лимитка ждёт N сек, затем закрытие маркетом (выход доводится всегда)"></div>
             </div>
 
             <hr style="border-color:var(--border-color)">

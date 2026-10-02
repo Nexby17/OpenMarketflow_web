@@ -157,6 +157,8 @@ def _warmup_dev_history():
 
 _warmup_dev_history()
 orders_mgr = ArbOrderManager(dp_url=DP_URL, account=ACCOUNT)
+# F-058: лимитка выхода живёт leg_a_limit_seconds секунд → маркет-фолбэк (гибрид C)
+orders_mgr.leg_a_limit_seconds = float(getattr(params, "leg_a_limit_seconds", 2.0))
 execution_lock = threading.Lock()  # prevents concurrent entry/exit from different threads
 
 def _attach_finam_to_orders():
@@ -906,17 +908,26 @@ def _execute_exit(signal: dict, force_market: bool = False):
 def _execute_single_exit(layer, reason: str, force_market: bool = False):
     """Execute exit for one layer: reverse legs.
     force_market=True for manual_stop/cleanup — use market orders to guarantee fill."""
-    # F-052: повторная проверка тейка ПЕРЕД отправкой ордеров — сигнал мог быть принят
-    # по фантомному стакану, к моменту исполнения данные уже честные. Риск-выходы
-    # (stop_loss/daily_stop_loss) и ручные (manual_stop/cleanup) проходят всегда.
+    # F-058: гейт тейка — повторная проверка ПЕРЕД отправкой ордеров (сигнал мог быть
+    # принят по фантомному стакану, инцидент GZZ6 30.09). В spread-режиме проверяется
+    # раздвижка, в pnl-режиме — прежний realizable-PnL.
     if reason == "profit_target":
-        _rl = strategy._layer_realizable_pnl(layer)
-        if not strategy._exit_qualifies(_rl, layer):
-            _rl_str = f"{_rl:.2f}" if _rl is not None else "None (стакан протух/несогласован)"
-            log.warning(f"F-052 GATE layer #{layer.layer_id}: profit_target отменён — "
-                        f"realizable={_rl_str} < порога {strategy.p.min_profit_value} "
-                        f"{strategy.p.min_profit_type}. Слой удержан.")
-            return
+        if strategy.p.exit_mode == "spread":
+            rs = strategy._layer_realizable_spread(layer)
+            if not strategy._spread_take_qualifies(rs, layer):
+                _rs_str = f"{rs:.1f}" if rs is not None else "None (стакан протух)"
+                log.warning(f"F-058 GATE layer #{layer.layer_id}: spread take отменён — "
+                            f"realizable_spread={_rs_str} не прошла entry_basis {layer.entry_basis:.1f} "
+                            f"∓ {strategy.p.min_profit_value}. Слой удержан.")
+                return
+        else:
+            _rl = strategy._layer_realizable_pnl(layer)
+            if not strategy._exit_qualifies(_rl, layer):
+                _rl_str = f"{_rl:.2f}" if _rl is not None else "None (стакан протух/несогласован)"
+                log.warning(f"F-052 GATE layer #{layer.layer_id}: profit_target отменён — "
+                            f"realizable={_rl_str} < порога {strategy.p.min_profit_value} "
+                            f"{strategy.p.min_profit_type}. Слой удержан.")
+                return
     if layer.side == LONG_BASIS:
         side_a = BUY
         side_b = SELL
@@ -1211,9 +1222,10 @@ class APIHandler(BaseHTTPRequestHandler):
                                "lookback", "leg_a_timeout", "min_fill_ratio", "min_profit_value",
                                "risk_value", "commission_stock_pct", "commission_futures_rt",
                                "slippage_bps", "mult_a", "mult_b", "dev_ann_high", "dev_ann_low",
-                               "dev_lookback", "dev_push_interval", "go_per_contract_b"}
-                # F-022: пару через /params менять НЕЛЬЗЯ — она личность инстанса (env при старте)
-                _str_fields = {"entry_mode", "min_profit_type", "risk_type", "expiration_date"}
+                               "dev_lookback", "dev_push_interval", "go_per_contract_b",
+                               "entry_dev_rub", "entry_z_sigma", "stop_dev_rub", "time_stop_min", "leg_a_limit_seconds"}
+                # F-058: exit_mode — строковый параметр гибрида C ("spread" | "pnl")
+                _str_fields = {"entry_mode", "min_profit_type", "risk_type", "expiration_date", "exit_mode"}
                 rejected = []
                 for k, v in data.items():
                     if not hasattr(params, k):
@@ -1260,6 +1272,11 @@ class APIHandler(BaseHTTPRequestHandler):
                 strategy.basis_calc.dev_lookback = params.dev_lookback
                 strategy.basis_calc.dev_push_interval = params.dev_push_interval
                 strategy.basis_calc.set_dividends(getattr(params, "dividends", []) or [])
+                # F-058: leg_a_limit_seconds — время жизни лимитки выхода до маркет-фолбэка
+                try:
+                    orders_mgr.leg_a_limit_seconds = float(getattr(params, "leg_a_limit_seconds", 2))
+                except Exception:
+                    pass
                 save_config()
                 self._json(200, {"ok": True, "rejected": rejected})
             else:

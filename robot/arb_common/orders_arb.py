@@ -597,12 +597,105 @@ class ArbOrderManager:
                      min_fill_ratio: float = 0.5,
                      paper: bool = True,
                      market_price_b: float = 0.0) -> dict:
-        """Execute arbitrage exit — same mechanics as entry but opposite directions."""
-        return self.execute_entry(
-            symbol_a, symbol_b, side_a, side_b,
-            lots_a, lots_b, limit_price_a,
-            timeout, min_fill_ratio, paper, market_price_b,
-        )
+        """F-058 (гибрид C, 2026-10-02): выход с ГАРАНТИРОВАННЫМ закрытием.
+
+        Механика (нога B — всегда маркет, как и прежде):
+          1. Нога A — лимитка по стороне выхода (bid/ask), ждём leg_a_limit_seconds (default 2 c).
+          2. A исполнилась (полностью или >= min_fill_ratio) → нога B маркетом на фактически
+             закрытый объём (частичное ужимает B, F-041-логика execute_entry).
+          3. A НЕ исполнилась → отменяем лимитку и закрываем A МАРКЕТОМ (фолбэк).
+             Инцидент 12:41: leg_a_timeout без фолбэка → выход отменялся целиком,
+             слой #5 висел сутки. Теперь выход доводится до конца всегда.
+
+        В paper-режиме — мгновенный fill по лимитной/рыночной цене.
+        Возвращает тот же контракт, что execute_entry: leg_a/leg_b/success/error."""
+        result = {"leg_a": None, "leg_b": None, "success": False, "error": ""}
+        limit_sec = int(getattr(self, "leg_a_limit_seconds", 2) or 2)
+
+        # --- PAPER MODE ---
+        if paper:
+            log.info(f"📄 PAPER EXIT: {side_a} {lots_a} {symbol_a} @ {limit_price_a:.2f} (LIMIT)")
+            log.info(f"📄 PAPER EXIT: {side_b} {lots_b} {symbol_b} @ {market_price_b:.2f} (MARKET)")
+            result["leg_a"] = LegResult(filled=True, price=limit_price_a, quantity=lots_a)
+            result["leg_b"] = LegResult(filled=True, price=market_price_b or limit_price_a, quantity=lots_b)
+            result["success"] = True
+            return result
+
+        # --- REAL MODE: leg A limit first ---
+        oid_a = self._place_limit(symbol_a, side_a, lots_a, limit_price_a, tag="arb_exit_a")
+        if not oid_a:
+            # Лимитку разместить не удалось — сразу маркет, выход обязан состояться
+            log.warning(f"F-058 exit: leg A limit place FAILED → market fallback {side_a} {lots_a} {symbol_a}")
+            mkt = self._place_market(symbol_a, side_a, lots_a, tag="arb_exit_a_mkt")
+            if not mkt:
+                result["error"] = "leg_a_place_and_market_failed"
+                return result
+            oid_mkt = mkt.get("order_id", "")
+            price_a = self._get_real_fill_price(oid_mkt, limit_price_a) if oid_mkt else limit_price_a
+            result["leg_a"] = LegResult(filled=True, price=price_a, quantity=lots_a,
+                                         order_id=oid_mkt or "", error="market_fallback")
+        else:
+            leg_a = self._wait_for_fill(oid_a, limit_sec, known_price=limit_price_a)
+
+            if leg_a.filled:
+                # F-041: executed_quantity в акциях → лоты (как в execute_entry)
+                if leg_a.quantity and leg_a.quantity > 0:
+                    lot = self._lot_sizes.get(symbol_a.split("@")[0], self._default_lot_size)
+                    if lot > 1 and leg_a.quantity % lot == 0 and leg_a.quantity > lots_a:
+                        leg_a.quantity = leg_a.quantity // lot
+                result["leg_a"] = leg_a
+            else:
+                # Таймаут/отмена лимитки → МАРКЕТ-ФОЛБЭК (ключевое отличие от execute_entry)
+                log.warning(f"F-058 exit: leg A limit not filled ({leg_a.error}) after {limit_sec}s → MARKET fallback {side_a} {lots_a} {symbol_a}")
+                mkt = self._place_market(symbol_a, side_a, lots_a, tag="arb_exit_a_mkt")
+                if not mkt:
+                    result["error"] = f"leg_a_limit_{leg_a.error}_and_market_failed"
+                    return result
+                oid_mkt = mkt.get("order_id", "")
+                price_a = self._get_real_fill_price(oid_mkt, limit_price_a) if oid_mkt else limit_price_a
+                self._log_slippage("A_exit_fallback", limit_price_a, price_a)
+                result["leg_a"] = LegResult(filled=True, price=price_a, quantity=lots_a,
+                                             order_id=oid_mkt or "", error="market_fallback")
+
+        # Частичный fill A (< min_fill_ratio) — докрываем остаток маркетом, чтобы B встал на весь объём
+        fill_qty = result["leg_a"].quantity if result["leg_a"] else 0
+        if fill_qty < lots_a:
+            rest = lots_a - fill_qty
+            log.warning(f"F-058 exit: leg A partial {fill_qty}/{lots_a} → market top-up {rest}")
+            mkt2 = self._place_market(symbol_a, side_a, rest, tag="arb_exit_a_topup")
+            if mkt2:
+                oid_mkt2 = mkt2.get("order_id", "")
+                price_a2 = self._get_real_fill_price(oid_mkt2, limit_price_a) if oid_mkt2 else limit_price_a
+                # усредняем цену закрытия A
+                total = lots_a
+                pa = (result["leg_a"].price * fill_qty + price_a2 * rest) / total if total > 0 else price_a2
+                result["leg_a"] = LegResult(filled=True, price=pa, quantity=lots_a,
+                                             order_id=(result["leg_a"].order_id or "") + "+" + (oid_mkt2 or ""),
+                                             error=result["leg_a"].error if result["leg_a"] else "topup")
+            else:
+                log.error(f"F-058 exit: leg A top-up FAILED — {rest} {symbol_a} may remain open")
+
+        # --- Leg B: MARKET (по факту закрытой A) ---
+        actual_lots_b = max(1, round(lots_b * (result["leg_a"].quantity / lots_a))) if lots_a > 0 else lots_b
+        market_b = self._place_market(symbol_b, side_b, actual_lots_b, tag="arb_exit_b")
+        if not market_b:
+            log.error("F-058 exit: leg B market FAILED — emergency closing leg A back")
+            emergency_side = BUY if side_a == SELL else SELL
+            for attempt in range(3):
+                res = self._place_market(symbol_a, emergency_side, result["leg_a"].quantity, tag=f"arb_exit_emergency_a_v{attempt}")
+                if res and res.get("order_id"):
+                    log.info(f"Emergency re-close of leg A sent (attempt {attempt})")
+                    break
+                time.sleep(1)
+            result["error"] = "leg_b_failed_emergency_reclosed_a"
+            return result
+
+        oid_b = market_b.get("order_id", "")
+        leg_b_price = self._get_real_fill_price(oid_b, market_price_b) if oid_b else market_price_b
+        log.info(f"F-058 exit filled: A {result['leg_a'].quantity}@{result['leg_a'].price:.2f} ({result['leg_a'].error or 'limit'}) | B {actual_lots_b}@{leg_b_price:.2f}")
+        result["leg_b"] = LegResult(filled=True, price=leg_b_price, quantity=actual_lots_b)
+        result["success"] = True
+        return result
 
     def execute_both_limit(self, symbol_a: str, symbol_b: str,
                            side_a: str, side_b: str,

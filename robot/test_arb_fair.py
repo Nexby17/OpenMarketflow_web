@@ -470,5 +470,174 @@ stY4.open_layer(SHORT_BASIS, 105.60, 95.90, 1, 1, z=2.0)
 rl4 = stY4._layer_realizable_pnl(stY4.layers[0])
 check("F-052-4 wide-but-real OB passes", rl4 is not None, f"rl={rl4}")
 
+
+print("=== F-058: гибрид C — раздвижечный вход/выход (решение Дмитрия 01.10) ===")
+
+# Общий конфиг гибрида: hedge 100 (GAZP/GZZ6), вход ≥15₽ + ≥1σ, тейк послойно по раздвижке 10₽,
+# стоп 30₽, time-stop 240 мин, лимитка выхода 2с. dev_ann_high=0.2 — как в бою (₽-гейты главные).
+cfgH = dict(symbol_a="GAZP@MISX", ticker_a="GAZP", symbol_b="GZZ6@RTSX", ticker_b="GZZ6",
+            lots_a=10, lots_b=1, hedge_ratio=100.0, mult_a=10.0, mult_b=1.0,
+            entry_mode="zscore", dev_ann_high=0.2, dev_ann_low=-1.0,
+            dev_lookback=100, dev_push_interval=0.05,
+            risk_free_rate=0.145,
+            expiration_date=(datetime.now() + timedelta(days=76)).strftime("%Y-%m-%d"),
+            contract_size=100, capital=1_000_000, allow_long_basis=False,
+            min_profit_type="rub", min_profit_value=10.0,
+            entry_dev_rub=15.0, entry_z_sigma=1.0,
+            stop_dev_rub=30.0, time_stop_min=240.0,
+            exit_mode="spread", leg_a_limit_seconds=2.0,
+            slippage_bps=5.0, use_commission=True)
+
+def _feed_dev(st, spot, dev_rub, n=200):
+    """Fair-aware deviation history: b = spot*hedge + fair + dev_rub каждый пуш."""
+    bc = st.basis_calc
+    for i in range(n):
+        bc.update_price_a(spot)
+        fair = bc.fair_spread
+        bc.update_price_b(spot * 100 + fair + dev_rub)
+        bc._push_deviation(force=True)
+        time.sleep(0.001)
+
+# --- Вход: гейт по реализуемой раздвижке ---
+stH = ArbitrageStrategy(ArbParams(**cfgH))
+_feed_dev(stH, 97.0, 8.0)                      # dev +8₽ над fair
+_fairH = stH.basis_calc.fair_spread
+stH.basis_calc.update_price_a(97.0)
+stH.basis_calc.update_price_b(9700.0 + _fairH + 8.0)
+stH.force_unlock()
+sig_g1 = stH.check_entry()
+check("F-058-1 gate blocks dev 8 < 15", sig_g1 is None, f"sig={sig_g1}")
+
+# Сильное, но СТАЦИОНАРНОЕ отклонение (+30₽): ₽-гейт пропускает, sigma-фильтр блокирует
+stH2 = ArbitrageStrategy(ArbParams(**cfgH))
+_feed_dev(stH2, 97.0, 30.0)
+_fair2 = stH2.basis_calc.fair_spread
+stH2.basis_calc.update_price_a(97.0)
+stH2.basis_calc.update_price_b(9700.0 + _fair2 + 30.0)
+stH2.ob_a.update([(96.99, 10, 0, 1), (97.01, 0, 10, 1)])
+stH2.ob_b.update([(10018.0, 10, 0, 1), (10020.0, 0, 10, 1)])
+_dev_rel2 = stH2.basis_calc.deviation - stH2.basis_calc._deviation_stats()[0]
+sig_g2 = stH2.check_entry()
+check("F-058-2 sigma filter blocks flat-dev entry", sig_g2 is None,
+      f"sig={sig_g2} dev_rel={_dev_rel2:.1f}")
+
+# Вариация истории (σ живая): последний dev сильно выше среднего → вход проходит
+stH3 = ArbitrageStrategy(ArbParams(**cfgH))
+bc3 = stH3.basis_calc
+_fair3 = 0.0
+for i in range(200):
+    bc3.update_price_a(97.0)
+    _fair3 = bc3.fair_spread
+    d = 10.0 + (i % 10)          # 10..19, mean≈14.5 std≈2.87
+    bc3.update_price_b(9700.0 + _fair3 + d)
+    bc3._push_deviation(force=True)
+    time.sleep(0.001)
+bc3.update_price_a(97.0)
+bc3.update_price_b(9700.0 + _fair3 + 45.0)       # dev 45 >> mean+1σ ≈ 17.4
+stH3.ob_a.update([(96.99, 10, 0, 1), (97.01, 0, 10, 1)])
+stH3.ob_b.update([(10032.0, 10, 0, 1), (10034.0, 0, 10, 1)])
+sig_g3 = stH3.check_entry()
+check("F-058-3 entry passes dev 45 >= 15 + sigma ok", sig_g3 is not None and sig_g3["side"] == "short_basis",
+      f"sig={sig_g3} fair={_fair3:.1f}")
+check("F-058-3b signal carries dev_rub", sig_g3 is not None and sig_g3.get("dev_rub", 0) >= 15.0,
+      f"dev_rub={sig_g3.get('dev_rub') if sig_g3 else None}")
+
+# --- Тейк: послойно по раздвижке (формулировка Дмитрия) ---
+stT = ArbitrageStrategy(ArbParams(**{**cfgH, "use_commission": False}))
+stT.basis_calc.update_price_a(97.0)
+stT.basis_calc.update_price_b(9730.0)
+stT.ob_a.update([(96.99, 10, 0, 1), (97.01, 0, 10, 1)])
+stT.ob_b.update([(9729.0, 10, 0, 1), (9731.0, 0, 10, 1)])
+# SHORT вошли: A@97.00, B@9730 → entry_basis = 9730 − 9700 = 30; порог тейка = 30 − 10 = 20
+stT.open_layer(SHORT_BASIS, 97.00, 9730.0, 10, 1, z=2.0)
+
+# rs = 9731 − 9699 = 32 > 20 — тейка нет
+q0 = stT._spread_take_qualifies(stT._layer_realizable_spread(stT.layers[0]), stT.layers[0])
+check("F-058-4 no take while spread above entry-10", q0 is False, f"rs={stT._layer_realizable_spread(stT.layers[0])}")
+# rs=20 (ровно entry−10): нестрогое <= → проходит
+stT.ob_b.update([(9717.0, 10, 0, 1), (9719.0, 0, 10, 1)])
+q1 = stT._spread_take_qualifies(stT._layer_realizable_spread(stT.layers[0]), stT.layers[0])
+check("F-058-5 borderline rs=entry-10 passes (<=)", q1 is True,
+      f"rs={stT._layer_realizable_spread(stT.layers[0])}")
+# rs=18 < 20 → да
+stT.ob_b.update([(9715.0, 10, 0, 1), (9717.0, 0, 10, 1)])
+q2 = stT._spread_take_qualifies(stT._layer_realizable_spread(stT.layers[0]), stT.layers[0])
+check("F-058-6 take qualifies rs=18 <= entry-10", q2 is True)
+
+# 3 тика подтверждения: n=1, n=2, n=3 → fire на третьем
+sigA = stT.check_exit()
+sigB = stT.check_exit()
+sigC = stT.check_exit()
+check("F-058-7 first two ticks no exit", sigA is None and sigB is None, f"sigA={sigA} sigB={sigB}")
+check("F-058-8 take fires on 3rd tick", sigC is not None and sigC["reason"] == "profit_target" and sigC["layer_id"] == stT.layers[0].layer_id,
+      f"sigC={sigC}")
+
+# Групповой выход в spread-режиме отключён: слоям нужны ИХ пороги раздвижки, а не сумма PnL
+stG2 = ArbitrageStrategy(ArbParams(**{**cfgH, "use_commission": False}))
+stG2.basis_calc.update_price_a(97.0)
+stG2.basis_calc.update_price_b(9730.0)
+stG2.ob_a.update([(96.99, 10, 0, 1), (97.01, 0, 10, 1)])
+stG2.ob_b.update([(9714.0, 10, 0, 1), (9716.0, 0, 10, 1)])
+# rs = 9716 − 9699 = 17: слой1 (entry 30, порог 20) — проходит; слой2 (entry 40, порог 30) — нет
+stG2.open_layer(SHORT_BASIS, 97.00, 9730.0, 10, 1, z=2.0)
+stG2.open_layer(SHORT_BASIS, 97.00, 9740.0, 10, 1, z=2.1)
+sigG = None
+for _ in range(4):
+    sigG = stG2.check_exit()
+check("F-058-9 group exit disabled in spread mode (only per-layer)",
+      sigG is None or (sigG["action"] == "exit" and sigG["layer_id"] is not None),
+      f"sig={sigG}")
+
+# --- Стоп по раздвижке +30₽ (послойно → exit_all) ---
+stS = ArbitrageStrategy(ArbParams(**{**cfgH, "use_commission": False}))
+stS.basis_calc.update_price_a(97.0)
+stS.basis_calc.update_price_b(9730.0)
+stS.open_layer(SHORT_BASIS, 97.00, 9730.0, 10, 1, z=2.0)   # entry_basis 30
+stS.ob_a.update([(96.99, 10, 0, 1), (97.01, 0, 10, 1)])
+stS.ob_b.update([(9762.0, 10, 0, 1), (9764.0, 0, 10, 1)])  # rs = 9764 − 9699 = 65 → worse = 35 ≥ 30
+sigS = stS.check_exit()
+check("F-058-10 dev stop fires at +35 worse", sigS is not None and sigS["reason"] == "dev_stop" and sigS["action"] == "exit_all",
+      f"sig={sigS}")
+
+# --- Time-stop 240 мин ---
+stM = ArbitrageStrategy(ArbParams(**{**cfgH, "use_commission": False}))
+stM.basis_calc.update_price_a(97.0)
+stM.basis_calc.update_price_b(9730.0)
+stM.open_layer(SHORT_BASIS, 97.00, 9730.0, 10, 1, z=2.0)
+stM.layers[0].entry_time = time.time() - 241 * 60
+stM.ob_a.update([(96.99, 10, 0, 1), (97.01, 0, 10, 1)])
+stM.ob_b.update([(9729.0, 10, 0, 1), (9731.0, 0, 10, 1)])  # раздвижка не вернулась — но время вышло
+sigM = stM.check_exit()
+check("F-058-11 time stop fires at 241min", sigM is not None and sigM["reason"] == "time_stop",
+      f"sig={sigM}")
+
+# --- Стакан протух → решений по раздвижке нет (ни тейка, ни стопа) ---
+stN = ArbitrageStrategy(ArbParams(**{**cfgH, "use_commission": False}))
+stN.basis_calc.update_price_a(97.0)
+stN.basis_calc.update_price_b(9730.0)
+stN.open_layer(SHORT_BASIS, 97.00, 9730.0, 10, 1, z=2.0)
+stN.ob_a.update([(96.99, 10, 0, 1), (97.01, 0, 10, 1)])
+stN.ob_b.update([(9764.0, 10, 0, 1), (9766.0, 0, 10, 1)])
+stN.ob_a._ts = time.time() - 10
+stN.ob_b._ts = time.time() - 10
+sigN = stN.check_exit()
+check("F-058-12 stale OB: no dev-stop, no take", sigN is None or sigN["reason"] not in ("dev_stop", "profit_target"),
+      f"sig={sigN}")
+
+# --- pnl-режим не сломан (легаси-тейк по realizable PnL при невозврате раздвижки) ---
+stP = ArbitrageStrategy(ArbParams(**{**cfgH, "exit_mode": "pnl", "min_profit_value": 25.0, "use_commission": False}))
+stP.basis_calc.update_price_a(97.0)
+stP.basis_calc.update_price_b(9730.0)
+# SHORT закрытие: sell A @ bid (A вырос — профит), buy B @ ask (B упал — профит)
+stP.ob_a.update([(97.19, 10, 0, 1), (97.21, 0, 10, 1)])
+stP.ob_b.update([(9709.0, 10, 0, 1), (9711.0, 0, 10, 1)])
+stP.open_layer(SHORT_BASIS, 97.00, 9730.0, 10, 1, z=2.0)
+_rlP = stP._layer_realizable_pnl(stP.layers[0])
+sigP = None
+for _ in range(3):
+    sigP = stP.check_exit()
+check("F-058-13 pnl mode still takes profit", sigP is not None and sigP["reason"] == "profit_target",
+      f"sig={sigP} realizable={_rlP}")
+
 print(f"\n===== RESULTS: PASS={PASS} FAIL={FAIL} =====")
 sys.exit(0 if FAIL == 0 else 1)
