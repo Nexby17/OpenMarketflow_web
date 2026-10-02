@@ -1159,21 +1159,19 @@ class APIHandler(BaseHTTPRequestHandler):
 
         elif path == "/stop":
             log.warning(f"API POST /stop: mode {_mode} → stopped (layers={len(strategy.layers)})")
-            _mode = "stopped"
-            # Close all layers if any (with lock to prevent race with main loop)
-            if strategy.layers:
-                if PAPER_MODE:
-                    pa = strategy.basis_calc.price_a
-                    pb = strategy.basis_calc.price_b
-                    if pa > 0 and pb > 0:
-                        strategy.close_all_layers(pa, pb, "manual_stop")
-                else:
-                    acquired = execution_lock.acquire(timeout=10)
-                    try:
+            # F-060: сериализуем — двойной POST /stop не должен закрывать слои дважды;
+            # re-check strategy.layers уже под execution_lock.
+            with execution_lock:
+                _mode = "stopped"
+                # Close all layers if any (re-check под замком!)
+                if strategy.layers:
+                    if PAPER_MODE:
+                        pa = strategy.basis_calc.price_a
+                        pb = strategy.basis_calc.price_b
+                        if pa > 0 and pb > 0:
+                            strategy.close_all_layers(pa, pb, "manual_stop")
+                    else:
                         _execute_exit({"action": "exit_all", "reason": "manual_stop", "pnl": 0, "layer_id": None}, force_market=True)
-                    finally:
-                        if acquired:
-                            execution_lock.release()
             save_state()
             log.info("Mode → STOPPED")
             self._json(200, {"ok": True, "mode": _mode, "paper": PAPER_MODE})

@@ -158,6 +158,10 @@ _last_fp_reconnect: float = 0.0  # guard against reconnect loop
 _price_lock = threading.Lock()
 _current_price: float = 0.0
 
+# F-060: сериализация /stop — двойной POST закрывал позицию дважды с переворотом
+# (инцидент 02.10 OF-Si: buy 6 + buy 6 против short 6).
+_stop_lock = threading.Lock()
+
 # --- State persistence ---
 STATE_FILE = os.path.join(os.getcwd(), f"of_state_br{STATE_SUFFIX}.json")
 
@@ -964,25 +968,28 @@ class APIHandler(BaseHTTPRequestHandler):
 
         elif path == "/stop":
             # Stop = cancel orders + close position
-            _mode = "stopped"
-            if not PAPER_MODE:
-                active = orders.get_active_orders(symbol=SYMBOL)
-                if active:
-                    for o in active:
-                        oid = o.get("order_id", "") if isinstance(o, dict) else str(o)
-                        orders.cancel(oid)
-            # Close position if any
-            if strategy.in_position:
-                with _price_lock:
-                    price = _current_price
-                if price > 0:
-                    if not PAPER_MODE:
-                        side = SELL if strategy.direction == LONG else BUY
-                        orders.place_market(side, strategy.total_lots, tag="of_stop")
-                    strategy._close_all(price, "manual_stop")
-                    strategy._reset_position()
-            strategy._force_unlock()  # Reset entry lock after manual stop
-            save_state()
+            # F-060: сериализуем — двойной POST /stop закрывал позицию дважды с переворотом
+            # (инцидент 02.10 OF-Si: buy 6 + buy 6 против short 6).
+            with _stop_lock:
+                _mode = "stopped"
+                if not PAPER_MODE:
+                    active = orders.get_active_orders(symbol=SYMBOL)
+                    if active:
+                        for o in active:
+                            oid = o.get("order_id", "") if isinstance(o, dict) else str(o)
+                            orders.cancel(oid)
+                # Close position if any (re-check под замком!)
+                if strategy.in_position:
+                    with _price_lock:
+                        price = _current_price
+                    if price > 0:
+                        if not PAPER_MODE:
+                            side = SELL if strategy.direction == LONG else BUY
+                            orders.place_market(side, strategy.total_lots, tag="of_stop")
+                        strategy._close_all(price, "manual_stop")
+                        strategy._reset_position()
+                strategy._force_unlock()  # Reset entry lock after manual stop
+                save_state()
             self._json(200, {"ok": True, "mode": _mode, "paper": PAPER_MODE})
 
         elif path == "/pause":

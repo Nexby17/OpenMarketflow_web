@@ -1042,6 +1042,15 @@
    "owner": "main",
    "date": "2026-10-02",
    "summary": "Инцидент: Дмитрий нажал Стоп у MXU6, робот продолжил торговать. Причина: 3 копии main_of_mx.py одновременно слушали :5081 (Windows допускает повторный bind при allow_reuse_address), Стоп гасил одну копию, зомби вели позицию (MXZ6 до -3, сироты на счёте). Фикс: (1) robot/instance_lock.py — файловый exclusive-lock per robot_key+port, второй экземпляр завершается sys.exit(2) до подписок/ордеров; (2) startup always stopped — после смерти процесса позиция восстанавливается в журнал, но торговля возобновляется только явным POST /start; (3) /api/instance/stop на Windows убивает LISTENING-процессы по порту через netstat+taskkill (раньше только Linux fuser — на Windows молча не работал); (4) StartAsync probe /health перед спавном — не создаёт копию, если порт уже отвечает живым роботом. Стейты MX/BR-edp сброшены в stopped/flat, сиротские позиции закрыты (MXZ6 вручную/др., BRX6 штатным /stop). Замок протестирован: 1-й захват OK, 2-й в child-процессе отклонён (rc=7), после release — OK."
+  },
+  {
+   "id": "F-060",
+   "name": "Идемпотентный /stop: mutex + re-check позиции под замком (все 4 робота)",
+   "area": "robots/infra",
+   "status": "done",
+   "owner": "main",
+   "date": "2026-10-02",
+   "summary": "Инцидент OF-Si 19:23:51: два POST /stop в одну секунду, оба прочли in_position до сброса → двойной close buy 6 + buy 6 против short 6 → инверсия в long 6. Фикс: _stop_lock в main_of/main_of_mx/main_of_br (тело /stop + re-check in_position под замком), в main_arb тело /stop под execution_lock с re-check strategy.layers. Статические проверки 11/11 PASS, py_compile 4/4. Роботы не перезапускались (R-001), фикс подхватится при следующем старте."
   }
  ]
 }
