@@ -7110,87 +7110,88 @@ function ofBrPanelBodyHtml(inst, p) {
             <span id="ofBrSyncHint" style="font-size:12px;color:#9CA3AF">робот: <span id="ofBrSyncRobotLots">—</span> | брокер: <span id="ofBrSyncBrokerLots">—</span></span>
         </div>
         <hr style="border-color:#2D2D44;margin:12px 0">
-        <!-- ТОРГОВЛЯ -->
-        <div style="font-size:12px;color:#9CA3AF;margin-bottom:6px;font-weight:bold">ТОРГОВЛЯ</div>
-        <div class="metrics-row" style="flex-wrap:wrap;margin-bottom:12px">
-            ${num('editOfBrLots','Lots',p.lots,{def:1,w:60})}
-            ${num('editOfBrMaxPyr','Max Pyramid',p.max_pyramid_levels,{def:1,w:60})}
-            ${num('editOfBrMaxAvg','Max Average',p.max_average_levels,{def:5,w:60})}
-            ${num('editOfBrStepAvg','Step Avg ($)',p.step_average,{def:0.35,step:'0.01',min:0.01,w:70})}
-            ${num('editOfBrStepPyr','Step Pyr ($)',p.step_pyramid,{def:25,step:'0.01',w:70})}
-            ${num('editOfBrMargin','Margin/лот ₽',p.margin_per_lot,{def:7000,w:80})}
-            ${num('editOfBrCommission','Комиссия ₽/сторона',p.commission,{def:0.9,step:'0.05',w:80})}
-            <div class="metric-card"><div class="metric-label">Timeframe</div><select id="editOfBrTf" class="input" style="width:70px"><option value="M1" ${p.timeframe==='M1'?'selected':''}>M1</option><option value="M5" ${(p.timeframe||'M5')==='M5'?'selected':''}>M5</option><option value="M15" ${p.timeframe==='M15'?'selected':''}>M15</option><option value="M30" ${p.timeframe==='M30'?'selected':''}>M30</option></select></div>
-            <div class="metric-card"><div class="metric-label">Сессия с (HH:MM)</div><input id="editOfBrSessionStart" class="input" type="text" placeholder="09:10" value="${p.session_start||''}" style="width:80px" title="Пусто = вся сессия"></div>
-            <div class="metric-card"><div class="metric-label">Сессия до (HH:MM)</div><input id="editOfBrSessionEnd" class="input" type="text" placeholder="23:45" value="${p.session_end||''}" style="width:80px" title="Пусто = вся сессия"></div>
-            ${num('editOfBrClosePriceAll','Close price All (0=выкл)',p.close_price_all,{def:'',step:'0.01',w:90})}
-            <div class="metric-card" style="display:flex;align-items:center;gap:6px"><button class="btn btn-primary btn-sm" onclick="ofBrApplyClosePriceAll('${inst}')" title="Применить ручную цель закрытия всей позиции сразу (0 = выключено)">🎯 Применить</button></div>
-        </div>
-        <!-- РИСК -->
-        <div style="font-size:12px;color:#9CA3AF;margin-bottom:6px;font-weight:bold">РИСК</div>
-        <div class="metrics-row" style="flex-wrap:wrap;margin-bottom:12px">
+        <!-- ТОРГОВЛЯ / РИСК / СИГНАЛЫ — раскладка как у SiU6 Order Flow -->
+        <div class="metrics-row" style="flex-wrap:wrap;margin-bottom:16px">
+            ${num('editOfBrLots','Lots',p.lots,{def:1,w:70})}
+            ${num('editOfBrMaxPyr','Max Pyramid',p.max_pyramid_levels,{def:1,w:70})}
+            ${num('editOfBrMaxAvg','Max Average',p.max_average_levels,{def:15,w:70})}
+            ${num('editOfBrStepAvg','Step Avg (пт)',p.step_average,{def:0.4,step:'0.01',min:0.01,w:80})}
+            ${num('editOfBrStepPyr','Step Pyr (пт)',p.step_pyramid,{def:25,step:'0.01',w:80})}
+            ${num('editOfBrSpread','Spread (пт)',p.spread,{def:0.23,step:'0.01',min:0.01,w:70})}
+
             <div class="metric-card"><div class="metric-label">SL Mode</div><select id="editOfBrSlMode" class="input" style="width:70px"><option value="rub" ${(p.stop_loss_mode||'rub')==='rub'?'selected':''}>₽</option><option value="pct" ${p.stop_loss_mode==='pct'?'selected':''}>%</option><option value="pts" ${p.stop_loss_mode==='pts'?'selected':''}>пт</option></select></div>
             ${num('editOfBrSlValue','SL Value',p.stop_loss_value,{def:1000,step:'0.01',min:0,w:80})}
-            ${chk('editOfBrDailyStop','Daily Stop',p.enable_daily_stop!==false)}
-            ${num('editOfBrMinProfit','Min Profit/Lot $',p.min_profit_per_lot,{def:0.30,step:'0.01',min:0.01,w:70})}
+            ${num('editOfBrMinProfit','Min Profit/Lot',p.min_profit_per_lot,{def:0.17,step:'0.01',min:0.01,w:80})}
+            <div class="metric-card"><div class="metric-label">Close % All</div><select id="editOfBrCloseHalfPct" class="input" style="width:80px"><option value="0" ${(!p.close_half_pct)?'selected':''}>OFF</option><option value="50" ${p.close_half_pct===50?'selected':''}>50%</option><option value="40" ${p.close_half_pct===40?'selected':''}>40%</option><option value="30" ${p.close_half_pct===30?'selected':''}>30%</option><option value="20" ${p.close_half_pct===20?'selected':''}>20%</option><option value="10" ${p.close_half_pct===10?'selected':''}>10%</option></select></div>
+            ${num('editOfBrClosePriceAll','Close price All',p.close_price_all,{def:'',step:'0.01',w:100})}
             ${num('editOfBrMaxHold','Max Hold (мин)',p.max_hold_minutes,{def:999,w:80})}
+
+            ${num('editOfBrCvdEmaF','CVD EMA Fast',p.cvd_ema_fast,{def:5,w:70})}
+            ${num('editOfBrCvdEmaS','CVD EMA Slow',p.cvd_ema_slow,{def:25,w:70})}
+            ${num('editOfBrDmLb','DM Lookback',p.dm_lookback,{def:5,w:70})}
+            ${num('editOfBrWallWin','Wall Window (с)',p.wall_window,{def:120,w:80})}
+            ${num('editOfBrWallMult','Wall Mult',p.wall_multiplier,{def:3,step:'0.5',w:60})}
+            ${num('editOfBrCvdAccelThresh','CVD Accel Thresh',p.cvd_accel_threshold,{def:150,w:80})}
+
+            ${num('editOfBrAggWindow','Agg Window',p.agg_window,{def:10,w:70})}
+            ${num('editOfBrAggRatioThresh','Agg Ratio Thr',p.agg_ratio_threshold,{def:0.35,step:'0.05',w:70})}
+            ${chk('editOfBrUseAggRatio','Agg Ratio Filter',p.use_agg_ratio!==false,'#66BB6A')}
+            ${num('editOfBrConfirm','Confirm In',p.signal_confirm_count,{def:1,min:1,w:70})}
+            ${num('editOfBrConfirmOut','Confirm Out',p.signal_confirm_exit,{def:18,min:1,w:70})}
+            <div class="metric-card"><div class="metric-label">Timeframe</div><select id="editOfBrTf" class="input" style="width:80px"><option value="M1" ${p.timeframe==='M1'?'selected':''}>1 мин</option><option value="M5" ${(p.timeframe||'M5')==='M5'?'selected':''}>5 мин</option><option value="M15" ${p.timeframe==='M15'?'selected':''}>15 мин</option><option value="M30" ${p.timeframe==='M30'?'selected':''}>30 мин</option></select></div>
         </div>
-        <!-- PARTIAL TP -->
-        <div style="font-size:12px;color:#9CA3AF;margin-bottom:6px;font-weight:bold">PARTIAL TP (LIFO)</div>
+        <hr style="border-color:#2D2D44;margin:12px 0">
+        <!-- VWEMA Filter — как у SiU6 -->
+        <div class="metrics-row" style="flex-wrap:wrap;margin-bottom:12px;align-items:center;justify-content:center">
+            ${chk('editOfBrUseVwema','VWEMA Filter',p.use_vwema===true,'#FF9800')}
+            ${num('editOfBrVwemaFast','VWEMA Fast',p.vwema_fast,{def:20,w:70})}
+            ${num('editOfBrVwemaSlow','VWEMA Slow',p.vwema_slow,{def:40,w:70})}
+            ${num('editOfBrVwemaFlat','Flat Threshold',p.vwema_flat_th,{def:1,step:'0.1',w:70})}
+            ${chk('editOfBrVwemaBlock','Block counter-trend',p.vwema_block_counter!==false)}
+            ${chk('editOfBrVwemaAvgExit','VWEMA Avg Exit',p.vwema_avg_exit===true)}
+        </div>
+        <div style="text-align:center;margin-bottom:12px"><span style="color:#9CA3AF;font-size:12px">VWEMA Trend</span><br><span id="ofBrVwemaTrend" style="font-size:16px;font-weight:bold;color:#9CA3AF">—</span></div>
+        <hr style="border-color:#2D2D44;margin:12px 0">
+        <!-- HL Filter — как у SiU6 -->
+        <div class="metrics-row" style="flex-wrap:wrap;margin-bottom:12px;align-items:center">
+            ${chk('editOfBrUseHl','HL Filter',p.hl_filter===true,'#66BB6A')}
+            <div style="flex:1"></div>
+            ${num('editOfBrHlWindow','Окно (баров)',p.hl_window,{def:24,min:2,w:80})}
+            <div style="flex:1"></div>
+            ${num('editOfBrHlDelta','Δ близости (пт)',p.hl_delta,{def:75,w:90})}
+            <div style="flex:1"></div>
+            <div class="metric-card" style="min-width:170px"><div class="metric-label" style="text-align:center">HL вердикт</div><div id="ofBrHlVerdict" style="font-size:14px;font-weight:bold;color:#9CA3AF;text-align:center">—</div></div>
+        </div>
+        <hr style="border-color:#2D2D44;margin:12px 0">
+        <!-- VAH/VAL Volume Profile Filter — как у SiU6 -->
+        <div class="metrics-row" style="flex-wrap:wrap;margin-bottom:12px;align-items:center">
+            ${chk('editOfBrUseVahVal','VAH/VAL Filter',p.use_vah_val===true,'#42A5F5')}
+            ${num('editOfBrVahValPct','Value Area %',p.vah_val_pct,{def:95,min:50,w:70})}
+            ${num('editOfBrVahValBin','VP Bin Size',p.vah_val_bin_size,{def:0.35,step:'0.01',min:0.01,w:80})}
+            <div class="metric-card"><div class="metric-label">VP Mode</div><select id="editOfBrVahValMode" class="input" style="width:90px;font-size:12px"><option value="fade" ${(p.vah_val_mode||'')==='fade'?'selected':''}>Fade</option><option value="breakout" ${p.vah_val_mode==='breakout'?'selected':''}>Breakout</option><option value="range" ${(p.vah_val_mode||'range')==='range'?'selected':''}>Range</option></select></div>
+            <div class="metric-card" style="min-width:70px"><div class="metric-label">VAH</div><div id="ofBrVpVah" style="font-size:16px;font-weight:bold;color:#42A5F5">—</div></div>
+            <div class="metric-card" style="min-width:70px"><div class="metric-label">POC</div><div id="ofBrVpPoc" style="font-size:16px;font-weight:bold;color:#FFB74D">—</div></div>
+            <div class="metric-card" style="min-width:70px"><div class="metric-label">VAL</div><div id="ofBrVpVal" style="font-size:16px;font-weight:bold;color:#42A5F5">—</div></div>
+        </div>
+        <hr style="border-color:#2D2D44;margin:12px 0">
+        <!-- BR-специфика (нет у SiU6): риск-допы + OB + сессия -->
+        <div style="font-size:12px;color:#9CA3AF;margin-bottom:6px;font-weight:bold">BR-ДОПОЛНИТЕЛЬНО</div>
         <div class="metrics-row" style="flex-wrap:wrap;margin-bottom:12px">
+            ${num('editOfBrMargin','Margin/лот ₽',p.margin_per_lot,{def:7000,w:80})}
+            ${num('editOfBrCommission','Комиссия ₽/сторона',p.commission,{def:0.9,step:'0.05',w:80})}
+            ${chk('editOfBrDailyStop','Daily Stop',p.enable_daily_stop!==false)}
             ${chk('editOfBrPartialTp','Partial TP',p.partial_tp!==false,'#66BB6A')}
-            ${num('editOfBrSpread','Spread $ (TP/лот)',p.spread,{def:0.15,step:'0.01',min:0.01,w:70})}
-            <div class="metric-card"><div class="metric-label">Close % All</div><select id="editOfBrCloseHalfPct" class="input" style="width:70px"><option value="0" ${(!p.close_half_pct)?'selected':''}>OFF</option><option value="50" ${p.close_half_pct===50?'selected':''}>50%</option><option value="40" ${p.close_half_pct===40?'selected':''}>40%</option><option value="30" ${p.close_half_pct===30?'selected':''}>30%</option><option value="20" ${p.close_half_pct===20?'selected':''}>20%</option><option value="10" ${p.close_half_pct===10?'selected':''}>10%</option></select></div>
-        </div>
-        <!-- СИГНАЛЫ -->
-        <div style="font-size:12px;color:#9CA3AF;margin-bottom:6px;font-weight:bold">СИГНАЛЫ</div>
-        <div class="metrics-row" style="flex-wrap:wrap;margin-bottom:12px">
             ${chk('editOfBrUseCvdAccel','CVD Accel',p.use_cvd_accel!==false,'#66BB6A')}
             ${num('editOfBrCvdAccelPeriod','Accel Period (бар)',p.cvd_accel_period,{def:10,w:60})}
-            ${num('editOfBrCvdAccelThresh','Accel Threshold',p.cvd_accel_threshold,{def:150,w:80})}
             ${num('editOfBrCvdLookback','CVD Lookback',p.cvd_lookback,{def:10,w:60})}
-            ${chk('editOfBrUseCvd','CVD Trend EMA',p.use_cvd!==false,'#CE93D8')}
-            ${num('editOfBrCvdEmaF','CVD EMA Fast',p.cvd_ema_fast,{def:5,w:60})}
-            ${num('editOfBrCvdEmaS','CVD EMA Slow',p.cvd_ema_slow,{def:25,w:60})}
-            ${chk('editOfBrUseAggRatio','Agg Ratio Filter',p.use_agg_ratio!==false)}
-            ${num('editOfBrAggWindow','Agg Window (бар)',p.agg_window,{def:10,w:60})}
-            ${num('editOfBrAggRatioThresh','Agg Ratio Thr',p.agg_ratio_threshold,{def:0.35,step:'0.05',w:70})}
             ${chk('editOfBrUseDmWall','dm_wall',p.use_dm_wall===true,'#FF7043')}
-            ${num('editOfBrDmLb','DM Lookback',p.dm_lookback,{def:5,w:60})}
-            ${num('editOfBrWallWin','Wall Window (с)',p.wall_window,{def:120,w:60})}
-            ${num('editOfBrWallMult','Wall Mult',p.wall_multiplier,{def:3,step:'0.5',w:60})}
-            ${num('editOfBrConfirm','Confirm In',p.signal_confirm_count,{def:1,min:1,w:50})}
-            ${num('editOfBrConfirmOut','Confirm Out',p.signal_confirm_exit,{def:18,min:1,w:50})}
-        </div>
-        <!-- ФИЛЬТРЫ -->
-        <div style="font-size:12px;color:#9CA3AF;margin-bottom:6px;font-weight:bold">ФИЛЬТРЫ</div>
-        <div class="metrics-row" style="flex-wrap:wrap;margin-bottom:12px">
-            ${chk('editOfBrUseVahVal','VAH/VAL Filter (range)',p.use_vah_val===true,'#42A5F5')}
-            ${num('editOfBrVahValPct','Value Area %',p.vah_val_pct,{def:95,min:50,w:60})}
-            ${num('editOfBrVahValBin','VP Bin Size $',p.vah_val_bin_size,{def:0.35,step:'0.01',min:0.01,w:70})}
-            <div class="metric-card"><div class="metric-label">VP Mode</div><select id="editOfBrVahValMode" class="input" style="width:90px;font-size:12px"><option value="fade" ${(p.vah_val_mode||'')==='fade'?'selected':''}>Fade</option><option value="breakout" ${p.vah_val_mode==='breakout'?'selected':''}>Breakout</option><option value="range" ${(p.vah_val_mode||'range')==='range'?'selected':''}>Range</option></select></div>
-            ${chk('editOfBrUseHl','HL Filter',p.hl_filter===true,'#66BB6A')}
-            ${num('editOfBrHlWindow','HL Окно (бар M5)',p.hl_window,{def:24,min:2,w:60})}
-            ${num('editOfBrHlDelta','HL Δ близости',p.hl_delta,{def:120,w:70})}
-            ${chk('editOfBrStepAtr','Step ATR (сетка по ATR)',p.step_atr===true)}
-            ${num('editOfBrAtrPeriod','ATR Period',p.atr_period,{def:14,w:60})}
+            ${num('editOfBrSessionStart','Сессия с (пусто = вся)',p.session_start,{def:'',w:80})}
+            ${num('editOfBrSessionEnd','Сессия до (пусто = вся)',p.session_end,{def:'',w:80})}
             ${chk('editOfBrUseOb','OB Filter',p.enable_ob_filter!==false)}
             ${num('editOfBrObMinLots','OB мин лотов',p.ob_min_lots,{def:20,w:60})}
             ${num('editOfBrObRadius','OB радиус (пт)',p.ob_scan_radius,{def:50,w:60})}
             ${chk('editOfBrVpFilter','VP Filter',p.vp_filter===true)}
-            <div class="metric-card" style="min-width:150px"><div class="metric-label">HL вердикт</div><div id="ofBrHlVerdict" style="font-size:14px;font-weight:bold;color:#9CA3AF">—</div></div>
             <div class="metric-card" style="min-width:110px"><div class="metric-label">OB ликвидность</div><div id="ofBrObNear" style="font-size:14px;font-weight:bold;color:#9CA3AF">—</div></div>
-        </div>
-        <!-- VWEMA -->
-        <div style="font-size:12px;color:#9CA3AF;margin-bottom:6px;font-weight:bold">VWEMA (edp: вкл, main: выкл)</div>
-        <div class="metrics-row" style="flex-wrap:wrap;margin-bottom:12px">
-            ${chk('editOfBrUseVwema','VWEMA Filter',p.use_vwema===true,'#FF9800')}
-            ${num('editOfBrVwemaFast','VWEMA Fast',p.vwema_fast,{def:20,w:60})}
-            ${num('editOfBrVwemaSlow','VWEMA Slow',p.vwema_slow,{def:40,w:60})}
-            ${num('editOfBrVwemaFlat','Flat Threshold',p.vwema_flat_th,{def:1,step:'0.1',w:60})}
-            ${chk('editOfBrVwemaBlock','Block counter-trend',p.vwema_block_counter!==false)}
-            ${chk('editOfBrVwemaAvgExit','VWEMA Avg Exit',p.vwema_avg_exit===true)}
-            <div class="metric-card" style="min-width:120px"><div class="metric-label">VWEMA Trend</div><div id="ofBrVwemaTrend" style="font-size:16px;font-weight:bold;color:#9CA3AF">—</div></div>
         </div>
         <hr style="border-color:#2D2D44;margin:12px 0">
         <!-- Журнал -->
@@ -7338,7 +7339,7 @@ async function ofBrRobotSaveFromPanel() {
         cvd_accel_period: numOrNull('editOfBrCvdAccelPeriod', parseInt, 10),
         cvd_accel_threshold: numOrNull('editOfBrCvdAccelThresh', parseFloat, 150),
         cvd_lookback: numOrNull('editOfBrCvdLookback', parseInt, 10),
-        use_cvd: el('editOfBrUseCvd')?.checked !== false,
+        use_cvd: el('toggleBrCvd')?.checked !== false,
         cvd_ema_fast: numOrNull('editOfBrCvdEmaF', parseInt, 5),
         cvd_ema_slow: numOrNull('editOfBrCvdEmaS', parseInt, 25),
         use_agg_ratio: el('editOfBrUseAggRatio')?.checked !== false,
@@ -7369,6 +7370,7 @@ async function ofBrRobotSaveFromPanel() {
         vwema_flat_th: numOrNull('editOfBrVwemaFlat', parseFloat, 1),
         vwema_block_counter: el('editOfBrVwemaBlock')?.checked !== false,
         vwema_avg_exit: el('editOfBrVwemaAvgExit')?.checked === true,
+        step_atr: false,  // F-055: fixed off for BR (ATR adaptation zeroes fractional step) — managed via config only
         direction_filter: el('ofBrDirFilter')?.value || 'both',
     };
     // 1) localStorage (offline-буфер)
