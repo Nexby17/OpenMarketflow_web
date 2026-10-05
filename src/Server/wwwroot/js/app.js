@@ -6663,21 +6663,20 @@ function arbCopyPositionDialog(inst) {
 // === Цены BR дробные (шаг 0.01) — все ценовые поля toFixed(2), инпуты step="0.01".
 // ============================================================================
 
+// 02.10.2026: BR main (:5082, счёт 1225953) удалён из UI по решению Дмитрия — торгует только edp.
+// Код main_of_br.py и C# spec of_br сохранены: инстанс возвращается добавлением строки в карту.
 const OF_BR_INSTANCES = {
-    main: { port: 5082, api: () => 'http://' + window.location.hostname + ':5082',
-            account: '1225953', symbol: 'BRX6', badge: 'BR', badgeColor: '#E65100',
-            stateKey: 'ofBrRobot_main', cfgName: 'of_br', label: 'BRX6', procName: 'of_br' },
     edp:  { port: 5083, api: () => 'http://' + window.location.hostname + ':5083',
             account: '2049688', symbol: 'BRX6', badge: 'BR-edp', badgeColor: '#007ACC',
             stateKey: 'ofBrRobot_edp', cfgName: 'of_br_edp', label: 'BRX6 edp', procName: 'of_br_edp' }
 };
-const OF_BR_INSTANCE_ORDER = ['main', 'edp'];
+const OF_BR_INSTANCE_ORDER = ['edp'];
 OF_BR_INSTANCE_ORDER.forEach(k => { window['ofBrRobot_' + k] = null; window['_ofBrWasOnline_' + k] = false; });
 let _ofBrJournalTrades = [];
 let _ofBrJournalInst = null;
 let _ofBrPanelInst = null;
 
-function ofBrCfg(inst) { return OF_BR_INSTANCES[inst] || OF_BR_INSTANCES.main; }
+function ofBrCfg(inst) { return OF_BR_INSTANCES[inst] || OF_BR_INSTANCES.edp; }
 
 async function ofBrRobotPoll(inst) {
     const cfg = ofBrCfg(inst);
@@ -7012,7 +7011,6 @@ function ofBrRobotEditPanel(inst) {
         <div class="card-header row gap-8">
             📈 ${cfg.label} Order Flow (PYTHON) <span style="color:#9CA3AF;font-size:12px">счёт ${cfg.account}</span>
             <select id="ofBrPanelInst" class="input" style="width:110px;font-size:12px" onchange="ofBrSwitchPanelInstance(this.value)">
-                <option value="main" ${inst==='main'?'selected':''}>BR main :5082</option>
                 <option value="edp" ${inst==='edp'?'selected':''}>BR edp :5083</option>
             </select>
             <button class="btn btn-primary btn-sm" onclick="ofBrRobotSaveFromPanel()">💾 Сохранить</button>
@@ -7056,7 +7054,7 @@ function ofBrRobotEditPanel(inst) {
 }
 
 function ofBrSwitchPanelInstance(inst) {
-    ofBrRobotEditPanel(inst);
+    ofBrRobotEditPanel(OF_BR_INSTANCES[inst] ? inst : 'edp');
 }
 
 function ofBrPanelBodyHtml(inst, p) {
