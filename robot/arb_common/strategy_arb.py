@@ -442,13 +442,10 @@ class ArbitrageStrategy:
         # F-058 (гибрид C): в ₽-режиме сигнал обязан пройти gates по РЕАЛИЗУЕМОЙ раздвижке
         # (стакан, а не last — урок инцидента 11:52, last-гэп GZZ6 ~46 п.)
         if self.p.exit_mode == "spread":
-            gate = self._entry_gate_rub(signal["side"])
-            if gate is not None:
-                log.info(f"F-058 entry gate: {gate} (side={signal['side']}, real_spread={self.basis_calc.spread_rub:.1f}, fair={self.basis_calc.fair_spread:.1f})")
+            gate_reason, sig_dev = self._entry_gate_rub(signal["side"])
+            if gate_reason is not None:
+                log.info(f"F-059 entry gate: {gate_reason} (side={signal['side']})")
                 return None
-            sig_dev = (self.basis_calc.spread_rub if signal["side"] == "short_basis" else self.basis_calc.spread_long_rub) - self.basis_calc.fair_spread
-            if signal["side"] == "long_basis":
-                sig_dev = self.basis_calc.fair_spread - self.basis_calc.spread_long_rub
             signal["dev_rub"] = sig_dev
 
         if signal and self._is_duplicate_entry(signal["side"], signal["z"]):
@@ -505,29 +502,79 @@ class ArbitrageStrategy:
             return basis_now if basis_now > last.entry_basis else None
         return basis_now if basis_now < last.entry_basis else None
 
-    def _entry_gate_rub(self, side: str) -> Optional[str]:
-        """F-058 (гибрид C): входные гейты в ₽ по реализуемой раздвижке.
-        Возвращает строку-причину отказа или None (пропустить).
-        SHORT: realizable_short = bid_B − ask_A×hedge; вход если realizable − fair ≥ entry_dev_rub.
-        LONG:  realizable_long = ask_B − bid_A×hedge; вход если fair − realizable ≥ entry_dev_rub.
-        Плюс sigma-фильтр шума: dev относительно СРЕЙНЕГО (dev_mean) ≥ entry_z_sigma × dev_std.
-        Оба порога в ₽ — сопоставимы с комиссией и slippage напрямую."""
+    def _entry_ob_spread(self, side: str) -> Optional[float]:
+        """F-059 (вариант B, решение Дмитрия 05.10): реализуемая раздвижка ВХОДА
+        напрямую из живого стакана — цены, по которым сделка реально исполнится.
+        SHORT (buy A @ ask, sell B @ bid):  bid_B − ask_A×hedge
+        LONG  (sell A @ bid, buy B @ ask):  ask_B − bid_A×hedge
+        None — OB протух/пуст: вход по last запрещён (уроки 11:52 и 14:41 —
+        last-гэп GZZ6 22–46 п. рисовал фантомные +16..24₽ над fair)."""
+        now = time.time()
+        if self.ob_a.ts <= 0 or self.ob_b.ts <= 0:
+            return None
+        if now - self.ob_a.ts > 3.0 or now - self.ob_b.ts > 3.0:
+            return None
+        bb_a, ba_a = self.ob_a.best_bid, self.ob_a.best_ask
+        bb_b, ba_b = self.ob_b.best_bid, self.ob_b.best_ask
+        if bb_a <= 0 or ba_a <= 0 or bb_b <= 0 or ba_b <= 0:
+            return None
+        h = self.p.hedge_ratio
+        if side == "short_basis":
+            return bb_b - ba_a * h
+        return ba_b - bb_a * h
+
+    def _entry_antispray_reason(self) -> Optional[str]:
+        """F-059: антиспрей — last каждой ноги обязан лежать в интервале своего стакана
+        (±0.5% фьючерс / ±0.2% акция, eps как в F-052). Иначе сигнал фантомный."""
+        now = time.time()
+        if self.ob_a.ts <= 0 or self.ob_b.ts <= 0:
+            return "OB отсутствует"
+        if now - self.ob_a.ts > 3.0 or now - self.ob_b.ts > 3.0:
+            return "OB протух (>3с)"
+        eps_a = 0.005 if self._is_futures(self.p.ticker_a) else 0.002
+        eps_b = 0.005 if self._is_futures(self.p.ticker_b) else 0.002
+        for leg, last, bb, ba, eps in (
+            ("A", self.basis_calc.price_a, self.ob_a.best_bid, self.ob_a.best_ask, eps_a),
+            ("B", self.basis_calc.price_b, self.ob_b.best_bid, self.ob_b.best_ask, eps_b),
+        ):
+            if last > 0 and bb > 0 and ba > 0 and not (bb * (1 - eps) <= last <= ba * (1 + eps)):
+                return f"last {leg} {last:.2f} вне стакана [{bb:.2f}; {ba:.2f}] — фантомный сигнал"
+        return None
+
+    def _entry_gate_rub(self, side: str) -> tuple:
+        """F-059 (вариант B): входные гейты по РЕАЛИЗУЕМОЙ раздвижке из ЖИВОГО стакана.
+        Возвращает (причина_отказа | None, dev_rub | None).
+        1) Антиспрей: last каждой ноги в интервале OB — иначе сигнал фантомный.
+        2) ₽-гейт: OB realizable − fair ≥ entry_dev_rub (SHORT) / fair − OB realizable ≥ entry_dev_rub (LONG).
+        3) σ-фильтр (НАПРАВЛЕННЫЙ): SHORT — dev выше среднего на ≥σ; LONG — ниже среднего на ≥σ
+           (до F-059 фильтр был без направления и блокировал ВСЕ лонги — латентный баг)."""
+        spray = self._entry_antispray_reason()
+        if spray is not None:
+            return f"antispray: {spray}", None
+        ob_spread = self._entry_ob_spread(side)
+        if ob_spread is None:
+            return "OB недоступен для realizable-раздвижки", None
         fair = self.basis_calc.fair_spread
         if side == "short_basis":
-            dev = self.basis_calc.spread_rub - fair
+            dev = ob_spread - fair
         else:
-            dev = fair - self.basis_calc.spread_long_rub
+            dev = fair - ob_spread
         if self.p.entry_dev_rub > 0 and dev < self.p.entry_dev_rub:
-            return f"dev {dev:.1f} < entry_dev_rub {self.p.entry_dev_rub:.1f}"
+            return (f"OB dev {dev:.1f} < entry_dev_rub {self.p.entry_dev_rub:.1f} "
+                    f"(ob_spread={ob_spread:.1f}, fair={fair:.1f})", dev)
         if self.p.entry_z_sigma > 0:
             mean, std = self.basis_calc._deviation_stats()
             if std > 1e-9:
-                dev_rel = self.basis_calc.deviation - mean
+                if side == "short_basis":
+                    dev_rel = self.basis_calc.deviation - mean
+                else:
+                    dev_rel = mean - self.basis_calc.deviation
                 if dev_rel < self.p.entry_z_sigma * std:
-                    return f"dev_rel {dev_rel:.1f} < {self.p.entry_z_sigma:.1f}xσ ({self.p.entry_z_sigma*std:.1f})"
+                    return (f"dev_rel {dev_rel:.1f} < {self.p.entry_z_sigma:.1f}xσ "
+                            f"({self.p.entry_z_sigma*std:.1f})", dev)
             else:
-                return "dev history degenerate (std≈0)"
-        return None
+                return "dev history degenerate (std≈0)", dev
+        return None, dev
 
     def _check_entry_zscore(self) -> Optional[dict]:
         """Variant 2 (default, Fix #1): annualized deviation-from-fair entry.

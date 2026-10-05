@@ -125,6 +125,10 @@ for i in range(150):
     bc.update_price_b(spot * 10 + fair_carry + dev_target + jitter)
     bc._push_deviation(force=True)
     time.sleep(0.001)
+# F-059: гейты требуют живой OB, согласованный с last (вариант B)
+spot_mid = 89.44
+st.ob_a.update([(spot_mid - 0.01, 10, 0, 1), (spot_mid + 0.01, 0, 10, 1)])
+st.ob_b.update([(spot * 10 + fair_carry + dev_target - 1.0, 10, 0, 1), (spot * 10 + fair_carry + dev_target + 1.0, 0, 10, 1)])
 sig = st.check_entry()
 check("short signal fires at dev_ann ~ +4% > 2.5", sig is not None and sig["side"] == "short_basis",
       f"sig={sig} dev_ann={bc.dev_ann_pct:.2f}")
@@ -152,6 +156,8 @@ for i in range(150):
     bc.update_price_b(spot * 10 + fair2 + dev_neg + jitter)
     bc._push_deviation(force=True)
     time.sleep(0.001)
+st2.ob_a.update([(spot_mid - 0.01, 10, 0, 1), (spot_mid + 0.01, 0, 10, 1)])
+st2.ob_b.update([(spot * 10 + fair2 + dev_neg - 1.0, 10, 0, 1), (spot * 10 + fair2 + dev_neg + 1.0, 0, 10, 1)])
 sig2 = st2.check_entry()
 check("long signal fires at dev_ann ~ -3% < -1", sig2 is not None and sig2["side"] == "long_basis",
       f"sig={sig2} dev_ann={bc.dev_ann_pct:.2f}")
@@ -222,6 +228,8 @@ for i in range(5):
     bc.update_price_b(spot * 10 + fairA + dev_hi2)
     bc._push_deviation(force=True)
     time.sleep(0.06)
+stA.ob_a.update([(spot_mid - 0.01, 10, 0, 1), (spot_mid + 0.01, 0, 10, 1)])
+stA.ob_b.update([(spot * 10 + fairA + dev_hi2 - 1.0, 10, 0, 1), (spot * 10 + fairA + dev_hi2 + 1.0, 0, 10, 1)])
 stA.force_unlock()
 sigA2 = stA.check_entry()
 check("averaging allowed when dev expands", sigA2 is not None and sigA2["side"] == "short_basis",
@@ -498,49 +506,98 @@ def _feed_dev(st, spot, dev_rub, n=200):
         bc._push_deviation(force=True)
         time.sleep(0.001)
 
-# --- Вход: гейт по реализуемой раздвижке ---
+# --- Вход: гейты по ЖИВОМУ СТАКАНУ (F-059, вариант B) ---
+# Тест F-059-1: last расходится с OB (>eps) → антиспрей режет сигнал (урок 14:41)
 stH = ArbitrageStrategy(ArbParams(**cfgH))
-_feed_dev(stH, 97.0, 8.0)                      # dev +8₽ над fair
+_feed_dev(stH, 97.0, 8.0)
 _fairH = stH.basis_calc.fair_spread
 stH.basis_calc.update_price_a(97.0)
-stH.basis_calc.update_price_b(9700.0 + _fairH + 8.0)
+stH.basis_calc.update_price_b(9700.0 + _fairH + 60.0)   # last B далеко выше OB
+stH.ob_a.update([(96.99, 10, 0, 1), (97.01, 0, 10, 1)])
+stH.ob_b.update([(9744.0, 10, 0, 1), (9746.0, 0, 10, 1)])
 stH.force_unlock()
+reason1, _ = stH._entry_gate_rub('short_basis')
+check("F-059-1 last-vs-OB spray detected", reason1 is not None and 'antispray' in reason1,
+      f"reason={reason1}")
 sig_g1 = stH.check_entry()
-check("F-058-1 gate blocks dev 8 < 15", sig_g1 is None, f"sig={sig_g1}")
+check("F-059-1b spray blocks entry", sig_g1 is None, f"sig={sig_g1}")
 
-# Сильное, но СТАЦИОНАРНОЕ отклонение (+30₽): ₽-гейт пропускает, sigma-фильтр блокирует
+# Тест F-059-2: OB согласован с last, realizable dev +28₽ над fair (≥15), но СТАЦИОНАРНАЯ
+# история (dev_rel≈0) → направленный σ режет. OB: bid_B - ask_A*100 = (9700+fair+28-2) - 9701
 stH2 = ArbitrageStrategy(ArbParams(**cfgH))
-_feed_dev(stH2, 97.0, 30.0)
-_fair2 = stH2.basis_calc.fair_spread
+bcH2 = stH2.basis_calc
+_fair2 = 0.0
+for _i in range(200):
+    bcH2.update_price_a(97.0)
+    _fair2 = bcH2.fair_spread
+    bcH2.update_price_b(9700.0 + _fair2 + 30.0 + ((-1) ** _i) * 2.0)  # вариация ±2₽ → живая σ
+    bcH2._push_deviation(force=True)
+    time.sleep(0.001)
 stH2.basis_calc.update_price_a(97.0)
-stH2.basis_calc.update_price_b(9700.0 + _fair2 + 30.0)
+stH2.basis_calc.update_price_b(9700.0 + _fair2 + 30.0)   # last = fair+30
 stH2.ob_a.update([(96.99, 10, 0, 1), (97.01, 0, 10, 1)])
-stH2.ob_b.update([(10018.0, 10, 0, 1), (10020.0, 0, 10, 1)])
-_dev_rel2 = stH2.basis_calc.deviation - stH2.basis_calc._deviation_stats()[0]
-sig_g2 = stH2.check_entry()
-check("F-058-2 sigma filter blocks flat-dev entry", sig_g2 is None,
-      f"sig={sig_g2} dev_rel={_dev_rel2:.1f}")
+stH2.ob_b.update([(10016.0, 10, 0, 1), (10018.0, 0, 10, 1)])  # bid_B = 10016... hmm depends on fair
+# OB dev = bid_B - ask_A*100 - fair = bid_B - 9701 - fair. Хотим ~+28 → bid_B = fair + 9729
+stH2.ob_b.update([(9700.0 + _fair2 + 28.0, 10, 0, 1), (9700.0 + _fair2 + 30.0, 0, 10, 1)])
+reason2, dev2 = stH2._entry_gate_rub('short_basis')
+check("F-059-2 directional sigma blocks flat-dev entry", reason2 is not None and 'dev_rel' in reason2,
+      f"reason={reason2} dev={dev2}")
 
-# Вариация истории (σ живая): последний dev сильно выше среднего → вход проходит
+# Тест F-059-3: OB согласован, dev сильно выше среднего → вход проходит, dev_rub от OB
 stH3 = ArbitrageStrategy(ArbParams(**cfgH))
 bc3 = stH3.basis_calc
 _fair3 = 0.0
 for i in range(200):
     bc3.update_price_a(97.0)
     _fair3 = bc3.fair_spread
-    d = 10.0 + (i % 10)          # 10..19, mean≈14.5 std≈2.87
+    d = 10.0 + (i % 10)
     bc3.update_price_b(9700.0 + _fair3 + d)
     bc3._push_deviation(force=True)
     time.sleep(0.001)
 bc3.update_price_a(97.0)
-bc3.update_price_b(9700.0 + _fair3 + 45.0)       # dev 45 >> mean+1σ ≈ 17.4
+bc3.update_price_b(9700.0 + _fair3 + 45.0)      # last = fair+45 (mean был 14.5 → dev_rel=30.5 ≥ 2.87)
 stH3.ob_a.update([(96.99, 10, 0, 1), (97.01, 0, 10, 1)])
-stH3.ob_b.update([(10032.0, 10, 0, 1), (10034.0, 0, 10, 1)])
+stH3.ob_b.update([(9700.0 + _fair3 + 43.0, 10, 0, 1), (9700.0 + _fair3 + 45.0, 0, 10, 1)])
+# OB realizable = bid_B - ask_A*100 = (fair+43) - 9701 + 9700 = fair + 42 → OB dev = 42 ≥ 15
 sig_g3 = stH3.check_entry()
-check("F-058-3 entry passes dev 45 >= 15 + sigma ok", sig_g3 is not None and sig_g3["side"] == "short_basis",
+check("F-059-3 entry passes OB dev 42 >= 15 + directional sigma ok", sig_g3 is not None and sig_g3["side"] == "short_basis",
       f"sig={sig_g3} fair={_fair3:.1f}")
-check("F-058-3b signal carries dev_rub", sig_g3 is not None and sig_g3.get("dev_rub", 0) >= 15.0,
+check("F-059-3b signal carries OB dev_rub >= 15", sig_g3 is not None and (sig_g3.get("dev_rub") or 0) >= 15.0,
       f"dev_rub={sig_g3.get('dev_rub') if sig_g3 else None}")
+
+# Тест F-059-4: протухший OB → вход запрещён полностью (не last-фолбэк!)
+stH4 = ArbitrageStrategy(ArbParams(**cfgH))
+_feed_dev(stH4, 97.0, 60.0)
+_fair4 = stH4.basis_calc.fair_spread
+stH4.basis_calc.update_price_a(97.0)
+stH4.basis_calc.update_price_b(9700.0 + _fair4 + 60.0)
+stH4.ob_a.update([(96.99, 10, 0, 1), (97.01, 0, 10, 1)])
+stH4.ob_b.update([(9700.0 + _fair4 + 58.0, 10, 0, 1), (9700.0 + _fair4 + 60.0, 0, 10, 1)])
+stH4.ob_a._ts = time.time() - 10
+stH4.ob_b._ts = time.time() - 10
+reason4, _ = stH4._entry_gate_rub('short_basis')
+check("F-059-4 stale OB -> gate rejects (no last fallback)", reason4 is not None and 'протух' in reason4,
+      f"reason={reason4}")
+
+# Тест F-059-5: LONG-гейт работает при направленном σ (латентный баг F-058: лонги всегда блокировались)
+stL = ArbitrageStrategy(ArbParams(**{**cfgH, "allow_long_basis": True}))
+bcL = stL.basis_calc
+_fairL = 0.0
+for i in range(200):
+    bcL.update_price_a(97.0)
+    _fairL = bcL.fair_spread
+    d = -10.0 - (i % 10)          # отрицательные девиации, mean ≈ -14.5, std ≈ 2.87
+    bcL.update_price_b(9700.0 + _fairL + d)
+    bcL._push_deviation(force=True)
+    time.sleep(0.001)
+bcL.update_price_a(97.0)
+bcL.update_price_b(9700.0 + _fairL - 45.0)      # last ниже fair на 45 → LONG zscore-сигнал
+stL.ob_a.update([(96.99, 10, 0, 1), (97.01, 0, 10, 1)])
+stL.ob_b.update([(9700.0 + _fairL - 45.0, 10, 0, 1), (9700.0 + _fairL - 43.0, 0, 10, 1)])
+# LONG realizable = ask_B - bid_A*100 = (fair-43) - 9699 + 9700 = fair - 42 → LONG dev = 42 ≥ 15
+sigL = stL.check_entry()
+check("F-059-5 long entry passes directional sigma (bug fix)", sigL is not None and sigL["side"] == "long_basis",
+      f"sig={sigL}")
 
 # --- Тейк: послойно по раздвижке (формулировка Дмитрия) ---
 stT = ArbitrageStrategy(ArbParams(**{**cfgH, "use_commission": False}))
