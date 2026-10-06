@@ -352,3 +352,14 @@ finam_hub терял атрибут websockets.connect в потоке (с 25.09
 
 **Урок.** Любой деструктивный HTTP-хендлер (stop/close_all/flatten) обязан быть идемпотентным: mutex + re-check условия под mutex. UI может задублировать POST (двойной клик, ретрай, нестабильная сеть) — это норма, не исключение.
 
+
+- 05.10 UI: BR main (:5082, счёт 1225953) удалён из вкладки Роботы по решению Дмитрия — остался только edp (:5083, 2049688). Код инстанса сохранён (main_of_br.py, C# spec of_br): возврат = одна строка в OF_BR_INSTANCES. Fallback ofBrCfg и селектор панели переведены на edp, guard на неизвестный инстанс.
+
+
+## 2026-10-06 — F-061 старт: SAR×EMA на акциях (per-ticker инстансы)
+- Дмитрий утвердил ТЗ F-061 с правками: 1 робот = 1 акция (N копий, паттерн arb), лимиты позиций только Дмитрием (max_qty шт / max_value_rub ₽; null=без лимита, 0=запрет), kill-switch per-instance. Paper отложен. Реал — только команда Дмитрия (R-001).
+- Основание: SAR/акции (server-main) + независимый бэктест ZClaw 05.10 (replay 5898/5898, avgR +0.163).
+- Этап 1: robot/sarema/sarema_engine.py (точный порт psar/build/extract_trades) + tests/test_engine_replay.py — replay 100%, отклонение цен 0.000000₽.
+- Этап 2 каркас: config_sarema.py (D2-лимиты, validate /params), state_sarema.py (startup-always-stopped F-059, атомарная запись), risk_sarema.py (R-сайзинг, лоты, liq_frac, kill-switch), orders_sarema.py (DP proxy, stop-market, last_error), feed_sarema.py (прогрев, QC, незакрытый бар отвергается), strategy_sarema.py (трейлинг по SAR + брокер-стоп), main_sarema.py (API :5084+, идемпотентный /stop F-060, /resync).
+- Тесты: 27/27 зелёные (replay 6, config 9, risk/state 12).
+- Открыто: REST-поллинг баров в main loop, полный ресинк fills, лоты из /v1/assets, systemd-юниты, UI-строка (проект webdesign готовится).

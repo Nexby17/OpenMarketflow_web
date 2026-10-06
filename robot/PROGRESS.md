@@ -390,3 +390,13 @@
 
 **Урок.** Любой деструктивный HTTP-хендлер (stop/close_all/flatten) обязан быть идемпотентным: mutex + re-check условия под mutex. UI может задублировать POST (двойной клик, ретрай, нестабильная сеть) — это норма, не исключение.
 
+
+- 05.10 UI: BR main (:5082, счёт 1225953) удалён из вкладки Роботы по решению Дмитрия — остался только edp (:5083, 2049688). Код инстанса сохранён (main_of_br.py, C# spec of_br): возврат = одна строка в OF_BR_INSTANCES. Fallback ofBrCfg и селектор панели переведены на edp, guard на неизвестный инстанс.
+
+
+## F-061 (2026-10-06): SAREMA — роботы SAR×EMA на акциях MOEX
+- Архитектура: 1 инстанс = 1 тикер (SAREMA_TICKER/SAREMA_PORT/SAREMA_CONFIG_FILE/SAREMA_STATE_FILE env, порты 5084+). Лимиты Дмитрия: max_qty/max_value_rub (null=∞, 0=запрет), risk_pct 0.005 default, liq_frac 0.05, day_kill_R per-instance.
+- Этап 1 done: sarema_engine.py — replay 5898/5898 (100%) на независимых данных Finam M1→H1.
+- Этап 2 каркас done: config/state/risk/feed/orders/strategy/main_sarema + 27 тестов PASS. Startup-always-stopped, идемпотентный /stop, QC баров (незакрытый/дубль/дыры/просрочка), kill-switch по торговому дню.
+- Открыто: REST-поллинг баров, полный ресинк (fills→entry→стоп), лоты из /v1/assets, systemd, UI-строка.
+- Запуск реала: только явная команда Дмитрия (R-001). Paper отложен Дмитрием.
