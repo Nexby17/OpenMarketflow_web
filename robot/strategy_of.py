@@ -84,6 +84,7 @@ class OFParams:
     ob_min_lots: int = 20         # min bid+ask lots near price
     ob_scan_radius: int = 50      # pts radius for OB filter
     commission: float = 0.90      # per side (0.90₽ = one-way)
+    usd_rate: float = 80.0       # F-055: USD/RUB rate — BR margin is USD-denominated (PnL = dUSD * rate)
     direction_filter: str = "both"  # "both" | "long" | "short"
     # Custom trading window (HH:MM MSK). Empty = full session (07:00-23:50, legacy).
     # Outside the window: no new entries; position is force-closed (session_close).

@@ -627,21 +627,24 @@ def main_loop():
 
 
 def _record_broker_trade(action: dict, fill_price: float):
-    """Record trade using ONLY real broker fill prices. PnL = (exit - entry) * dir * lots - comm."""
+    """Record trade using ONLY real broker fill prices.
+    F-055: BR price is USD-denominated; margin = dPrice_usd * usd_rate * lots.
+    PnL = (exit - entry) * dir * lots * usd_rate - comm."""
     act = action.get("action")
     comm_per_lot = strategy.p.commission * 2  # round-trip
+    rate = getattr(strategy.p, 'usd_rate', 80.0) or 80.0
 
     if act == "partial_tp":
         entry_price = action.get('entryPrice', 0)
         entry_side = action.get('entrySide', strategy._dir)
         lots = action.get('qty', 1)
-        pnl = (fill_price - entry_price) * entry_side * lots - comm_per_lot * lots
+        pnl = (fill_price - entry_price) * entry_side * lots * rate - comm_per_lot * lots
         direction = 'LONG' if entry_side == 1 else 'SHORT'
     elif act == "close_all":
         entry_price = action.get('avgPrice', strategy._avg_price)
         entry_side = strategy._dir
         lots = action.get('qty', strategy.total_lots)
-        pnl = (fill_price - entry_price) * entry_side * lots - comm_per_lot * lots
+        pnl = (fill_price - entry_price) * entry_side * lots * rate - comm_per_lot * lots
         direction = 'LONG' if entry_side == 1 else 'SHORT'
     else:
         return
@@ -676,7 +679,8 @@ def _record_manual_trade(closed: dict, exit_price: float):
     if lots <= 0:
         return 0.0
     comm_per_lot = strategy.p.commission * 2  # round-trip
-    pnl = (exit_price - entry_price) * entry_side * lots - comm_per_lot * lots
+    rate = getattr(strategy.p, 'usd_rate', 80.0) or 80.0
+    pnl = (exit_price - entry_price) * entry_side * lots * rate - comm_per_lot * lots
     pnl = round(pnl, 2)
     strategy._trade_history.append({
         'entryPrice': round(entry_price, 2),
