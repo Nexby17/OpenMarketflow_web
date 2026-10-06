@@ -32,12 +32,18 @@ function sarLog(msg, level) {
 }
 
 // ---------- переключение инстанса в панели ----------
-function sarSwitchInstance(inst) {
-    sarPanelInst = inst;
-    const cfg = sarCfg(inst);
-    document.getElementById('sarPanelCard').style.display = '';
-    document.getElementById('sarPanelTicker').textContent = cfg.label;
-    const st = window['sarRobot_' + inst];
+// Форма всегда жёстко перепривязывается к выбранному экземпляру:
+// 1) очистка всех полей; 2) предзаполнение ТОЛЬКО его данными:
+//    онлайн /status → его /params (GET) → его черновик localStorage → дефолт.
+// Так значения одного робота не могут уйти другому при сохранении.
+const SAR_FIELDS = ['sarMaxQty', 'sarMaxValue', 'sarBase', 'sarRiskPct', 'sarDayKill', 'sarLiqFrac'];
+
+function sarClearPanelForm() {
+    SAR_FIELDS.forEach(id => { el(id).value = ''; });
+    el('sarPanelMsg').textContent = '';
+}
+
+function sarFillPanelFromStatus(inst, st) {
     if (st && st.risk) {
         el('sarBase').value = st.risk.base ?? '';
         el('sarRiskPct').value = st.risk.risk_pct != null ? (st.risk.risk_pct * 100).toFixed(1) : '';
@@ -46,10 +52,64 @@ function sarSwitchInstance(inst) {
     if (st && st.limits) {
         el('sarMaxQty').value = st.limits.max_qty ?? '';
         el('sarMaxValue').value = st.limits.max_value_rub ?? '';
+        el('sarLiqFrac').value = st.limits.liq_frac ?? 0.05;
     }
-    el('sarLiqFrac').value = (st && st.limits && st.limits.liq_frac != null) ? st.limits.liq_frac : 0.05;
+}
+
+function sarFillPanelFromDraft(inst) {
+    const raw = localStorage.getItem('sarSavedParams_' + inst);
+    if (!raw) return false;
+    try {
+        const d = JSON.parse(raw);
+        el('sarMaxQty').value = d.max_qty ?? '';
+        el('sarMaxValue').value = d.max_value_rub ?? '';
+        el('sarBase').value = d.base ?? '';
+        el('sarRiskPct').value = d.risk_pct != null ? (d.risk_pct * 100).toFixed(1) : '';
+        el('sarDayKill').value = d.day_kill_R ?? '';
+        el('sarLiqFrac').value = d.liq_frac ?? 0.05;
+        return true;
+    } catch (e) { return false; }
+}
+
+async function sarSwitchInstance(inst) {
+    sarPanelInst = inst;
+    const cfg = sarCfg(inst);
+    document.getElementById('sarPanelCard').style.display = '';
+    document.getElementById('sarPanelTicker').textContent = cfg.label;
     el('sarRoParams').textContent = 'SAR 0.02/0.2/0.2 · EMA12 · стоп 3×ATR · H1 · std-полярность · трейлинг PSAR';
-    el('sarPanelMsg').textContent = '';
+    // 1) полная очистка — ничего от предыдущего робота не остаётся
+    sarClearPanelForm();
+    el('sarPanelMsg').textContent = '⏳ Загрузка параметров ' + cfg.label + '…';
+    el('sarLiqFrac').value = 0.05;                      // дефолт
+    el('sarBase').value = 1000000;                      // дефолт
+    // 2) его черновик (оффлайн-сохранение) поверх дефолтов
+    sarFillPanelFromDraft(inst);
+    // 3) живой робот: /status + /params (его собственные значения) — источник истины
+    try {
+        const resp = await fetch(sarApi(inst) + '/params', {signal: AbortSignal.timeout(2500)});
+        if (resp.ok) {
+            const p = await resp.json();
+            el('sarMaxQty').value = p.max_qty ?? '';
+            el('sarMaxValue').value = p.max_value_rub ?? '';
+            el('sarBase').value = p.base ?? 1000000;
+            el('sarRiskPct').value = p.risk_pct != null ? (p.risk_pct * 100).toFixed(1) : '';
+            el('sarDayKill').value = p.day_kill_R ?? '';
+            el('sarLiqFrac').value = p.liq_frac ?? 0.05;
+            el('sarPanelMsg').textContent = '';
+        } else {
+            el('sarPanelMsg').textContent = '⚠️ Робот оффлайн — показаны сохранённые значения (применятся при его старте)';
+        }
+    } catch (e) {
+        el('sarPanelMsg').textContent = '⚠️ Робот оффлайн — показаны сохранённые значения (применятся при его старте)';
+    }
+    // 4) подсветка активной строки
+    document.querySelectorAll('#sarRobotsTable tr').forEach(tr => tr.style.background = '');
+    const tbody = el('sarRobotsTable');
+    const row = tbody && tbody.rows ? tbody.rows[SAR_INSTANCE_ORDER.indexOf(inst)] : null;
+    if (row) row.style.background = 'rgba(79,143,247,.12)';
+    // селектор синхронно
+    const sel = el('sarInstSelect');
+    if (sel && sel.value !== inst) sel.value = inst;
 }
 
 function sarClosePanel() {
@@ -60,8 +120,10 @@ function sarClosePanel() {
 // ---------- сохранение лимитов (только открытый инстанс — урок 22.09) ----------
 async function sarSaveParams() {
     const inst = sarPanelInst;
-    if (!inst) return;
+    if (!inst) { return; }
     const cfg = sarCfg(inst);
+    // защита от гонки: панель может быть переключена во время сохранения
+    const sentFor = inst;
     const numOrNull = (id, integer) => {
         const raw = el(id).value.trim();
         if (raw === '') return null;                       // пусто = без лимита
@@ -99,12 +161,13 @@ async function sarSaveParams() {
             msg.textContent = '❌ Сервер отклонил: ' + errs;
             return;
         }
+        if (sarPanelInst !== sentFor) return;      // панель уже переключили — не пугаем чужим сообщением
         msg.textContent = '✅ Параметры сохранены (' + cfg.label + ')';
         sarLog('SAREMA[' + cfg.label + ']: параметры обновлены: ' + JSON.stringify(patch), 'INFO');
     } catch (e) {
-        // робот оффлайн: сохраняем в localStorage, приём при первом /status (паттерн OF-BR)
+        // робот оффлайн: сохраняем в localStorage ЭТОГО экземпляра, приём при первом /status (паттерн OF-BR)
         localStorage.setItem('sarSavedParams_' + inst, JSON.stringify(patch));
-        msg.textContent = '⚠️ Робот оффлайн — параметры применятся при его старте';
+        if (sarPanelInst === sentFor) msg.textContent = '⚠️ Робот оффлайн — параметры применятся при его старте';
     }
 }
 
@@ -157,9 +220,10 @@ function sarRenderTable() {
     for (const inst of SAR_INSTANCE_ORDER) {
         const cfg = sarCfg(inst);
         const st = window['sarRobot_' + inst];
+        const activeBg = (sarPanelInst === inst) ? ' style="background:rgba(79,143,247,.12)"' : '';
         if (!st) {
             noMsg.style.display = '';
-            rows += `<tr ondblclick="sarSwitchInstance('${inst}')" style="cursor:pointer" title="Двойной клик — параметры экземпляра (доступны оффлайн)">
+            rows += `<tr${activeBg} ondblclick="sarSwitchInstance('${inst}')" style="cursor:pointer" title="Двойной клик — параметры экземпляра (доступны оффлайн)">
                 <td><strong>${cfg.label}</strong></td>
                 <td class="red">● оффлайн</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td>
                 <td><span class="text-secondary">нет связи :${cfg.port}</span></td>
@@ -183,7 +247,7 @@ function sarRenderTable() {
         const risk = st.risk || {};
         const killText = risk.day_kill_R != null ? `kill ${risk.day_kill_R}R` : 'kill выкл';
         const online = window['_sarWasOnline_' + inst];
-        rows += `<tr ondblclick="sarSwitchInstance('${inst}')" style="cursor:pointer" title="Двойной клик — параметры экземпляра">
+        rows += `<tr${activeBg} ondblclick="sarSwitchInstance('${inst}')" style="cursor:pointer" title="Двойной клик — параметры экземпляра">
             <td><strong>${cfg.label}</strong> <span class="badge" style="background:#2e7d32">SAR</span></td>
             <td class="${modeCls}">${modeText}</td>
             <td>${posText}</td>
