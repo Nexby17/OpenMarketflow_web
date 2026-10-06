@@ -1002,7 +1002,7 @@
       "id": "F-055",
       "title": "Order Flow BR robot (Brent): port from server-main + Windows/UI integration",
       "status": "done",
-      "commit": "75e18a9,b7dd4b6,c4504d8,16917d2,17094d7,acab25a,e0833ae,31378d5",
+      "commit": "75e18a9,b7dd4b6,c4504d8,16917d2,17094d7,acab25a,e0833ae,06331fe",
       "date": "2026-10-01",
       "notes": "Two instances :5082 main/1225953 and :5083 edp/2049688; F-048 finam_compat streams; UI panel covers doc S11 fully + sync lots, close_price_all button, OB liquidity, start retries"
     },
