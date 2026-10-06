@@ -126,6 +126,12 @@ class ArbLayer:
     order_id_b: str = ""
     price_real_a: bool = False
     price_real_b: bool = False
+    # F-060: passive/passive выход (решение Дмитрия 06.10)
+    exit_order_id_a: str = ""     # живая заявка закрытия ноги A (акция, ждёт свою цену)
+    exit_order_id_b: str = ""     # живая заявка закрытия ноги B (фьючерс)
+    fut_closed: bool = False      # фьючерсная нога закрыта (лимитка B исполнилась)
+    fut_exit_price: float = 0.0   # фактическая цена закрытия фьючерса
+    fut_exit_time: float = 0.0    # unix ts закрытия фьючерса
 
 
 class ArbitrageStrategy:
@@ -191,12 +197,15 @@ class ArbitrageStrategy:
         return stock + futures_go
 
     def _used_capital(self) -> float:
-        """Total capital currently deployed in layers."""
-        return sum(
-            l.lots_a * l.entry_price_a * self.p.mult_a +
-            l.lots_b * self._go_per_contract_b()
-            for l in self.layers
-        )
+        """Total capital currently deployed in layers.
+        F-060: полузакрытый слой (фьючерс закрыт) занимает только стоимость акции —
+        GO фьючерса освобождён, робот продолжает набирать слои (решение Дмитрия)."""
+        total = 0.0
+        for l in self.layers:
+            total += l.lots_a * l.entry_price_a * self.p.mult_a
+            if not l.fut_closed:
+                total += l.lots_b * self._go_per_contract_b()
+        return total
 
     def _can_open_layer(self) -> bool:
         """Check if we have enough capital for another layer."""
@@ -335,6 +344,11 @@ class ArbitrageStrategy:
                     "order_id_b": l.order_id_b,
                     "price_real_a": l.price_real_a,
                     "price_real_b": l.price_real_b,
+                    "exit_order_id_a": l.exit_order_id_a,
+                    "exit_order_id_b": l.exit_order_id_b,
+                    "fut_closed": l.fut_closed,
+                    "fut_exit_price": l.fut_exit_price,
+                    "fut_exit_time": l.fut_exit_time,
                 }
                 for l in self.layers
             ],
@@ -381,6 +395,11 @@ class ArbitrageStrategy:
                 order_id_b=ld.get("order_id_b", ""),
                 price_real_a=ld.get("price_real_a", False),
                 price_real_b=ld.get("price_real_b", False),
+                exit_order_id_a=ld.get("exit_order_id_a", ""),
+                exit_order_id_b=ld.get("exit_order_id_b", ""),
+                fut_closed=ld.get("fut_closed", False),
+                fut_exit_price=ld.get("fut_exit_price", 0.0),
+                fut_exit_time=ld.get("fut_exit_time", 0.0),
             ))
             self._next_layer_id = max(self._next_layer_id, ld.get("layer_id", 0) + 1)
         # F-032: счётчики подтверждения не персистятся — после рестарта копятся заново
@@ -672,7 +691,9 @@ class ArbitrageStrategy:
 
         # ---- 0) F-058: стоп по раздвижке и time-stop (послойно, без подтверждения) ----
         if self.p.exit_mode == "spread" and self.p.stop_dev_rub > 0:
-            for layer in self.layers:
+            # F-060: только полностью открытые слои; полузакрытые (акция ждёт заявку)
+            # рыночные стопы не трогают — решение Дмитрия 06.10
+            for layer in [l for l in self.layers if not l.fut_closed]:
                 rs = self._layer_realizable_spread(layer)
                 if rs is None:
                     continue
@@ -688,7 +709,7 @@ class ArbitrageStrategy:
                         "layer_id": None,
                     }
         if self.p.exit_mode == "spread" and self.p.time_stop_min > 0:
-            for layer in self.layers:
+            for layer in [l for l in self.layers if not l.fut_closed]:
                 hold_min = (time.time() - layer.entry_time) / 60
                 if hold_min >= self.p.time_stop_min:
                     log.info(f"F-058 TIME STOP layer #{layer.layer_id}: hold {hold_min:.0f}min >= {self.p.time_stop_min:.0f}min")
@@ -972,6 +993,18 @@ class ArbitrageStrategy:
         else:
             self._stale_warned_ts = 0
 
+        if layer.fut_closed:
+            # F-060: фьючерс уже закрыт — unrealized слоя = только акционная нога.
+            # Фьючерсная часть зафиксирована в realized при закрытии B (см. fix_futures_leg).
+            if layer.side == LONG_BASIS:
+                pnl_a = (layer.entry_price_a - ask_a) * layer.lots_a * self.p.mult_a
+            else:
+                pnl_a = (bid_a - layer.entry_price_a) * layer.lots_a * self.p.mult_a
+            comm_a = self._calc_commission(layer.entry_price_a,
+                                           bid_a if layer.side == SHORT_BASIS else ask_a,
+                                           layer.lots_a, 0)
+            return pnl_a - comm_a
+
         if bid_a <= 0 or ask_a <= 0 or bid_b <= 0 or ask_b <= 0:
             bid_a = ask_a = layer.entry_price_a
             bid_b = ask_b = layer.entry_price_b
@@ -1028,6 +1061,17 @@ class ArbitrageStrategy:
         ):
             if _last > 0 and not (_bb * (1 - _eps) <= _last <= _ba * (1 + _eps)):
                 return None
+
+        if layer.fut_closed:
+            # F-060: реалистичный PnL полузакрытого слоя — только акционная нога по bid/ask
+            if layer.side == LONG_BASIS:
+                pnl_a = (layer.entry_price_a - ba_a) * layer.lots_a * self.p.mult_a
+            else:
+                pnl_a = (bb_a - layer.entry_price_a) * layer.lots_a * self.p.mult_a
+            comm_a = self._calc_commission(layer.entry_price_a,
+                                           bb_a if layer.side == SHORT_BASIS else ba_a,
+                                           layer.lots_a, 0)
+            return pnl_a - comm_a
 
         slip_b = ba_b * self.p.slippage_bps / 10000.0  # 5 bps по ноге B, как в исполнении
 

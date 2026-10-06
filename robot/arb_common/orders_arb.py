@@ -589,6 +589,76 @@ class ArbOrderManager:
         result["success"] = True
         return result
 
+    # ==================== F-060: passive/passive exit ====================
+
+    def place_passive_exit(self, symbol_a: str, side_a: str, lots_a: int, limit_price_a: float,
+                           symbol_b: str, side_b: str, lots_b: int, limit_price_b: float,
+                           paper: bool = True) -> dict:
+        """F-060 (решение Дмитрия 06.10): passive/passive закрытие слоя.
+
+        Первой ставится ФЬЮЧЕРСНАЯ нога B (лимитка), затем нога A (акция) — обе
+        КОТИРУЮТСЯ и ждут свою цену. НИКАКИХ маркетов, НИКАКИХ таймаут-отмен:
+        цена ушла — заявки стоят, слой ждёт (акция висит в портфеле с живой
+        заявкой, робот продолжает набирать новые слои).
+
+        Возвращает order_id обеих заявок. Статусы опрашивает вызывающий код
+        (manage_passive_exits в main_arb) через get_order_status/_get_order_status.
+        """
+        if paper:
+            log.info(f"PAPER PASSIVE EXIT: B {side_b} {lots_b} {symbol_b} @ {limit_price_b:.2f} | "
+                     f"A {side_a} {lots_a} {symbol_a} @ {limit_price_a:.2f}")
+            return {"order_id_b": "paper_b", "order_id_a": "paper_a", "paper": True}
+
+        # 1) Фьючерс B — первая нога (лимитка)
+        oid_b = self._place_limit(symbol_b, side_b, lots_b, limit_price_b, tag="arb_pexit_b")
+        if not oid_b:
+            log.error(f"F-060 passive exit: leg B limit place FAILED ({symbol_b} {side_b} {lots_b} @ {limit_price_b:.2f})")
+            return {"order_id_b": "", "order_id_a": "", "error": "leg_b_place_failed"}
+        log.info(f"F-060 passive exit: leg B limit placed {side_b} {lots_b} {symbol_b} @ {limit_price_b:.2f} id={oid_b}")
+
+        # 2) Акция A — вторая нога (лимитка, котируется)
+        oid_a = self._place_limit(symbol_a, side_a, lots_a, limit_price_a, tag="arb_pexit_a")
+        if not oid_a:
+            # A не встала — фьючерс уже висит. Отменяем B и возвращаем ошибку:
+            # нельзя остаться с одной ногой без менеджмента заявки A.
+            log.error("F-060 passive exit: leg A limit place FAILED — canceling leg B (atomicity)")
+            self._cancel(oid_b)
+            return {"order_id_b": "", "order_id_a": "", "error": "leg_a_place_failed_b_cancelled"}
+        log.info(f"F-060 passive exit: leg A limit placed {side_a} {lots_a} {symbol_a} @ {limit_price_a:.2f} id={oid_a}")
+
+        return {"order_id_b": oid_b, "order_id_a": oid_a, "paper": False}
+
+    def passive_exit_status(self, order_id_b: str, order_id_a: str) -> dict:
+        """Опрос статусов обеих пассивных заявок выхода.
+        Возвращает {"b_filled": bool, "b_price": float, "a_filled": bool, "a_price": float}."""
+        out = {"b_filled": False, "b_price": 0.0, "a_filled": False, "a_price": 0.0}
+        for key, oid in (("b", order_id_b), ("a", order_id_a)):
+            if not oid or oid.startswith("paper_"):
+                out[f"{key}_filled"] = True  # paper — мгновенно
+                continue
+            status = self._get_order_status(oid)
+            if not status:
+                continue
+            state = (status.get("state") or "").lower()
+            filled_qty = int(status.get("filled_quantity", 0) or 0)
+            is_full = state in ("filled", "matched")
+            # частичное исполнение не считаем fill'ом всей ноги — заявка жива
+            if is_full and filled_qty > 0:
+                out[f"{key}_filled"] = True
+                real = self._get_real_fill_price(oid, 0.0)
+                out[f"{key}_price"] = real if real else float(status.get("avg_price", 0) or 0)
+        return out
+
+    def cancel_passive_exit(self, order_id_b: str, order_id_a: str) -> dict:
+        """Отмена пассивных заявок (ручной стоп / cleanup). Не-filled заявки отменяем,
+        filled оставляем как есть. Возвращает фактическое состояние ног."""
+        res = self.passive_exit_status(order_id_b, order_id_a)
+        for oid in (order_id_b, order_id_a):
+            if not oid or oid.startswith("paper_"):
+                continue
+            self._cancel(oid)
+        return res
+
     def execute_exit(self, symbol_a: str, symbol_b: str,
                      side_a: str, side_b: str,
                      lots_a: int, lots_b: int,

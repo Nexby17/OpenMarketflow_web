@@ -648,6 +648,9 @@ def main_loop():
             # Release expired locks
             strategy.update_lock()
 
+            # F-060: менеджер пассивных выходов (тик каждые ~0.5с)
+            _manage_passive_exits()
+
             # Check session (skip in paper mode)
             if not PAPER_MODE:
                 if not strategy.is_in_session():
@@ -679,6 +682,19 @@ def main_loop():
             # Check exit (per-layer or all)
             exit_signal = strategy.check_exit()
             if exit_signal:
+                # F-060: тейк в spread-режиме → пассивный выход (обе лимитки, фьючерс первый).
+                # Стопы/ручные/клеанапы → активный путь (_execute_exit, маркет).
+                if (exit_signal.get("reason") == "profit_target"
+                        and strategy.p.exit_mode == "spread"
+                        and exit_signal.get("layer_id") is not None
+                        and not strategy.entry_active):
+                    layer = strategy.get_layer(exit_signal["layer_id"])
+                    if layer and not layer.exit_order_id_b:
+                        with execution_lock:
+                            ok = _start_passive_exit(layer, exit_signal["reason"])
+                        if ok:
+                            time.sleep(0.5)
+                            continue
                 with execution_lock:
                     _execute_exit(exit_signal)
                 time.sleep(0.5)  # brief pause after exit
@@ -905,6 +921,144 @@ def _execute_exit(signal: dict, force_market: bool = False):
         return
 
     _execute_single_exit(layer, signal["reason"], force_market=force_market)
+
+
+# ==================== F-060: passive/passive exit manager ====================
+
+def _start_passive_exit(layer, reason: str) -> bool:
+    """Запустить пассивное закрытие слоя: первая нога ФЬЮЧЕРС B лимиткой,
+    акция A лимиткой. Возвращает True если обе заявки живы."""
+    if layer.side == SHORT_BASIS:
+        # SHORT: закрытие = sell A (акция), buy B (фьючерс)
+        side_a, side_b = SELL, BUY
+        # Цены: от entry_basis слоя − min_profit → целевой basis. Движение между ногами
+        # распределяем по текущему спреду стакана: целевой basis = entry − min_profit.
+        # Целевые цены: A_exit = entry_price_a (своё значение), B_exit = entry_price_b − Δbasis,
+        # где Δbasis = min_profit (весь возврат несёт фьючерс — он ликвиднее в котировании).
+        # Точная арифметика: closing_basis = B_price − A_price*hedge.
+        # Хотим closing_basis = entry_basis − min_profit при A_exit = entry_price_a:
+        #   B_exit = entry_price_b − min_profit.
+        target_basis = layer.entry_basis - strategy.p.min_profit_value
+        price_a = layer.entry_price_a                       # акция продаётся по своей цене входа
+        price_b = layer.entry_price_b - strategy.p.min_profit_value
+    else:
+        # LONG: закрытие = buy A, sell B; целевой basis = entry + min_profit
+        side_a, side_b = BUY, SELL
+        price_a = layer.entry_price_a
+        price_b = layer.entry_price_b + strategy.p.min_profit_value
+        target_basis = layer.entry_basis + strategy.p.min_profit_value  # noqa: для лога
+
+    if price_b <= 0 or price_a <= 0:
+        log.error(f"F-060 layer #{layer.layer_id}: некорректные целевые цены A={price_a} B={price_b} — пассивный выход отменён")
+        return False
+
+    res = orders_mgr.place_passive_exit(
+        symbol_a=params.symbol_a, side_a=side_a, lots_a=layer.lots_a, limit_price_a=price_a,
+        symbol_b=params.symbol_b, side_b=side_b, lots_b=layer.lots_b, limit_price_b=price_b,
+        paper=PAPER_MODE,
+    )
+    if res.get("error"):
+        log.error(f"F-060 layer #{layer.layer_id}: passive exit failed: {res['error']}")
+        return False
+    layer.exit_order_id_b = res.get("order_id_b", "")
+    layer.exit_order_id_a = res.get("order_id_a", "")
+    log.info(f"F-060 layer #{layer.layer_id}: PASSIVE EXIT placed | B {side_b} {layer.lots_b} @ {price_b:.2f} id={layer.exit_order_id_b} | "
+             f"A {side_a} {layer.lots_a} @ {price_a:.2f} id={layer.exit_order_id_a} | target_basis={target_basis:.1f}")
+    save_state()
+    return True
+
+
+def _fix_futures_leg_pnl(layer, fut_price: float):
+    """Фьючерсная нога исполнилась: зафиксировать её PnL в realized, пометить слой."""
+    if layer.side == SHORT_BASIS:
+        pnl_b = (layer.entry_price_b - fut_price) * layer.lots_b * self_mult_b()
+    else:
+        pnl_b = (fut_price - layer.entry_price_b) * layer.lots_b * self_mult_b()
+    comm_b = strategy.p.commission_futures_rt * layer.lots_b
+    layer.fut_closed = True
+    layer.fut_exit_price = fut_price
+    layer.fut_exit_time = time.time()
+    strategy.realized_pnl += pnl_b - comm_b
+    strategy.peak_pnl = max(strategy.peak_pnl, strategy.realized_pnl)
+    strategy.max_dd = max(strategy.max_dd, strategy.peak_pnl - strategy.realized_pnl)
+    log.info(f"F-060 layer #{layer.layer_id}: FUT LEG CLOSED @ {fut_price:.2f} | futures PnL={pnl_b - comm_b:+.2f}₽ | "
+             f"акция ждёт заявку #{layer.exit_order_id_a} @ {layer.entry_price_a:.2f}")
+
+
+def _close_passive_layer(layer, a_price: float, price_real: bool):
+    """Акционная заявка исполнилась — слой закрывается полностью.
+    Фьючерсная часть уже в realized (fix_futures_leg); в журнал пишем итог слоя."""
+    if layer.side == SHORT_BASIS:
+        pnl_a = (a_price - layer.entry_price_a) * layer.lots_a * self_mult_a()
+    else:
+        pnl_a = (layer.entry_price_a - a_price) * layer.lots_a * self_mult_a()
+    comm_a = strategy.p.commission_stock_pct / 100.0 * (layer.entry_price_a + a_price) * layer.lots_a * strategy.p.mult_a
+    pnl_net_a = pnl_a - comm_a
+    strategy.realized_pnl += pnl_net_a
+    strategy.peak_pnl = max(strategy.peak_pnl, strategy.realized_pnl)
+    strategy.max_dd = max(strategy.max_dd, strategy.peak_pnl - strategy.realized_pnl)
+
+    # Итоговый журнал слоя: обе ноги
+    fut_pnl_net = 0.0
+    if layer.fut_exit_price:
+        if layer.side == SHORT_BASIS:
+            fut_pnl_net = (layer.entry_price_b - layer.fut_exit_price) * layer.lots_b * strategy.p.mult_b - strategy.p.commission_futures_rt * layer.lots_b
+        else:
+            fut_pnl_net = (layer.fut_exit_price - layer.entry_price_b) * layer.lots_b * strategy.p.mult_b - strategy.p.commission_futures_rt * layer.lots_b
+    total_pnl = fut_pnl_net + pnl_net_a
+
+    trade = {
+        "layerId": layer.layer_id,
+        "entryTime": datetime.fromtimestamp(layer.entry_time, MSK).strftime("%Y-%m-%d %H:%M:%S"),
+        "exitTime": datetime.now(MSK).strftime("%Y-%m-%d %H:%M:%S"),
+        "side": "LONG" if layer.side == LONG_BASIS else "SHORT",
+        "entryPriceA": layer.entry_price_a,
+        "entryPriceB": layer.entry_price_b,
+        "exitPriceA": a_price,
+        "exitPriceB": layer.fut_exit_price,
+        "entryBasis": round(layer.entry_basis, 2),
+        "exitBasis": round((layer.fut_exit_price or 0) - a_price * strategy.p.hedge_ratio, 2),
+        "entryZ": round(layer.entry_z, 3),
+        "lotsA": layer.lots_a,
+        "lotsB": layer.lots_b,
+        "holdMin": round((time.time() - layer.entry_time) / 60, 1),
+        "pnl": round(total_pnl, 2),
+        "commission": round(strategy.p.commission_futures_rt * layer.lots_b + comm_a, 2),
+        "reason": "profit_target_passive",
+        "priceSource": "broker",
+        "entryOrderIdA": layer.order_id_a,
+        "entryOrderIdB": layer.order_id_b,
+        "exitOrderIdA": layer.exit_order_id_a,
+        "exitOrderIdB": layer.exit_order_id_b,
+    }
+    strategy.trade_history.append(trade)
+    strategy.layers.remove(layer)
+    strategy._set_lock(1.0)
+    log.info(f"F-060 layer #{layer.layer_id}: STOCK LEG CLOSED @ {a_price:.2f} | layer TOTAL PnL={total_pnl:+.2f}₽ | layers={len(strategy.layers)}")
+
+
+def self_mult_b() -> float:
+    return strategy.p.mult_b
+
+
+def self_mult_a() -> float:
+    return strategy.p.mult_a
+
+
+def _manage_passive_exits():
+    """Тик менеджера пассивных выходов (вызывается из main_loop каждый цикл).
+    Опрашивает заявки слоёв с exit_order_id_b: fill B → фиксация фьючерса,
+    fill A → закрытие слоя."""
+    for layer in list(strategy.layers):
+        if not layer.exit_order_id_b:
+            continue  # пассивный выход не запущен
+        st = orders_mgr.passive_exit_status(layer.exit_order_id_b, layer.exit_order_id_a)
+        if st.get("b_filled") and not layer.fut_closed:
+            _fix_futures_leg_pnl(layer, st.get("b_price") or 0.0)
+            save_state()
+        if st.get("a_filled") and layer.fut_closed:
+            _close_passive_layer(layer, st.get("a_price") or layer.entry_price_a, True)
+            save_state()
 
 
 def _execute_single_exit(layer, reason: str, force_market: bool = False):

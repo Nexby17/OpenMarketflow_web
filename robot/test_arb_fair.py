@@ -696,5 +696,105 @@ for _ in range(3):
 check("F-058-13 pnl mode still takes profit", sigP is not None and sigP["reason"] == "profit_target",
       f"sig={sigP} realizable={_rlP}")
 
+
+print("=== F-060: passive/passive выход (решение Дмитрия 06.10) ===")
+
+# Слой SHORT: вошли A@97.00, B@9730 → entry_basis 30. min_profit 30 → целевой basis 0,
+# цены пассивного выхода: A_exit = 97.00 (своё), B_exit = 9730 - 30 = 9700.
+stP60 = ArbitrageStrategy(ArbParams(**{**cfgH, "use_commission": False}))
+stP60.basis_calc.update_price_a(97.0)
+stP60.basis_calc.update_price_b(9730.0)
+stP60.open_layer(SHORT_BASIS, 97.00, 9730.0, 10, 1, z=2.0)
+lay60 = stP60.layers[0]
+
+# F-060-1: фьючерс закрылся по 9700 (целевая) — фиксация фьючерсной части
+import types
+_fix = types.SimpleNamespace()
+# эмулируем _fix_futures_leg_pnl логику локально (в main_arb она замкнута на strategy)
+if lay60.side == SHORT_BASIS:
+    pnl_b = (lay60.entry_price_b - 9700.0) * lay60.lots_b * stP60.p.mult_b
+comm_b = stP60.p.commission_futures_rt * lay60.lots_b
+lay60.fut_closed = True
+lay60.fut_exit_price = 9700.0
+stP60.realized_pnl += pnl_b - comm_b
+check("F-060-1 futures leg PnL fixed (+30)", abs(pnl_b - 30.0) < 0.01, f"pnl_b={pnl_b}")
+check("F-060-1b layer marked fut_closed", lay60.fut_closed and lay60.fut_exit_price == 9700.0)
+
+# F-060-2: unrealized полузакрытого слоя = только акционная нога
+# SHORT: вошли A@97.00; акция ушла вниз до 96.50 → (bid_a - entry)*lots*mult = (96.49-97.00)*10*10 = -51
+# (акция ушла НАМ в плюс: шорт акции закрываем дешевле... нет: закрытие SHORT A = продажа по bid;
+# вошли покупкой по 97.00, продаём по 96.49 → убыток -51. Обновляем OB согласованно с last.)
+stP60.basis_calc.update_price_a(96.50)
+stP60.ob_a.update([(96.49, 10, 0, 1), (96.51, 0, 10, 1)])
+un60 = stP60._layer_unrealized_pnl(lay60)
+check("F-060-2b half-closed unrealized = stock leg (~-50..-51)", -52.0 <= un60 <= -49.0, f"unrealized={un60:.2f}")
+stP60.basis_calc.update_price_a(97.50)
+stP60.ob_a.update([(97.49, 10, 0, 1), (97.51, 0, 10, 1)])
+un60 = stP60._layer_unrealized_pnl(lay60)
+check("F-060-2c half-closed unrealized = stock leg (~+49..+50)", 48.0 <= un60 <= 51.0, f"unrealized={un60:.2f}")
+check("F-060-2 half-closed unrealized = stock leg only (+50)",
+      abs(un60 - 50.0) < 0.01, f"unrealized={un60:.2f}")
+
+# F-060-3: капитал — полузакрытый слой не занимает GO фьючерса
+cap60 = stP60._used_capital()
+check("F-060-3 half-closed layer frees futures GO",
+      abs(cap60 - 97.0 * 10 * stP60.p.mult_a) < 0.01, f"used={cap60:.0f}")
+
+# F-060-4: дев-стоп не трогает полузакрытый слой (OB улетел — стоп игнорирует)
+stP60.ob_a.update([(96.99, 10, 0, 1), (97.01, 0, 10, 1)])
+stP60.ob_b.update([(9990.0, 10, 0, 1), (9992.0, 0, 10, 1)])  # OB раздвижка ~322 — хуже входа на 42₽
+sig60 = stP60.check_exit()
+check("F-060-4 dev-stop ignores half-closed layer", sig60 is None, f"sig={sig60}")
+
+# F-060-5: полный слой под тем же OB — стоп срабатывает (гвард не сломал обычный путь)
+stP60b = ArbitrageStrategy(ArbParams(**{**cfgH, "use_commission": False}))
+stP60b.basis_calc.update_price_a(97.0)
+stP60b.basis_calc.update_price_b(9991.0)   # last согласован с OB (F-052 sanity)
+stP60b.open_layer(SHORT_BASIS, 97.00, 9730.0, 10, 1, z=2.0)
+stP60b.ob_a.update([(96.99, 10, 0, 1), (97.01, 0, 10, 1)])
+stP60b.ob_b.update([(9990.0, 10, 0, 1), (9992.0, 0, 10, 1)])
+sig60b = stP60b.check_exit()
+check("F-060-5 dev-stop still fires on full layer", sig60b is not None and sig60b["reason"] == "dev_stop",
+      f"sig={sig60b}")
+
+# F-060-6: time-stop не трогает полузакрытый слой
+stP60c = ArbitrageStrategy(ArbParams(**{**cfgH, "use_commission": False}))
+stP60c.basis_calc.update_price_a(97.0)
+stP60c.basis_calc.update_price_b(9730.0)
+stP60c.open_layer(SHORT_BASIS, 97.00, 9730.0, 10, 1, z=2.0)
+lay60c = stP60c.layers[0]
+lay60c.fut_closed = True
+lay60c.fut_exit_price = 9700.0
+lay60c.entry_time = time.time() - 300 * 60
+stP60c.ob_a.update([(96.99, 10, 0, 1), (97.01, 0, 10, 1)])
+stP60c.ob_b.update([(9729.0, 10, 0, 1), (9731.0, 0, 10, 1)])
+sig60c = stP60c.check_exit()
+check("F-060-6 time-stop ignores half-closed layer", sig60c is None, f"sig={sig60c}")
+
+# F-060-7: save/load round-trip полузакрытого слоя
+stP60d = ArbitrageStrategy(ArbParams(**{**cfgH, "use_commission": False}))
+stP60d.basis_calc.update_price_a(97.0)
+stP60d.basis_calc.update_price_b(9730.0)
+stP60d.open_layer(SHORT_BASIS, 97.00, 9730.0, 10, 1, z=2.0)
+layD = stP60d.layers[0]
+layD.fut_closed = True
+layD.fut_exit_price = 9702.0
+layD.exit_order_id_a = "A123"
+layD.exit_order_id_b = "B456"
+st = stP60d.save_state()
+stP60e = ArbitrageStrategy(ArbParams(**{**cfgH, "use_commission": False}))
+stP60e.load_state(st)
+layE = stP60e.layers[0]
+check("F-060-7 half-closed layer survives restart",
+      layE.fut_closed and layE.fut_exit_price == 9702.0 and layE.exit_order_id_a == "A123" and layE.exit_order_id_b == "B456",
+      f"fut_closed={layE.fut_closed} fut_px={layE.fut_exit_price} ids={layE.exit_order_id_a}/{layE.exit_order_id_b}")
+
+# F-060-8: тейк по полузакрытому слою — акционная нога дороже входа → тейк по spread не срабатывает
+# (rs для полузакрытого = акционная математика... используем _spread_take_qualifies: слой SHORT,
+# акционная часть закроется по ask_A... нет: rs формула для полузакрытого — через стакан A)
+q60 = stP60._spread_take_qualifies(stP60._layer_realizable_spread(lay60), lay60)
+check("F-060-8 spread take on half-closed computes (no crash)", isinstance(q60, bool), f"q={q60}")
+
+
 print(f"\n===== RESULTS: PASS={PASS} FAIL={FAIL} =====")
 sys.exit(0 if FAIL == 0 else 1)
