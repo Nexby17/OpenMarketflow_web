@@ -399,3 +399,15 @@ BR-edp (b9b48e3) → добавлены те же варианты 60%/70% в в
 **Проверки:** py_compile 3/3 OK; identity-checks 17/17 PASS (копия 1:1, изоляция env/стейта/конфига, ролловер-цепочка: 12 контрактов, front SiZ6, есть SiZ6 и SiH7, без дублей). Робот НЕ запускался.
 
 - Фикс по замечанию Дмитрия (07.10): сделки арбитражных роботов больше не попадают в торговый журнал SAREMA-панели. Причина смешения: арб-ноги GAZP/GZZ6 на том же счёте 2049688, Finam не сохраняет comment у gRPC-ордеров DP-proxy. Решение двухстороннее: 1) UI-фильтр — журнал SAREMA показывает только сделки с comment sarema-* (+ счётчик скрытых чужих сделок); 2) orders_sarema.py переведён с DP-proxy (gRPC, comment теряется) на SDK REST finam_rest4, где Order.comment сохраняется (подтверждено OF-роботами: of_entry/of_stop видны в trades) — все ордера SAR-робота будут помечены sarema-entry/sarema-stop/sarema-close-*. finam-trade-api 4.3.3 установлен глобально; position endpoint исправлен (ticker без @MISX). Тесты 21/21, UI-приёмка 18/18.
+
+## 2026-10-07 (день) — F-061 v2: перпетьюал USDRUBF вместо «Si + ролловер»
+
+**Коррекция Дмитрия:** «вечный Si» = USDRUBF@RTSX — MOEX бессрочный фьючерс на USD/RUB. Вчерашняя интерпретация (квартальная серия + авто-ролловер) ошибочна: перпетуум не истекает, si_rollover.py удалён.
+
+**Инструмент подтверждён (read-only):** USDRUBF@RTSX live quote last=85.48, bid/ask 85.48/85.49, spread 1 тик (0.01), объём дня 212K лотов, оборот 18.2 млрд ₽ → лот = 1000 USD. ATR14 M5 = 0.055 ₽, ATR50 = 0.070 ₽; медианная ширина окна 15 баров = 0.17 ₽.
+
+**Масштаб цен — ключевое отличие от SiZ6:** SiZ6 котируется в пунктах (85121), USDRUBF — в рублях (85.48). Ценовые параметры конфига пересчитаны /1000: spread 33→0.033, step_average 36→0.036, step_pyramid 25→0.025, min_profit 35→0.035, hl_delta 55→0.055, vah_val_bin 53→0.053, stop_loss_value 30000→30. Объёмные пороги — по фактическим объёмам (USDRUBF ~1310 лотов/M5 vs SiZ6 ~20935, соотношение ~1:16): cvd_accel_threshold 777→50, ob_min_lots 20→5. margin_per_lot=8500₽ (гарантия 1000 USD × 85.5). Структурные параметры (lots, max_levels, VWEMA, HL window, close_half_pct=60, таймфрейм M5) — 1:1 с OF-Si.
+
+**Файлы:** main_of_perp.py (дефолт USDRUBF@RTSX, 1:1 копия подтверждена диффом 0 расхождений), config_of_perp.py, of_config_perp.json (пересчитан), of_state_perp.json (stopped/flat, main), si_rollover.py удалён.
+
+**Проверки:** py_compile 3/3 OK; identity-checks 33/33 PASS (копия 1:1, масштаб цен, объёмные пороги, изоляция env/стейта). Живой котир получен. Робот НЕ запускался (R-001): `python main_of_perp.py --port 5084`.

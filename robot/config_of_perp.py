@@ -1,14 +1,14 @@
-"""Config for Order Flow Robot — Si PERP twin (F-061), eternal Si future.
+"""Config for Order Flow Robot — USDRUBF PERP (F-061), perpetual USD/RUB future.
 
 Same strategy as main_of.py / config_of.py, own identity:
 env keys ROBOT_SYMBOL_PERP / ROBOT_TICKER_PERP (does not collide with OF-Si in robot/.env).
-Rollover: si_rollover.py switches SYMBOL to the actual contract before expiry.
+Perpetual: NO rollover needed (USDRUBF never expires). Price scale: quotes in RUB (tick 0.01), NOT x1000 pts like SiZ6.
 """
 import os
 
 # === Broker ===
-SYMBOL = os.environ.get("ROBOT_SYMBOL_PERP", "SiZ6@RTSX")
-TICKER = os.environ.get("ROBOT_TICKER_PERP", "SiZ6")
+SYMBOL = os.environ.get("ROBOT_SYMBOL_PERP", "USDRUBF@RTSX")
+TICKER = os.environ.get("ROBOT_TICKER_PERP", "USDRUBF")
 ACCOUNT_ID = os.environ.get("FINAM_ACCOUNT", "1225953")
 DP_URL = os.environ.get("DP_URL", "http://localhost:5060")
 

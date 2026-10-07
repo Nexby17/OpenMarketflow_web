@@ -1,6 +1,6 @@
 """Order Flow Robot — main entry point.
 
-Si PERP twin of main_of.py (F-061): 1:1 copy for the eternal Si future.
+USDRUBF PERP (F-061): 1:1 copy of main_of.py on the perpetual USD/RUB future.
 Subscribes to Trades + OrderBook + Bars via Finam WS-hub (PORT-A2),
 runs OrderFlowStrategy, sends orders via DataProvider REST.
 
@@ -108,8 +108,8 @@ logging.basicConfig(
 )
 
 # --- Config ---
-SYMBOL = getattr(config, "SYMBOL", "SiZ6@RTSX")
-TICKER = getattr(config, "TICKER", "SiZ6")
+SYMBOL = getattr(config, "SYMBOL", "USDRUBF@RTSX")
+TICKER = getattr(config, "TICKER", "USDRUBF")
 ACCOUNT = getattr(config, "ACCOUNT_ID", os.environ.get("FINAM_ACCOUNT", "1225953"))
 
 # === Multi-account support ===
