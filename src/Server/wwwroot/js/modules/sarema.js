@@ -8,16 +8,16 @@
 
 // Регистр экземпляров: добавляется строкой при подъёме нового робота.
 const SAR_INSTANCES = {
-    sber: { port: 5084, ticker: 'SBER', label: 'SBER' },
-    gazp: { port: 5085, ticker: 'GAZP', label: 'GAZP' },
-    lkoh: { port: 5086, ticker: 'LKOH', label: 'LKOH' },
-    rosn: { port: 5087, ticker: 'ROSN', label: 'ROSN' },
-    tatn: { port: 5088, ticker: 'TATN', label: 'TATN' },
-    gmkn: { port: 5089, ticker: 'GMKN', label: 'GMKN' },
-    nvtk: { port: 5094, ticker: 'NVTK', label: 'NVTK' },
-    plzl: { port: 5095, ticker: 'PLZL', label: 'PLZL' },
-    mtss: { port: 5096, ticker: 'MTSS', label: 'MTSS' },
-    sngs: { port: 5097, ticker: 'SNGS', label: 'SNGS' },
+    sber: { port: 5101, ticker: 'SBER', label: 'SBER' },
+    gazp: { port: 5102, ticker: 'GAZP', label: 'GAZP' },
+    lkoh: { port: 5103, ticker: 'LKOH', label: 'LKOH' },
+    rosn: { port: 5104, ticker: 'ROSN', label: 'ROSN' },
+    tatn: { port: 5105, ticker: 'TATN', label: 'TATN' },
+    gmkn: { port: 5106, ticker: 'GMKN', label: 'GMKN' },
+    nvtk: { port: 5107, ticker: 'NVTK', label: 'NVTK' },
+    plzl: { port: 5108, ticker: 'PLZL', label: 'PLZL' },
+    mtss: { port: 5109, ticker: 'MTSS', label: 'MTSS' },
+    sngs: { port: 5110, ticker: 'SNGS', label: 'SNGS' },
 };
 const SAR_INSTANCE_ORDER = ['sber', 'gazp'];   // первая волна; остальные вписываются по мере запуска
 SAR_INSTANCE_ORDER.forEach(k => { window['sarRobot_' + k] = null; window['_sarWasOnline_' + k] = false; });

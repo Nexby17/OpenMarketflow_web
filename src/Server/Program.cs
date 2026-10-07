@@ -2348,16 +2348,17 @@ public static class RobotProcessManager
         "arb_sber" => ("main_arb.py", 5091, ""),
         "arb_br" => ("main_arb.py", 5092, ""),
         // F-061: SAREMA stock robots — один код main_sarema.py на N тикеров; env per instance
-        "sar_sber" => ("main_sarema.py", 5084, ""),
-        "sar_gazp" => ("main_sarema.py", 5085, ""),
-        "sar_lkoh" => ("main_sarema.py", 5086, ""),
-        "sar_rosn" => ("main_sarema.py", 5087, ""),
-        "sar_tatn" => ("main_sarema.py", 5088, ""),
-        "sar_gmkn" => ("main_sarema.py", 5089, ""),
-        "sar_nvtk" => ("main_sarema.py", 5094, ""),
-        "sar_plzl" => ("main_sarema.py", 5095, ""),
-        "sar_mtss" => ("main_sarema.py", 5096, ""),
-        "sar_sngs" => ("main_sarema.py", 5097, ""),
+        // (диапазон 5101+ — 5084 занят of_perp, 508x/509x — OF/arb)
+        "sar_sber" => ("main_sarema.py", 5101, ""),
+        "sar_gazp" => ("main_sarema.py", 5102, ""),
+        "sar_lkoh" => ("main_sarema.py", 5103, ""),
+        "sar_rosn" => ("main_sarema.py", 5104, ""),
+        "sar_tatn" => ("main_sarema.py", 5105, ""),
+        "sar_gmkn" => ("main_sarema.py", 5106, ""),
+        "sar_nvtk" => ("main_sarema.py", 5107, ""),
+        "sar_plzl" => ("main_sarema.py", 5108, ""),
+        "sar_mtss" => ("main_sarema.py", 5109, ""),
+        "sar_sngs" => ("main_sarema.py", 5110, ""),
         _ => throw new ArgumentException("unknown robot")
     };
 
