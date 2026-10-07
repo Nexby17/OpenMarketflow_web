@@ -34,7 +34,7 @@ cfg = load_config()
 state = SaremaState(STATE_FILE or f"sarema_state_{TICKER}.json")
 state.load()                              # восстановление; mode всё равно stopped
 feed = H1Feed(DATA_DIR or None)
-orders = SaremaOrders(DP_URL, ACCOUNT_ID, SYMBOL)
+orders = SaremaOrders(ACCOUNT_ID, SYMBOL)
 strategy = SaremaStrategy(cfg, state, orders, feed, lot_size=LOT_SIZE)
 
 app = FastAPI(title=f"SAREMA {TICKER}", version="1.0")

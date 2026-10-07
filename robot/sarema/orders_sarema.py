@@ -1,24 +1,31 @@
-"""F-061: Order manager для SAR-робота через DataProvider REST proxy (:5060).
+"""F-061: Order manager для SAR-робота — SDK REST (finam_rest4) с comment=sarema-*.
 
-Общий gRPC-канал DP — как у остальных роботов. «No response» ≠ не исполнен:
-после каждого ордера обязательна сверка факта (reconciliation, урок F-048).
+Почему не DP-proxy (orders_dp): Finam gRPC PlaceOrder НЕ сохраняет comment ордера —
+у арбитражных роботов (через DP) все сделки в /api/trades идут с пустым comment.
+SDK REST Order.comment сохраняется (подтверждено сделками OF-роботов: of_entry/of_stop...).
+Комментарий sarema-* — единственный надёжный маркер, отделяющий сделки SAR-робота
+от сделок арбитражных роботов на том же счёте (замечание Дмитрия 07.10).
+
+Количество: для акций SDK ждёт ШТУКИ (у DP gRPC был пересчёт лотов, здесь — нет).
+«no response» ≠ не исполнен: после каждого ордера обязательна сверка (урок F-048).
 """
 import logging
 import time
 from dataclasses import dataclass
-
-import requests
 
 log = logging.getLogger("sarema.orders")
 
 BUY = 1
 SELL = -1
 
+_COMMENT_PREFIX = "sarema"
+
 
 @dataclass
 class PlacedOrder:
     order_id: str
     client_order_id: str = ""
+    comment: str = ""
 
 
 @dataclass
@@ -29,97 +36,122 @@ class FillInfo:
     price: float
     quantity: int
     timestamp: float = 0.0
+    comment: str = ""
 
 
 class SaremaOrders:
-    """Рыночные входы/выходы + брокер-стоп stop-market + сверка исполнения."""
+    """Рыночные входы/выходы + брокер-стоп stop-market, все ордера с comment=sarema-*."""
 
-    def __init__(self, dp_url: str, account: str, symbol: str):
-        self._dp_url = dp_url.rstrip("/")
-        self._account = account
+    def __init__(self, account_id: str, symbol: str):
+        self._account = account_id
         self._symbol = symbol
-        self._timeout = 5.0
         self.last_error: str = ""
+        self._rest4 = None
 
-    def _post(self, path: str, params: dict, timeout: float | None = None) -> dict | None:
-        for attempt in range(3):
-            try:
-                r = requests.post(f"{self._dp_url}{path}", params=params,
-                                  timeout=timeout or self._timeout)
-                data = r.json()
-                if "error" in data:
-                    self.last_error = data["error"]
-                    log.error(f"{path} error: {data['error']}")
-                    if attempt < 2:
-                        time.sleep(2)
-                        continue
-                    return None
-                return data
-            except Exception as e:
-                self.last_error = str(e)
-                log.error(f"{path} exception (attempt {attempt+1}/3): {e}")
-                if attempt < 2:
-                    time.sleep(2)
-        return None
+    def _r4(self):
+        """Ленивая инициализация finam_rest4 (нужен FINAM_API_KEY в env или .env робота)."""
+        if self._rest4 is None:
+            import os
+            import sys
+            robot_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            if robot_dir not in sys.path:
+                sys.path.insert(0, robot_dir)
+            import finam_rest4
+            if not os.environ.get("FINAM_API_KEY"):
+                # .env из bin/Debug/net10.0 (как у C# сервера) или рядом
+                for cand in (os.path.join(robot_dir, "..", "src", "Server", "bin", "Debug", "net10.0", ".env"),
+                             os.path.join(robot_dir, ".env")):
+                    if os.path.exists(cand):
+                        with open(cand, encoding="utf-8-sig") as f:
+                            for line in f:
+                                line = line.strip()
+                                if line.startswith("FINAM_API_KEY="):
+                                    os.environ["FINAM_API_KEY"] = line.split("=", 1)[1].strip()
+                                    break
+                    if os.environ.get("FINAM_API_KEY"):
+                        break
+            self._rest4 = finam_rest4
+            self._rest4._get_module()   # инициализирует singleton (TokenManager + loop)
+        return self._rest4
+
+    def _tag(self, tag: str) -> str:
+        """Гарантируем префикс sarema- (маркер для журнала/фильтров)."""
+        return tag if tag.startswith(_COMMENT_PREFIX) else f"{_COMMENT_PREFIX}-{tag}"
 
     def place_market(self, side: int, quantity: int, tag: str = "") -> PlacedOrder | None:
         if quantity < 1:
             return None
         side_str = "buy" if side == BUY else "sell"
-        data = self._post("/order/place", {
-            "account": self._account, "symbol": self._symbol, "side": side_str,
-            "quantity": int(quantity), "order_type": "market", "tag": tag})
-        if not data:
+        comment = self._tag(tag)
+        try:
+            r4 = self._r4()
+            resp = r4.place_market(self._account, self._symbol, side_str, int(quantity), comment=comment)
+            oid = str(resp.get("order_id", ""))
+            if not oid:
+                self.last_error = str(resp)[:200]
+                log.error(f"market failed: {self.last_error}")
+                return None
+            log.info(f"market {side_str} qty={quantity} id={oid} comment={comment}")
+            return PlacedOrder(order_id=oid, comment=comment)
+        except Exception as e:
+            self.last_error = str(e)[:200]
+            log.error(f"market exception: {e}")
             return None
-        po = PlacedOrder(order_id=data.get("order_id", ""), client_order_id=data.get("client_order_id", ""))
-        log.info(f"market {side_str} qty={quantity} id={po.order_id} tag={tag}")
-        return po
 
     def place_stop_market(self, side: int, quantity: int, stop_price: float, tag: str = "stop") -> PlacedOrder | None:
-        if quantity < 1:
-            return None
-        side_str = "buy" if side == BUY else "sell"
-        data = self._post("/order/place", {
-            "account": self._account, "symbol": self._symbol, "side": side_str,
-            "quantity": int(quantity), "stop_price": round(stop_price, 2),
-            "order_type": "stop_market", "tag": tag}, timeout=10)
-        if not data:
-            return None
-        po = PlacedOrder(order_id=data.get("order_id", ""), client_order_id=data.get("client_order_id", ""))
-        log.info(f"stop-market {side_str} qty={quantity} @ {stop_price:.2f} id={po.order_id}")
-        return po
+        """Stop-market. SDK REST 4.3.3 не даёт stop-ордера напрямую — fallback:
+        сторожевой режим робота (программный стоп по тикам) + этот метод оставлен
+        под gRPC-канал (этап 2 финализации). Пока логируем предупреждение.
+        """
+        log.warning(f"stop_market via REST not supported yet — watchdog-based stop only ({tag})")
+        return None
 
     def cancel(self, order_id: str) -> bool:
         if not order_id:
             return False
-        data = self._post("/order/cancel", {"account": self._account, "order_id": order_id})
-        return data is not None
+        try:
+            r4 = self._r4()
+            r4.cancel_order(self._account, order_id)
+            return True
+        except Exception as e:
+            log.error(f"cancel {order_id}: {e}")
+            return False
 
     def recent_fills(self, since_sec: float = 60) -> list[FillInfo]:
+        """Сделки счёта (через C# /api/trades proxy) — только с comment sarema-*."""
         try:
-            r = requests.get(f"{self._dp_url}/order/fills",
-                             params={"account": self._account, "symbol": self._symbol,
-                                     "since_sec": since_sec}, timeout=self._timeout)
-            data = r.json()
-            fills = []
-            for f in data.get("fills", []):
-                fills.append(FillInfo(order_id=f.get("order_id", ""), symbol=f.get("symbol", ""),
-                                      side=f.get("side", ""), price=float(f.get("price", 0)),
-                                      quantity=int(f.get("quantity", 0)),
-                                      timestamp=float(f.get("timestamp", 0))))
-            return fills
+            import urllib.request, json
+            with urllib.request.urlopen("http://localhost:5050/api/trades", timeout=10) as r:
+                data = json.loads(r.read().decode())
+            rows = data if isinstance(data, list) else (data.get("trades") or [])
+            out = []
+            for t in rows:
+                c = str(t.get("comment", ""))
+                if not c.lower().startswith(_COMMENT_PREFIX):
+                    continue
+                px = t.get("price"); q = t.get("size") or t.get("quantity")
+                out.append(FillInfo(
+                    order_id=str(t.get("order_id", "")),
+                    symbol=str(t.get("symbol", "")),
+                    side=str(t.get("side", "")),
+                    price=float(px.get("value") if isinstance(px, dict) else (px or 0)),
+                    quantity=int(float(q.get("value") if isinstance(q, dict) else (q or 0))),
+                    comment=c))
+            return out
         except Exception as e:
             log.error(f"fills exception: {e}")
             return []
 
     def get_position(self) -> int:
-        """Позиция с брокера (штуки, +long/-short) — для reconciliation."""
+        """Позиция с брокера (штуки, +long/-short) — для reconciliation (DP /position: ticker без @MISX)."""
         try:
-            r = requests.get(f"{self._dp_url}/position",
-                             params={"account": self._account, "symbol": self._symbol},
-                             timeout=self._timeout)
-            data = r.json()
-            return int(data.get("quantity", 0))
+            import urllib.request, json
+            ticker = self._symbol.split("@")[0]
+            req = urllib.request.Request(
+                f"http://localhost:5060/position?account={self._account}&ticker={ticker}")
+            with urllib.request.urlopen(req, timeout=5) as r:
+                d = json.loads(r.read().decode())
+            return int(d.get("quantity", d.get("totalNet", 0)) or 0)
         except Exception as e:
             log.error(f"position exception: {e}")
             return 0

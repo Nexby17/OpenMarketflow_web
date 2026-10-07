@@ -394,7 +394,11 @@ async function sarLoadJournal(inst) {
         console.error('sarLoadJournal error:', e);
     }
 
-    // нормализация + фильтр по тикеру этого робота
+    // нормализация + фильтры:
+    // 1) только сделки ЭТОГО робота по тикеру;
+    // 2) только сделки SAREMA-роботов — по комментарию ордера (sarema-*).
+    //    Арбитражные роботы торгуют тот же счёт и те же тикеры без комментария
+    //    (Finam не сохраняет их tag) — они в журнал SAREMA не попадают (замечание Дмитрия 07.10).
     const tic = cfg.ticker;
     _sarJournalTrades = trades.map(t => ({
         time: t.timestamp || t.time || t.trade_date || t.datetime || '',
@@ -404,7 +408,15 @@ async function sarLoadJournal(inst) {
         lots: parseInt((t.size && t.size.value) ? t.size.value : (t.quantity || t.lots || t.Lots || t.qty || 0)),
         comment: t.comment || t.Comment || ''
     })).filter(t => t.price > 0 && t.lots > 0)
-      .filter(t => !tic || t.ticker.includes(tic));
+      .filter(t => !tic || t.ticker.includes(tic))
+      .filter(t => typeof t.comment === 'string' && t.comment.toLowerCase().startsWith('sarema'));
+    // если сделок SAREMA нет, но по тикеру есть чужие (арб/вручную) — показать счётчик скрытых
+    const foreignCount = trades.filter(t => (!tic || String(t.symbol || '').includes(tic))
+        && !(String(t.comment || '').toLowerCase().startsWith('sarema'))).length;
+    const infoEl = document.getElementById('sarJournalInfo');
+    if (infoEl && foreignCount > 0 && _sarJournalTrades.length === 0) {
+        infoEl.textContent = `Сделок SAREMA нет · скрыто ${foreignCount} сделок счёта от других роботов (арбитраж и др.)`;
+    }
 
     _sarJournalTrades.sort((a, b) => a.time.localeCompare(b.time));
     _sarJournalPositions = sarGroupPositions(_sarJournalTrades);
