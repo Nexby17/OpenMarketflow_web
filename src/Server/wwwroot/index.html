@@ -425,31 +425,7 @@
             </div>
         </div>
 
-        <!-- Панель параметров экземпляра -->
-        <div class="card" id="sarPanelCard" style="display:none;margin-bottom:16px">
-            <div class="card-header row gap-8" style="display:flex;align-items:center">
-                ⚙️ Параметры: <span id="sarPanelTicker" style="font-weight:700"></span>
-                <span class="text-secondary" style="font-size:12px">лимиты владельца · сигнальные параметры read-only</span>
-                <span style="flex:1"></span>
-                <button class="btn btn-primary btn-sm" onclick="sarSaveParams()">💾 Сохранить</button>
-                <button class="btn btn-secondary btn-sm" onclick="sarClosePanel()">✖ Закрыть</button>
-            </div>
-            <div class="card-body">
-                <div style="display:flex;flex-wrap:wrap;gap:12px">
-                    <div style="min-width:150px"><div class="metric-label">Макс. штук (пусто = ∞)</div><input id="sarMaxQty" class="input" placeholder="без лимита"></div>
-                    <div style="min-width:170px"><div class="metric-label">Макс. стоимость ₽ (пусто = ∞)</div><input id="sarMaxValue" class="input" placeholder="без лимита"></div>
-                    <div style="min-width:130px"><div class="metric-label">База R (₽)</div><input id="sarBase" class="input"></div>
-                    <div style="min-width:120px"><div class="metric-label">Риск на сделку %</div><input id="sarRiskPct" class="input"></div>
-                    <div style="min-width:140px"><div class="metric-label">Kill-switch дневной (R, пусто = выкл)</div><input id="sarDayKill" class="input" placeholder="выкл"></div>
-                    <div style="min-width:120px"><div class="metric-label">Лимит участия (доля объёма)</div><input id="sarLiqFrac" class="input"></div>
-                </div>
-                <div style="display:flex;flex-wrap:wrap;gap:12px;margin-top:10px">
-                    <div class="text-secondary" style="font-size:12.5px">Сигнальные (read-only):</div>
-                    <span class="text-secondary" style="font-size:12.5px" id="sarRoParams"></span>
-                </div>
-                <div id="sarPanelMsg" class="text-secondary" style="margin-top:8px;font-size:12.5px"></div>
-            </div>
-        </div>
+        <!-- Панель параметров удалена из вкладки: popup по клику (как у OF-роботов) -->
 
         <!-- Журнал -->
         <div class="card" style="margin-top:16px">
