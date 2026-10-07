@@ -39,6 +39,7 @@ strategy = SaremaStrategy(cfg, state, orders, feed, lot_size=LOT_SIZE)
 
 app = FastAPI(title=f"SAREMA {TICKER}", version="1.0")
 _stop_lock = threading.Lock()             # F-060: идемпотентный /stop
+_SAR_LAST_RESTART = [0.0]                 # restart cooldown (90с, урок F-059)
 
 
 class ParamsPatch(BaseModel):
@@ -92,6 +93,12 @@ def start():
     return {"ok": True, "mode": state.mode}
 
 
+@app.get("/health")
+def health():
+    """Liveness probe для RobotProcessManager (C#) и UI — быстрый, без обращения к брокеру."""
+    return {"ok": True, "symbol": SYMBOL, "ticker": TICKER, "mode": state.mode}
+
+
 @app.post("/stop")
 def stop():
     """Идемпотентный /stop (урок F-060): mutex + re-check под замком."""
@@ -107,6 +114,29 @@ def pause():
     state.mode = "paused"
     state.save()
     return {"ok": True, "mode": state.mode}
+
+
+@app.post("/restart")
+def restart():
+    """Перезапуск по регламенту (урок F-059): FLAT-проверка + cooldown 90с + отложенный exit.
+    RobotProcessManager (C# proxy) поднимет процесс заново; позиция сохранена в state."""
+    import time as _t
+    left = 90 - (_t.time() - _SAR_LAST_RESTART[0])
+    if left > 0:
+        raise HTTPException(429, {"ok": False, "error": "cooldown", "retry_after_sec": int(left) + 1})
+    if state.direction != 0:
+        raise HTTPException(409, {"ok": False, "error": "position open",
+                                  "hint": "close position first or use /restart?force=1"})
+    _SAR_LAST_RESTART[0] = _t.time()
+    state.mode = "stopped"
+    state.save()
+    # отложенный выход: даём uvicorn ответить, затем процесс завершается; UI/proxy поднимет заново.
+    def _delayed_exit():
+        _t.sleep(2.0)
+        os._exit(0)
+    threading.Thread(target=_delayed_exit, daemon=True).start()
+    log.info("RESTART scheduled (FLAT, cooldown passed)")
+    return {"ok": True, "restarting": True}
 
 
 @app.post("/resync")
@@ -156,6 +186,17 @@ def _main_loop():
 
 
 if __name__ == "__main__":
+    # RobotProcessManager передаёт --port (совместимость с OF-паттерном запуска)
+    import sys as _sys
+    if "--port" in _sys.argv:
+        try:
+            _p = int(_sys.argv[_sys.argv.index("--port") + 1])
+            if _p > 0:
+                import sarema.config_sarema as _cfgmod
+                _cfgmod.PORT = _p
+                PORT = _p
+        except (ValueError, IndexError):
+            pass
     warm = feed.warmup_from_csv(TICKER) if DATA_DIR else False
     log.info(f"SAREMA {TICKER} port={PORT} warmup={'ok' if warm else 'SKIPPED (no SAREMA_DATA_DIR)'}")
     t = threading.Thread(target=_main_loop, daemon=True)

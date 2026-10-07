@@ -252,16 +252,87 @@ async function sarSaveParams() {
 }
 
 // ---------- управление ----------
-async function sarAction(inst, action) {
+// Паттерн OF-роботов (F-012): Старт = запуск процесса через C# proxy (/api/of/process/sar_xxx/start)
+// + /start API; Стоп = /stop API (close FLAT) + stop процесса; Пауза/Резюм — прямые API.
+// Работает даже когда робот был никогда не запущен (proxy порождает процесс).
+const SAR_ACTION_COOLDOWN = {};
+
+async function sarRobotApi(inst, action) {
     const cfg = sarCfg(inst);
-    try {
-        const resp = await fetch(sarApi(inst) + '/' + action, {method: 'POST', signal: AbortSignal.timeout(3000)});
-        if (!resp.ok) { sarLog('SAREMA[' + cfg.label + ']: ' + action + ' → HTTP ' + resp.status, 'ERROR'); return; }
-        sarLog('SAREMA[' + cfg.label + ']: ' + action + ' OK', 'INFO');
-    } catch (e) {
-        sarLog('SAREMA[' + cfg.label + ']: ' + action + ' недоступен (робот оффлайн?)', 'ERROR');
+    const procName = 'sar_' + inst;
+    const now = Date.now();
+    if (SAR_ACTION_COOLDOWN[procName] && now - SAR_ACTION_COOLDOWN[procName] < 5000) {
+        sarLog('SAREMA[' + cfg.label + ']: команда ' + action + ' слишком часто — подождите 5с', 'WARN');
+        return;
     }
-    sarPollAll();
+    SAR_ACTION_COOLDOWN[procName] = now;
+    try {
+        if (action === 'start') {
+            // F-012: старт процесса = spawn через C# RobotProcessManager (probe /health уже внутри)
+            showToast('⏳ Запуск процесса ' + cfg.label + ' (прогрев Finam ~15с)...', 'info');
+            const pr = await fetch('/api/of/process/' + procName + '/start', {method: 'POST', signal: AbortSignal.timeout(40000)});
+            const pd = await pr.json();
+            if (!pd.ok) {
+                showToast('❌ Процесс ' + cfg.label + ' не запустился: ' + (pd.error || '?'), 'error');
+                sarLog('SAREMA[' + cfg.label + ']: process start failed: ' + (pd.error || '?'), 'ERROR');
+                return;
+            }
+            showToast('✅ Процесс ' + cfg.label + ' запущен' + (pd.alreadyRunning ? ' (уже работал)' : '') + (pd.alreadyOnPort ? ' (порт уже занят живым роботом)' : ''), 'ok');
+            sarLog('SAREMA[' + cfg.label + ']: process started (pid=' + (pd.pid || '?') + ')', 'INFO');
+        }
+        if (action === 'stop') {
+            // OF-паттерн: сначала /stop API (позиция FLAT, отмена ордеров), затем процесс stop
+            try {
+                await fetch(sarApi(inst) + '/stop', {method: 'POST', signal: AbortSignal.timeout(3000)});
+            } catch (e) { /* робот мог уже умереть — не критично */ }
+            const pr = await fetch('/api/of/process/' + procName + '/stop', {method: 'POST', signal: AbortSignal.timeout(10000)});
+            const pd = await pr.json().catch(() => ({}));
+            sarLog('SAREMA[' + cfg.label + ']: stopped (FLAT check + process kill)', 'INFO');
+            showToast('⏹ ' + cfg.label + ' остановлен' + (pd.killed ? ' (процесс убит)' : ''), 'info');
+        }
+        if (action === 'pause' || action === 'resume') {
+            // прямые API (процесс обязан быть жив; кнопки disabled по mode)
+            await fetch(sarApi(inst) + '/' + action, {method: 'POST', signal: AbortSignal.timeout(3000)});
+            sarLog('SAREMA[' + cfg.label + ']: ' + action + ' OK', 'INFO');
+        }
+    } catch (e) {
+        sarLog('SAREMA[' + cfg.label + ']: ' + action + ' ошибка: ' + e.message, 'ERROR');
+        showToast('❌ ' + cfg.label + ': ' + action + ' — ' + e.message, 'error');
+    }
+    setTimeout(() => sarPollAll(), 1500);
+}
+
+async function sarRobotRestart(inst) {
+    const cfg = sarCfg(inst);
+    // OF-паттерн: restart только из FLAT (робот сам проверит), cooldown 90с
+    if (window['_sarRestarting_' + inst]) return;
+    window['_sarRestarting_' + inst] = true;
+    try {
+        const resp = await fetch(sarApi(inst) + '/restart', {method: 'POST', signal: AbortSignal.timeout(5000)});
+        const data = await resp.json();
+        if (data.ok) {
+            showToast('🔄 ' + cfg.label + ': перезапуск запланирован (~10с)', 'info');
+            sarLog('SAREMA[' + cfg.label + ']: restart scheduled (' + (data.reason || 'manual') + ')', 'INFO');
+        } else {
+            showToast('❌ ' + cfg.label + ': restart отклонён — ' + (data.reason || data.error || '?'), 'error');
+        }
+    } catch (e) {
+        // робот оффлайн: полный process stop + start через proxy
+        try {
+            await fetch('/api/of/process/sar_' + inst + '/stop', {method: 'POST', signal: AbortSignal.timeout(10000)});
+            await fetch('/api/of/process/sar_' + inst + '/start', {method: 'POST', signal: AbortSignal.timeout(40000)});
+            showToast('🔄 ' + cfg.label + ': процесс перезапущен (proxy)', 'info');
+        } catch (e2) {
+            showToast('❌ ' + cfg.label + ': restart failed — ' + e2.message, 'error');
+        }
+    } finally {
+        setTimeout(() => { window['_sarRestarting_' + inst] = false; sarPollAll(); }, 12000);
+    }
+}
+
+async function sarAction(inst, action) {
+    // легаси-обёртка (использовалась до кнопок OF-паттерна)
+    return sarRobotApi(inst, action);
 }
 
 // ---------- polling + строка ----------
@@ -306,7 +377,10 @@ function sarRenderTable() {
             rows += `<tr data-inst="${inst}"${activeBg} style="cursor:pointer" title="Двойной клик — панель робота (доступна оффлайн)">
                 <td><strong>${cfg.label}</strong></td>
                 <td class="red">● оффлайн</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td>
-                <td><span class="text-secondary">нет связи :${cfg.port}</span></td>
+                <td>
+                    <button class="btn btn-success btn-sm" onclick="sarRobotApi('${inst}','start')" title="Запустить процесс робота">▶</button>
+                    <button class="btn btn-danger btn-sm" onclick="sarRobotApi('${inst}','stop')" title="Остановить процесс (kill по порту)">⏹</button>
+                </td>
             </tr>`;
             continue;
         }
@@ -338,10 +412,11 @@ function sarRenderTable() {
             <td style="font-size:12px">${limUsed}<br><span class="text-secondary">${killText} · risk ${(risk.risk_pct * 100).toFixed(1) ?? '?'}%</span></td>
             <td style="font-size:12px">${st.last_bar ? String(st.last_bar).replace('T', ' ').slice(0, 16) : '—'}${st.stale ? ' <span class="red">⚠ stale</span>' : ''}</td>
             <td>
-                <button class="btn btn-success btn-sm" onclick="sarAction('${inst}','start')" ${!online ? 'disabled' : ''}>▶</button>
-                <button class="btn btn-warning btn-sm" onclick="sarAction('${inst}','pause')" ${!online ? 'disabled' : ''}>⏸</button>
-                <button class="btn btn-danger btn-sm" onclick="sarAction('${inst}','stop')" ${!online ? 'disabled' : ''}>⏹</button>
-                <button class="btn btn-secondary btn-sm" onclick="sarSwitchInstance('${inst}')" ${!online ? 'disabled' : ''}>⚙</button>
+                <button class="btn btn-success btn-sm" onclick="sarRobotApi('${inst}','start')" ${mode==='running'?'disabled':''} title="Запустить (start + resume)">▶</button>
+                <button class="btn btn-warning btn-sm" onclick="sarRobotApi('${inst}','pause')" ${mode!=='running'?'disabled':''} title="Пауза торговли (процесс живёт)">⏸</button>
+                <button class="btn btn-danger btn-sm" onclick="sarRobotApi('${inst}','stop')" ${mode==='stopped'?'disabled':''} title="Стоп: close FLAT + stop процесса (как OF)">⏹</button>
+                <button class="btn btn-sm" style="background:#2196F3;color:#fff" title="Перезапуск процесса (FLAT-проверка, cooldown 90с)" onclick="sarRobotRestart('${inst}')" ${window['_sarRestarting_'+inst]?'disabled':''}>${window['_sarRestarting_'+inst]?'⏳':'🔄'}</button>
+                <button class="btn btn-secondary btn-sm" onclick="sarSwitchInstance('${inst}')" title="Панель параметров + журнал">⚙</button>
             </td>
         </tr>`;
     }

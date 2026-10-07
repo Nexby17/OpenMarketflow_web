@@ -2347,6 +2347,17 @@ public static class RobotProcessManager
         "arb_gazp" => ("main_arb.py", 5090, ""),
         "arb_sber" => ("main_arb.py", 5091, ""),
         "arb_br" => ("main_arb.py", 5092, ""),
+        // F-061: SAREMA stock robots — один код main_sarema.py на N тикеров; env per instance
+        "sar_sber" => ("main_sarema.py", 5084, ""),
+        "sar_gazp" => ("main_sarema.py", 5085, ""),
+        "sar_lkoh" => ("main_sarema.py", 5086, ""),
+        "sar_rosn" => ("main_sarema.py", 5087, ""),
+        "sar_tatn" => ("main_sarema.py", 5088, ""),
+        "sar_gmkn" => ("main_sarema.py", 5089, ""),
+        "sar_nvtk" => ("main_sarema.py", 5094, ""),
+        "sar_plzl" => ("main_sarema.py", 5095, ""),
+        "sar_mtss" => ("main_sarema.py", 5096, ""),
+        "sar_sngs" => ("main_sarema.py", 5097, ""),
         _ => throw new ArgumentException("unknown robot")
     };
 
@@ -2451,6 +2462,16 @@ public static class RobotProcessManager
             if (name == "arb_gazp") { psi.EnvironmentVariables["ARB_SYMBOL_A"] = "GAZP@MISX"; psi.EnvironmentVariables["ARB_TICKER_A"] = "GAZP"; psi.EnvironmentVariables["ARB_SYMBOL_B"] = "GZZ6@RTSX"; psi.EnvironmentVariables["ARB_TICKER_B"] = "GZZ6"; }
             else if (name == "arb_sber") { psi.EnvironmentVariables["ARB_SYMBOL_A"] = "SBER@MISX"; psi.EnvironmentVariables["ARB_TICKER_A"] = "SBER"; psi.EnvironmentVariables["ARB_SYMBOL_B"] = "SRZ6@RTSX"; psi.EnvironmentVariables["ARB_TICKER_B"] = "SRZ6"; }
             else if (name == "arb_br") { psi.EnvironmentVariables["ARB_SYMBOL_A"] = "BRV6@RTSX"; psi.EnvironmentVariables["ARB_TICKER_A"] = "BRV6"; psi.EnvironmentVariables["ARB_SYMBOL_B"] = "BRZ6@RTSX"; psi.EnvironmentVariables["ARB_TICKER_B"] = "BRZ6"; }
+        }
+        if (name.StartsWith("sar_"))
+        {
+            // F-061: SAREMA per-instance env (конфиг/стейт/порт рядом с кодом робота)
+            var tic = name.Substring(4).ToUpperInvariant();
+            psi.EnvironmentVariables["SAREMA_TICKER"] = tic;
+            psi.EnvironmentVariables["SAREMA_PORT"] = port.ToString();
+            psi.EnvironmentVariables["SAREMA_CONFIG_FILE"] = System.IO.Path.Combine(root, "sarema", $"sarema_config_{tic}.json");
+            psi.EnvironmentVariables["SAREMA_STATE_FILE"] = System.IO.Path.Combine(root, "sarema", $"sarema_state_{tic}.json");
+            psi.EnvironmentVariables["SAREMA_DATA_DIR"] = System.IO.Path.Combine(root, "sarema", "data");
         }
         var proc = System.Diagnostics.Process.Start(psi);
         if (proc == null) return new { ok = false, error = "process failed to start" };
