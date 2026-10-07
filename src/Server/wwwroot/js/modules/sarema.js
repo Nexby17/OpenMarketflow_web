@@ -23,8 +23,8 @@ const SAR_INSTANCE_ORDER = ['sber', 'gazp'];   // первая волна; ос�
 SAR_INSTANCE_ORDER.forEach(k => { window['sarRobot_' + k] = null; window['_sarWasOnline_' + k] = false; });
 let sarPanelInst = null;            // экземпляр, чей popup открыт (null = закрыт)
 let _sarTimer = null;
-let _sarJournalTrades = [];
-let _sarJournalPositions = [];
+let _sarJournalOpen = [];    // открытые позиции (новые сверху)
+let _sarJournalClosed = [];  // закрытые позиции (новые сверху)
 
 function sarCfg(inst) { return SAR_INSTANCES[inst]; }
 function sarApi(inst) { return 'http://' + window.location.hostname + ':' + sarCfg(inst).port; }
@@ -75,41 +75,39 @@ function sarSwitchInstance(inst) {
             <div class="text-secondary" style="font-size:12px;margin-bottom:6px">Сигнальные (read-only): SAR 0.02/0.2/0.2 · EMA12 · стоп 3×ATR · H1 · std-полярность · трейлинг PSAR · овернайты разрешены</div>
             <div id="sarPanelMsg" class="text-secondary" style="font-size:12.5px;min-height:18px"></div>
             <hr style="border-color:#2D2D44;margin:12px 0">
-            <!-- Торговый журнал (как у OF/VP) -->
+            <!-- Торговый журнал: логика таблицы Дмитрия — открытые позиции сверху, закрытие дозаписывается справа -->
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
                 <strong>Журнал торговых операций</strong>
+                <span class="text-secondary" style="font-size:12px">открытые сверху · закрытие в той же строке</span>
             </div>
             <div id="sarJournalSummary" class="metrics-row" style="flex-wrap:wrap;margin-bottom:12px"></div>
-            <div style="display:flex;gap:8px;margin-bottom:12px;align-items:center">
-                <select id="sarJournalFilter" class="input" style="width:120px" onchange="sarRenderJournal()">
-                    <option value="all">Все позиции</option>
-                    <option value="LONG">Лонги</option>
-                    <option value="SHORT">Шорты</option>
-                    <option value="win">Прибыльные</option>
-                    <option value="loss">Убыточные</option>
-                </select>
-                <span style="color:#9CA3AF;font-size:13px">с</span>
-                <input id="sarJournalDateFrom" class="input" type="date" style="width:130px" onchange="sarLoadJournal()">
-                <span style="color:#9CA3AF;font-size:13px">по</span>
-                <input id="sarJournalDateTo" class="input" type="date" style="width:130px" onchange="sarLoadJournal()">
-                <button class="btn btn-secondary btn-sm" onclick="sarLoadJournal()">🔄</button>
-            </div>
-            <div style="max-height:320px;overflow-y:auto;border:1px solid var(--border-color);border-radius:8px">
-                <table style="width:100%;border-collapse:collapse;font-size:13px">
+            <div style="max-height:360px;overflow-y:auto;border:1px solid var(--border-color);border-radius:8px">
+                <table style="width:100%;border-collapse:collapse;font-size:12.5px">
                     <thead style="position:sticky;top:0;z-index:1">
+                        <tr style="background:#1a2332;border-bottom:2px solid var(--accent)">
+                            <th colspan="2" style="padding:6px 8px;text-align:center;border-right:2px solid var(--accent);color:#60A5FA">Открытие</th>
+                            <th colspan="3" style="padding:6px 8px;text-align:center;border-right:2px solid var(--accent);color:#60A5FA">Позиция</th>
+                            <th colspan="3" style="padding:6px 8px;text-align:center;border-right:2px solid var(--accent);color:#60A5FA">Стоп</th>
+                            <th colspan="5" style="padding:6px 8px;text-align:center;color:#34D399">Закрытие</th>
+                        </tr>
                         <tr style="background:var(--card);border-bottom:2px solid var(--accent)">
-                            <th style="padding:8px;text-align:left">Дата</th>
-                            <th style="padding:8px;text-align:left">Время входа</th>
-                            <th style="padding:8px;text-align:left">Время выхода</th>
-                            <th style="padding:8px;text-align:center">Направление</th>
-                            <th style="padding:8px;text-align:right">Цена входа</th>
-                            <th style="padding:8px;text-align:right">Цена выхода</th>
-                            <th style="padding:8px;text-align:right">Штуки</th>
-                            <th style="padding:8px;text-align:right">PnL</th>
-                            <th style="padding:8px;text-align:right">Накопл.</th>
+                            <th style="padding:6px 8px;text-align:left">Дата</th>
+                            <th style="padding:6px 8px;text-align:left">Время</th>
+                            <th style="padding:6px 8px;text-align:center">L/S</th>
+                            <th style="padding:6px 8px;text-align:right">Цена</th>
+                            <th style="padding:6px 8px;text-align:right">Шт</th>
+                            <th style="padding:6px 8px;text-align:right">Риск ₽</th>
+                            <th style="padding:6px 8px;text-align:right">Стоп</th>
+                            <th style="padding:6px 8px;text-align:right">Риск %</th>
+                            <th style="padding:6px 8px;text-align:left">Дата</th>
+                            <th style="padding:6px 8px;text-align:left">Время</th>
+                            <th style="padding:6px 8px;text-align:right">Цена</th>
+                            <th style="padding:6px 8px;text-align:right">Комис.</th>
+                            <th style="padding:6px 8px;text-align:right">PnL ₽</th>
+                            <th style="padding:6px 8px;text-align:right">R</th>
                         </tr>
                     </thead>
-                    <tbody id="sarJournalBody" style="background:var(--bg)"><tr><td colspan="9" style="text-align:center;padding:24px;color:#9CA3AF">Загрузка...</td></tr></tbody>
+                    <tbody id="sarJournalBody" style="background:var(--bg)"><tr><td colspan="14" style="text-align:center;padding:24px;color:#9CA3AF">Загрузка...</td></tr></tbody>
                 </table>
             </div>
             <div id="sarJournalInfo" style="font-size:12px;color:#9CA3AF;margin-top:8px"></div>
@@ -430,135 +428,31 @@ function sarRenderTable() {
 }
 
 // ============================================================================
-// === Торговый журнал (как у OF/VP): /api/trades брокера → группировка позиций ===
+// === Торговый журнал SAREMA: логика таблицы Дмитрия ===
+// === Источник — ЖУРНАЛ САМОГО РОБОТА (/journal у инстанса), не сделки счёта: ===
+// === робот пишет открытие (тикер, ТФ, дата/время, L/S, цена, шт, объём, ===
+// === риск %/пункты, стоп) при входе и дозаписывает закрытие при выходе. ===
+// === Порядок: открытые позиции сверху (новые первые), затем закрытые (новые первые). ===
 // ============================================================================
 
 async function sarLoadJournal(inst) {
     inst = inst || sarPanelInst;
     if (!inst) return;
     const cfg = sarCfg(inst);
-    const info = document.getElementById('sarJournalInfo');
     const body = document.getElementById('sarJournalBody');
     if (!body) return;
-
-    const today = new Date().toISOString().slice(0, 10);
-    const weekAgo = new Date(Date.now() - 7 * 86400000).toISOString().slice(0, 10);
-    const fromEl = document.getElementById('sarJournalDateFrom');
-    const toEl = document.getElementById('sarJournalDateTo');
-    if (fromEl && !fromEl.value) fromEl.value = weekAgo;
-    if (toEl && !toEl.value) toEl.value = today;
-
-    let params = '';
-    const dateFrom = fromEl ? fromEl.value : '';
-    const dateTo = toEl ? toEl.value : '';
-    if (dateFrom) params += `&dateFrom=${dateFrom}`;
-    if (dateTo) params += `&dateTo=${dateTo}`;
-    params = params ? '?' + params.substring(1) : '';
-
-    if (info) info.textContent = 'Загрузка журнала...';
-    body.innerHTML = '<tr><td colspan="9" style="text-align:center;padding:16px;color:#9CA3AF">Загрузка...</td></tr>';
-
-    let trades = [];
+    body.innerHTML = '<tr><td colspan="14" style="text-align:center;padding:16px;color:#9CA3AF">Загрузка...</td></tr>';
     try {
-        const resp = await fetch('/api/trades' + params, {signal: AbortSignal.timeout(15000)});
-        if (resp.ok) {
-            const raw = await resp.json();
-            trades = Array.isArray(raw) ? raw : (raw.trades || []);
-        }
+        const resp = await fetch(sarApi(inst) + '/journal', {signal: AbortSignal.timeout(4000)});
+        const data = await resp.json();
+        _sarJournalOpen = data.open || [];
+        _sarJournalClosed = data.closed || [];
+        sarRenderJournal();
     } catch (e) {
-        console.error('sarLoadJournal error:', e);
+        body.innerHTML = '<tr><td colspan="14" style="text-align:center;padding:16px;color:#9CA3AF">Робот оффлайн — журнал недоступен</td></tr>';
+        const info = document.getElementById('sarJournalInfo');
+        if (info) info.textContent = '';
     }
-
-    // нормализация + фильтры:
-    // 1) только сделки ЭТОГО робота по тикеру;
-    // 2) только сделки SAREMA-роботов — по комментарию ордера (sarema-*).
-    //    Арбитражные роботы торгуют тот же счёт и те же тикеры без комментария
-    //    (Finam не сохраняет их tag) — они в журнал SAREMA не попадают (замечание Дмитрия 07.10).
-    const tic = cfg.ticker;
-    _sarJournalTrades = trades.map(t => ({
-        time: t.timestamp || t.time || t.trade_date || t.datetime || '',
-        ticker: t.symbol || t.ticker || t.Ticker || '',
-        dir: (t.side || t.direction || t.dir || '').replace('SIDE_', '').toUpperCase(),
-        price: parseFloat((t.price && t.price.value) ? t.price.value : (t.price || t.Price || 0)),
-        lots: parseInt((t.size && t.size.value) ? t.size.value : (t.quantity || t.lots || t.Lots || t.qty || 0)),
-        comment: t.comment || t.Comment || ''
-    })).filter(t => t.price > 0 && t.lots > 0)
-      .filter(t => !tic || t.ticker.includes(tic))
-      .filter(t => typeof t.comment === 'string' && t.comment.toLowerCase().startsWith('sarema'));
-    // если сделок SAREMA нет, но по тикеру есть чужие (арб/вручную) — показать счётчик скрытых
-    const foreignCount = trades.filter(t => (!tic || String(t.symbol || '').includes(tic))
-        && !(String(t.comment || '').toLowerCase().startsWith('sarema'))).length;
-    const infoEl = document.getElementById('sarJournalInfo');
-    if (infoEl && foreignCount > 0 && _sarJournalTrades.length === 0) {
-        infoEl.textContent = `Сделок SAREMA нет · скрыто ${foreignCount} сделок счёта от других роботов (арбитраж и др.)`;
-    }
-
-    _sarJournalTrades.sort((a, b) => a.time.localeCompare(b.time));
-    _sarJournalPositions = sarGroupPositions(_sarJournalTrades);
-    sarRenderJournal();
-}
-
-// Группировка сделок в позиции (порт pyGroupPositions: комиссия 0.9₽/шт,
-// PnL = продажи − покупки − комиссия, open-позиция помечается)
-function sarGroupPositions(trades) {
-    const positions = [];
-    let current = null;
-    let netPos = 0;
-    let cumPnl = 0;
-
-    trades.forEach(t => {
-        const isBuy = t.dir === 'BUY' || t.dir === '1' || t.dir === 'B';
-        const lots = isBuy ? t.lots : -t.lots;
-        if (!current) {
-            current = {
-                entryTime: t.time, exitTime: t.time,
-                direction: isBuy ? 'LONG' : 'SHORT',
-                entryPrice: t.price, exitPrice: t.price,
-                maxLots: t.lots, trades: [t],
-                netPnL: 0, commission: Math.round(t.lots * 0.90),
-                cumPnl: 0, comments: t.comment ? [t.comment] : [],
-                _buyCost: 0, _buyLots: 0, _sellCost: 0, _sellLots: 0
-            };
-            if (isBuy) { current._buyCost = t.price * t.lots; current._buyLots = t.lots; }
-            else { current._sellCost = t.price * t.lots; current._sellLots = t.lots; }
-            netPos = lots;
-        } else {
-            netPos += lots;
-            if (isBuy) { current._buyCost += t.price * t.lots; current._buyLots += t.lots; }
-            else { current._sellCost += t.price * t.lots; current._sellLots += t.lots; }
-            current.exitTime = t.time;
-            current.exitPrice = t.price;
-            current.maxLots = Math.max(current.maxLots, Math.abs(netPos));
-            current.trades.push(t);
-            current.commission += Math.round(t.lots * 0.90);
-            if (t.comment && !current.comments.includes(t.comment)) current.comments.push(t.comment);
-            if (netPos === 0) {
-                current.totalLots = current.maxLots;
-                const totalSell = current._sellCost;
-                const totalBuy = current._buyCost;
-                current.netPnL = totalSell - totalBuy - current.commission;
-                current.entryPrice = current._buyLots > 0 ? Math.round(current._buyCost / current._buyLots) : Math.round(current._sellCost / current._sellLots);
-                current.exitPrice = current._sellLots > 0 ? Math.round(current._sellCost / current._sellLots) : Math.round(current._buyCost / current._buyLots);
-                cumPnl += current.netPnL;
-                current.cumPnl = cumPnl;
-                positions.push(current);
-                current = null; netPos = 0;
-            }
-        }
-    });
-    if (current) {
-        current.totalLots = current.maxLots;
-        const totalSell = current._sellCost;
-        const totalBuy = current._buyCost;
-        current.netPnL = totalSell - totalBuy - current.commission;
-        current.entryPrice = current._buyLots > 0 ? Math.round(current._buyCost / current._buyLots) : Math.round(current._sellCost / current._sellLots);
-        current.exitPrice = current._sellLots > 0 ? Math.round(current._sellCost / current._sellLots) : Math.round(current._buyCost / current._buyLots);
-        current.isOpen = true;
-        cumPnl += current.netPnL;
-        current.cumPnl = cumPnl;
-        positions.push(current);
-    }
-    return positions;
 }
 
 function sarRenderJournal() {
@@ -567,71 +461,70 @@ function sarRenderJournal() {
     const summary = document.getElementById('sarJournalSummary');
     if (!body) return;
 
-    const filterEl = document.getElementById('sarJournalFilter');
-    const filter = filterEl ? filterEl.value : 'all';
-    let positions = _sarJournalPositions;
-    if (filter === 'LONG') positions = positions.filter(p => p.direction === 'LONG');
-    else if (filter === 'SHORT') positions = positions.filter(p => p.direction === 'SHORT');
-    else if (filter === 'win') positions = positions.filter(p => p.netPnL > 0);
-    else if (filter === 'loss') positions = positions.filter(p => p.netPnL < 0);
+    const open = _sarJournalOpen || [];
+    const closed = _sarJournalClosed || [];
 
-    const wins = positions.filter(p => p.netPnL > 0);
-    const losses = positions.filter(p => p.netPnL < 0);
-    const winRate = positions.length ? (wins.length / positions.length * 100).toFixed(1) : '—';
-    const totalPnl = positions.reduce((s, p) => s + p.netPnL, 0);
-    const avgWin = wins.length ? wins.reduce((s, p) => s + p.netPnL, 0) / wins.length : 0;
-    const avgLoss = losses.length ? losses.reduce((s, p) => s + p.netPnL, 0) / losses.length : 0;
-    const grossProfit = wins.reduce((s, p) => s + p.netPnL, 0);
-    const grossLoss = Math.abs(losses.reduce((s, p) => s + p.netPnL, 0));
-    const pf = grossLoss > 0 ? (grossProfit / grossLoss).toFixed(2) : (grossProfit > 0 ? '∞' : '—');
-    const totalComm = positions.reduce((s, p) => s + p.commission, 0);
-    let maxDD = 0, peak = 0;
-    positions.forEach(p => { if (p.cumPnl > peak) peak = p.cumPnl; const dd = peak - p.cumPnl; if (dd > maxDD) maxDD = dd; });
-
+    // --- сводка (по закрытым): Σ₽, ΣR, W/L, средние ---
+    const Rs = closed.map(r => (r.close && r.close.R != null) ? r.close.R : null).filter(v => v !== null);
+    const pnls = closed.map(r => (r.close && r.close.pnl != null) ? r.close.pnl : null).filter(v => v !== null);
+    const wins = pnls.filter(v => v > 0).length;
+    const losses = pnls.filter(v => v <= 0).length;
+    const sumPnl = pnls.reduce((s, v) => s + v, 0);
+    const sumR = Rs.reduce((s, v) => s + v, 0);
+    const openUnreal = open.length ? ' · открытых: ' + open.length : '';
     if (summary) {
         summary.innerHTML = `
-            <div class="metric-card"><div class="metric-label">Позиции</div><div style="font-size:1.1em;font-weight:700;color:var(--accent)">${positions.length}</div></div>
-            <div class="metric-card"><div class="metric-label">W / L</div><div style="font-size:1.1em;font-weight:700"><span style="color:var(--green)">${wins.length}</span> / <span style="color:var(--red)">${losses.length}</span></div></div>
-            <div class="metric-card"><div class="metric-label">WR</div><div style="font-size:1.1em;font-weight:700;color:${parseFloat(winRate) >= 50 ? 'var(--green)' : 'var(--red)'}">${winRate}%</div></div>
-            <div class="metric-card"><div class="metric-label">PnL всего</div><div style="font-size:1.1em;font-weight:700;color:${totalPnl >= 0 ? 'var(--green)' : 'var(--red)'}">${totalPnl >= 0 ? '+' : ''}${totalPnl.toFixed(0)} ₽</div></div>
-            <div class="metric-card"><div class="metric-label">PF</div><div style="font-size:1.1em;font-weight:700">${pf}</div></div>
-            <div class="metric-card"><div class="metric-label">Avg W</div><div style="font-size:1.1em;font-weight:700;color:var(--green)">${avgWin >= 0 ? '+' : ''}${avgWin.toFixed(0)}₽</div></div>
-            <div class="metric-card"><div class="metric-label">Avg L</div><div style="font-size:1.1em;font-weight:700;color:var(--red)">${avgLoss.toFixed(0)}₽</div></div>
-            <div class="metric-card"><div class="metric-label">Комиссия</div><div style="font-size:1.1em;font-weight:700;color:#9CA3AF">${totalComm.toLocaleString('ru-RU')}₽</div></div>
-            <div class="metric-card"><div class="metric-label">Max DD</div><div style="font-size:1.1em;font-weight:700;color:var(--red)">${maxDD > 0 ? '-' : ''}${maxDD.toFixed(0)}₽</div></div>
+            <div class="metric-card"><div class="metric-label">Открытых</div><div style="font-size:1.1em;font-weight:700;color:#FFD700">${open.length}</div></div>
+            <div class="metric-card"><div class="metric-label">Закрытых</div><div style="font-size:1.1em;font-weight:700;color:var(--accent)">${closed.length}</div></div>
+            <div class="metric-card"><div class="metric-label">W / L</div><div style="font-size:1.1em;font-weight:700"><span style="color:var(--green)">${wins}</span> / <span style="color:var(--red)">${losses}</span></div></div>
+            <div class="metric-card"><div class="metric-label">Σ Прибыль/убыток ₽</div><div style="font-size:1.1em;font-weight:700;color:${sumPnl >= 0 ? 'var(--green)' : 'var(--red)'}">${sumPnl >= 0 ? '+' : ''}${sumPnl.toFixed(0)} ₽</div></div>
+            <div class="metric-card"><div class="metric-label">Σ R</div><div style="font-size:1.1em;font-weight:700;color:${sumR >= 0 ? 'var(--green)' : 'var(--red)'}">${sumR >= 0 ? '+' : ''}${sumR.toFixed(2)}R</div></div>
         `;
     }
 
-    if (!positions.length) {
-        body.innerHTML = '<tr><td colspan="9" style="text-align:center;padding:24px;color:#9CA3AF">За период сделок не было</td></tr>';
-        if (info) info.textContent = 'Нет данных';
-        return;
+    // --- строки: открытые сверху, затем закрытые ---
+    const rows = [];
+    for (const r of open) {
+        rows.push(`<tr style="border-bottom:1px solid #2D2D44;background:rgba(255,215,0,0.06)">
+            <td style="padding:5px 8px;font-size:11.5px">${r.date_open || '—'}</td>
+            <td style="padding:5px 8px;font-family:monospace;font-size:12px">${r.time_open || '—'}</td>
+            <td style="padding:5px 8px;text-align:center;font-weight:700;font-size:12px;color:${r.dir === 'L' ? 'var(--green)' : 'var(--red)'}">${r.dir || '—'}</td>
+            <td style="padding:5px 8px;text-align:right;font-weight:600">${r.entry != null ? Number(r.entry).toFixed(2) : '—'}</td>
+            <td style="padding:5px 8px;text-align:right">${r.qty ?? '—'}</td>
+            <td style="padding:5px 8px;text-align:right;color:#F59E0B">${r.risk_pts != null ? Number(r.risk_pts).toFixed(2) : '—'}</td>
+            <td style="padding:5px 8px;text-align:right">${r.stop != null ? Number(r.stop).toFixed(2) : '—'}</td>
+            <td style="padding:5px 8px;text-align:right;color:#F59E0B">${r.risk_pct != null ? Number(r.risk_pct).toFixed(2) + '%' : '—'}</td>
+            <td colspan="2" style="padding:5px 8px;text-align:center;color:#FFD700;font-size:11px;letter-spacing:.4em">— открыта —</td>
+            <td style="padding:5px 8px"></td><td style="padding:5px 8px"></td><td style="padding:5px 8px"></td><td style="padding:5px 8px"></td>
+        </tr>`);
     }
-
-    const sorted = [...positions].reverse();
-    body.innerHTML = sorted.map((p, idx) => {
-        const pnlCls = p.netPnL >= 0 ? 'var(--green)' : 'var(--red)';
-        const dirCls = p.direction === 'LONG' ? 'var(--green)' : 'var(--red)';
-        const dirIcon = p.direction === 'LONG' ? '▲ LONG' : '▼ SHORT';
-        const entryT = p.entryTime ? p.entryTime.replace(/\.\d+Z$/, '').replace('T', ' ').slice(11, 19) : '—';
-        const exitT = p.exitTime ? p.exitTime.replace(/\.\d+Z$/, '').replace('T', ' ').slice(11, 19) : '—';
-        const dateStr = p.entryTime ? p.entryTime.slice(0, 10) : '';
-        const bg = p.isOpen ? 'rgba(255,215,0,0.05)' : (idx % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.02)');
-        const openBadge = p.isOpen ? ' <span style="color:#FFD700;font-size:10px">открыта</span>' : '';
-        return `<tr style="border-bottom:1px solid #2D2D44;background:${bg}">
-            <td style="padding:6px 8px;font-size:11px;color:#9CA3AF">${dateStr}</td>
-            <td style="padding:6px 8px;font-family:monospace;font-size:12px">${entryT}</td>
-            <td style="padding:6px 8px;font-family:monospace;font-size:12px">${exitT}${openBadge}</td>
-            <td style="padding:6px 8px;text-align:center;color:${dirCls};font-weight:700;font-size:12px">${dirIcon}</td>
-            <td style="padding:6px 8px;text-align:right;font-weight:600">${p.entryPrice.toFixed(2)}</td>
-            <td style="padding:6px 8px;text-align:right;font-weight:600">${p.exitPrice.toFixed(2)}</td>
-            <td style="padding:6px 8px;text-align:right">${p.totalLots}</td>
-            <td style="padding:6px 8px;text-align:right;font-weight:700;color:${pnlCls}">${p.netPnL >= 0 ? '+' : ''}${p.netPnL.toFixed(0)} ₽</td>
-            <td style="padding:6px 8px;text-align:right;font-size:11px;color:${p.cumPnl >= 0 ? 'var(--green)' : 'var(--red)'}">${p.cumPnl >= 0 ? '+' : ''}${p.cumPnl.toFixed(0)}</td>
-        </tr>`;
-    }).join('');
-
-    if (info) info.textContent = `${positions.length} позиций · ${wins.length}W / ${losses.length}L · PnL ${totalPnl >= 0 ? '+' : ''}${totalPnl.toFixed(0)}₽`;
+    for (const r of closed) {
+        const c = r.close || {};
+        const pnl = c.pnl ?? 0;
+        const R = c.R;
+        const pnlCls = pnl >= 0 ? 'var(--green)' : 'var(--red)';
+        const pnlBg = pnl >= 0 ? 'rgba(62,207,142,.15)' : (pnl >= -50 ? 'rgba(245,176,76,.18)' : 'rgba(239,100,97,.18)');
+        const rCls = R >= 0 ? 'var(--green)' : 'var(--red)';
+        rows.push(`<tr style="border-bottom:1px solid #2D2D44">
+            <td style="padding:5px 8px;font-size:11.5px;color:#9CA3AF">${r.date_open || '—'}</td>
+            <td style="padding:5px 8px;font-family:monospace;font-size:12px;color:#9CA3AF">${r.time_open || '—'}</td>
+            <td style="padding:5px 8px;text-align:center;font-weight:700;font-size:12px;color:${r.dir === 'L' ? 'var(--green)' : 'var(--red)'}">${r.dir || '—'}</td>
+            <td style="padding:5px 8px;text-align:right">${r.entry != null ? Number(r.entry).toFixed(2) : '—'}</td>
+            <td style="padding:5px 8px;text-align:right">${r.qty ?? '—'}</td>
+            <td style="padding:5px 8px;text-align:right;color:#F59E0B">${r.risk_pts != null ? Number(r.risk_pts).toFixed(2) : '—'}</td>
+            <td style="padding:5px 8px;text-align:right">${r.stop != null ? Number(r.stop).toFixed(2) : '—'}</td>
+            <td style="padding:5px 8px;text-align:right;color:#F59E0B">${r.risk_pct != null ? Number(r.risk_pct).toFixed(2) + '%' : '—'}</td>
+            <td style="padding:5px 8px;font-size:11.5px;color:#9CA3AF">${c.date_close || '—'}</td>
+            <td style="padding:5px 8px;font-family:monospace;font-size:12px">${c.time_close || '—'}</td>
+            <td style="padding:5px 8px;text-align:right;font-weight:600">${c.exit != null ? Number(c.exit).toFixed(2) : '—'}</td>
+            <td style="padding:5px 8px;text-align:right;font-size:11px;color:#9CA3AF">${c.commission != null ? Number(c.commission).toFixed(0) : '—'}</td>
+            <td style="padding:5px 8px;text-align:right;font-weight:700;color:${pnlCls};background:${pnlBg}">${pnl >= 0 ? '+' : ''}${pnl.toFixed(0)}</td>
+            <td style="padding:5px 8px;text-align:right;font-weight:700;color:${rCls}">${R != null ? ((R >= 0 ? '+' : '') + R.toFixed(3)) : '—'}</td>
+        </tr>`);
+    }
+    body.innerHTML = rows.length ? rows.join('') :
+        '<tr><td colspan="14" style="text-align:center;padding:24px;color:#9CA3AF">Сделок ещё не было — робот начнёт писать журнал при первом входе</td></tr>';
+    if (info) info.textContent = `${open.length} открытых · ${closed.length} закрытых · Σ ${sumPnl >= 0 ? '+' : ''}${sumPnl.toFixed(0)}₽ / ${sumR >= 0 ? '+' : ''}${sumR.toFixed(2)}R`;
 }
 
 function sarStartPolling() {

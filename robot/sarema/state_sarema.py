@@ -23,6 +23,8 @@ class SaremaState:
         self.day_realized_R: dict = {}         # 'YYYY-MM-DD' -> сумма R
         self.total_pnl = 0.0
         self.trades_done = 0
+        # F-061 журнал позиций (логика таблицы Дмитрия): открытые сверху, закрытие дозаписывается
+        self.trade_history = []
 
     def save(self) -> None:
         data = {
@@ -38,6 +40,7 @@ class SaremaState:
             "day_realized_R": self.day_realized_R,
             "total_pnl": self.total_pnl,
             "trades_done": self.trades_done,
+            "trade_history": self.trade_history[-500:],
         }
         tmp = self.path + ".tmp"
         os.makedirs(os.path.dirname(self.path) or ".", exist_ok=True)
@@ -61,6 +64,7 @@ class SaremaState:
         self.day_realized_R = {k: float(v) for k, v in data.get("day_realized_R", {}).items()}
         self.total_pnl = float(data.get("total_pnl", 0.0))
         self.trades_done = int(data.get("trades_done", 0))
+        self.trade_history = list(data.get("trade_history", []))
         self.mode = "stopped"          # startup-always-stopped (F-059)
         return True
 
@@ -70,3 +74,22 @@ class SaremaState:
     def record_trade_R(self, exit_day: str, r: float) -> None:
         self.day_realized_R[exit_day] = self.day_realized_R.get(exit_day, 0.0) + r
         self.trades_done += 1
+
+    # --- Журнал позиций (логика таблицы Дмитрия: открытие слева, закрытие справа) ---
+    def journal_open(self, rec: dict) -> None:
+        """Новая открытая позиция: {tic, tf, date_open, time_open, dir L/S,
+        entry, qty, volume, risk_pct, risk_pts, stop, status:'open', close:None}"""
+        rec["status"] = "open"
+        rec["close"] = None
+        self.trade_history.append(rec)
+        if len(self.trade_history) > 500:
+            self.trade_history = self.trade_history[-500:]
+
+    def journal_close(self, close_rec: dict) -> dict | None:
+        """Дозаписать закрытие в последнюю открытую позицию. Возвращает обновлённую запись."""
+        rec = next((r for r in reversed(self.trade_history) if r.get("status") == "open"), None)
+        if not rec:
+            return None
+        rec["close"] = close_rec
+        rec["status"] = "closed"
+        return rec

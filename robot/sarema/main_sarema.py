@@ -35,7 +35,7 @@ state = SaremaState(STATE_FILE or f"sarema_state_{TICKER}.json")
 state.load()                              # восстановление; mode всё равно stopped
 feed = H1Feed(DATA_DIR or None)
 orders = SaremaOrders(ACCOUNT_ID, SYMBOL)
-strategy = SaremaStrategy(cfg, state, orders, feed, lot_size=LOT_SIZE)
+strategy = SaremaStrategy(cfg, state, orders, feed, lot_size=LOT_SIZE, ticker=TICKER)
 
 app = FastAPI(title=f"SAREMA {TICKER}", version="1.0")
 _stop_lock = threading.Lock()             # F-060: идемпотентный /stop
@@ -91,6 +91,22 @@ def start():
     state.save()
     log.info("START")
     return {"ok": True, "mode": state.mode}
+
+
+@app.get("/journal")
+def journal():
+    """Журнал позиций (логика таблицы Дмитрия): открытые сверху, закрытие дозаписывается.
+    Возвращает записи в порядке: открытые первыми (новые сверху), затем закрытые (новые сверху)."""
+    open_recs = [r for r in state.trade_history if r.get("status") == "open"]
+    closed_recs = [r for r in state.trade_history if r.get("status") == "closed"]
+    return {
+        "ticker": TICKER,
+        "open": list(reversed(open_recs)),
+        "closed": list(reversed(closed_recs)),
+        "open_count": len(open_recs),
+        "closed_count": len(closed_recs),
+        "base": state.base,
+    }
 
 
 @app.get("/health")

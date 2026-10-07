@@ -17,12 +17,13 @@ FLAT, LONG, SHORT = 0, 1, -1
 
 
 class SaremaStrategy:
-    def __init__(self, cfg: dict, state, orders, feed, lot_size: float = 1.0):
+    def __init__(self, cfg: dict, state, orders, feed, lot_size: float = 1.0, ticker: str = ""):
         self.cfg = cfg
         self.state = state
         self.orders = orders
         self.feed = feed
         self.lot_size = lot_size
+        self.ticker = ticker
         self.stop_order_id: str | None = None
         self.last_stats: dict = {}
 
@@ -99,6 +100,23 @@ class SaremaStrategy:
         # начальный стоп строится от фактической цены входа после fill (reconciliation
         # уточняет entry; здесь предварительный стоп от price_hint, дальше /resync)
         stop0 = price_hint - stop_dist if direction == LONG else price_hint + stop_dist
+        # запись в журнал позиций (логика таблицы Дмитрия): открытие — сразу при входе
+        from datetime import date as _date
+        _now = datetime.utcnow()
+        risk_pts = stop_dist
+        self.state.journal_open({
+            "tic": self.ticker,
+            "tf": "H1",
+            "date_open": _now.strftime("%Y-%m-%d"),
+            "time_open": _now.strftime("%H:%M:%S"),
+            "dir": "L" if direction == LONG else "S",
+            "entry": price_hint,
+            "qty": qty,
+            "volume": round(qty * price_hint, 2),
+            "risk_pct": round(qty * stop_dist / max(1e-9, self.state.base) * 100, 2),
+            "risk_pts": round(risk_pts, 2),
+            "stop": round(stop0, 2),
+        })
         self.state.direction = direction
         self.state.lots_qty = qty
         self.state.entry_price = price_hint
@@ -134,7 +152,29 @@ class SaremaStrategy:
         if not po:
             return {"event": "close_error", "error": self.orders.last_error}
         log.info(f"close reason={reason} qty={self.state.lots_qty}")
-        ev = {"event": "close", "dir": self.state.direction, "qty": self.state.lots_qty, "reason": reason}
+        # закрытие в журнал позиций: дозапись справа в открытую строку (логика Дмитрия)
+        from datetime import datetime as _dt
+        _now = _dt.utcnow()
+        _entry = self.state.entry_price
+        _qty = self.state.lots_qty
+        _dir = self.state.direction
+        # цена выхода: факт от брокера недоступен синхронно — используем price_hint последнего бара
+        _exit_px = self.feed.bars["close"].iloc[-1] if (self.feed.bars is not None and len(self.feed.bars)) else _entry
+        _commission = round(_qty * 0.90, 2)
+        _net = (_exit_px - _entry) * _dir * _qty - _commission
+        _risk_total = max(1e-9, self.state.base * self.cfg.get("risk_pct", 0.005))
+        closed = self.state.journal_close({
+            "date_close": _now.strftime("%Y-%m-%d"),
+            "time_close": _now.strftime("%H:%M:%S"),
+            "exit": round(float(_exit_px), 2),
+            "commission": _commission,
+            "pnl": round(_net, 2),
+            "R": round(_net / _risk_total, 3),
+            "reason": reason,
+        })
+        if closed:
+            self.state.record_trade_R(_now.strftime("%Y-%m-%d"), closed["close"]["R"])
+        ev = {"event": "close", "dir": _dir, "qty": _qty, "reason": reason, "journal": closed is not None}
         self.state.direction = FLAT
         self.state.lots_qty = 0
         self.stop_order_id = None
