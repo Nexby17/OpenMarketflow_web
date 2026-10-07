@@ -2503,7 +2503,7 @@ async function renderRobots() {
         </tr>`;
     }
 
-    // Order Flow PERP robot row (F-061: USDRUBF perpetual, :5084)
+    // Order Flow PERP robot row (F-061: USDRUBF perpetual, :5095)
     let ofPerpRobotRow = '';
     let _ofPerpAccount = localStorage.getItem('ofPerpRobotAccount') || '1225953';
     if (ofPerpRobot) {
@@ -2599,7 +2599,7 @@ async function renderRobots() {
         }
     }).join('');
 
-    const allRows = [...serverStrategies, ...localRows, pythonRobotRow, ofRobotRow, ofMxRobotRow, ofPerpRobotRow, ofBrRows];
+    const allRows = [...serverStrategies, ...localRows, pythonRobotRow, ofRobotRow, ofPerpRobotRow, ofMxRobotRow, ofBrRows];
     if (!allRows.filter(r=>r).length) { tbody.innerHTML = ''; if (noMsg) noMsg.style.display = 'block'; return; }
     if (noMsg) noMsg.style.display = 'none';
     tbody.innerHTML = allRows.join('');
@@ -5706,7 +5706,7 @@ setInterval(function() {
 }, 5000);
 
 // === ORDER FLOW PERP ROBOT (F-061: USDRUBF perpetual, порт 5084) ===
-const OF_PERP_ROBOT_API = 'http://' + window.location.hostname + ':5084';
+const OF_PERP_ROBOT_API = 'http://' + window.location.hostname + ':5095';
 let ofPerpRobot = null;
 let _ofPerpWasOnline = false;
 
@@ -5775,7 +5775,7 @@ async function ofPerpRobotApi(action) {
         setTimeout(async () => { await ofPerpRobotPoll(); renderRobots(); }, 500);
     } catch(e) {
         addLog(nowTime(), 'ERROR', `Робот OF-PERP не отвечает (${action}): ${e.message}`);
-        showToast('❌ Робот OF-PERP не отвечает — процесс не поднят (python3 main_of_perp.py --port 5084)', 'error');
+        showToast('❌ Робот OF-PERP не отвечает — процесс не поднят (python3 main_of_perp.py --port 5095)', 'error');
     }
 }
 
@@ -5783,9 +5783,474 @@ async function onOfPerpRobotAccountChange(val) {
     localStorage.setItem('ofPerpRobotAccount', val);
 }
 
-function ofPerpRobotEditPanel() {
-    showToast('ℹ Панель настроек OF-PERP: используй таблицу параметров (кнопки ▶⏸⏹). Полная панель — по запросу.', 'info');
+let _ofPerpJournalTrades = [];
+
+async function ofPerpRobotEditPanel() {
+    const existing = el('ofPerpRobotEditPanel');
+    if (existing) { existing.remove(); return; }
+
+    const s = ofPerpRobot || {};
+    // F-010: живой робот -> его params; иначе config через сервер (localStorage больше не нужен)
+    let _cfgSrc = 'robot';
+    let p = s.params || null;
+    if (!p) {
+        try {
+            const r = await fetch('/api/of/config/of_perp', {signal: AbortSignal.timeout(2000)});
+            if (r.ok) { p = await r.json(); _cfgSrc = 'config'; }
+        } catch(e) {}
+    }
+    p = p || {};
+    // Fallback defaults for USDRUBF if no params anywhere
+    if (!p.step_average) p.step_average = 0.05;
+    if (!p.step_pyramid) p.step_pyramid = 0.025;
+    if (!p.spread) p.spread = 0.04;
+    if (!p.stop_loss_value) p.stop_loss_value = 30;
+    if (!p.min_profit_per_lot) p.min_profit_per_lot = 0.035;
+    if (!p.max_pyramid_levels) p.max_pyramid_levels = 3;
+    if (!p.max_average_levels) p.max_average_levels = 50;
+
+    const div = document.createElement('div');
+    div.id = 'ofPerpRobotEditPanel';
+    div.className = 'card';
+    div.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);z-index:1000;width:900px;max-height:90vh;overflow-y:auto;box-shadow:0 8px 32px rgba(0,0,0,.5)';
+    div.innerHTML = `
+        <div class="card-header row gap-8">
+            📊 USDRUBF Order Flow (PERP)
+            <button class="btn btn-primary btn-sm" onclick="ofPerpRobotSaveFromPanel()">💾 Сохранить</button>
+            <span id="ofPerpCfgSrcBadge" style="font-size:11px;padding:2px 8px;border-radius:10px;opacity:.85"></span>
+            <button class="btn btn-secondary btn-sm" onclick="if(window._ofPerpVpTimer){clearInterval(window._ofPerpVpTimer);window._ofPerpVpTimer=null;}el('ofPerpRobotEditPanel')?.remove()">✕</button>
+        </div>
+        <div style="padding:12px">
+            <!-- OF индикаторы -->
+            <div class="metrics-row" style="flex-wrap:wrap;margin-bottom:12px">
+                <div class="metric-card" style="background:#1a2332;border:1px solid #007ACC;display:flex;flex-direction:column;align-items:center;gap:2px"><div style="display:flex;align-items:center;gap:4px"><input id="togglePerpCvd" type="checkbox" checked style="width:14px;height:14px;cursor:pointer" onchange="toggleOfPerpSignal('use_cvd', this.checked)"><div class="metric-label" style="color:#CE93D8">CVD Trend</div></div><div id="ofPerpCvd" style="font-size:18px;font-weight:bold;color:#CE93D8">—</div></div>
+                <div class="metric-card" style="background:#1a2332;border:1px solid #007ACC;display:flex;flex-direction:column;align-items:center;gap:2px"><div style="display:flex;align-items:center;gap:4px"><input id="togglePerpDmWall" type="checkbox" style="width:14px;height:14px;cursor:pointer" onchange="toggleOfPerpSignal('use_dm_wall', this.checked)"><div class="metric-label" style="color:#FF7043">dm_wall</div></div><div id="ofPerpDelta" style="font-size:18px;font-weight:bold;color:#FF7043">—</div></div>
+                <div class="metric-card" style="background:#1a2332;border:1px solid #007ACC;display:flex;flex-direction:column;align-items:center;gap:2px"><div style="display:flex;align-items:center;gap:4px"><input id="togglePerpCvdAccel" type="checkbox" checked style="width:14px;height:14px;cursor:pointer" onchange="toggleOfPerpSignal('use_cvd_accel', this.checked)"><div class="metric-label" style="color:#66BB6A">CVD Accel</div></div><div id="ofPerpCvdAccel" style="font-size:18px;font-weight:bold;color:#66BB6A">—</div></div>
+
+                <div class="metric-card" style="display:flex;flex-direction:column;align-items:center;gap:2px"><div style="display:flex;align-items:center;gap:4px"><input id="togglePerpVp" type="checkbox" style="width:14px;height:14px;cursor:pointer" onchange="toggleOfPerpSignal('use_vah_val', this.checked)"><div class="metric-label" style="color:#42A5F5">VAH</div></div><div id="ofPerpVah" style="font-size:18px;font-weight:bold;color:#42A5F5">—</div></div>
+                <div class="metric-card" style="display:flex;flex-direction:column;align-items:center;gap:2px"><div style="display:flex;align-items:center;gap:4px"><div class="metric-label" style="color:#FFB74D">POC</div></div><div id="ofPerpPoc" style="font-size:18px;font-weight:bold;color:#FFB74D">—</div></div>
+                <div class="metric-card" style="display:flex;flex-direction:column;align-items:center;gap:2px"><div style="display:flex;align-items:center;gap:4px"><div class="metric-label" style="color:#42A5F5">VAL</div></div><div id="ofPerpVal" style="font-size:18px;font-weight:bold;color:#42A5F5">—</div></div>
+
+                <div class="metric-card" style="background:#1a2332;border:1px solid #607D8B;display:flex;flex-direction:column;align-items:center;gap:2px"><div class="metric-label" style="color:#B0BEC5">Фильтр</div><select id="ofPerpDirFilter" class="input" style="width:80px;font-size:13px;font-weight:bold;background:transparent;color:#fff;border:1px solid #607D8B;text-align:center;cursor:pointer" onchange="ofPerpSetDirection(this.value)"><option value="both" style="color:#000">ОБА</option><option value="long" style="color:#000">LONG</option><option value="short" style="color:#000">SHORT</option></select></div>
+
+                <div class="metric-card"><div class="metric-label">Цена</div><div id="ofPerpPrice" style="font-size:18px;font-weight:bold">—</div></div>
+                <div class="metric-card"><div class="metric-label">Позиция</div><div id="ofPerpDir" style="font-size:18px;font-weight:bold">—</div></div>
+                <div class="metric-card"><div class="metric-label">Лоты</div><div id="ofPerpLots" style="font-size:18px;font-weight:bold">0</div></div>
+                <div class="metric-card"><div class="metric-label">Ср. цена</div><div id="ofPerpAvgPrice" style="font-size:18px;font-weight:bold">—</div></div>
+                <div class="metric-card"><div class="metric-label">PnL/лот</div><div id="ofPerpPnlPerLot" style="font-size:18px;font-weight:bold">—</div></div>
+                <div class="metric-card"><div class="metric-label">PnL нереал.</div><div id="ofPerpPnlUnreal" style="font-size:18px;font-weight:bold">—</div></div>
+                <div class="metric-card"><div class="metric-label">Realized</div><div id="ofPerpRealized" style="font-size:18px;font-weight:bold">0₽</div></div>
+                <div class="metric-card"><div class="metric-label">Сигнал</div><div id="ofPerpSignal" style="font-size:16px;font-weight:bold">—</div></div>
+                <div class="metric-card"><div class="metric-label">Hold</div><div id="ofPerpHold" style="font-size:18px;font-weight:bold">0 мин</div></div>
+                <div class="metric-card"><div class="metric-label">Avg Levels</div><div id="ofPerpAvgLvl" style="font-size:18px;font-weight:bold">0</div></div>
+                <div class="metric-card"><div class="metric-label">Pyr Levels</div><div id="ofPerpPyrLvl" style="font-size:18px;font-weight:bold">0</div></div>
+                <div class="metric-card"><div class="metric-label">RT</div><div id="ofPerpRt" style="font-size:18px;font-weight:bold">0</div></div>
+            </div>
+
+            <!-- MANUAL POSITION ADJUST: ручная коррекция позиции (синхронизация с брокером, БЕЗ ордеров) -->
+            <div style="display:flex;gap:8px;align-items:center;margin:10px 0;padding:10px;background:#1a2332;border:1px solid #607D8B;border-radius:8px">
+                <span style="color:#B0BEC5;font-size:13px;font-weight:bold">⚙ КОРРЕКЦИЯ ПОЗИЦИИ</span>
+                <input id="ofPerpAdjLots" type="number" step="1" placeholder="лоты: 3 лонг / -3 шорт / 0 флэт" title="Абсолютная позиция: +N лонг, -N шорт, 0 флэт" style="width:170px;padding:6px 8px;background:#0D1117;color:#fff;border:1px solid #607D8B;border-radius:4px;font-size:13px">
+                <input id="ofPerpAdjPrice" type="number" step="1" placeholder="цена (209300)" title="Средняя цена входа позиции брокера" style="width:130px;padding:6px 8px;background:#0D1117;color:#fff;border:1px solid #607D8B;border-radius:4px;font-size:13px">
+                <button class="btn btn-primary btn-sm" onclick="ofPerpAdjustPosition()" title="Установить позицию робота = позиция брокера (ордеров НЕ отправляет)">Применить</button>
+                <span id="ofPerpAdjResult" style="font-size:12px;color:#B0BEC5"></span>
+            </div>
+
+            <hr style="border-color:#2D2D44;margin:12px 0">
+            <!-- Параметры -->
+            <div class="metrics-row" style="flex-wrap:wrap;margin-bottom:16px">
+                <div class="metric-card"><div class="metric-label">Lots</div><input id="editOfPerpLots" class="input" type="number" value="${p.lots||1}" style="width:60px"></div>
+                <div class="metric-card"><div class="metric-label">Max Pyramid</div><input id="editOfPerpMaxPyr" class="input" type="number" value="${p.max_pyramid_levels||5}" style="width:60px"></div>
+                <div class="metric-card"><div class="metric-label">Max Average</div><input id="editOfPerpMaxAvg" class="input" type="number" value="${p.max_average_levels||100}" style="width:60px"></div>
+                <div class="metric-card"><div class="metric-label">Step Avg (пт)</div><input id="editOfPerpStepAvg" class="input" type="number" step="0.001" value="${p.step_average||50}" style="width:70px"></div>
+                <div class="metric-card"><div class="metric-label">Step Pyr (пт)</div><input id="editOfPerpStepPyr" class="input" type="number" step="0.001" value="${p.step_pyramid||35}" style="width:70px"></div>
+                <div class="metric-card"><div class="metric-label">Spread (пт)</div><input id="editOfPerpSpread" class="input" type="number" step="0.001" value="${p.spread||50}" style="width:60px"></div>
+                <div class="metric-card"><div class="metric-label">SL Mode</div><select id="editOfPerpSlMode" class="input" style="width:70px"><option value="rub" ${(p.stop_loss_mode||'rub')==='rub'?'selected':''}>₽</option><option value="pct" ${p.stop_loss_mode==='pct'?'selected':''}>%</option><option value="pts" ${p.stop_loss_mode==='pts'?'selected':''}>пт</option></select></div>
+                <div class="metric-card"><div class="metric-label">SL Value</div><input id="editOfPerpSlValue" class="input" type="number" step="0.001" value="${p.stop_loss_value||7000}" style="width:80px"></div>
+                <div class="metric-card"><div class="metric-label">Min Profit/Lot</div><input id="editOfPerpMinProfit" class="input" type="number" step="0.001" value="${p.min_profit_per_lot||30}" style="width:60px"></div>
+                <div class="metric-card"><div class="metric-label">Close % All</div><select id="editOfPerpCloseHalfPct" class="input" style="width:70px"><option value="0" ${(!p.close_half_pct)?'selected':''}>OFF</option><option value="70" ${p.close_half_pct===70?'selected':''}>70%</option><option value="60" ${p.close_half_pct===60?'selected':''}>60%</option><option value="50" ${p.close_half_pct===50?'selected':''}>50%</option><option value="40" ${p.close_half_pct===40?'selected':''}>40%</option><option value="30" ${p.close_half_pct===30?'selected':''}>30%</option><option value="20" ${p.close_half_pct===20?'selected':''}>20%</option><option value="10" ${p.close_half_pct===10?'selected':''}>10%</option></select></div>
+                <div class="metric-card"><div class="metric-label">Close price All</div><input id="editOfPerpClosePriceAll" class="input" type="number" placeholder="None" value="${p.close_price_all||''}" style="width:90px"></div>
+                <div class="metric-card"><div class="metric-label">Max Hold (мин)</div><input id="editOfPerpMaxHold" class="input" type="number" value="${p.max_hold_minutes||999}" style="width:80px"></div>
+                <div class="metric-card"><div class="metric-label">CVD EMA Fast</div><input id="editOfPerpCvdEmaF" class="input" type="number" value="${p.cvd_ema_fast||5}" style="width:60px"></div>
+                <div class="metric-card"><div class="metric-label">CVD EMA Slow</div><input id="editOfPerpCvdEmaS" class="input" type="number" value="${p.cvd_ema_slow||15}" style="width:60px"></div>
+                <div class="metric-card"><div class="metric-label">DM Lookback</div><input id="editOfPerpDmLb" class="input" type="number" value="${p.dm_lookback||5}" style="width:60px"></div>
+                <div class="metric-card"><div class="metric-label">Wall Window (с)</div><input id="editOfPerpWallWin" class="input" type="number" value="${p.wall_window||120}" style="width:60px"></div>
+                <div class="metric-card"><div class="metric-label">Wall Mult</div><input id="editOfPerpWallMult" class="input" type="number" step="0.5" value="${p.wall_multiplier||3.0}" style="width:60px"></div>
+                <div class="metric-card"><div class="metric-label">CVD Accel Thresh</div><input id="editOfPerpCvdAccelThresh" class="input" type="number" step="100" value="${p.cvd_accel_threshold||1000}" style="width:80px"></div>
+                <div class="metric-card"><div class="metric-label">Agg Window</div><input id="editOfPerpAggWindow" class="input" type="number" value="${p.agg_window||3}" style="width:60px"></div>
+                <div class="metric-card"><div class="metric-label">Agg Ratio Thr</div><input id="editOfPerpAggRatioThresh" class="input" type="number" step="0.1" value="${p.agg_ratio_threshold||1.0}" style="width:60px"></div>
+                <div class="metric-card" style="display:flex;align-items:center;gap:8px"><label style="display:flex;align-items:center;gap:6px;cursor:pointer"><input id="editOfPerpUseAggRatio" type="checkbox" ${(p.use_agg_ratio!==false)?'checked':''} style="width:18px;height:18px;cursor:pointer"><span style="font-size:13px;color:#66BB6A">Agg Ratio Filter</span></label></div>
+                <div class="metric-card"><div class="metric-label">Confirm In</div><input id="editOfPerpConfirm" class="input" type="number" min="1" max="3" value="${p.signal_confirm_count||1}" style="width:50px"></div>
+                <div class="metric-card"><div class="metric-label">Confirm Out</div><input id="editOfPerpConfirmOut" class="input" type="number" min="1" max="3" value="${p.signal_confirm_exit||1}" style="width:50px"></div>
+                <div class="metric-card"><div class="metric-label">Timeframe</div><select id="editOfPerpTf" class="input" style="width:70px"><option value="M1" ${p.timeframe==='M1'?'selected':''}>1 мин</option><option value="M5" ${(p.timeframe||'M5')==='M5'?'selected':''}>5 мин</option><option value="M15" ${p.timeframe==='M15'?'selected':''}>15 мин</option><option value="M30" ${p.timeframe==='M30'?'selected':''}>30 мин</option><option value="H1" ${p.timeframe==='H1'?'selected':''}>1 час</option></select></div>
+            </div>
+            <hr style="border-color:#2D2D44;margin:12px 0">
+            <!-- VWEMA Filter -->
+            <div class="metrics-row" style="flex-wrap:wrap;margin-bottom:16px;align-items:center">
+                <div class="metric-card" style="display:flex;align-items:center;gap:8px">
+                    <label style="display:flex;align-items:center;gap:6px;cursor:pointer">
+                        <input id="editOfPerpUseVwema" type="checkbox" ${(p.use_vwema)?'checked':''} style="width:18px;height:18px;cursor:pointer">
+                        <span style="font-weight:bold;color:#FF9800">VWEMA Filter</span>
+                    </label>
+                </div>
+                <div class="metric-card"><div class="metric-label">VWEMA Fast</div><input id="editOfPerpVwemaFast" class="input" type="number" value="${p.vwema_fast||20}" style="width:60px"></div>
+                <div class="metric-card"><div class="metric-label">VWEMA Slow</div><input id="editOfPerpVwemaSlow" class="input" type="number" value="${p.vwema_slow||40}" style="width:60px"></div>
+                <div class="metric-card"><div class="metric-label">Flat Threshold</div><input id="editOfPerpVwemaFlat" class="input" type="number" step="0.1" value="${p.vwema_flat_th||1.0}" style="width:60px"></div>
+                <div class="metric-card" style="display:flex;align-items:center;gap:8px">
+                    <label style="display:flex;align-items:center;gap:6px;cursor:pointer">
+                        <input id="editOfPerpVwemaBlock" type="checkbox" ${(p.vwema_block_counter!==false)?'checked':''} style="width:18px;height:18px;cursor:pointer">
+                        <span style="font-size:13px">Block counter-trend</span>
+                    </label>
+                </div>
+                <div class="metric-card" style="display:flex;align-items:center;gap:8px">
+                    <label style="display:flex;align-items:center;gap:6px;cursor:pointer" title="Не усреднять против VWEMA + закрыть усреднённую позицию при развороте VWEMA">
+                        <input id="editOfPerpVwemaAvgExit" type="checkbox" ${(p.vwema_avg_exit)?'checked':''} style="width:18px;height:18px;cursor:pointer">
+                        <span style="font-size:13px">VWEMA Avg Exit</span>
+                    </label>
+                </div>
+                <div class="metric-card" style="min-width:120px"><div class="metric-label">VWEMA Trend</div><div id="ofPerpVwemaTrend" style="font-size:16px;font-weight:bold;color:#9CA3AF">—</div></div>
+            </div>
+            <hr style="border-color:#2D2D44;margin:12px 0">
+            <!-- VAH/VAL Volume Profile Filter -->
+            <div class="metrics-row" style="flex-wrap:wrap;margin-bottom:16px;align-items:center">
+                <div class="metric-card" style="display:flex;align-items:center;gap:8px">
+                    <label style="display:flex;align-items:center;gap:6px;cursor:pointer">
+                        <input id="editOfPerpUseVahVal" type="checkbox" ${(p.use_vah_val)?'checked':''} style="width:18px;height:18px;cursor:pointer">
+                        <span style="font-weight:bold;color:#42A5F5">VAH/VAL Filter</span>
+                    </label>
+                </div>
+                <div class="metric-card"><div class="metric-label">Value Area %</div><input id="editOfPerpVahValPct" class="input" type="number" min="50" max="90" value="${p.vah_val_pct||70}" style="width:60px"></div>
+                <div class="metric-card"><div class="metric-label">VP Bin Size</div><input id="editOfPerpVahValBin" class="input" type="number" min="1" max="500" value="${p.vah_val_bin_size||5}" style="width:60px"></div>
+                <div class="metric-card"><div class="metric-label">VP Mode</div><select id="editOfPerpVahValMode" class="input" style="width:90px;font-size:12px;background:transparent;color:#fff;border:1px solid #2D4A6D"><option value="fade" ${(p.vah_val_mode||'fade')==='fade'?'selected':''}>Fade</option><option value="breakout" ${(p.vah_val_mode||'fade')==='breakout'?'selected':''}>Breakout</option></select></div>
+                <div class="metric-card" style="min-width:80px"><div class="metric-label">VAH</div><div id="ofPerpVpVah" style="font-size:16px;font-weight:bold;color:#42A5F5">—</div></div>
+                <div class="metric-card" style="min-width:80px"><div class="metric-label">POC</div><div id="ofPerpVpPoc" style="font-size:16px;font-weight:bold;color:#FFB74D">—</div></div>
+                <div class="metric-card" style="min-width:80px"><div class="metric-label">VAL</div><div id="ofPerpVpVal" style="font-size:16px;font-weight:bold;color:#42A5F5">—</div></div>
+            </div>
+            <hr style="border-color:#2D2D44;margin:12px 0">
+            <!-- Торговый журнал -->
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+                <strong>📋 Торговый журнал</strong>
+            </div>
+            <div id="ofPerpJournalSummary" class="metrics-row" style="flex-wrap:wrap;margin-bottom:12px"></div>
+            <div style="display:flex;gap:8px;margin-bottom:12px;align-items:center">
+                <select id="ofPerpJournalFilter" class="input" style="width:120px" onchange="ofPerpRenderJournal()">
+                    <option value="all">Все позиции</option>
+                    <option value="LONG">Лонги</option>
+                    <option value="SHORT">Шорты</option>
+                    <option value="win">Прибыльные</option>
+                    <option value="loss">Убыточные</option>
+                </select>
+                <span style="color:#9CA3AF;font-size:13px">с</span>
+                <input id="ofPerpJournalDateFrom" class="input" type="date" style="width:130px" onchange="ofPerpRenderJournal()">
+                <span style="color:#9CA3AF;font-size:13px">по</span>
+                <input id="ofPerpJournalDateTo" class="input" type="date" style="width:130px" onchange="ofPerpRenderJournal()">
+                <button class="btn btn-secondary btn-sm" onclick="ofPerpLoadJournal()">🔄 Обновить</button>
+            </div>
+            <table class="data-table" style="font-size:13px">
+                <thead><tr><th>Дата</th><th>Вход</th><th>Выход</th><th>Напр.</th><th>Цена вх.</th><th>Цена вых.</th><th>Лоты</th><th>PnL</th><th>Σ</th></tr></thead>
+                <tbody id="ofPerpJournalBody"></tbody>
+            </table>
+        </div>
+    `;
+    document.body.appendChild(div);
+    // F-010: бейдж источника параметров
+    const _perpSrcBadge = el('ofPerpCfgSrcBadge');
+    if (_perpSrcBadge) {
+        if (_cfgSrc === 'robot') { _perpSrcBadge.textContent = '🟢 от робота (live)'; _perpSrcBadge.style.background = 'rgba(34,197,94,.15)'; _perpSrcBadge.style.color = '#22c55e'; }
+        else { _perpSrcBadge.textContent = '💾 из конфига (робот остановлен)'; _perpSrcBadge.style.background = 'rgba(59,130,246,.15)'; _perpSrcBadge.style.color = '#60a5fa'; }
+    }
+
+    // Initialize direction filter dropdown
+    if (p.direction_filter) {
+        const sel = el('ofPerpDirFilter');
+        if (sel) sel.value = p.direction_filter;
+    }
+    // Initialize signal toggles from params
+    const tCvd = el('togglePerpCvd'); if (tCvd) tCvd.checked = p.use_cvd !== false;
+    const tDm = el('togglePerpDmWall'); if (tDm) tDm.checked = p.use_dm_wall === true;
+    const tAcc = el('togglePerpCvdAccel'); if (tAcc) tAcc.checked = p.use_cvd_accel !== false;
+
+    ofPerpLoadJournal();
+    ofPerpUpdateLive();
+    if (window._ofPerpVpTimer) clearInterval(window._ofPerpVpTimer);
+    window._ofPerpVpTimer = setInterval(ofPerpUpdateLive, 1000);
 }
+
+function ofPerpUpdateLive() {
+    const s = ofPerpRobot;
+    if (!s) return;
+    const setText = (id, val) => { const e = el(id); if (e) e.textContent = val; };
+    const setColor = (id, val) => {
+        const e = el(id); if (!e) return;
+        e.textContent = val >= 0 ? '+' + val.toFixed(0) : val.toFixed(0);
+        e.className = val >= 0 ? 'green' : 'red';
+    };
+    const price = s.currentPrice || 0;
+    setText('ofPerpPrice', price > 0 ? price.toFixed(2) : '—');
+    const dirText = s.direction === 'LONG' ? '🟢 LONG' : s.direction === 'SHORT' ? '🔴 SHORT' : 'FLAT';
+    setText('ofPerpDir', dirText);
+    setText('ofPerpLots', s.totalLots || 0);
+    setText('ofPerpAvgPrice', s.avgPrice > 0 ? s.avgPrice.toFixed(2) : '—');
+    const pnlPerLot = price > 0 && s.avgPrice > 0 ? (price - s.avgPrice) * (s.dir || 0) : 0;
+    setText('ofPerpPnlPerLot', pnlPerLot !== 0 ? (pnlPerLot > 0 ? '+' : '') + pnlPerLot.toFixed(0) + ' пт' : '—');
+    setColor('ofPerpPnlUnreal', s.unrealizedPnL || 0);
+    setText('ofPerpRealized', (s.realizedPnL || 0).toFixed(0) + '₽');
+    setText('ofPerpSignal', s.signalType || '—');
+    setText('ofPerpHold', s.holdMinutes ? s.holdMinutes + ' мин' : '0 мин');
+    setText('ofPerpAvgLvl', s.averageLevels || 0);
+    setText('ofPerpPyrLvl', s.pyramidLevels || 0);
+    setText('ofPerpRt', s.roundTrips || 0);
+    // VAH/POC/VAL (Volume Profile)
+    if (s.vp) {
+        setText('ofPerpVah', s.vp.vah ? s.vp.vah.toFixed(0) : '—');
+        setText('ofPerpPoc', s.vp.poc ? s.vp.poc.toFixed(0) : '—');
+        setText('ofPerpVal', s.vp.val ? s.vp.val.toFixed(0) : '—');
+        setText('ofPerpVpVah', s.vp.vah ? s.vp.vah.toFixed(0) : '—');
+        setText('ofPerpVpPoc', s.vp.poc ? s.vp.poc.toFixed(0) : '—');
+        setText('ofPerpVpVal', s.vp.val ? s.vp.val.toFixed(0) : '—');
+    } else {
+        setText('ofPerpVah', '—');
+        setText('ofPerpPoc', '—');
+        setText('ofPerpVal', '—');
+        setText('ofPerpVpVah', '—');
+        setText('ofPerpVpPoc', '—');
+        setText('ofPerpVpVal', '—');
+    }
+    const p = s.params || {};
+    const vpToggle = el('togglePerpVp');
+    if (vpToggle) vpToggle.checked = (p.use_vah_val === true);
+    if (s.cvdTrend) {
+        const cvdDir = s.cvdTrend.direction > 0 ? '↑' : s.cvdTrend.direction < 0 ? '↓' : '→';
+        const cvdVal = s.cvdTrend.emaFast !== null ? cvdDir + ' ' + s.cvdTrend.emaFast.toFixed(0) : '—';
+        setText('ofPerpCvd', cvdVal);
+    }
+    if (s.cvdAccel) {
+        const accelVal = s.cvdAccel.value !== null ? s.cvdAccel.value.toFixed(0) + ' (' + (s.cvdAccel.aggRatio || '—') + ')' : '—';
+        setText('ofPerpCvdAccel', accelVal);
+    }
+    if (s.vwema) {
+        const vwDir = s.vwema.direction > 0 ? '↑ UP' : s.vwema.direction < 0 ? '↓ DOWN' : '→ FLAT';
+        setText('ofPerpVwemaTrend', vwDir + ' (f=' + (s.vwema.ema_f ? s.vwema.ema_f.toFixed(0) : '—') + ' s=' + (s.vwema.ema_s ? s.vwema.ema_s.toFixed(0) : '—') + ')');
+    }
+}
+
+async function ofPerpRobotSaveFromPanel() {
+    const body = {
+        lots: parseInt(el('editOfPerpLots')?.value) || 1,
+        max_pyramid_levels: parseInt(el('editOfPerpMaxPyr')?.value) || 5,
+        max_average_levels: parseInt(el('editOfPerpMaxAvg')?.value) || 100,
+        step_average: parseFloat(el('editOfPerpStepAvg')?.value) || 0.05,
+        step_pyramid: parseFloat(el('editOfPerpStepPyr')?.value) || 0.025,
+        spread: parseFloat(el('editOfPerpSpread')?.value) || 0.033,
+        stop_loss_mode: el('editOfPerpSlMode')?.value || 'rub',
+        stop_loss_value: parseFloat(el('editOfPerpSlValue')?.value) || 30,
+        min_profit_per_lot: parseFloat(el('editOfPerpMinProfit')?.value) || 0.035,
+        close_half_pct: parseInt(el('editOfPerpCloseHalfPct')?.value) || 0,
+        close_price_all: parseFloat(el('editOfPerpClosePriceAll')?.value) || 0,
+        max_hold_minutes: parseInt(el('editOfPerpMaxHold')?.value) || 999,
+        cvd_lookback: parseInt(el('editOfPerpCvdLb')?.value) || 10,
+        cvd_ema_fast: parseInt(el('editOfPerpCvdEmaF')?.value) || 5,
+        cvd_ema_slow: parseInt(el('editOfPerpCvdEmaS')?.value) || 15,
+        dm_lookback: parseInt(el('editOfPerpDmLb')?.value) || 5,
+        wall_window: parseFloat(el('editOfPerpWallWin')?.value) || 120,
+        wall_multiplier: parseFloat(el('editOfPerpWallMult')?.value) || 3.0,
+        cvd_accel_threshold: parseFloat(el('editOfPerpCvdAccelThresh')?.value) || 50,
+        agg_window: parseInt(el('editOfPerpAggWindow')?.value) || 3,
+        agg_ratio_threshold: parseFloat(el('editOfPerpAggRatioThresh')?.value) || 1.0,
+        use_agg_ratio: el('editOfPerpUseAggRatio')?.checked !== false,
+        signal_confirm_count: parseInt(el('editOfPerpConfirm')?.value) || 1,
+        signal_confirm_exit: parseInt(el('editOfPerpConfirmOut')?.value) || 1,
+        timeframe: el('editOfPerpTf')?.value || 'M5',
+        use_dm_wall: el('togglePerpDmWall')?.checked !== false,
+        use_cvd: el('togglePerpCvd')?.checked !== false,
+        use_cvd_accel: el('togglePerpCvdAccel')?.checked !== false,
+        use_vwema: el('editOfPerpUseVwema')?.checked || false,
+        vwema_fast: parseInt(el('editOfPerpVwemaFast')?.value) || 20,
+        vwema_slow: parseInt(el('editOfPerpVwemaSlow')?.value) || 40,
+        vwema_flat_th: parseFloat(el('editOfPerpVwemaFlat')?.value) || 1.0,
+        vwema_block_counter: el('editOfPerpVwemaBlock')?.checked !== false,
+        vwema_avg_exit: el('editOfPerpVwemaAvgExit')?.checked || false,
+        vah_val_pct: parseInt(el('editOfPerpVahValPct')?.value) || 70,
+        vah_val_bin_size: parseInt(el('editOfPerpVahValBin')?.value) || 5,
+        vah_val_mode: el('editOfPerpVahValMode')?.value || 'fade',
+        use_vah_val: el('editOfPerpUseVahVal')?.checked || el('togglePerpVp')?.checked || false,
+        direction_filter: el('ofPerpDirFilter')?.value || 'both',
+    };
+    // Always save to localStorage first
+    localStorage.setItem('ofPerpSavedParams', JSON.stringify(body));
+    try {
+        // F-010: живой робот -> ему; иначе конфиг через сервер (localStorage больше не используется)
+        let _savedVia = null;
+        try {
+            const resp = await fetch(OF_PERP_ROBOT_API + '/params', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(body)
+            });
+            if (resp.ok) { await resp.json(); _savedVia = 'robot'; }
+        } catch(e) {}
+        if (!_savedVia) {
+            const r2 = await fetch('/api/of/config/of_perp', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(body),
+                signal: AbortSignal.timeout(3000)
+            });
+            if (!r2.ok) throw new Error('config proxy failed: ' + r2.status);
+            _savedVia = 'config';
+        }
+        localStorage.removeItem('ofPerpSavedParams');
+        addLog(nowTime(), 'INFO', '💾 OF-PERP конфиг сохранён (' + (_savedVia === 'robot' ? 'робот live' : 'конфиг, применится при старте') + ')');
+    } catch(e) {
+        addLog(nowTime(), 'ERROR', 'OF-PERP save НЕ удался: ' + e.message);
+    }
+}
+
+// === Order Flow MX Trade Journal ===
+async function ofPerpResetStats() {
+    if (!confirm('Сбросить статистику PERP? Realized PnL → 0, история сделок очищена.')) return;
+    const r = await fetch(OF_PERP_ROBOT_API + '/reset-stats', {method:'POST'});
+    if (r && r.ok) {
+        ofPerpLoadJournal();
+    }
+}
+
+async function ofPerpLoadJournal() {
+    const body = el('ofPerpJournalBody');
+    if (!body) return;
+    try {
+        const resp = await fetch(OF_PERP_ROBOT_API + '/status', {signal: AbortSignal.timeout(2000)});
+        const data = await resp.json();
+        _ofPerpJournalTrades = data.tradeHistory || data.trades || [];
+        if (!_ofPerpJournalTrades.length) {
+            body.innerHTML = '<tr><td colspan="9" style="text-align:center;padding:24px;color:#9CA3AF">Нет закрытых сделок</td></tr>';
+            ofPerpRenderJournalSummary(0, 0, 0, 0);
+            return;
+        }
+        ofPerpRenderJournal();
+    } catch(e) {
+        body.innerHTML = '<tr><td colspan="9" style="text-align:center;padding:24px;color:#9CA3AF">Робот недоступен</td></tr>';
+    }
+}
+
+function ofPerpRenderJournal() {
+    const body = el('ofPerpJournalBody');
+    if (!body) return;
+    const filter = el('ofPerpJournalFilter')?.value || 'all';
+    const dateFrom = el('ofPerpJournalDateFrom')?.value;
+    const dateTo = el('ofPerpJournalDateTo')?.value;
+    let trades = [..._ofPerpJournalTrades];
+    if (dateFrom || dateTo) {
+        trades = trades.filter(t => {
+            const dEntry = t.entryTime ? t.entryTime.slice(0,10) : null;
+            const dExit = t.exitTime ? t.exitTime.slice(0,10) : null;
+            const afterStart = !dateFrom || (dEntry && dEntry >= dateFrom) || (dExit && dExit >= dateFrom);
+            const beforeEnd = !dateTo || (dEntry && dEntry <= dateTo) || (dExit && dExit <= dateTo);
+            return afterStart && beforeEnd;
+        });
+    }
+    if (filter === 'LONG') trades = trades.filter(t => t.direction === 'LONG' || t.direction > 0);
+    else if (filter === 'SHORT') trades = trades.filter(t => t.direction === 'SHORT' || t.direction < 0);
+    else if (filter === 'win') trades = trades.filter(t => t.pnl > 0);
+    else if (filter === 'loss') trades = trades.filter(t => t.pnl < 0);
+    if (!trades.length) {
+        body.innerHTML = '<tr><td colspan="9" style="text-align:center;padding:16px;color:#9CA3AF">Нет сделок по фильтру</td></tr>';
+        return;
+    }
+    let cumulative = 0;
+    const rows = trades.map(t => {
+        cumulative += (t.pnl || 0);
+        const dtOut = t.exitTime ? new Date(t.exitTime) : null;
+        const dateStr = dtOut ? dtOut.toLocaleDateString('ru-RU') : '—';
+        const timeIn = t.entryTime ? new Date(t.entryTime).toLocaleTimeString('ru-RU', {hour:'2-digit',minute:'2-digit'}) : '—';
+        const timeOut = dtOut ? dtOut.toLocaleTimeString('ru-RU', {hour:'2-digit',minute:'2-digit'}) : '—';
+        const dir = t.direction === 'LONG' || t.direction > 0 ? '🟢 L' : '🔴 S';
+        const pnlCls = (t.pnl || 0) >= 0 ? 'green' : 'red';
+        const cumCls = cumulative >= 0 ? 'green' : 'red';
+        return '<tr style="border-bottom:1px solid var(--border-color)">' +
+            '<td style="padding:6px">' + dateStr + '</td>' +
+            '<td style="padding:6px">' + timeIn + '</td>' +
+            '<td style="padding:6px">' + timeOut + '</td>' +
+            '<td style="padding:6px;text-align:center">' + dir + '</td>' +
+            '<td style="padding:6px;text-align:right">' + (t.entryPrice||0).toFixed(2) + '</td>' +
+            '<td style="padding:6px;text-align:right">' + (t.exitPrice||0).toFixed(2) + '</td>' +
+            '<td style="padding:6px;text-align:right">' + (t.lots||1) + '</td>' +
+            '<td style="padding:6px;text-align:right" class="' + pnlCls + '">' + ((t.pnl||0) >= 0 ? '+' : '') + (t.pnl||0).toFixed(0) + '₽</td>' +
+            '<td style="padding:6px;text-align:right" class="' + cumCls + '">' + (cumulative >= 0 ? '+' : '') + cumulative.toFixed(0) + '₽</td>' +
+        '</tr>';
+    });
+    body.innerHTML = rows.join('');
+    const totalPnl = trades.reduce((s, t) => s + (t.pnl || 0), 0);
+    const wins = trades.filter(t => (t.pnl || 0) > 0).length;
+    const losses = trades.filter(t => (t.pnl || 0) < 0).length;
+    ofPerpRenderJournalSummary(trades.length, wins, losses, totalPnl);
+}
+
+function ofPerpRenderJournalSummary(total, wins, losses, totalPnl) {
+    const el2 = el('ofPerpJournalSummary');
+    if (!el2) return;
+    const wr = total > 0 ? ((wins / total) * 100).toFixed(0) + '%' : '—';
+    const winPnl = _ofPerpJournalTrades.filter(t => (t.pnl||0) > 0).reduce((s,t) => s+(t.pnl||0), 0);
+    const lossPnl = _ofPerpJournalTrades.filter(t => (t.pnl||0) < 0).reduce((s,t) => s+(t.pnl||0), 0);
+    const avgWin = wins > 0 ? (winPnl / wins).toFixed(0) : '—';
+    const avgLoss = losses > 0 ? (lossPnl / losses).toFixed(0) : '—';
+    const cls = totalPnl >= 0 ? 'green' : 'red';
+    el2.innerHTML = '' +
+        '<div class="metric-card"><div class="metric-label">Всего сделок</div><div style="font-size:16px;font-weight:bold">' + total + '</div></div>' +
+        '<div class="metric-card"><div class="metric-label">Win Rate</div><div style="font-size:16px;font-weight:bold">' + wr + '</div></div>' +
+        '<div class="metric-card"><div class="metric-label">Wins / Loss</div><div style="font-size:16px;font-weight:bold"><span class="green">' + wins + '</span> / <span class="red">' + losses + '</span></div></div>' +
+        '<div class="metric-card"><div class="metric-label">Avg Win</div><div style="font-size:16px;font-weight:bold" class="green">' + (avgWin !== '—' ? '+' + avgWin + '₽' : '—') + '</div></div>' +
+        '<div class="metric-card"><div class="metric-label">Avg Loss</div><div style="font-size:16px;font-weight:bold" class="red">' + (avgLoss !== '—' ? avgLoss + '₽' : '—') + '</div></div>' +
+        '<div class="metric-card"><div class="metric-label">Итог PnL</div><div style="font-size:16px;font-weight:bold" class="' + cls + '">' + (totalPnl >= 0 ? '+' : '') + totalPnl.toFixed(0) + '₽</div></div>' +
+        '<div class="metric-card" style="border:1px solid var(--border-color)"><div class="metric-label">&nbsp;</div><button class="btn btn-danger btn-sm" onclick="ofPerpResetStats()" style="font-size:12px">🗑 Сбросить</button></div>';
+}
+
+
+async function ofPerpSetDirection(value) {
+    try {
+        await fetch(OF_PERP_ROBOT_API + '/params', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({direction_filter: value})
+        });
+        await ofPerpRobotPoll();
+    } catch(e) {}
+}
+
+async function ofPerpAdjustPosition() {
+    const lotsEl = document.getElementById('ofPerpAdjLots');
+    const priceEl = document.getElementById('ofPerpAdjPrice');
+    const resEl = document.getElementById('ofPerpAdjResult');
+    const lots = parseInt(lotsEl.value);
+    const price = parseFloat(priceEl.value);
+    if (isNaN(lots)) { resEl.textContent = '⚠ укажите лоты (3 / -3 / 0)'; resEl.style.color = '#ff9800'; return; }
+    if (lots !== 0 && (isNaN(price) || price <= 0)) { resEl.textContent = '⚠ при лотах≠0 нужна цена > 0'; resEl.style.color = '#ff9800'; return; }
+    const posText = lots === 0 ? 'FLAT' : (lots > 0 ? 'LONG ' + lots : 'SHORT ' + Math.abs(lots));
+    if (!confirm(`Установить позицию робота: ${posText}${lots !== 0 ? ' @ ' + price : ''}?\nОрдеров НЕ отправляется — это синхронизация с брокером.`)) return;
+    try {
+        const resp = await fetch(OF_PERP_ROBOT_API + '/position/adjust', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({lots: lots, price: lots === 0 ? 0 : price})
+        });
+        const data = await resp.json();
+        if (data.ok) {
+            resEl.textContent = '✓ ' + (lots === 0 ? 'FLAT' : (data.dir === 1 ? 'LONG' : 'SHORT') + ' ' + data.lots + ' @ ' + data.avgPrice);
+            resEl.style.color = '#4caf50';
+            addLog(nowTime(), 'INFO', 'PERP коррекция: ' + resEl.textContent + ' (ордеров нет)');
+            setTimeout(async () => { await ofPerpRobotPoll(); renderRobots(); }, 500);
+        } else {
+            resEl.textContent = '✗ ' + (data.error || 'ошибка');
+            resEl.style.color = '#ef4444';
+            addLog(nowTime(), 'ERROR', 'PERP коррекция отклонена: ' + data.error);
+        }
+    } catch (e) {
+        resEl.textContent = '✗ робот недоступен';
+        resEl.style.color = '#ef4444';
+    }
+}
+
+
 
 // === ORDER FLOW MX ROBOT (порт 5081) ===
 const OF_MX_ROBOT_API = 'http://' + window.location.hostname + ':5081';
@@ -6445,6 +6910,94 @@ function ofMxRenderJournalSummary(total, wins, losses, totalPnl) {
         '<div class="metric-card" style="border:1px solid var(--border-color)"><div class="metric-label">&nbsp;</div><button class="btn btn-danger btn-sm" onclick="ofMxResetStats()" style="font-size:12px">🗑 Сбросить</button></div>';
 }
 
+
+async function ofPerpSetDirection(value) {
+    try {
+        await fetch(OF_PERP_ROBOT_API + '/params', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({direction_filter: value})
+        });
+        await ofPerpRobotPoll();
+    } catch(e) {}
+}
+
+async function ofPerpAdjustPosition() {
+    const lotsEl = document.getElementById('ofPerpAdjLots');
+    const priceEl = document.getElementById('ofPerpAdjPrice');
+    const resEl = document.getElementById('ofPerpAdjResult');
+    const lots = parseInt(lotsEl.value);
+    const price = parseFloat(priceEl.value);
+    if (isNaN(lots)) { resEl.textContent = '⚠ укажите лоты (3 / -3 / 0)'; resEl.style.color = '#ff9800'; return; }
+    if (lots !== 0 && (isNaN(price) || price <= 0)) { resEl.textContent = '⚠ при лотах≠0 нужна цена > 0'; resEl.style.color = '#ff9800'; return; }
+    const posText = lots === 0 ? 'FLAT' : (lots > 0 ? 'LONG ' + lots : 'SHORT ' + Math.abs(lots));
+    if (!confirm(`Установить позицию робота: ${posText}${lots !== 0 ? ' @ ' + price : ''}?\nОрдеров НЕ отправляется — это синхронизация с брокером.`)) return;
+    try {
+        const resp = await fetch(OF_PERP_ROBOT_API + '/position/adjust', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({lots: lots, price: lots === 0 ? 0 : price})
+        });
+        const data = await resp.json();
+        if (data.ok) {
+            resEl.textContent = '✓ ' + (lots === 0 ? 'FLAT' : (data.dir === 1 ? 'LONG' : 'SHORT') + ' ' + data.lots + ' @ ' + data.avgPrice);
+            resEl.style.color = '#4caf50';
+            addLog(nowTime(), 'INFO', 'PERP коррекция: ' + resEl.textContent + ' (ордеров нет)');
+            setTimeout(async () => { await ofPerpRobotPoll(); renderRobots(); }, 500);
+        } else {
+            resEl.textContent = '✗ ' + (data.error || 'ошибка');
+            resEl.style.color = '#ef4444';
+            addLog(nowTime(), 'ERROR', 'PERP коррекция отклонена: ' + data.error);
+        }
+    } catch (e) {
+        resEl.textContent = '✗ робот недоступен';
+        resEl.style.color = '#ef4444';
+    }
+}
+
+async function ofPerpSetDirection(value) {
+    try {
+        await fetch(OF_PERP_ROBOT_API + '/params', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({direction_filter: value})
+        });
+        await ofPerpRobotPoll();
+    } catch(e) {}
+}
+
+async function ofPerpAdjustPosition() {
+    const lotsEl = document.getElementById('ofPerpAdjLots');
+    const priceEl = document.getElementById('ofPerpAdjPrice');
+    const resEl = document.getElementById('ofPerpAdjResult');
+    const lots = parseInt(lotsEl.value);
+    const price = parseFloat(priceEl.value);
+    if (isNaN(lots)) { resEl.textContent = '⚠ укажите лоты (3 / -3 / 0)'; resEl.style.color = '#ff9800'; return; }
+    if (lots !== 0 && (isNaN(price) || price <= 0)) { resEl.textContent = '⚠ при лотах≠0 нужна цена > 0'; resEl.style.color = '#ff9800'; return; }
+    const posText = lots === 0 ? 'FLAT' : (lots > 0 ? 'LONG ' + lots : 'SHORT ' + Math.abs(lots));
+    if (!confirm(`Установить позицию робота: ${posText}${lots !== 0 ? ' @ ' + price : ''}?\nОрдеров НЕ отправляется — это синхронизация с брокером.`)) return;
+    try {
+        const resp = await fetch(OF_PERP_ROBOT_API + '/position/adjust', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({lots: lots, price: lots === 0 ? 0 : price})
+        });
+        const data = await resp.json();
+        if (data.ok) {
+            resEl.textContent = '✓ ' + (lots === 0 ? 'FLAT' : (data.dir === 1 ? 'LONG' : 'SHORT') + ' ' + data.lots + ' @ ' + data.avgPrice);
+            resEl.style.color = '#4caf50';
+            addLog(nowTime(), 'INFO', 'MX коррекция: ' + resEl.textContent + ' (ордеров нет)');
+            setTimeout(async () => { await ofPerpRobotPoll(); renderRobots(); }, 500);
+        } else {
+            resEl.textContent = '✗ ' + (data.error || 'ошибка');
+            resEl.style.color = '#ef4444';
+            addLog(nowTime(), 'ERROR', 'MX коррекция отклонена: ' + data.error);
+        }
+    } catch (e) {
+        resEl.textContent = '✗ робот недоступен';
+        resEl.style.color = '#ef4444';
+    }
+}
 
 // ==================== F-035: восстановленные компоненты панели ====================
 // Полный шаблон панели (из 637f27e): центр экрана, раздвижка, калькулятор спреда, L2, журнал

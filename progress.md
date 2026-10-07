@@ -429,3 +429,15 @@ BR-edp (b9b48e3) → добавлены те же варианты 60%/70% в в
 - Кнопки управления SAR-роботов как у OF (запрос Дмитрия 07.10): ▶ Старт = spawn процесса через C# RobotProcessManager (/api/of/process/sar_<тикер>/start, probe /health внутри, cooldown 5с) + resume; ⏸ Пауза / ▶ Резюм — прямые API; ⏹ Стоп = /stop API (FLAT-check) + process kill через proxy; 🔄 Рестарт = роботовский /restart (FLAT-check + cooldown 90с + deferred exit, паттерн F-059), fallback — proxy stop+start при оффлайне; ⚙ Параметры. Оффлайн-строка: ▶/⏹ через proxy (запуск возможен даже когда робот никогда не работал). C# Spec(): sar_sber..sar_sngs (5084-5089, 5094-5097) + env SAREMA_TICKER/PORT/CONFIG/STATE/DATA; main_sarema.py: /health endpoint + --port аргумент (совместимость OF-запуска). C# build 0 ошибок (prod не перезапускался — R-001, кнопки старт заработают после перезапуска сервера). Приёмка playwright с моком /status: онлайн-строка 5 кнопок с нужными disabled, оффлайн 2 кнопки, скриншоты.
 
 - Конфликт портов устранён: of_perp (F-061 v3) занял 5084 — SAREMA-инстансы переведены на 5101-5110 (sber=5101 ... sngs=5110) в Program.cs Spec() и sarema.js.
+
+### 2026-10-07 (16:4x) — F-061 v4: строка под OF-Si + полная панель + фикс конфликта портов
+
+**Замечания Дмитрия:** «кнопок нет» (артефакт первого рендера/кэша), «размести под роботом со скрина» (под OF-Si), «двойным кликом параметры не открываются?» (была заглушка — честно признан косяк).
+
+**Исправлено:**
+1. Порядок строк: pythonRobotRow, ofRobotRow, ofPerpRobotRow, ofMxRobotRow, ofBrRows — OF-PERP теперь сразу после OF-Si.
+2. Двойной клик = полная панель (клон MX-панели, 37KB): живые индикаторы (CVD/CVD Accel/VAH-POC-VAL/фильтр направления), коррекция позиции, все параметры (Lots/MaxPyr/MaxAvg/Step/Spread/SL/MinProfit/Close % All 10-70/Close price All/MaxHold/CVD/DM/Wall/Agg/Confirm/TF), VWEMA-блок, VAH/VAL-блок, торговый журнал с фильтрами дат/направления и статистикой (WR, Avg Win/Loss, сброс). Числовые инпуты step=0.001, дефолты PERP-масштаба (spread 0.033, step_avg 0.05, min_profit 0.035, SL 30, cvd_accel 50). Цены/журнал с toFixed(2).
+3. Конфликт портов: 5084 уже зарезервирована SAREMA sar_sber (обнаружено по панели арбитража «нет связи 5084/5085» — это их роботы, не связаны с PERP). PERP: 5084 → **5095** (Program.cs spec, --port default робота, OF_PERP_ROBOT_API).
+4. Сохранение панели: живому роботу POST /params, офлайн → /api/of/config/of_perp (маппинг добавлен v3).
+
+**Проверки:** node --check OK; 24/24 (PERP 18 + MX-нетронутость 6+); build OK; bin wwwroot обновлён. Ctrl+F5 для применения.

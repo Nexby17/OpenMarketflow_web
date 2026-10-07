@@ -58,7 +58,7 @@ MSK = timezone(timedelta(hours=3))
 # --- Parse args ---
 parser = argparse.ArgumentParser()
 parser.add_argument("--paper", action="store_true")
-parser.add_argument("--port", type=int, default=5080)
+parser.add_argument("--port", type=int, default=5095)
 args, _ = parser.parse_known_args()
 
 # --- Logging ---
