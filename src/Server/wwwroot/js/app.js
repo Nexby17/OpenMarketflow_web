@@ -5884,6 +5884,18 @@ async function ofPerpRobotEditPanel() {
                 <div class="metric-card"><div class="metric-label">Confirm Out</div><input id="editOfPerpConfirmOut" class="input" type="number" min="1" max="3" value="${p.signal_confirm_exit||1}" style="width:50px"></div>
                 <div class="metric-card"><div class="metric-label">Timeframe</div><select id="editOfPerpTf" class="input" style="width:70px"><option value="M1" ${p.timeframe==='M1'?'selected':''}>1 мин</option><option value="M5" ${(p.timeframe||'M5')==='M5'?'selected':''}>5 мин</option><option value="M15" ${p.timeframe==='M15'?'selected':''}>15 мин</option><option value="M30" ${p.timeframe==='M30'?'selected':''}>30 мин</option><option value="H1" ${p.timeframe==='H1'?'selected':''}>1 час</option></select></div>
             </div>
+            <!-- HL Filter (как у OF-Si): вход лонгом только у лоу окна, шортом только у хая -->
+            <div class="metrics-row" style="flex-wrap:wrap;margin-bottom:16px;align-items:center">
+                <div class="metric-card" style="display:flex;align-items:center;gap:8px">
+                    <label style="display:flex;align-items:center;gap:6px;cursor:pointer">
+                        <input id="editOfPerpUseHl" type="checkbox" ${(p.hl_filter)?'checked':''} style="width:18px;height:18px;cursor:pointer">
+                        <span style="font-weight:bold;color:#66BB6A">HL Filter</span>
+                    </label>
+                </div>
+                <div class="metric-card"><div class="metric-label">Окно (баров)</div><input id="editOfPerpHlWindow" class="input" type="number" min="2" max="30" value="${p.hl_window||15}" style="width:60px" title="15 × M5 = 75 минут"></div>
+                <div class="metric-card"><div class="metric-label">Δ близости (₽)</div><input id="editOfPerpHlDelta" class="input" type="number" step="0.005" value="${p.hl_delta||0.055}" style="width:80px"></div>
+                <div class="metric-card" style="min-width:150px"><div class="metric-label">HL вердикт</div><div id="ofPerpHlVerdict" style="font-size:14px;font-weight:bold;color:#9CA3AF">—</div></div>
+            </div>
             <hr style="border-color:#2D2D44;margin:12px 0">
             <!-- VWEMA Filter -->
             <div class="metrics-row" style="flex-wrap:wrap;margin-bottom:16px;align-items:center">
@@ -6032,6 +6044,17 @@ function ofPerpUpdateLive() {
         const vwDir = s.vwema.direction > 0 ? '↑ UP' : s.vwema.direction < 0 ? '↓ DOWN' : '→ FLAT';
         setText('ofPerpVwemaTrend', vwDir + ' (f=' + (s.vwema.ema_f ? s.vwema.ema_f.toFixed(0) : '—') + ' s=' + (s.vwema.ema_s ? s.vwema.ema_s.toFixed(0) : '—') + ')');
     }
+    // HL filter state (как у OF-Si)
+    if (el('ofPerpHlVerdict')) {
+        const hl = s.hl;
+        const v = el('ofPerpHlVerdict');
+        if (!hl || !hl.enabled) { v.textContent = 'OFF'; v.style.color = '#6B7280'; }
+        else if (!hl.ready) { v.textContent = '⏳ прогрев окна'; v.style.color = '#9CA3AF'; }
+        else if (hl.verdict === 'both') { v.textContent = `🔀 любые (окно ${Math.round(((hl.winHigh||0)-(hl.winLow||0))*100)} коп ≤ 2Δ)`; v.style.color = '#9C27B0'; }
+        else if (hl.verdict === 'short_only') { v.textContent = `🔴 SHORT only (${(hl.winHigh||0).toFixed(2)})`; v.style.color = '#F44336'; }
+        else if (hl.verdict === 'long_only') { v.textContent = `🟢 LONG only (${(hl.winLow||0).toFixed(2)})`; v.style.color = '#4CAF50'; }
+        else { v.textContent = `⛔ блок ${(hl.winLow||0).toFixed(2)}–${(hl.winHigh||0).toFixed(2)}`; v.style.color = '#FF9800'; }
+    }
 }
 
 async function ofPerpRobotSaveFromPanel() {
@@ -6074,6 +6097,9 @@ async function ofPerpRobotSaveFromPanel() {
         vah_val_bin_size: parseInt(el('editOfPerpVahValBin')?.value) || 5,
         vah_val_mode: el('editOfPerpVahValMode')?.value || 'fade',
         use_vah_val: el('editOfPerpUseVahVal')?.checked || el('togglePerpVp')?.checked || false,
+        hl_filter: el('editOfPerpUseHl')?.checked || false,
+        hl_window: Math.max(2, Math.min(parseInt(el('editOfPerpHlWindow')?.value) || 15, 30)),
+        hl_delta: parseFloat(el('editOfPerpHlDelta')?.value) || 0.055,
         direction_filter: el('ofPerpDirFilter')?.value || 'both',
     };
     // Always save to localStorage first
@@ -6090,14 +6116,23 @@ async function ofPerpRobotSaveFromPanel() {
             if (resp.ok) { await resp.json(); _savedVia = 'robot'; }
         } catch(e) {}
         if (!_savedVia) {
-            const r2 = await fetch('/api/of/config/of_perp', {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify(body),
-                signal: AbortSignal.timeout(3000)
-            });
-            if (!r2.ok) throw new Error('config proxy failed: ' + r2.status);
-            _savedVia = 'config';
+            try {
+                const r2 = await fetch('/api/of/config/of_perp', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify(body),
+                    signal: AbortSignal.timeout(3000)
+                });
+                if (r2.ok) { await r2.json(); _savedVia = 'config'; }
+            } catch(e2) {}
+            if (!_savedVia) {
+                // Старый сервер без of_perp-маппинга: параметры остаются в localStorage
+                // и будут применены роботу при следующем поднятии (ofPerpRobotPoll → /params).
+                localStorage.setItem('ofPerpSavedParams', JSON.stringify(body));
+                addLog(nowTime(), 'WARN', '⚠ OF-PERP: сервер/робот недоступны — параметры сохранены локально, применятся при старте робота');
+                showToast('💾 Параметры сохранены локально — применятся при запуске робота (для сохранения в конфиг нужен рестарт сервера)', 'info');
+                return;
+            }
         }
         localStorage.removeItem('ofPerpSavedParams');
         addLog(nowTime(), 'INFO', '💾 OF-PERP конфиг сохранён (' + (_savedVia === 'robot' ? 'робот live' : 'конфиг, применится при старте') + ')');
