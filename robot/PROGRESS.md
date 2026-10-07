@@ -410,3 +410,19 @@
 BR-edp (b9b48e3) → добавлены те же варианты 60%/70% в выпадающий список Close % All панелей **OF-Si** (editOfCloseHalfPct, app.js:5218) и **OF-MX** (editOfMxCloseHalfPct, app.js:5983). Бэкенд не менялся — пороговая формула универсальна: порог закрытия = max(2, peak × N / 100); условие прибыли хвостового лота ≥ spread сохраняется. node --check OK, обновлённая копия app.js положена в bin wwwroot (живой сервер отдаёт статику оттуда). Обновление страницы по Ctrl+F5.
 
 Коммиты: b9b48e3 (BR-edp) + настоящий (OF-Si + OF-MX). Реестры: feature_list.json (F-055 note), progress.md, robot/PROGRESS.md.
+
+## 2026-10-07 — F-061: Si PERP — точная копия OF-Si для «вечного» фьючерса Si
+
+**Запрос Дмитрия:** «точная копия робота SiU6 Order Flow (PYTHON) один в один, робот на вечный фьючерс Si».
+
+**Контекст:** вечных (perpetual) фьючерсов на MOEX не существует — это крипто-механика. На срочке только квартальные серии SiZ6 → SiH6 → SiM6 → SiU6. Поэтому «вечный Si» = точная копия робота + автоматический ролловер на актуальный контракт до экспирации.
+
+**Сделано:**
+1. robot/main_of_perp.py — 1:1 копия main_of.py (стратегия/движок/эндпоинты не тронуты). Проверено диффом с нормализацией идентификационных строк: 0 не-идентификационных расхождений. Отличия только идентичность: logger `robot_of_perp`, config_of_perp.py, of_config_perp.json, of_state_perp.json (3 точки, включая _load_active_account), of_restart_ts_perp.json, env-ключи ROBOT_SYMBOL_PERP/ROBOT_TICKER_PERP (общий robot/.env больше не источник конфликтов), дефолт SiZ6@RTSX. Порт **5084**.
+2. robot/config_of_perp.py + of_config_perp.json — точная копия живого конфига OF-Si (54 параметра: close_half_pct=60, hl 15/55, max_avg=50, step_avg=36, VWEMA 50/100/0.5 и т.д.).
+3. robot/of_state_perp.json — начальный stopped/flat, счёт main.
+4. robot/si_rollover.py — авто-ролловер: серия 2026-2028 (12 контрактов), front сейчас SiZ6 (экспирация 15.12.2026), переключение через штатный POST /instrument (только stopped+FLAT — те же гарантии, что у ручного переключения). Режимы: --check (доклад), --apply (переключение если ≤5 дней до экспирации), --force --ticker (ручной). Незадолго до экспирации: остановить робота (закрыть позицию), python si_rollover.py --apply, запустить обратно.
+
+**Запуск (только Дмитрием, R-001):** `python main_of_perp.py --port 5084`. RobotProcessManager spec НЕ добавлял (спец-имя `of_perp` может добавить Дмитрий по запросу; сейчас запуск руками или через UI-кнопку позже).
+
+**Проверки:** py_compile 3/3 OK; identity-checks 17/17 PASS (копия 1:1, изоляция env/стейта/конфига, ролловер-цепочка: 12 контрактов, front SiZ6, есть SiZ6 и SiH7, без дублей). Робот НЕ запускался.
