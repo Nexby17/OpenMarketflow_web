@@ -2503,6 +2503,52 @@ async function renderRobots() {
         </tr>`;
     }
 
+    // Order Flow PERP robot row (F-061: USDRUBF perpetual, :5084)
+    let ofPerpRobotRow = '';
+    let _ofPerpAccount = localStorage.getItem('ofPerpRobotAccount') || '1225953';
+    if (ofPerpRobot) {
+        const s = ofPerpRobot;
+        const mode = s.mode || 'stopped';
+        const modeText = mode === 'running' ? '🟢 Работает' : mode === 'paused' ? '🟡 Пауза' : '🔴 Остановлен';
+        const modeCls = mode === 'running' ? 'green' : mode === 'paused' ? 'yellow' : 'red';
+        const dirText = s.direction === 'LONG' ? 'Лонг' : s.direction === 'SHORT' ? 'Шорт' : 'Флэт';
+        const dirCls = s.direction === 'LONG' ? 'green' : s.direction === 'SHORT' ? 'red' : '';
+        const pnlCls = v => v >= 0 ? 'green' : 'red';
+        const pnl = s.realizedPnL || 0;
+        const paper = s.paper ? ' <span class="badge" style="background:#ff9800">PAPER</span>' : '';
+        ofPerpRobotRow = `<tr ondblclick="ofPerpRobotEditPanel()" style="cursor:pointer" title="Двойной клик — настройки робота">
+            <td><span class="badge" style="background:#1a2332;border:1px solid #A277FF;color:#A277FF;font-weight:bold" title="Бессрочный фьючерс USD/RUB — ролловер не требуется">USDRUBF</span></td>
+            <td><strong>Order Flow</strong> <span class="badge" style="background:#A277FF">PERP</span>${paper}</td>
+            <td>${accountDropdownHtml(_ofPerpAccount, 'onOfPerpRobotAccountChange(this.value)')}</td>
+            <td class="${dirCls}">${dirText}${s.avgPrice > 0 ? ' @ ' + s.avgPrice.toFixed(2) : ''}</td>
+            <td>—</td>
+            <td class="${pnlCls(pnl)}">${pnl >= 0 ? '+' : ''}${pnl.toFixed(2)} ₽</td>
+            <td>${s.totalLots || 0}</td>
+            <td>—</td>
+            <td>
+                <button class="btn btn-success btn-sm" onclick="ofPerpRobotApi('start')" ${mode==='running'?'disabled':''}>▶</button>
+                <button class="btn btn-warning btn-sm" onclick="ofPerpRobotApi('pause')" ${mode!=='running'?'disabled':''}>⏸</button>
+                <button class="btn btn-danger btn-sm" onclick="ofPerpRobotApi('stop')" ${mode==='stopped'?'disabled':''}>⏹</button>
+            </td>
+            <td class="${modeCls}">${modeText}</td>
+        </tr>`;
+    } else {
+        ofPerpRobotRow = `<tr ondblclick="ofPerpRobotEditPanel()" style="cursor:pointer" title="Двойной клик — настройки робота">
+            <td><span class="badge" style="background:#1a2332;border:1px solid #A277FF;color:#A277FF;font-weight:bold" title="Бессрочный фьючерс USD/RUB — ролловер не требуется">USDRUBF</span></td>
+            <td><strong>Order Flow</strong> <span class="badge" style="background:#A277FF">PERP</span></td>
+            <td>${accountDropdownHtml(_ofPerpAccount, 'onOfPerpRobotAccountChange(this.value)')}</td>
+            <td>—</td>
+            <td>—</td>
+            <td>—</td>
+            <td>0</td>
+            <td>—</td>
+            <td>
+                <button class="btn btn-success btn-sm" onclick="ofPerpRobotApi('start')">▶</button>
+            </td>
+            <td class="red">🔴 Не запущен</td>
+        </tr>`;
+    }
+
     // Order Flow BR robot rows (два инстанса: main :5082 счёт 1225953, edp :5083 счёт 2049688)
     // Инструмент — READ-ONLY бэдж BRX6 (переключение инструмента для BR не поддерживается: символ из env сервиса)
     // OF_BR_INSTANCE_ORDER/OF_BR_INSTANCES определены в BR-блоке внизу файла (renderRobots вызывается только после полной загрузки скрипта — TDZ не задеваем)
@@ -2553,7 +2599,7 @@ async function renderRobots() {
         }
     }).join('');
 
-    const allRows = [...serverStrategies, ...localRows, pythonRobotRow, ofRobotRow, ofMxRobotRow, ofBrRows];
+    const allRows = [...serverStrategies, ...localRows, pythonRobotRow, ofRobotRow, ofMxRobotRow, ofPerpRobotRow, ofBrRows];
     if (!allRows.filter(r=>r).length) { tbody.innerHTML = ''; if (noMsg) noMsg.style.display = 'block'; return; }
     if (noMsg) noMsg.style.display = 'none';
     tbody.innerHTML = allRows.join('');
@@ -5659,6 +5705,88 @@ setInterval(function() {
     }
 }, 5000);
 
+// === ORDER FLOW PERP ROBOT (F-061: USDRUBF perpetual, порт 5084) ===
+const OF_PERP_ROBOT_API = 'http://' + window.location.hostname + ':5084';
+let ofPerpRobot = null;
+let _ofPerpWasOnline = false;
+
+async function ofPerpRobotPoll() {
+    try {
+        const resp = await fetch(OF_PERP_ROBOT_API + '/status', {signal: AbortSignal.timeout(2000)});
+        ofPerpRobot = await resp.json();
+        if (!_ofPerpWasOnline) {
+            _ofPerpWasOnline = true;
+            const saved = localStorage.getItem('ofPerpSavedParams');
+            if (saved) {
+                try {
+                    const params = JSON.parse(saved);
+                    await fetch(OF_PERP_ROBOT_API + '/params', {
+                        method: 'POST',
+                        headers: {'Content-Type':'application/json'},
+                        body: JSON.stringify(params)
+                    });
+                    addLog(nowTime(), 'INFO', 'OF-PERP: применены отложенные параметры из localStorage');
+                    localStorage.removeItem('ofPerpSavedParams');
+                } catch(e) {}
+            }
+        }
+    } catch(e) {
+        ofPerpRobot = null;
+        _ofPerpWasOnline = false;
+    }
+}
+
+async function ofPerpRobotApi(action) {
+    try {
+        if (action === 'start') {
+            showToast('⏳ Поднимаю процесс USDRUBF PERP (подключение к Finam ~15с)...', 'info');
+            try {
+                const pr = await fetch('/api/of/process/of_perp/start', {method: 'POST', signal: AbortSignal.timeout(35000)});
+                const pd = await pr.json();
+                if (!pd.ok) {
+                    showToast('❌ Процесс OF-PERP не поднялся: ' + (pd.error || '?'), 'error');
+                    addLog(nowTime(), 'ERROR', 'OF-PERP process start failed: ' + (pd.error || '?'));
+                    return;
+                }
+                showToast('✅ Процесс OF-PERP поднят' + (pd.alreadyRunning ? ' (уже был запущен)' : ''), 'ok');
+            } catch(pe) {
+                showToast('❌ Не удалось запустить процесс OF-PERP: ' + pe.message, 'error');
+                addLog(nowTime(), 'ERROR', 'OF-PERP process start error: ' + pe.message);
+                return;
+            }
+        }
+        if (action === 'start' || action === 'stop') {
+            const acctVal = localStorage.getItem('ofPerpRobotAccount') || '1225953';
+            if (acctVal) {
+                try {
+                    const acctResp = await fetch(OF_PERP_ROBOT_API + '/account', {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({account: acctVal})
+                    });
+                    const acctData = await acctResp.json();
+                    if (acctData.ok) addLog(nowTime(), 'INFO', 'OF-PERP счёт: ' + acctData.account + ' (' + acctData.id + ')');
+                } catch(e2) {}
+            }
+        }
+        const resp = await fetch(OF_PERP_ROBOT_API + '/' + action, {method: 'POST'});
+        const data = await resp.json();
+        addLog(nowTime(), 'INFO', 'OF-PERP ' + action + ': ' + JSON.stringify(data));
+        setTimeout(async () => { await ofPerpRobotPoll(); renderRobots(); }, 500);
+    } catch(e) {
+        addLog(nowTime(), 'ERROR', `Робот OF-PERP не отвечает (${action}): ${e.message}`);
+        showToast('❌ Робот OF-PERP не отвечает — процесс не поднят (python3 main_of_perp.py --port 5084)', 'error');
+    }
+}
+
+async function onOfPerpRobotAccountChange(val) {
+    localStorage.setItem('ofPerpRobotAccount', val);
+}
+
+function ofPerpRobotEditPanel() {
+    showToast('ℹ Панель настроек OF-PERP: используй таблицу параметров (кнопки ▶⏸⏹). Полная панель — по запросу.', 'info');
+}
+
 // === ORDER FLOW MX ROBOT (порт 5081) ===
 const OF_MX_ROBOT_API = 'http://' + window.location.hostname + ':5081';
 let ofMxRobot = null;
@@ -5893,7 +6021,7 @@ async function ofRobotPoll() {
 
 // Auto-poll MX + Si
 (function() {
-    setInterval(async () => { await ofMxRobotPoll(); await ofRobotPoll(); renderRobots(); }, 2000);
+    setInterval(async () => { await ofMxRobotPoll(); await ofRobotPoll(); await ofPerpRobotPoll(); renderRobots(); }, 2000);
 })();
 
 // === ORDER FLOW MX EDIT PANEL ===
@@ -7404,6 +7532,8 @@ async function ofBrRobotSaveFromPanel() {
 // Auto-poll BR: оба инстанса каждые 2с
 (function() {
     OF_BR_INSTANCE_ORDER.forEach(k => ofBrRobotPoll(k));
+// Auto-poll OF-PERP (F-061): стартовый опрос; периодический уже в общем цикле OF (2s)
+setTimeout(async () => { await ofPerpRobotPoll(); renderRobots(); }, 700);
     setInterval(async () => {
         for (const k of OF_BR_INSTANCE_ORDER) await ofBrRobotPoll(k);
         renderRobots();
