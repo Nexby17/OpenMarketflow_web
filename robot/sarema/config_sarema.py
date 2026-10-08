@@ -34,6 +34,13 @@ SESSION_UTC = (7 * 3600, 15 * 3600 + 40 * 60)   # 10:00-18:40 MSK
 
 # === R-sizing defaults (risk-поля — редактируемые Дмитрием через /params) ===
 DEFAULTS = {
+    # === Сигнальные (SAR/EMA) — редактируемые Дмитрием в popup, с диапазонами ТЗ ===
+    "sar_af0": 0.02,
+    "sar_step": 0.2,
+    "sar_max": 0.2,
+    "ema_n": 12,
+    "init_stop_atr": 3.0,
+    "tf_min": 60,
     "base": 1_000_000.0,
     "risk_pct": 0.005,
     "compound": False,
@@ -101,6 +108,23 @@ def validate_params(patch: dict) -> tuple[dict, list[str]]:
             errors.append("day_kill_R must be null (off) or negative R")
     if "compound" in patch:
         clean["compound"] = bool(patch["compound"])
+    # Сигнальные SAR/EMA (диапазоны ТЗ: sar_af0 0.02-0.03; sar_step 0.008-0.2;
+    # ema_n 12-20; init_stop_atr 3.0 (допуск 1-10 для тюнинга); tf 5-240 мин)
+    sig_specs = {
+        "sar_af0": (0.005, 0.05, float),
+        "sar_step": (0.002, 0.2, float),
+        "sar_max": (0.05, 0.5, float),
+        "ema_n": (5, 50, int),
+        "init_stop_atr": (1.0, 10.0, float),
+        "tf_min": (5, 240, int),
+    }
+    for k, (lo, hi, typ) in sig_specs.items():
+        if k in patch:
+            v = patch[k]
+            if not isinstance(v, (int, float)) or not (lo <= v <= hi):
+                errors.append(f"{k} must be in [{lo}, {hi}]")
+            else:
+                clean[k] = typ(v)
     return clean, errors
 
 

@@ -35,8 +35,11 @@ class SaremaStrategy:
         if g is None or len(g) < 3:
             return {"event": "skip", "reason": "no_bars"}
         # пересчёт индикаторов на всей истории (порт движка, дешёво на H1)
+        # параметры берутся из конфига экземпляра (редактируемые Дмитрием в popup)
         df = g.rename(columns={"begin": "t"})
-        g2, up, dn = eng.build(df, "60min", eng.SAR_AF0, eng.SAR_STEP, eng.EMA_N)
+        g2, up, dn = eng.build(df, f"{int(self.cfg.get('tf_min', 60))}min",
+                               self.cfg.get("sar_af0", 0.02), self.cfg.get("sar_step", 0.2),
+                               int(self.cfg.get("ema_n", 12)), self.cfg.get("sar_max", 0.2))
         i = len(g2) - 1                      # индекс последнего ЗАКРЫТОГО бара
         atr = g2["atr"].values
         events = []
@@ -77,7 +80,7 @@ class SaremaStrategy:
     def _try_enter(self, direction: int, atr_signal: float, bar_volume: float) -> dict:
         last = self.feed.bars.iloc[-1]
         price_hint = float(last["close"])
-        stop_dist = eng.INIT_STOP_ATR * atr_signal
+        stop_dist = self.cfg.get("init_stop_atr", 3.0) * atr_signal
         if stop_dist <= 0:
             return {"event": "skip", "reason": "bad_atr"}
         rs = risk_sizing(self.state.base, self.cfg.get("risk_pct", 0.005), stop_dist)

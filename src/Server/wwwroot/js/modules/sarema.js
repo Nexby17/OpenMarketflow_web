@@ -72,8 +72,19 @@ function sarSwitchInstance(inst) {
                 <div class="metric-card"><div class="metric-label">Kill-switch день (R, пусто = выкл)</div><input id="sarDayKill" class="input" placeholder="выкл" style="width:80px"></div>
                 <div class="metric-card"><div class="metric-label">Лимит участия (доля объёма)</div><input id="sarLiqFrac" class="input" style="width:70px"></div>
             </div>
-            <div class="text-secondary" style="font-size:12px;margin-bottom:6px">Сигнальные (read-only): SAR 0.02/0.2/0.2 · EMA12 · стоп 3×ATR · H1 · std-полярность · трейлинг PSAR · овернайты разрешены</div>
             <div id="sarPanelMsg" class="text-secondary" style="font-size:12.5px;min-height:18px"></div>
+            <hr style="border-color:#2D2D44;margin:12px 0">
+            <!-- Сигнальные параметры SAR/EMA (редактируемые, для обоих роботов) -->
+            <div style="font-weight:700;margin-bottom:8px">Стратегия SAR/EMA <span class="text-secondary" style="font-size:11.5px;font-weight:400">(пусто = значение по умолчанию · применяются при пересчёте баров)</span></div>
+            <div class="metrics-row" style="flex-wrap:wrap;margin-bottom:6px">
+                <div class="metric-card"><div class="metric-label">SAR AF0 (0.005–0.05)</div><input id="sarAf0" class="input" placeholder="0.02" style="width:80px"></div>
+                <div class="metric-card"><div class="metric-label">SAR Step (0.002–0.2)</div><input id="sarStep" class="input" placeholder="0.2" style="width:80px"></div>
+                <div class="metric-card"><div class="metric-label">SAR Max (0.05–0.5)</div><input id="sarMax" class="input" placeholder="0.2" style="width:80px"></div>
+                <div class="metric-card"><div class="metric-label">EMA период (5–50)</div><input id="sarEmaN" class="input" placeholder="12" style="width:70px"></div>
+                <div class="metric-card"><div class="metric-label">Стоп = N×ATR (1–10)</div><input id="sarStopAtr" class="input" placeholder="3" style="width:70px"></div>
+                <div class="metric-card"><div class="metric-label">Таймфрейм мин (5–240)</div><input id="sarTfMin" class="input" placeholder="60" style="width:70px"></div>
+            </div>
+            <div class="text-secondary" style="font-size:11.5px;margin-bottom:4px">Штат бэктеста: AF0 0.02 · Step 0.2 · Max 0.2 · EMA 12 · стоп 3×ATR · H1 · полярность std (не менять — урок WF) · трейлинг PSAR · овернайты разрешены</div>
             <hr style="border-color:#2D2D44;margin:12px 0">
             <!-- Торговый журнал: логика таблицы Дмитрия — открытые позиции сверху, закрытие дозаписывается справа -->
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
@@ -131,6 +142,8 @@ async function sarLoadPanelData(inst) {
     // дефолты
     set('sarMaxQty', ''); set('sarMaxValue', ''); set('sarBase', 1000000);
     set('sarRiskPct', ''); set('sarDayKill', ''); set('sarLiqFrac', 0.05);
+    set('sarAf0', 0.02); set('sarStep', 0.2); set('sarMax', 0.2);
+    set('sarEmaN', 12); set('sarStopAtr', 3); set('sarTfMin', 60);
     // черновик этого экземпляра (оффлайн-сохранение)
     try {
         const raw = localStorage.getItem('sarSavedParams_' + inst);
@@ -142,6 +155,12 @@ async function sarLoadPanelData(inst) {
             set('sarRiskPct', d.risk_pct != null ? (d.risk_pct * 100).toFixed(1) : '');
             set('sarDayKill', d.day_kill_R ?? '');
             set('sarLiqFrac', d.liq_frac ?? 0.05);
+            set('sarAf0', d.sar_af0 ?? 0.02);
+            set('sarStep', d.sar_step ?? 0.2);
+            set('sarMax', d.sar_max ?? 0.2);
+            set('sarEmaN', d.ema_n ?? 12);
+            set('sarStopAtr', d.init_stop_atr ?? 3);
+            set('sarTfMin', d.tf_min ?? 60);
         }
     } catch (e) {}
     // живой робот — источник истины (только его /params)
@@ -155,6 +174,12 @@ async function sarLoadPanelData(inst) {
             set('sarRiskPct', p.risk_pct != null ? (p.risk_pct * 100).toFixed(1) : '');
             set('sarDayKill', p.day_kill_R ?? '');
             set('sarLiqFrac', p.liq_frac ?? 0.05);
+            set('sarAf0', p.sar_af0 ?? 0.02);
+            set('sarStep', p.sar_step ?? 0.2);
+            set('sarMax', p.sar_max ?? 0.2);
+            set('sarEmaN', p.ema_n ?? 12);
+            set('sarStopAtr', p.init_stop_atr ?? 3);
+            set('sarTfMin', p.tf_min ?? 60);
             if (msg) msg.textContent = '';
         } else if (msg) {
             msg.textContent = '⚠️ Робот оффлайн — показаны сохранённые значения (применятся при его старте)';
@@ -219,6 +244,22 @@ async function sarSaveParams() {
     if (maxQty === undefined || maxValue === undefined) { if (msg) msg.textContent = '❌ Лимиты: число ≥ 0 или пусто (без лимита)'; return; }
     if (riskRaw !== '' && (!isFinite(parseFloat(riskRaw)) || parseFloat(riskRaw) <= 0 || parseFloat(riskRaw) > 10)) { if (msg) msg.textContent = '❌ Риск %: (0, 10]'; return; }
     if (killRaw !== '' && !isNaN(parseFloat(killRaw)) && parseFloat(killRaw) >= 0) { if (msg) msg.textContent = '❌ Kill-switch: отрицательный R или пусто (выкл)'; return; }
+    const numField = (id, lo, hi) => {
+        const raw = (document.getElementById(id)?.value || '').trim().replace(',', '.');
+        if (raw === '') return undefined;                     // пусто = дефолт (не отправляем)
+        const n = parseFloat(raw);
+        if (!isFinite(n) || n < lo || n > hi) return 'ERR';
+        return n;
+    };
+    const af0 = numField('sarAf0', 0.005, 0.05);
+    const step = numField('sarStep', 0.002, 0.2);
+    const smax = numField('sarMax', 0.05, 0.5);
+    const emaN = numField('sarEmaN', 5, 50);
+    const stopAtr = numField('sarStopAtr', 1, 10);
+    const tfMin = numField('sarTfMin', 5, 240);
+    const sigErr = [['SAR AF0', af0], ['SAR Step', step], ['SAR Max', smax], ['EMA', emaN], ['Стоп×ATR', stopAtr], ['ТФ', tfMin]]
+        .filter(([, v]) => v === 'ERR').map(([n_]) => n_);
+    if (sigErr.length) { if (msg) msg.textContent = '❌ Вне диапазона: ' + sigErr.join(', '); return; }
     const patch = {
         max_qty: maxQty,
         max_value_rub: maxValue,
@@ -226,6 +267,10 @@ async function sarSaveParams() {
         risk_pct: riskRaw !== '' ? parseFloat(riskRaw) / 100 : undefined,
         day_kill_R: killRaw === '' ? null : parseFloat(killRaw),
         liq_frac: liqRaw === '' ? null : parseFloat(liqRaw),
+        sar_af0: af0, sar_step: step, sar_max: smax,
+        ema_n: emaN != null ? Math.round(emaN) : undefined,
+        init_stop_atr: stopAtr,
+        tf_min: tfMin != null ? Math.round(tfMin) : undefined,
     };
     Object.keys(patch).forEach(k => patch[k] === undefined && delete patch[k]);
     try {
@@ -443,7 +488,7 @@ async function sarLoadJournal(inst) {
     if (!body) return;
     body.innerHTML = '<tr><td colspan="14" style="text-align:center;padding:16px;color:#9CA3AF">Загрузка...</td></tr>';
     try {
-        const resp = await fetch(sarApi(inst) + '/journal', {signal: AbortSignal.timeout(4000)});
+        const resp = await fetch('/api/sarema/journal/' + inst, {signal: AbortSignal.timeout(4000)});
         const data = await resp.json();
         _sarJournalOpen = data.open || [];
         _sarJournalClosed = data.closed || [];

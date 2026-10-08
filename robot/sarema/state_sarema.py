@@ -9,8 +9,9 @@ from typing import Optional
 
 
 class SaremaState:
-    def __init__(self, path: str):
+    def __init__(self, path: str, ticker: str = ""):
         self.path = path
+        self.ticker = ticker
         self.mode = "stopped"          # stopped | running | paused (startup-always-stopped)
         self.direction = 0             # 1 long, -1 short, 0 flat
         self.lots_qty = 0              # позиция в штуках

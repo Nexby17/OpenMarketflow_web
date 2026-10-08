@@ -31,7 +31,7 @@ DATA_DIR = os.environ.get("SAREMA_DATA_DIR", "")
 LOT_SIZE = float(os.environ.get("SAREMA_LOT_SIZE", "1"))
 
 cfg = load_config()
-state = SaremaState(STATE_FILE or f"sarema_state_{TICKER}.json")
+state = SaremaState(STATE_FILE or f"sarema_state_{TICKER}.json", ticker=TICKER)
 state.load()                              # восстановление; mode всё равно stopped
 feed = H1Feed(DATA_DIR or None)
 orders = SaremaOrders(ACCOUNT_ID, SYMBOL)
@@ -50,6 +50,13 @@ class ParamsPatch(BaseModel):
     liq_frac: float | None = None
     day_kill_R: float | None = None
     compound: bool | None = None
+    # сигнальные SAR/EMA (редактируемые Дмитрием в popup)
+    sar_af0: float | None = None
+    sar_step: float | None = None
+    sar_max: float | None = None
+    ema_n: int | float | None = None
+    init_stop_atr: float | None = None
+    tf_min: int | float | None = None
 
 
 @app.get("/status")
@@ -93,19 +100,36 @@ def start():
     return {"ok": True, "mode": state.mode}
 
 
+def _load_state_file() -> dict:
+    """Читает state-файл с диска напрямую. Работает и когда процесс робота НЕ запущен —
+    журнал/параметры видны в UI всегда (замечание Дмитрия: «сделал журнал? не вижу»)."""
+    path = STATE_FILE or f"sarema_state_{TICKER}.json"
+    if not os.path.exists(path):
+        alt = os.path.join(os.path.dirname(os.path.abspath(__file__)), os.path.basename(path))
+        if os.path.exists(alt):
+            path = alt
+    try:
+        with open(path, encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
+        return {}
+
+
 @app.get("/journal")
 def journal():
     """Журнал позиций (логика таблицы Дмитрия): открытые сверху, закрытие дозаписывается.
-    Возвращает записи в порядке: открытые первыми (новые сверху), затем закрытые (новые сверху)."""
-    open_recs = [r for r in state.trade_history if r.get("status") == "open"]
-    closed_recs = [r for r in state.trade_history if r.get("status") == "closed"]
+    Читается из state-файла на диске — доступен даже при остановленном/невключённом роботе."""
+    disk = _load_state_file()
+    hist = disk.get("trade_history", state.trade_history)
+    open_recs = [r for r in hist if r.get("status") == "open"]
+    closed_recs = [r for r in hist if r.get("status") == "closed"]
     return {
         "ticker": TICKER,
         "open": list(reversed(open_recs)),
         "closed": list(reversed(closed_recs)),
         "open_count": len(open_recs),
         "closed_count": len(closed_recs),
-        "base": state.base,
+        "base": disk.get("base", state.base),
     }
 
 

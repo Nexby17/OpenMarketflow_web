@@ -88,10 +88,10 @@ def psar(df: pd.DataFrame, af0: float, af_step: float, af_max: float = 0.2):
     return sar, trend
 
 
-def build(df: pd.DataFrame, freq: str, af0: float, af_step: float, ema_n: int):
+def build(df: pd.DataFrame, freq: str, af0: float, af_step: float, ema_n: int, af_max: float = 0.2):
     """Возвращает (g, up, dn): std-полярность — dn (SAR нырок под EMA) = LONG сигнал."""
     g = m5_extras(tf_bars(df, freq))
-    sar, trend = psar(g, af0, af_step)
+    sar, trend = psar(g, af0, af_step, af_max)
     g["sar"] = sar
     g["ema"] = g["close"].ewm(span=ema_n, adjust=False).mean()
     g = g.reset_index(drop=True)

@@ -453,6 +453,54 @@ app.MapPost("/api/robot/resume", async () => {
     } catch (Exception ex) { return Results.Json(new { error = ex.Message }, statusCode: 500); }
 });
 
+// === F-061: SAREMA journal proxy — читает state-файл с диска (работает при остановленном роботе) ===
+app.MapGet("/api/sarema/journal/{inst}", (string inst) =>
+{
+    var valid = new[] { "sber", "gazp", "lkoh", "rosn", "tatn", "gmkn", "nvtk", "plzl", "mtss", "sngs" };
+    if (!valid.Contains(inst)) return Results.Json(new { error = "unknown instance" }, statusCode: 400);
+    var dir = new System.IO.DirectoryInfo(AppContext.BaseDirectory);
+    for (int i = 0; i < 8 && dir != null; i++)
+    {
+        var saremaDir = System.IO.Path.Combine(dir.FullName, "robot", "sarema");
+        if (System.IO.Directory.Exists(saremaDir))
+        {
+            var path = System.IO.Path.Combine(saremaDir, $"sarema_state_{inst.ToUpperInvariant()}.json");
+            if (!System.IO.File.Exists(path))
+                return Results.Json(new { ticker = inst.ToUpperInvariant(), open = Array.Empty<object>(), closed = Array.Empty<object>(), open_count = 0, closed_count = 0, empty = true });
+            try
+            {
+                using var doc = System.Text.Json.JsonDocument.Parse(System.IO.File.ReadAllText(path));
+                var root = doc.RootElement;
+                var hist = root.TryGetProperty("trade_history", out var h) ? h : default;
+                var openList = new List<System.Text.Json.JsonElement>();
+                var closedList = new List<System.Text.Json.JsonElement>();
+                if (hist.ValueKind == System.Text.Json.JsonValueKind.Array)
+                {
+                    foreach (var rec in hist.EnumerateArray())
+                    {
+                        var status = rec.TryGetProperty("status", out var st) ? st.GetString() : "";
+                        if (status == "open") openList.Add(rec);
+                        else if (status == "closed") closedList.Add(rec);
+                    }
+                }
+                openList.Reverse();
+                closedList.Reverse();
+                return Results.Json(new {
+                    ticker = inst.ToUpperInvariant(),
+                    open = openList,
+                    closed = closedList,
+                    open_count = openList.Count,
+                    closed_count = closedList.Count,
+                    base_rub = root.TryGetProperty("base", out var b) ? b.GetDouble() : 1000000.0
+                });
+            }
+            catch (Exception ex) { return Results.Json(new { error = ex.Message }, statusCode: 500); }
+        }
+        dir = dir.Parent;
+    }
+    return Results.Json(new { error = "sarema dir not found" }, statusCode: 500);
+}).AllowAnonymous();
+
 app.MapGet("/api/robot/status", async () =>
 {
     try {
