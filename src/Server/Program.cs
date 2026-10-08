@@ -2338,7 +2338,7 @@ public static class RobotProcessManager
         "of" => ("main_of.py", 5080, ""),
         "of_mx" => ("main_of_mx.py", 5081, ""),
         // F-061: OF-PERP — бессрочный USDRUBF, копия OF-Si; env ROBOT_SYMBOL_PERP/ROBOT_TICKER_PERP
-        "of_perp" => ("main_of_perp.py", 5084, ""),
+        "of_perp" => ("main_of_perp.py", 5095, ""),
         // OF BR robots: один код main_of_br.py на два инстанса; сессия/счёт задаются env
         // (of_br = main 1225953, of_br_edp = edp 2049688, см. StartAsync ниже)
         "of_br" => ("main_of_br.py", 5082, ""),
