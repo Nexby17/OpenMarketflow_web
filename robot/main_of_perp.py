@@ -64,7 +64,7 @@ args, _ = parser.parse_known_args()
 # --- Logging ---
 LOG_DIR = Path(__file__).parent / "logs"
 LOG_DIR.mkdir(exist_ok=True)
-_log_file = LOG_DIR / f"of_{datetime.now().strftime('%Y%m%d')}.log"
+_log_file = LOG_DIR / f"of_perp_{datetime.now().strftime('%Y%m%d')}.log"
 
 
 
@@ -103,7 +103,7 @@ logging.basicConfig(
     datefmt="%Y-%m-%d %H:%M:%S",
     handlers=[
         logging.StreamHandler(sys.stdout),
-        DailyFileHandler(LOG_DIR, 'of'),
+        DailyFileHandler(LOG_DIR, 'of_perp'),
     ],
 )
 
