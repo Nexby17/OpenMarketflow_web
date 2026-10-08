@@ -5933,7 +5933,7 @@ async function ofPerpRobotEditPanel() {
                 </div>
                 <div class="metric-card"><div class="metric-label">Value Area %</div><input id="editOfPerpVahValPct" class="input" type="number" min="50" max="90" value="${p.vah_val_pct||70}" style="width:60px"></div>
                 <div class="metric-card"><div class="metric-label">VP Bin Size</div><input id="editOfPerpVahValBin" class="input" type="number" min="1" max="500" value="${p.vah_val_bin_size||5}" style="width:60px"></div>
-                <div class="metric-card"><div class="metric-label">VP Mode</div><select id="editOfPerpVahValMode" class="input" style="width:90px;font-size:12px;background:transparent;color:#fff;border:1px solid #2D4A6D"><option value="fade" ${(p.vah_val_mode||'fade')==='fade'?'selected':''}>Fade</option><option value="breakout" ${(p.vah_val_mode||'fade')==='breakout'?'selected':''}>Breakout</option></select></div>
+                <div class="metric-card"><div class="metric-label">VP Mode</div><select id="editOfPerpVahValMode" class="input" style="width:90px;font-size:12px;background:transparent;color:#fff;border:1px solid #2D4A6D"><option value="range" ${(p.vah_val_mode||'range')==='range'?'selected':''}>Range</option><option value="fade" ${p.vah_val_mode==='fade'?'selected':''}>Fade</option><option value="breakout" ${p.vah_val_mode==='breakout'?'selected':''}>Breakout</option></select></div>
                 <div class="metric-card" style="min-width:80px"><div class="metric-label">VAH</div><div id="ofPerpVpVah" style="font-size:16px;font-weight:bold;color:#42A5F5">—</div></div>
                 <div class="metric-card" style="min-width:80px"><div class="metric-label">POC</div><div id="ofPerpVpPoc" style="font-size:16px;font-weight:bold;color:#FFB74D">—</div></div>
                 <div class="metric-card" style="min-width:80px"><div class="metric-label">VAL</div><div id="ofPerpVpVal" style="font-size:16px;font-weight:bold;color:#42A5F5">—</div></div>
@@ -6095,7 +6095,7 @@ async function ofPerpRobotSaveFromPanel() {
         vwema_avg_exit: el('editOfPerpVwemaAvgExit')?.checked || false,
         vah_val_pct: parseInt(el('editOfPerpVahValPct')?.value) || 70,
         vah_val_bin_size: parseInt(el('editOfPerpVahValBin')?.value) || 5,
-        vah_val_mode: el('editOfPerpVahValMode')?.value || 'fade',
+        vah_val_mode: el('editOfPerpVahValMode')?.value || 'range',
         use_vah_val: el('editOfPerpUseVahVal')?.checked || el('togglePerpVp')?.checked || false,
         hl_filter: el('editOfPerpUseHl')?.checked || false,
         hl_window: Math.max(2, Math.min(parseInt(el('editOfPerpHlWindow')?.value) || 15, 30)),
