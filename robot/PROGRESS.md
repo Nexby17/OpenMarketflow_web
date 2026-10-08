@@ -475,3 +475,15 @@ BR-edp (b9b48e3) → добавлены те же варианты 60%/70% в в
 3. HL-вердикт живёт в панели: ofPerpUpdateLive опрашивает s.hl из /status (робот отдаёт hl-блок как OF-Si — код 1:1).
 
 **Проверки:** node --check OK; HL-проверки 4/4; MX/OF-Si панели не тронуты. bin wwwroot обновлён. Ctrl+F5.
+
+## 2026-10-08 — F-061: OF-PERP (USDRUBF) подключён + сервер обновлён
+
+**«Сделай» = подключи робота и почини кнопку ▶ (unknown robot).**
+
+1. Найден и исправлен лог-конфликт: main_of_perp.py писал в of_YYYYMMDD.log (общий с OF-Si) → разделён of_perp_YYYYMMDD.log (коммит 44aa20a).
+2. Процесс поднят: python3 main_of_perp.py --port 5095 → PID 53616. Проверки: F-059 lock ok, WS Finam handshake ok, ORDERS sub ok, M5 bars 30, REST4 account main 1225953 OK, STARTUP reconciliation FLAT/FLAT, mode=stopped (startup-stopped по F-059). Котировки живые: 85.38→85.365→85.285, priceStale=false.
+3. Кнопка ▶ «unknown robot»: запущенный сервер был exe от 01.10 (of_perp spec отсутствует). Обновление: свежий build (utf16le-проверка строки — ASCII-поиск в .NET-метадате давал ложный negative), taskkill старого 11920, копия 71 файла в bin, старт нового с DOTNET_ROOT=C:\Program Files\dotnet (runtime net10.0.1 — AutoClaw-овский dotnet имеет только 8.0). Новый PID 51240, health 200.
+4. Спека of_perp :5084→5095 в Program.cs дедуплицирована с sar_sber (коммит 2acf7b7) — вчерашний фикс порта прошёл только в UI.
+5. Все роботы целы после рестарта сервера: 5080/5081/5083 stopped, 5090-5092 running (позиции не тронуты — python-процессы независимы), 5095 stopped.
+
+**Статус:** OF-PERP подключён, ждёт ▶/Start от Дмитрия (R-001).
