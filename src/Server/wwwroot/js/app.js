@@ -2505,7 +2505,7 @@ async function renderRobots() {
 
     // Order Flow PERP robot row (F-061: USDRUBF perpetual, :5095)
     let ofPerpRobotRow = '';
-    let _ofPerpAccount = localStorage.getItem('ofPerpRobotAccount') || '1225953';
+    let _ofPerpAccount = localStorage.getItem('ofPerpRobotAccount') || '2049688';
     if (ofPerpRobot) {
         const s = ofPerpRobot;
         const mode = s.mode || 'stopped';
@@ -5756,7 +5756,7 @@ async function ofPerpRobotApi(action) {
             }
         }
         if (action === 'start' || action === 'stop') {
-            const acctVal = localStorage.getItem('ofPerpRobotAccount') || '1225953';
+            const acctVal = localStorage.getItem('ofPerpRobotAccount') || '2049688';
             if (acctVal) {
                 try {
                     const acctResp = await fetch(OF_PERP_ROBOT_API + '/account', {
