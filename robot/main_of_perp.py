@@ -110,6 +110,8 @@ logging.basicConfig(
 # --- Config ---
 SYMBOL = getattr(config, "SYMBOL", "USDRUBF@RTSX")
 TICKER = getattr(config, "TICKER", "USDRUBF")
+# F-062: контракт USDRUBF — лот 1000 USD, шаг цены 0.01, стоимость шага 10 ₽ (MOEX ISS)
+LOT_SIZE = 1000
 ACCOUNT = getattr(config, "ACCOUNT_ID", os.environ.get("FINAM_ACCOUNT", "1225953"))
 
 # === Multi-account support ===
@@ -584,25 +586,59 @@ def main_loop():
 
 
 def _record_broker_trade(action: dict, fill_price: float):
-    """Record trade using ONLY real broker fill prices. PnL = (exit - entry) * dir * lots - comm."""
+    """F-062: запись сделки по РЕАЛЬНЫМ ценам слоёв (LIFO-очередь стратегии) и с множителем лота.
+
+    USDRUBF: лот = 1000 USD, шаг цены 0.01 = 10 ₽ → PnL(₽) = (exit − entry) × LOT_SIZE × lots − comm.
+    Для partial_tp — цена слоя из _lot_queue (action['entryPrice'] теперь слой LIFO, ставится стратегией).
+    Для close_all/close_half — берём суммы слоёв до их удаления: action['layers'] = [[price, lots], ...].
+    Fallback: если слоёв нет (старый формат action) — используем avgPrice как раньше.
+    """
     act = action.get("action")
     comm_per_lot = strategy.p.commission * 2  # round-trip
+    mult = LOT_SIZE
 
     if act == "partial_tp":
         entry_price = action.get('entryPrice', 0)
         entry_side = action.get('entrySide', strategy._dir)
         lots = action.get('qty', 1)
-        pnl = (fill_price - entry_price) * entry_side * lots - comm_per_lot * lots
-        direction = 'LONG' if entry_side == 1 else 'SHORT'
-    elif act == "close_all":
-        entry_price = action.get('avgPrice', strategy._avg_price)
-        entry_side = strategy._dir
+        gross = (fill_price - entry_price) * entry_side * lots
+    elif act in ("close_all", "close_half"):
+        layers = action.get('layers') or []
         lots = action.get('qty', strategy.total_lots)
-        pnl = (fill_price - entry_price) * entry_side * lots - comm_per_lot * lots
+        entry_side = strategy._dir
+        if layers:
+            gross = sum((fill_price - lp) * entry_side * ll for lp, ll in layers)
+            wavg = sum(lp * ll for lp, ll in layers) / sum(ll for _, ll in layers)
+        else:
+            entry_price = action.get('avgPrice', strategy._avg_price)
+            gross = (fill_price - entry_price) * entry_side * lots
+            wavg = entry_price
+        pnl = gross * mult - comm_per_lot * lots
         direction = 'LONG' if entry_side == 1 else 'SHORT'
+        strategy._trade_history.append({
+            'entryPrice': round(wavg, 2),
+            'exitPrice': round(fill_price, 2),
+            'direction': direction,
+            'lots': lots,
+            'pnl': round(pnl, 2),
+            'entryTime': strategy._entry_time.isoformat() if strategy._entry_time else None,
+            'exitTime': datetime.now(MSK).isoformat(),
+            'reason': action.get('reason', act),
+            'signal': action.get('signal', strategy._signal_type),
+        })
+        strategy._realized_pnl += round(pnl, 2)
+        today = datetime.now(MSK).strftime('%Y-%m-%d')
+        if strategy._daily_pnl_date == today:
+            strategy._daily_pnl += round(pnl, 2)
+        else:
+            strategy._daily_pnl = round(pnl, 2)
+            strategy._daily_pnl_date = today
+        log.info(f"TRADE {direction} {lots}L wavg={wavg:.2f} exit={fill_price:.2f} pnl={pnl:+.2f}₽ comm={comm_per_lot * lots:.2f}₽")
+        return
     else:
         return
 
+    pnl = gross * mult - comm_per_lot * lots
     pnl = round(pnl, 2)
     strategy._trade_history.append({
         'entryPrice': round(entry_price, 2),
@@ -622,7 +658,7 @@ def _record_broker_trade(action: dict, fill_price: float):
     else:
         strategy._daily_pnl = pnl
         strategy._daily_pnl_date = today
-    log.info(f"TRADE {direction} {lots}L entry={entry_price:.0f} exit={fill_price:.0f} pnl={pnl:+.1f}₽ comm={comm_per_lot * lots:.1f}₽")
+    log.info(f"TRADE {direction} {lots}L entry={entry_price:.2f} exit={fill_price:.2f} pnl={pnl:+.2f}₽ comm={comm_per_lot * lots:.2f}₽")
 
 
 def _get_broker_position_fast():

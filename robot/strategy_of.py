@@ -1249,6 +1249,8 @@ class OrderFlowStrategy:
             'qty': qty,
             'price': price,
             'reason': reason,
+            # F-062: снимок слоёв LIFO-очереди ДО сброса — журнал считает PnL по реальным ценам входа
+            'layers': [[e.price, e.lots] for e in self._lot_queue],
         }
 
     def rollback_pending_entry(self, qty: int):
