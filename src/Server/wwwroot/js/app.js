@@ -5992,9 +5992,9 @@ function ofPerpUpdateLive() {
     const s = ofPerpRobot;
     if (!s) return;
     const setText = (id, val) => { const e = el(id); if (e) e.textContent = val; };
-    const setColor = (id, val) => {
+    const setColor2 = (id, val) => {
         const e = el(id); if (!e) return;
-        e.textContent = val >= 0 ? '+' + val.toFixed(0) : val.toFixed(0);
+        e.textContent = (val >= 0 ? '+' : '') + val.toFixed(2);
         e.className = val >= 0 ? 'green' : 'red';
     };
     const price = s.currentPrice || 0;
@@ -6004,8 +6004,9 @@ function ofPerpUpdateLive() {
     setText('ofPerpLots', s.totalLots || 0);
     setText('ofPerpAvgPrice', s.avgPrice > 0 ? s.avgPrice.toFixed(2) : '—');
     const pnlPerLot = price > 0 && s.avgPrice > 0 ? (price - s.avgPrice) * (s.dir || 0) : 0;
-    setText('ofPerpPnlPerLot', pnlPerLot !== 0 ? (pnlPerLot > 0 ? '+' : '') + pnlPerLot.toFixed(0) + ' пт' : '—');
-    setColor('ofPerpPnlUnreal', s.unrealizedPnL || 0);
+    const pnlPerLotTxt = pnlPerLot !== 0 ? ((pnlPerLot > 0 ? '+' : '') + pnlPerLot.toFixed(2) + ' пт') : '—';
+    setText('ofPerpPnlPerLot', pnlPerLotTxt);
+    setColor2('ofPerpPnlUnreal', s.unrealizedPnL || 0);
     setText('ofPerpRealized', (s.realizedPnL || 0).toFixed(0) + '₽');
     setText('ofPerpSignal', s.signalType || '—');
     setText('ofPerpHold', s.holdMinutes ? s.holdMinutes + ' мин' : '0 мин');
