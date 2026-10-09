@@ -129,6 +129,7 @@ class ArbLayer:
     # F-060: passive/passive выход (решение Дмитрия 06.10)
     exit_order_id_a: str = ""     # живая заявка закрытия ноги A (акция, ждёт свою цену)
     exit_order_id_b: str = ""     # живая заявка закрытия ноги B (фьючерс)
+    take_armed: bool = False      # F-062: паркованные тейк-заявки стоят (ставятся при открытии слоя)
     fut_closed: bool = False      # фьючерсная нога закрыта (лимитка B исполнилась)
     fut_exit_price: float = 0.0   # фактическая цена закрытия фьючерса
     fut_exit_time: float = 0.0    # unix ts закрытия фьючерса
@@ -349,6 +350,7 @@ class ArbitrageStrategy:
                     "fut_closed": l.fut_closed,
                     "fut_exit_price": l.fut_exit_price,
                     "fut_exit_time": l.fut_exit_time,
+                    "take_armed": l.take_armed,
                 }
                 for l in self.layers
             ],
@@ -400,6 +402,7 @@ class ArbitrageStrategy:
                 fut_closed=ld.get("fut_closed", False),
                 fut_exit_price=ld.get("fut_exit_price", 0.0),
                 fut_exit_time=ld.get("fut_exit_time", 0.0),
+                take_armed=ld.get("take_armed", False),
             ))
             self._next_layer_id = max(self._next_layer_id, ld.get("layer_id", 0) + 1)
         # F-032: счётчики подтверждения не персистятся — после рестарта копятся заново
@@ -724,6 +727,9 @@ class ArbitrageStrategy:
         # ---- 1) Тейк по одному слою, FIFO от старейшего ----
         spread_mode = self.p.exit_mode == "spread"
         for layer in sorted(self.layers, key=lambda l: (l.entry_time, l.layer_id)):
+            # F-062: паркованные тейк-заявки уже стоят в стакане — реактивный тейк отключён
+            if layer.take_armed:
+                continue
             unrealized = self._layer_unrealized_pnl(layer)          # для логов/UI
             realizable = self._layer_realizable_pnl(layer)          # для решения (pnl-режим)
             rs = self._layer_realizable_spread(layer)               # для решения (spread-режим)
@@ -836,6 +842,20 @@ class ArbitrageStrategy:
         if layer.side == SHORT_BASIS:
             return ba_b - bb_a * self.p.hedge_ratio
         return bb_b - ba_a * self.p.hedge_ratio
+
+    def take_target_prices(self, layer: ArbLayer) -> dict:
+        """F-062: целевые цены паркованных тейк-заявок слоя.
+        SHORT: закрытие = sell A по entry_price_a, buy B по entry_price_b − min_profit
+        LONG:  закрытие = buy A по entry_price_a, sell B по entry_price_b + min_profit
+        Целевой базис = entry_basis ∓ min_profit (весь возврат несёт фьючерс)."""
+        v = self.p.min_profit_value
+        if layer.side == SHORT_BASIS:
+            return {"side_a": "sell", "price_a": layer.entry_price_a,
+                    "side_b": "buy", "price_b": layer.entry_price_b - v,
+                    "target_basis": layer.entry_basis - v}
+        return {"side_a": "buy", "price_a": layer.entry_price_a,
+                "side_b": "sell", "price_b": layer.entry_price_b + v,
+                "target_basis": layer.entry_basis + v}
 
     def _spread_take_qualifies(self, rs: Optional[float], layer: ArbLayer) -> bool:
         """F-058: тейк слоя по раздвижке — формулировка Дмитрия:

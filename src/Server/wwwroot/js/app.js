@@ -3778,15 +3778,23 @@ function createArbInstance(prefix, port) {
         // Metrics
         const pair = `${d.tickerA||p.ticker_a||'—'} / ${d.tickerB||p.ticker_b||'—'}`;
         if (el(prefix+'Pair')) el(prefix+'Pair').textContent = pair;
-        // F-057: Basis в шапке = базис закрытия по стакану (тот же источник, что и
-        // реализуемый Unrealized PnL). Серверное closing_basis (после рестарта робота)
-        // приоритетно; далее локальный расчёт; last — только fallback с «≈».
+        // F-062 (вариант 3): Basis в шапке показывает ОБА источника раздельно:
+        //   основной — OB-закрытие (консистентен с Unrealized PnL, им «думает» робот);
+        //   рядом серым мелко — last-базис (что видно в терминале/принтах).
+        // Расхождение между ними — НЕ ошибка робота, а отставание last на тонком фьючерсе.
         const closeBasis = (d.closing_basis != null) ? d.closing_basis : arbClosingBasis(d);
         if (el(prefix+'Basis')) {
             const eB = el(prefix+'Basis');
+            const lastBasisTxt = basis.spread_rub != null ? `${basis.spread_rub>=0?'+':''}${basis.spread_rub.toFixed(1)}` : '—';
             if (closeBasis != null) {
-                eB.textContent = `${closeBasis>=0?'+':''}${closeBasis.toFixed(1)} ₽`;
-                eB.title = 'Базис закрытия по стакану (консистентен с Unrealized PnL).\nLast-базис: ' + (basis.spread_rub != null ? basis.spread_rub.toFixed(2) : '—') + ' ₽';
+                const drift = basis.spread_rub != null ? (closeBasis - basis.spread_rub) : null;
+                const driftTxt = (drift != null && Math.abs(drift) >= 5)
+                    ? ` <span class="arb-last-basis" style="font-size:0.72em;opacity:0.55;margin-left:4px">last ${lastBasisTxt}₽${Math.abs(drift) >= 10 ? ' ⚠' + drift.toFixed(0) : ''}</span>`
+                    : '';
+                eB.innerHTML = `${closeBasis>=0?'+':''}${closeBasis.toFixed(1)} ₽${driftTxt}`;
+                eB.title = 'OB-базис закрытия (робот решает по нему, консистентен с Unrealized PnL)' +
+                    '\nLast-базис: ' + lastBasisTxt + ' ₽ — по last-принтам, может отставать от стакана' +
+                    '\n⚠ N — расхождение источников в рублях (last тупит на тонком фьючерсе)';
             } else {
                 eB.textContent = basis.spread_rub != null ? `≈${basis.spread_rub>=0?'+':''}${basis.spread_rub.toFixed(2)} ₽` : '—';
                 eB.title = 'Стакан недоступен — показан last-базис (может отставать от рынка)';

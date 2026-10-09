@@ -648,8 +648,8 @@ def main_loop():
             # Release expired locks
             strategy.update_lock()
 
-            # F-060: менеджер пассивных выходов (тик каждые ~0.5с)
-            _manage_passive_exits()
+            # F-060/F-062: менеджер пассивных выходов + паркованных тейк-заявок (тик ~0.5с)
+            _manage_parked_takes()
 
             # Check session (skip in paper mode)
             if not PAPER_MODE:
@@ -860,6 +860,17 @@ def _execute_entry(signal: dict):
 
 
 def _execute_exit(signal: dict, force_market: bool = False):
+    # F-062: при активном выходе (ручной/риск) отменяем паркованные тейк-заявки
+    try:
+        for l in list(strategy.layers):
+            if l.exit_order_id_b or l.exit_order_id_a:
+                orders_mgr.cancel_passive_exit(l.exit_order_id_b, l.exit_order_id_a)
+                l.take_armed = False
+                l.exit_order_id_b = ""
+                l.exit_order_id_a = ""
+                log.info(f"F-062 layer #{l.layer_id}: parked take canceled (active exit)")
+    except Exception as e:
+        log.warning(f"F-062 cancel on exit err: {str(e)[:80]}")
     """Execute exit for a specific layer (or all layers for risk stop).
     force_market=True for manual_stop/cleanup — use market orders."""
     layer_id = signal.get("layer_id")
@@ -1043,6 +1054,108 @@ def self_mult_b() -> float:
 
 def self_mult_a() -> float:
     return strategy.p.mult_a
+
+
+def _arm_take(layer) -> bool:
+    """F-062: поставить паркованные тейк-заявки слоя (фьючерс B первой, акция A следом).
+    Заявки стоят до исполнения. Возвращает True если обе живы."""
+    tp = strategy.take_target_prices(layer)
+    res = orders_mgr.place_passive_exit(
+        symbol_a=params.symbol_a, side_a=tp["side_a"], lots_a=layer.lots_a, limit_price_a=tp["price_a"],
+        symbol_b=params.symbol_b, side_b=tp["side_b"], lots_b=layer.lots_b, limit_price_b=tp["price_b"],
+        paper=PAPER_MODE,
+    )
+    if res.get("error"):
+        log.warning(f"F-062 layer #{layer.layer_id}: arm take failed: {res['error']} — retry next tick")
+        return False
+    layer.exit_order_id_b = res.get("order_id_b", "")
+    layer.exit_order_id_a = res.get("order_id_a", "")
+    layer.take_armed = True
+    log.info(f"F-062 layer #{layer.layer_id}: TAKE ARMED (parked) | B {tp['side_b']} {layer.lots_b} @ {tp['price_b']:.2f} | "
+             f"A {tp['side_a']} {layer.lots_a} @ {tp['price_a']:.2f} | target_basis={tp['target_basis']:.1f}")
+    save_state()
+    return True
+
+
+def _rearm_leg(layer, leg: str) -> bool:
+    """F-062: перепостановка пропавшей заявки тейка (биржа отклонила/связь рванула)."""
+    tp = strategy.take_target_prices(layer)
+    if leg == "b":
+        oid = "paper_b" if PAPER_MODE else orders_mgr._place_limit(params.symbol_b, tp["side_b"], layer.lots_b, tp["price_b"], tag="arb_take_b")
+        if oid:
+            layer.exit_order_id_b = oid
+            log.info(f"F-062 layer #{layer.layer_id}: fut leg RE-ARMED @ {tp['price_b']:.2f} id={oid}")
+            save_state()
+            return True
+        log.warning(f"F-062 layer #{layer.layer_id}: fut re-arm FAILED — retry next tick")
+        return False
+    oid = "paper_a" if PAPER_MODE else orders_mgr._place_limit(params.symbol_a, tp["side_a"], layer.lots_a, tp["price_a"], tag="arb_take_a")
+    if oid:
+        layer.exit_order_id_a = oid
+        log.info(f"F-062 layer #{layer.layer_id}: stock leg RE-ARMED @ {tp['price_a']:.2f} id={oid}")
+        save_state()
+        return True
+    log.warning(f"F-062 layer #{layer.layer_id}: stock re-arm FAILED — retry next tick")
+    return False
+
+
+def _order_alive(order_id: str) -> bool:
+    """F-062: жива ли заявка у брокера. Нет данных/ошибка — консервативно жива (без спама перепостановками)."""
+    if not order_id:
+        return False
+    if order_id.startswith("paper_"):
+        return True
+    try:
+        status = orders_mgr._get_order_status(order_id)
+    except Exception:
+        return True
+    if not status:
+        return True
+    state = (status.get("state") or "").lower()
+    return state in ("", "active", "placed", "pending", "partially_filled", "working")
+
+
+def _manage_parked_takes():
+    """F-062 главный тик: армирование новых слоёв + монитор живости + фиксация fills.
+    Заменяет _manage_passive_exits (расширяет её парковкой с момента входа слоя)."""
+    # 1) армирование слоёв без заявок
+    for layer in list(strategy.layers):
+        if not layer.take_armed and not layer.exit_order_id_b:
+            with execution_lock:
+                _arm_take(layer)
+
+    # 2) монитор живости + fills
+    for layer in list(strategy.layers):
+        if not layer.take_armed or not layer.exit_order_id_b:
+            continue
+        try:
+            st = orders_mgr.passive_exit_status(layer.exit_order_id_b, layer.exit_order_id_a)
+        except Exception as e:
+            log.debug(f"F-062 layer #{layer.layer_id}: status poll err: {str(e)[:80]}")
+            continue
+
+        # Фьючерсная нога исполнилась → фиксация (F-060 механика)
+        if st.get("b_filled") and not layer.fut_closed:
+            _fix_futures_leg_pnl(layer, st.get("b_price") or 0.0)
+            save_state()
+
+        # Акционная нога исполнилась (после фьючерса) → полное закрытие слоя
+        if st.get("a_filled") and layer.fut_closed:
+            _close_passive_layer(layer, st.get("a_price") or layer.entry_price_a, True)
+            save_state()
+            continue
+
+        # Живость: заявка не исполнилась, но и не жива → перепостановка только пропавшей ноги
+        if not layer.fut_closed and not st.get("b_filled") and not _order_alive(layer.exit_order_id_b):
+            layer.take_armed = False
+            layer.exit_order_id_b = ""
+            if _rearm_leg(layer, "b"):
+                layer.take_armed = True
+        if layer.fut_closed and not st.get("a_filled") and not _order_alive(layer.exit_order_id_a):
+            layer.take_armed = False
+            layer.exit_order_id_a = ""
+            if _rearm_leg(layer, "a"):
+                layer.take_armed = True
 
 
 def _manage_passive_exits():

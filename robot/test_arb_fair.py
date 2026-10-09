@@ -796,5 +796,70 @@ q60 = stP60._spread_take_qualifies(stP60._layer_realizable_spread(lay60), lay60)
 check("F-060-8 spread take on half-closed computes (no crash)", isinstance(q60, bool), f"q={q60}")
 
 
+
+print("=== F-062: паркованные тейк-заявки (решение Дмитрия 09.10, вариант 1) ===")
+
+# Короткий слой: entry_basis 30, min_profit 30 → целевой basis 0
+stP62 = ArbitrageStrategy(ArbParams(**{**cfgH, "use_commission": False}))
+stP62.basis_calc.update_price_a(97.0)
+stP62.basis_calc.update_price_b(9730.0)
+stP62.open_layer(SHORT_BASIS, 97.00, 9730.0, 10, 1, z=2.0)
+lay62 = stP62.layers[0]
+
+# F-062-1: take_target_prices — целевые цены
+tp = stP62.take_target_prices(lay62)
+check("F-062-1 targets: sell A @ 97.00", tp["side_a"] == "sell" and abs(tp["price_a"] - 97.0) < 1e-9,
+      f"tp={tp}")
+check("F-062-1b targets: buy B @ 9720 (entry-10)", tp["side_b"] == "buy" and abs(tp["price_b"] - 9720.0) < 1e-9,
+      f"price_b={tp['price_b']}")
+check("F-062-1c target_basis = 20 (entry-10)", abs(tp["target_basis"] - 20.0) < 1e-9, f"tb={tp['target_basis']}")
+
+# F-062-2: armed слой — реактивный тейк отключён (даже если rs дошёл до порога)
+lay62.take_armed = True
+lay62.exit_order_id_b = "B1"
+lay62.exit_order_id_a = "A1"
+# rs по стакану: 9731 - 9699 = 32 > 20 — не дошёл; прогоним ДО порога
+stP62.ob_a.update([(96.99, 10, 0, 1), (97.01, 0, 10, 1)])
+stP62.ob_b.update([(9715.0, 10, 0, 1), (9717.0, 0, 10, 1)])   # rs=18 <= 20 — УСЛОВИЕ ВЫПОЛНЕНО
+sig62 = None
+for _ in range(4):
+    sig62 = stP62.check_exit()
+check("F-062-2 armed layer: reactive take disabled", sig62 is None, f"sig={sig62}")
+
+# F-062-3: disarm → реактивный тейк снова работает (страховка)
+lay62.take_armed = False
+sig62b = None
+for _ in range(3):
+    sig62b = stP62.check_exit()
+check("F-062-3 disarm restores reactive take", sig62b is not None and sig62b["reason"] == "profit_target",
+      f"sig={sig62b}")
+
+# F-062-4: persist round-trip take_armed
+stP62d = ArbitrageStrategy(ArbParams(**{**cfgH, "use_commission": False}))
+stP62d.basis_calc.update_price_a(97.0)
+stP62d.basis_calc.update_price_b(9730.0)
+stP62d.open_layer(SHORT_BASIS, 97.00, 9730.0, 10, 1, z=2.0)
+stP62d.layers[0].take_armed = True
+stP62d.layers[0].exit_order_id_a = "AA1"
+stP62d.layers[0].exit_order_id_b = "BB2"
+st62 = stP62d.save_state()
+stP62e = ArbitrageStrategy(ArbParams(**{**cfgH, "use_commission": False}))
+stP62e.load_state(st62)
+layE62 = stP62e.layers[0]
+check("F-062-4 take_armed survives restart",
+      layE62.take_armed and layE62.exit_order_id_a == "AA1" and layE62.exit_order_id_b == "BB2",
+      f"armed={layE62.take_armed} ids={layE62.exit_order_id_a}/{layE62.exit_order_id_b}")
+
+# F-062-5: LONG цели зеркальны
+stL62 = ArbitrageStrategy(ArbParams(**{**cfgH, "use_commission": False, "allow_long_basis": True}))
+stL62.basis_calc.update_price_a(97.0)
+stL62.basis_calc.update_price_b(9730.0)
+stL62.open_layer(LONG_BASIS, 97.00, 9730.0, 10, 1, z=-2.0)
+tpL = stL62.take_target_prices(stL62.layers[0])
+check("F-062-5 long targets: buy A / sell B @ 9740",
+      tpL["side_a"] == "buy" and tpL["side_b"] == "sell" and abs(tpL["price_b"] - 9740.0) < 1e-9,
+      f"tpL={tpL}")
+
+
 print(f"\n===== RESULTS: PASS={PASS} FAIL={FAIL} =====")
 sys.exit(0 if FAIL == 0 else 1)
