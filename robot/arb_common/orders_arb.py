@@ -238,9 +238,8 @@ class ArbOrderManager:
                 acc = self._stock_account
                 base = symbol.split('@')[0]
                 order_symbol = f"{base}@{self._stock_mic}"
-                # F-061 (09.10, эмпирика): Finam API принимает quantity В ЛОТАХ и для акций.
-                # Умножение на lot_size давало x10 (SBER: 10 лотов → 100 → 1000 акций у брокера).
-                grpc_qty = quantity
+                lot_size = self._lot_sizes.get(base, self._default_lot_size)
+                grpc_qty = quantity * lot_size
             else:
                 acc = self._account
                 order_symbol = symbol
@@ -538,9 +537,13 @@ class ArbOrderManager:
             result["error"] = f"leg_a_{leg_a.error}"
             return result
 
-        # F-061: fill приходит в ЛОТАХ (Finam quantity = лоты, эмпирика 09.10),
-        # внутренняя математика в лотах — конверсия не нужна (старая F-041 //lot давала x10).
-        pass
+        # F-041: нормализация единиц. Брокер возвращает executed_quantity в АКЦИЯХ (для акций),
+        # вся внутренняя математика робота ведётся в ЛОТАХ. Приводим fill к лотам здесь — один раз.
+        if leg_a.quantity and leg_a.quantity > 0:
+            lot = self._lot_sizes.get(symbol_a.split("@")[0], self._default_lot_size)
+            if lot > 1 and leg_a.quantity % lot == 0 and leg_a.quantity > lots_a:
+                # похоже на акции (кратно лоту и больше запрошенных лотов) → конвертим
+                leg_a.quantity = leg_a.quantity // lot
 
         # Check min fill ratio (теперь честно: лоты/лоты)
         if lots_a > 0 and leg_a.quantity / lots_a < min_fill_ratio:
@@ -705,7 +708,11 @@ class ArbOrderManager:
             leg_a = self._wait_for_fill(oid_a, limit_sec, known_price=limit_price_a)
 
             if leg_a.filled:
-                # F-061: fill в лотах — конверсия не нужна (см. patch в execute_entry)
+                # F-041: executed_quantity в акциях → лоты (как в execute_entry)
+                if leg_a.quantity and leg_a.quantity > 0:
+                    lot = self._lot_sizes.get(symbol_a.split("@")[0], self._default_lot_size)
+                    if lot > 1 and leg_a.quantity % lot == 0 and leg_a.quantity > lots_a:
+                        leg_a.quantity = leg_a.quantity // lot
                 result["leg_a"] = leg_a
             else:
                 # Таймаут/отмена лимитки → МАРКЕТ-ФОЛБЭК (ключевое отличие от execute_entry)
