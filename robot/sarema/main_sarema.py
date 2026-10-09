@@ -134,6 +134,37 @@ def _load_state_file() -> dict:
         return {}
 
 
+@app.get("/bars")
+def bars(tf_min: int = 60, limit: int = 300):
+    """H1/TF бары с EMA и PSAR (по текущим параметрам конфига) — для графика в popup UI.
+    Источник: прогрев-CSV + живые бары в feed (если running). Только основная сессия."""
+    from sarema import sarema_engine as _eng
+    limit = max(50, min(int(limit), 1000))
+    tf = max(5, min(int(tf_min), 240))
+    try:
+        if feed.bars is not None and len(feed.bars):
+            df = feed.bars.copy()
+            df = df.rename(columns={'begin': 't'})
+        else:
+            df = _eng.load_m1(TICKER, DATA_DIR) if DATA_DIR else None
+            if df is None:
+                return {"bars": [], "indicators": [], "note": "no data"}
+        g, up, dn = _eng.build(df, f"{tf}min",
+                               cfg.get("sar_af0", 0.02), cfg.get("sar_step", 0.2),
+                               int(cfg.get("ema_n", 12)), cfg.get("sar_max", 0.2))
+        tail = g.tail(limit)
+        bars = [{"t": str(r.begin), "o": float(r.open), "h": float(r.high),
+                 "l": float(r.low), "c": float(r.close), "v": float(r.volume)}
+                for r in tail.itertuples()]
+        inds = [{"t": str(r.begin), "sar": float(r.sar), "ema": float(r.ema)}
+                for r in tail.itertuples()]
+        return {"ticker": TICKER, "tf_min": tf, "bars": bars, "indicators": inds,
+                "up": [bool(x) for x in up[-len(tail):]],
+                "dn": [bool(x) for x in dn[-len(tail):]]}
+    except Exception as e:
+        return {"bars": [], "indicators": [], "error": str(e)}
+
+
 @app.get("/journal")
 def journal():
     """Журнал позиций (логика таблицы Дмитрия): открытые сверху, закрытие дозаписывается.

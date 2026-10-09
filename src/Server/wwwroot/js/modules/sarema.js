@@ -87,6 +87,25 @@ function sarSwitchInstance(inst) {
             </div>
             <div class="text-secondary" style="font-size:11.5px;margin-bottom:4px">Штат бэктеста: AF0 0.02 · Step 0.2 · Max 0.2 · EMA 12 · стоп 3×ATR · H1 · полярность std (не менять — урок WF) · трейлинг PSAR · овернайты разрешены</div>
             <hr style="border-color:#2D2D44;margin:12px 0">
+            <!-- График инструмента: свечи + EMA + PSAR + позиции + трейлинг-стоп -->
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+                <strong>График <span id="sarChartTicker" style="color:var(--accent)"></span> — SAR/EMA</strong>
+                <div style="display:flex;gap:6px;align-items:center">
+                    <span class="text-secondary" style="font-size:12px">Таймфрейм</span>
+                    <select id="sarChartTf" class="input" style="width:70px" onchange="sarChartReload()">
+                        <option value="15">M15</option>
+                        <option value="30">M30</option>
+                        <option value="60" selected>H1</option>
+                        <option value="120">H2</option>
+                        <option value="240">H4</option>
+                    </select>
+                    <label class="text-secondary" style="font-size:12px;display:flex;gap:3px;align-items:center"><input type="checkbox" id="sarChkPos" checked onchange="sarChartReload()"> позиции</label>
+                    <label class="text-secondary" style="font-size:12px;display:flex;gap:3px;align-items:center"><input type="checkbox" id="sarChkStop" checked onchange="sarChartReload()"> стоп</label>
+                </div>
+            </div>
+            <canvas id="sarChart" width="900" height="300" style="width:100%;border:1px solid #2D2D44;border-radius:8px;background:#121826"></canvas>
+            <div id="sarChartInfo" class="text-secondary" style="font-size:11.5px;margin-top:4px"></div>
+            <hr style="border-color:#2D2D44;margin:12px 0">
             <!-- Торговый журнал: логика таблицы Дмитрия — открытые позиции сверху, закрытие дозаписывается справа -->
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
                 <strong>Журнал торговых операций</strong>
@@ -134,6 +153,7 @@ function sarSwitchInstance(inst) {
     window._sarPanelTimer = setInterval(() => sarUpdateLiveMetrics(inst), 2000);
     sarUpdateLiveMetrics(inst);
     setTimeout(() => sarLoadJournal(inst), 300);
+    setTimeout(() => sarChartLoad(inst), 150);
 }
 
 async function sarLoadPanelData(inst) {
@@ -627,6 +647,7 @@ document.addEventListener('click', function (ev) {
     const panel = document.getElementById('sarEditPanel');
     if (panel) { panel.remove(); sarPanelInst = null; }
     if (window._sarPanelTimer) { clearInterval(window._sarPanelTimer); window._sarPanelTimer = null; }
+    if (window._sarChartTimer) { clearInterval(window._sarChartTimer); window._sarChartTimer = null; }
 }, true);
 
 // селектор в шапке вкладки: открыть панель выбранного экземпляра
@@ -636,3 +657,174 @@ document.addEventListener('change', function (ev) {
 
 // автостарт polling (вкладка может быть скрыта — polling лёгкий, 2 req/5с)
 document.addEventListener('DOMContentLoaded', () => setTimeout(sarStartPolling, 1500));
+
+
+// ============================================================================
+// === График инструмента: свечи + EMA + PSAR + позиции + трейлинг-стоп ===
+// === Данные: /bars робота (прогрев + живые), позиции из /journal. ===
+// ============================================================================
+
+function sarChartReload() {
+    const inst = sarPanelInst;
+    if (!inst) return;
+    // перерисовать немедленно и перезагрузить данные с новым ТФ
+    sarChartLoad(inst);
+}
+
+async function sarChartLoad(inst) {
+    inst = inst || sarPanelInst;
+    if (!inst) return;
+    const cfg = sarCfg(inst);
+    const cv = document.getElementById('sarChart');
+    if (!cv) return;
+    const tickerEl = document.getElementById('sarChartTicker');
+    if (tickerEl) tickerEl.textContent = cfg.label;
+    const info = document.getElementById('sarChartInfo');
+    const tf = parseInt((document.getElementById('sarChartTf') || {}).value || '60', 10);
+    const showPos = !document.getElementById('sarChkPos') || document.getElementById('sarChkPos').checked;
+    const showStop = !document.getElementById('sarChkStop') || document.getElementById('sarChkStop').checked;
+    const ctx = cv.getContext('2d');
+    ctx.fillStyle = '#121826';
+    ctx.fillRect(0, 0, cv.width, cv.height);
+    ctx.fillStyle = '#8b96ad';
+    ctx.font = '12px sans-serif';
+    ctx.fillText('Загрузка графика...', 20, 24);
+
+    let data = null;
+    try {
+        const resp = await fetch(sarApi(inst) + '/bars?tf_min=' + tf + '&limit=300', {signal: AbortSignal.timeout(6000)});
+        data = await resp.json();
+    } catch (e) { /* робот оффлайн */ }
+    if (!cv.isConnected) return;                 // панель закрыли пока грузились
+    if (!data || !data.bars || !data.bars.length) {
+        ctx.fillStyle = '#121826'; ctx.fillRect(0, 0, cv.width, cv.height);
+        ctx.fillStyle = '#8b96ad'; ctx.font = '12px sans-serif';
+        ctx.fillText('Нет данных для графика' + (data && data.error ? ': ' + data.error : ' (робот оффлайн и прогрев пуст)'), 20, 24);
+        if (info) info.textContent = '';
+        return;
+    }
+    sarChartDraw(cv, cfg, data, tf, showPos, showStop, inst);
+    // автосводение каждые 30с пока панель открыта
+    if (window._sarChartTimer) clearInterval(window._sarChartTimer);
+    window._sarChartTimer = setInterval(() => {
+        if (!document.getElementById('sarChart')) { clearInterval(window._sarChartTimer); return; }
+        sarChartLoad(sarPanelInst);
+    }, 30000);
+}
+
+function sarChartDraw(cv, cfg, data, tf, showPos, showStop, inst) {
+    const ctx = cv.getContext('2d');
+    const W = cv.width, H = cv.height;
+    const PADL = 8, PADR = 64, PADT = 10, PADB = 22;
+    ctx.fillStyle = '#121826'; ctx.fillRect(0, 0, W, H);
+
+    const bars = data.bars;
+    const inds = data.indicators || [];
+    const n = bars.length;
+    // масштаб цены: свечи + индикаторы + стоп текущий
+    let lo = Infinity, hi = -Infinity;
+    bars.forEach(b => { lo = Math.min(lo, b.l); hi = Math.max(hi, b.h); });
+    inds.forEach(x => { if (x.sar) { lo = Math.min(lo, x.sar); hi = Math.max(hi, x.sar); } if (x.ema) { lo = Math.min(lo, x.ema); hi = Math.max(hi, x.ema); } });
+    let stopLine = null;
+    const info = document.getElementById('sarChartInfo');
+    const st = window['sarRobot_' + inst];
+    if (showStop && st && st.position && st.position.stop) stopLine = st.position.stop;
+    if (stopLine) { lo = Math.min(lo, stopLine); hi = Math.max(hi, stopLine); }
+    const pad = (hi - lo) * 0.05 || 1;
+    lo -= pad; hi += pad;
+    const X = i => PADL + (i + 0.5) * (W - PADL - PADR) / n;
+    const Y = p => PADT + (hi - p) / (hi - lo) * (H - PADT - PADB);
+
+    // сетка + шкала цены справа
+    ctx.strokeStyle = '#232d45'; ctx.fillStyle = '#8b96ad'; ctx.font = '10px sans-serif';
+    ctx.lineWidth = 1;
+    for (let k = 0; k <= 4; k++) {
+        const p = lo + (hi - lo) * k / 4;
+        const y = Y(p);
+        ctx.beginPath(); ctx.moveTo(PADL, y); ctx.lineTo(W - PADR, y); ctx.stroke();
+        ctx.fillText(p.toFixed(p > 1000 ? 0 : 1), W - PADR + 6, y + 3);
+    }
+
+    // свечи
+    const bw = Math.max(1.5, (W - PADL - PADR) / n * 0.62);
+    bars.forEach((b, i) => {
+        const up = b.c >= b.o;
+        ctx.strokeStyle = up ? '#3ecf8e' : '#ef6461';
+        ctx.fillStyle = up ? '#3ecf8e' : '#ef6461';
+        const x = X(i);
+        ctx.beginPath(); ctx.moveTo(x, Y(b.h)); ctx.lineTo(x, Y(b.l)); ctx.stroke();
+        const yo = Y(b.o), yc = Y(b.c);
+        ctx.fillRect(x - bw / 2, Math.min(yo, yc), bw, Math.max(1, Math.abs(yc - yo)));
+    });
+
+    // EMA
+    if (inds.length) {
+        ctx.strokeStyle = '#f5b04c'; ctx.lineWidth = 1.4;
+        ctx.beginPath();
+        inds.forEach((x, i) => { const y = Y(x.ema); i ? ctx.lineTo(X(i), y) : ctx.moveTo(X(i), y); });
+        ctx.stroke();
+        // PSAR — точки
+        ctx.fillStyle = '#4f8ff7';
+        inds.forEach((x, i) => { ctx.beginPath(); ctx.arc(X(i), Y(x.sar), 1.6, 0, 7); ctx.fill(); });
+    }
+
+    // позиции из журнала (открытая — линия входа+стоп до правого края; закрытые — вертикали вход/выход)
+    let posNote = '';
+    if (showPos) {
+        const open = (window['_sarJournalOpen'] || []);
+        const closed = (window['_sarJournalClosed'] || []);
+        const t0 = new Date(bars[0].t), t1 = new Date(bars[n - 1].t);
+        const xi = ts => {
+            const d = new Date(ts);
+            if (d < t0 || d > t1) return null;
+            return PADL + (d - t0) / ((t1 - t0) || 1) * (W - PADL - PADR);
+        };
+        // закрытые: маркеры входа (треуг) и выхода (кружок)
+        closed.forEach(r => {
+            let x1 = xi(r.date_open + 'T' + (r.time_open || '00:00:00'));
+            let x2 = r.close ? xi(r.close.date_close + 'T' + (r.close.time_close || '00:00:00')) : null;
+            const long = r.dir === 'L';
+            if (x1 != null) {
+                ctx.fillStyle = long ? '#3ecf8e' : '#ef6461';
+                ctx.beginPath();
+                if (long) { ctx.moveTo(x1, PADT + 4); ctx.lineTo(x1 - 5, PADT + 12); ctx.lineTo(x1 + 5, PADT + 12); }
+                else { ctx.moveTo(x1, PADT + 12); ctx.lineTo(x1 - 5, PADT + 4); ctx.lineTo(x1 + 5, PADT + 4); }
+                ctx.closePath(); ctx.fill();
+            }
+            if (x2 != null) {
+                ctx.strokeStyle = '#e6ebf5'; ctx.lineWidth = 1.2;
+                ctx.beginPath(); ctx.arc(x2, PADT + 8, 4, 0, 7); ctx.stroke();
+            }
+        });
+        // открытая: горизонталь входа (жёлтая) и трейлинг-стоп (красная пунктирная)
+        if (open.length) {
+            const r = open[0];
+            const yEntry = Y(r.entry);
+            ctx.strokeStyle = '#FFD700'; ctx.lineWidth = 1.3;
+            ctx.beginPath(); ctx.moveTo(PADL, yEntry); ctx.lineTo(W - PADR, yEntry); ctx.stroke();
+            ctx.fillStyle = '#FFD700'; ctx.font = '10px sans-serif';
+            ctx.fillText('вход ' + Number(r.entry).toFixed(2) + ' (' + r.dir + ' ' + r.qty + 'шт)', PADL + 4, yEntry - 4);
+            if (stopLine != null) {
+                const yStop = Y(stopLine);
+                ctx.strokeStyle = '#ef6461'; ctx.setLineDash([6, 4]); ctx.lineWidth = 1.4;
+                ctx.beginPath(); ctx.moveTo(PADL, yStop); ctx.lineTo(W - PADR, yStop); ctx.stroke();
+                ctx.setLineDash([]);
+                ctx.fillStyle = '#ef6461';
+                ctx.fillText('трейлинг-стоп ' + stopLine.toFixed(2), PADL + 4, yStop - 4);
+            }
+            posNote = ' · открытая ' + (r.dir === 'L' ? 'LONG' : 'SHORT') + ' ' + r.qty + ' шт показана';
+        } else if (stopLine != null && st && st.mode === 'running') {
+            // флэт — стоп-линию не рисуем (нет позиции)
+        }
+    }
+
+    // легенда + информация
+    ctx.fillStyle = '#f5b04c'; ctx.fillRect(W - PADR + 2, PADT + 2, 10, 2);
+    ctx.fillStyle = '#8b96ad'; ctx.font = '10px sans-serif';
+    ctx.fillText('EMA' + (data.tf_min >= 60 ? 'H' + data.tf_min / 60 : 'M' + data.tf_min), W - PADR + 16, PADT + 8);
+    ctx.fillStyle = '#4f8ff7'; ctx.beginPath(); ctx.arc(W - PADR + 6, PADT + 20, 2.5, 0, 7); ctx.fill();
+    ctx.fillStyle = '#8b96ad'; ctx.fillText('PSAR', W - PADR + 14, PADT + 23);
+    const lastB = bars[n - 1];
+    const tfLabel = tf < 60 ? 'M' + tf : 'H' + (tf / 60);
+    if (info) info.textContent = cfg.label + ' · ' + tfLabel + ' · ' + n + ' баров · закрыт ' + String(lastB.t).replace('T', ' ').slice(5, 16) + posNote;
+}
