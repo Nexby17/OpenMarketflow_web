@@ -1,1066 +1,1075 @@
 {
- "meta": {
-  "version": "1.0",
-  "updated": "2026-09-30",
-  "description": "Реестр фич OpenMarketflow: контроль, статусы, история логики. Дополнение к коммитам: фича шире коммита (несколько коммитов, тесты, решения).",
-  "rules": {
-   "statuses": [
-    "planned",
-    "in_progress",
-    "done",
-    "deprecated",
-    "rejected"
-   ],
-   "update_on": "ОБЯЗАТЕЛЬНО при КАЖДОМ коммите кода/конфигов: запись в feature_list.json (полная схема: commits, summary, logic, tests, changes) и записи в robot/PROGRESS.md + progress.md — тем же коммитом или docs-коммитом немедленно после. Правило вшито 23.09 после аудита: реестр отставал на 20 фич (F-018..F-037 были только в git-логе).",
-   "id_format": "F-XXX (сквозной, не переиспользовать)",
-   "discipline": "Новая фича или изменение логики существующей → запись в changes + при необходимости правка logic/status. Связка с PROGRESS.md: PROGRESS — дневник событий, feature_list — реестр текущего состояния (что есть и как работает).",
-   "numbering": "F-XXX строго последовательно; перед присвоением проверять занятость по git log --grep='F-0' (дубль F-032 случился 22–23.09; сегодняшний фикс зарегистрирован как F-038)."
-  }
- },
- "features": [
-  {
-   "id": "F-001",
-   "name": "Ручная коррекция позиции (/position/adjust + UI)",
-   "area": "robots",
-   "status": "done",
-   "owner": "main",
-   "version_introduced": "app.js v82",
-   "commits": [
-    "71992c2",
-    "287f092",
-    "a67b0a0"
-   ],
-   "summary": "Синхронизация позиции робота с брокером без ордеров: API на обоих OF-роботах + блок «⚙ КОРРЕКЦИЯ ПОЗИЦИИ» в edit-панелях UI",
-   "logic": {
-    "semantics": "абсолютная установка: lots со знаком (+N лонг / -N шорт / 0 флэт) + средняя цена входа",
-    "guards": [
-     "валидация price>0 при lots≠0",
-     "|lots|≤100",
-     "блок при entry-lock 60с",
-     "ордера НЕ отправляются"
-    ]
-   },
-   "tests": [
-    "curl +3/-3/FLAT/валидация PASS (оба робота)",
-    "CDP: панель→ввод→API→статус PASS"
-   ],
-   "changes": [
-    {
-     "date": "2026-08-24",
-     "action": "created",
-     "note": "по запросу Дмитрия"
+  "meta": {
+    "version": "1.0",
+    "updated": "2026-09-30",
+    "description": "Реестр фич OpenMarketflow: контроль, статусы, история логики. Дополнение к коммитам: фича шире коммита (несколько коммитов, тесты, решения).",
+    "rules": {
+      "statuses": [
+        "planned",
+        "in_progress",
+        "done",
+        "deprecated",
+        "rejected"
+      ],
+      "update_on": "ОБЯЗАТЕЛЬНО при КАЖДОМ коммите кода/конфигов: запись в feature_list.json (полная схема: commits, summary, logic, tests, changes) и записи в robot/PROGRESS.md + progress.md — тем же коммитом или docs-коммитом немедленно после. Правило вшито 23.09 после аудита: реестр отставал на 20 фич (F-018..F-037 были только в git-логе).",
+      "id_format": "F-XXX (сквозной, не переиспользовать)",
+      "discipline": "Новая фича или изменение логики существующей → запись в changes + при необходимости правка logic/status. Связка с PROGRESS.md: PROGRESS — дневник событий, feature_list — реестр текущего состояния (что есть и как работает).",
+      "numbering": "F-XXX строго последовательно; перед присвоением проверять занятость по git log --grep='F-0' (дубль F-032 случился 22–23.09; сегодняшний фикс зарегистрирован как F-038)."
     }
-   ]
   },
-  {
-   "id": "F-002",
-   "name": "Семантика кнопок управления (СТАРТ/СТОП/ПАУЗА)",
-   "area": "robots",
-   "status": "done",
-   "owner": "main",
-   "commits": [
-    "f06e2e8"
-   ],
-   "summary": "СТАРТ запускает/будит; СТОП полностью останавливает с закрытием всех позиций; ПАУЗА запрещает новые входы, но ведёт открытые позиции",
-   "logic": {
-    "pause_impl": "main_loop в paused: process_tick исполняет close_all/partial_tp, блокирует entry/average/pyramid",
-    "critical_fix": "раньше paused замораживал весь цикл — открытые позиции оставались без стоп-лосса"
-   },
-   "tests": [
-    "живые переходы оба робота: позиция жива в паузе → start будит → stop закрывает (manual_stop)"
-   ],
-   "changes": [
+  "features": [
     {
-     "date": "2026-08-25",
-     "action": "created",
-     "note": "семантика по ТЗ Дмитрия"
-    }
-   ]
-  },
-  {
-   "id": "F-003",
-   "name": "Автозапуск Windows",
-   "area": "infra",
-   "status": "done",
-   "owner": "main",
-   "commits": [
-    "004898b",
-    "d55c515"
-   ],
-   "summary": "scripts/autostart.ps1 + ярлык в Startup. Поднимает ТОЛЬКО сервер; торговые роботы не автозапускаются",
-   "logic": {
-    "policy": "paper-режим только по явному указанию Дмитрия; роботы запускаются вручную, режим выбирает Дмитрий",
-    "idempotent": true,
-    "log": "robot/logs/autostart.log"
-   },
-   "tests": [
-    "живой прогон после ребута: server+health OK, лог корректен"
-   ],
-   "changes": [
-    {
-     "date": "2026-08-25",
-     "action": "created",
-     "note": "первая версия с роботами в paper"
+      "id": "F-001",
+      "name": "Ручная коррекция позиции (/position/adjust + UI)",
+      "area": "robots",
+      "status": "done",
+      "owner": "main",
+      "version_introduced": "app.js v82",
+      "commits": [
+        "71992c2",
+        "287f092",
+        "a67b0a0"
+      ],
+      "summary": "Синхронизация позиции робота с брокером без ордеров: API на обоих OF-роботах + блок «⚙ КОРРЕКЦИЯ ПОЗИЦИИ» в edit-панелях UI",
+      "logic": {
+        "semantics": "абсолютная установка: lots со знаком (+N лонг / -N шорт / 0 флэт) + средняя цена входа",
+        "guards": [
+          "валидация price>0 при lots≠0",
+          "|lots|≤100",
+          "блок при entry-lock 60с",
+          "ордера НЕ отправляются"
+        ]
+      },
+      "tests": [
+        "curl +3/-3/FLAT/валидация PASS (оба робота)",
+        "CDP: панель→ввод→API→статус PASS"
+      ],
+      "changes": [
+        {
+          "date": "2026-08-24",
+          "action": "created",
+          "note": "по запросу Дмитрия"
+        }
+      ]
     },
     {
-     "date": "2026-08-25",
-     "action": "modified",
-     "note": "роботы УБРАНЫ из автозапуска по решению Дмитрия (paper без указания запрещён)"
-    }
-   ]
-  },
-  {
-   "id": "F-004",
-   "name": "Сохранение параметров роботов из UI (/params)",
-   "area": "robots",
-   "status": "done",
-   "owner": "main",
-   "commits": [
-    "f06e2e8"
-   ],
-   "summary": "Параметры из edit-панелей применяются в рантайме и пишутся в конфиг; починен кейс SiU6 «не сохраняются»",
-   "logic": {
-    "cfg_path": "от __file__ робота (не cwd — раньше конфиг плыл от папки запуска)",
-    "error_handling": "битый JSON → 400 + лог (раньше молча ронял соединение)",
-    "caveat": "при остановленном роботе UI-fetch не доходит — параметры меняются при живом роботе"
-   },
-   "tests": [
-    "запуск из чужой cwd → конфиг в правильном месте; lots/step_average в рантайме и на диске"
-   ],
-   "changes": [
-    {
-     "date": "2026-08-25",
-     "action": "fixed",
-     "note": "3 дефекта: cwd-путь, нет try/except, тихий фейл при офлайне робота"
-    }
-   ]
-  },
-  {
-   "id": "F-005",
-   "name": "Единый WebSocket-хаб Finam (finam_hub.py)",
-   "area": "data",
-   "status": "done",
-   "owner": "main",
-   "commits": [
-    "f87a0b1",
-    "d9645b5"
-   ],
-   "summary": "Один WS-коннект (wss://api.finam.ru/ws) на всех роботов: котировки/стакан/сделки/бары push-ом, без REST-квот",
-   "logic": {
-    "jwt": "автопродление за минуту до истечения (TTL 15 мин)",
-    "reconnect": "backoff 1→30с + resubscribe_all + outbox-буфер",
-    "fan_out": "подписчики через callbacks; BARS-ключ нормализован SYM:TF → SYM|TF (фикс d9645b5)",
-    "limits": "WS не расходует REST-квоты (200 rpm/метод)"
-   },
-   "tests": [
-    "60с: 1198 сообщений 0 ошибок",
-    "живой поток баров после фикса ключа"
-   ],
-   "changes": [
-    {
-     "date": "2026-08-18",
-     "action": "created",
-     "note": "Этап 1 миграции на новое API"
+      "id": "F-002",
+      "name": "Семантика кнопок управления (СТАРТ/СТОП/ПАУЗА)",
+      "area": "robots",
+      "status": "done",
+      "owner": "main",
+      "commits": [
+        "f06e2e8"
+      ],
+      "summary": "СТАРТ запускает/будит; СТОП полностью останавливает с закрытием всех позиций; ПАУЗА запрещает новые входы, но ведёт открытые позиции",
+      "logic": {
+        "pause_impl": "main_loop в paused: process_tick исполняет close_all/partial_tp, блокирует entry/average/pyramid",
+        "critical_fix": "раньше paused замораживал весь цикл — открытые позиции оставались без стоп-лосса"
+      },
+      "tests": [
+        "живые переходы оба робота: позиция жива в паузе → start будит → stop закрывает (manual_stop)"
+      ],
+      "changes": [
+        {
+          "date": "2026-08-25",
+          "action": "created",
+          "note": "семантика по ТЗ Дмитрия"
+        }
+      ]
     },
     {
-     "date": "2026-08-21",
-     "action": "fixed",
-     "note": "BARS fan-out ключ — бары не доходили до стратегий"
-    }
-   ]
-  },
-  {
-   "id": "F-006",
-   "name": "REST SDK 4.3.3 (finam_rest4 + orders_rest4 + patch_sdk)",
-   "area": "data",
-   "status": "done",
-   "owner": "main",
-   "commits": [
-    "3570399",
-    "c4d2111",
-    "628a3ed"
-   ],
-   "summary": "Ордера/аккаунты/история через официальный SDK; paper-эмуляция ордеров в lab; изоляция py4 (pip --target)",
-   "logic": {
-    "sdk_patches": [
-     "Position optional-поля",
-     "stale-JWT на /sessions",
-     "httpx-timeout 10с",
-     "Side SIDE_BUY/SELL",
-     "OrderType ORDER_TYPE_*"
-    ],
-    "paper_orders": "эмуляция по цене хаба, окно филлов 10 мин",
-    "real_orders": "только с явного одобрения Дмитрия"
-   },
-   "tests": [
-    "quote/account/quotas PASS",
-    "юнит Order с enum PASS"
-   ],
-   "changes": [
-    {
-     "date": "2026-08-18",
-     "action": "created",
-     "note": "Этапы 3-4 миграции"
+      "id": "F-003",
+      "name": "Автозапуск Windows",
+      "area": "infra",
+      "status": "done",
+      "owner": "main",
+      "commits": [
+        "004898b",
+        "d55c515"
+      ],
+      "summary": "scripts/autostart.ps1 + ярлык в Startup. Поднимает ТОЛЬКО сервер; торговые роботы не автозапускаются",
+      "logic": {
+        "policy": "paper-режим только по явному указанию Дмитрия; роботы запускаются вручную, режим выбирает Дмитрий",
+        "idempotent": true,
+        "log": "robot/logs/autostart.log"
+      },
+      "tests": [
+        "живой прогон после ребута: server+health OK, лог корректен"
+      ],
+      "changes": [
+        {
+          "date": "2026-08-25",
+          "action": "created",
+          "note": "первая версия с роботами в paper"
+        },
+        {
+          "date": "2026-08-25",
+          "action": "modified",
+          "note": "роботы УБРАНЫ из автозапуска по решению Дмитрия (paper без указания запрещён)"
+        }
+      ]
     },
     {
-     "date": "2026-08-21",
-     "action": "fixed",
-     "note": "Side и OrderType маппинги — все real-ордера падали на валидации"
-    }
-   ]
-  },
-  {
-   "id": "F-007",
-   "name": "ChartController (перереаботка графика)",
-   "area": "ui",
-   "status": "done",
-   "owner": "code-agent + main",
-   "version_introduced": "app.js v80",
-   "commits": [
-    "819e96c"
-   ],
-   "summary": "modules/chart.js: единая точка истины графика; все 4 live-канала через контроллер; смерть серии от update() в прошлое — исключена",
-   "logic": {
-    "invariants": [
-     "time-монотонность",
-     "OHLC-валидность",
-     "ticker/TF соответствие",
-     "epoch-версионирование"
-    ],
-    "viewport": "fitContent после истории; live не трогает viewport"
-   },
-   "tests": [
-    "CDP 14/14: 10 переключений TF, смена инструмента, 30с live, 0 Value is null"
-   ],
-   "changes": [
-    {
-     "date": "2026-08-17",
-     "action": "created",
-     "note": "goal 49649e5c, полная реорганизация по требованию Дмитрия"
-    }
-   ]
-  },
-  {
-   "id": "F-008",
-   "name": "Paper Lab (robot/paper_lab)",
-   "area": "infra",
-   "status": "deprecated",
-   "owner": "main",
-   "commits": [
-    "455da1b",
-    "819e96c",
-    "3570399",
-    "a25d89e"
-   ],
-   "summary": "Изолированная лаборатория для обкатки перед PORT: papercuts.md (журнал PC-XXX), 4 слоя изоляции",
-   "logic": {
-    "lifecycle": "эксперимент ≥1 торговый дня → вердикт PORT/DROP → перенос отдельным коммитом",
-    "verdicts": "PC-005 (новый стек) PORT выполнен; paper-режим лаборатории приостановлен решением Дмитрия 25.08"
-   },
-   "tests": [
-    "soak 32ч: 0 рестартов, 0 трейсбеков; вердикт ГОТОВ К PORT"
-   ],
-   "changes": [
-    {
-     "date": "2026-08-18",
-     "action": "created",
-     "note": "по требованию Дмитрия: отдельное пространство для paper-тестов"
+      "id": "F-004",
+      "name": "Сохранение параметров роботов из UI (/params)",
+      "area": "robots",
+      "status": "done",
+      "owner": "main",
+      "commits": [
+        "f06e2e8"
+      ],
+      "summary": "Параметры из edit-панелей применяются в рантайме и пишутся в конфиг; починен кейс SiU6 «не сохраняются»",
+      "logic": {
+        "cfg_path": "от __file__ робота (не cwd — раньше конфиг плыл от папки запуска)",
+        "error_handling": "битый JSON → 400 + лог (раньше молча ронял соединение)",
+        "caveat": "при остановленном роботе UI-fetch не доходит — параметры меняются при живом роботе"
+      },
+      "tests": [
+        "запуск из чужой cwd → конфиг в правильном месте; lots/step_average в рантайме и на диске"
+      ],
+      "changes": [
+        {
+          "date": "2026-08-25",
+          "action": "fixed",
+          "note": "3 дефекта: cwd-путь, нет try/except, тихий фейл при офлайне робота"
+        }
+      ]
     },
     {
-     "date": "2026-08-20",
-     "action": "deprecated",
-     "note": "paper-тесты заморожены: paper только по явному указанию"
-    }
-   ]
-  },
-  {
-   "id": "F-009",
-   "name": "Threaded API роботов",
-   "area": "robots",
-   "status": "done",
-   "owner": "main",
-   "commits": [
-    "c4d2111"
-   ],
-   "summary": "HTTPServer → ThreadingMixIn у обоих OF-роботов: поллинг UI больше не блокирует /stop и другие запросы",
-   "logic": {
-    "mro": "socketserver.ThreadingMixIn + HTTPServer, daemon_threads"
-   },
-   "tests": [
-    "10x /status за 2.4с без блокировок"
-   ],
-   "changes": [
+      "id": "F-005",
+      "name": "Единый WebSocket-хаб Finam (finam_hub.py)",
+      "area": "data",
+      "status": "done",
+      "owner": "main",
+      "commits": [
+        "f87a0b1",
+        "d9645b5"
+      ],
+      "summary": "Один WS-коннект (wss://api.finam.ru/ws) на всех роботов: котировки/стакан/сделки/бары push-ом, без REST-квот",
+      "logic": {
+        "jwt": "автопродление за минуту до истечения (TTL 15 мин)",
+        "reconnect": "backoff 1→30с + resubscribe_all + outbox-буфер",
+        "fan_out": "подписчики через callbacks; BARS-ключ нормализован SYM:TF → SYM|TF (фикс d9645b5)",
+        "limits": "WS не расходует REST-квоты (200 rpm/метод)"
+      },
+      "tests": [
+        "60с: 1198 сообщений 0 ошибок",
+        "живой поток баров после фикса ключа"
+      ],
+      "changes": [
+        {
+          "date": "2026-08-18",
+          "action": "created",
+          "note": "Этап 1 миграции на новое API"
+        },
+        {
+          "date": "2026-08-21",
+          "action": "fixed",
+          "note": "BARS fan-out ключ — бары не доходили до стратегий"
+        }
+      ]
+    },
     {
-     "date": "2026-08-21",
-     "action": "created",
-     "note": "найдено при разборе зависания /status"
-    }
-   ]
-  },
-  {
-   "id": "F-010",
-   "name": "Параметры панелей при остановленном роботе (/api/of/config прокси)",
-   "area": "ui",
-   "status": "done",
-   "owner": "main",
-   "version_introduced": "app.js v83",
-   "commits": [
-    "bfc92d0"
-   ],
-   "summary": "Открытие и сохранение панелей параметров Si/MX работает при мёртвом роботе: C#-прокси читает/пишет robot/of_config*.json напрямую",
-   "logic": {
-    "read_priority": "живой робот /status → иначе конфиг через сервер (раньше: фантазийные дефолты)",
-    "save_chain": "робот live → POST /params; робот offline → POST /api/of/config (merge в существующий json)",
-    "badge": "бейдж источника в шапке панели: 🟢 от робота / 💾 из конфига",
-    "root_cause_fixed": "панель читала только живой /status; при остановленном роботе показывала дефолты и save уходил в мёртвый порт"
-   },
-   "tests": [
-    "CDP-приёмка 5/5: мёртвый робот → панель из конфига (lots=3/step=99), бейдж, save=777 пережил переоткрытие",
-    "API-тест merge/rollback на of_mx"
-   ],
-   "changes": [
+      "id": "F-006",
+      "name": "REST SDK 4.3.3 (finam_rest4 + orders_rest4 + patch_sdk)",
+      "area": "data",
+      "status": "done",
+      "owner": "main",
+      "commits": [
+        "3570399",
+        "c4d2111",
+        "628a3ed"
+      ],
+      "summary": "Ордера/аккаунты/история через официальный SDK; paper-эмуляция ордеров в lab; изоляция py4 (pip --target)",
+      "logic": {
+        "sdk_patches": [
+          "Position optional-поля",
+          "stale-JWT на /sessions",
+          "httpx-timeout 10с",
+          "Side SIDE_BUY/SELL",
+          "OrderType ORDER_TYPE_*"
+        ],
+        "paper_orders": "эмуляция по цене хаба, окно филлов 10 мин",
+        "real_orders": "только с явного одобрения Дмитрия"
+      },
+      "tests": [
+        "quote/account/quotas PASS",
+        "юнит Order с enum PASS"
+      ],
+      "changes": [
+        {
+          "date": "2026-08-18",
+          "action": "created",
+          "note": "Этапы 3-4 миграции"
+        },
+        {
+          "date": "2026-08-21",
+          "action": "fixed",
+          "note": "Side и OrderType маппинги — все real-ордера падали на валидации"
+        }
+      ]
+    },
     {
-     "date": "2026-08-27",
-     "action": "created",
-     "note": "по репорту Дмитрия «кнопка сохранить ничего не сохраняет» — корень: чтение только с живого робота"
-    }
-   ]
-  },
-  {
-   "id": "F-011",
-   "name": "Видимая обратная связь кнопок управления роботами",
-   "area": "ui",
-   "status": "done",
-   "owner": "main",
-   "version_introduced": "app.js v84",
-   "commits": [
-    "см. git log F-011"
-   ],
-   "summary": "Кнопки ▶⏸⏹ всех роботов: результат действия виден всегда. Добавлена отсутствовавшая ofRobotApi (Si-кнопки молча кидали ReferenceError), toast-уведомления при недоступном роботе",
-   "logic": {
-    "root_causes_fixed": [
-     "ofRobotApi не существовала — клик ничего не делал визуально",
-     "ошибки fetch писались только в лог на вкладке Торговля"
-    ],
-    "feedback_chain": "живой робот → лог статуса; мёртвый → красный toast поверх любой вкладки + запись в лог"
-   },
-   "tests": [
-    "CDP: typeof ofRobotApi=function; клик при мёртвом роботе → тост «Робот SiU6 не отвечает» + запись в лог"
-   ],
-   "changes": [
+      "id": "F-007",
+      "name": "ChartController (перереаботка графика)",
+      "area": "ui",
+      "status": "done",
+      "owner": "code-agent + main",
+      "version_introduced": "app.js v80",
+      "commits": [
+        "819e96c"
+      ],
+      "summary": "modules/chart.js: единая точка истины графика; все 4 live-канала через контроллер; смерть серии от update() в прошлое — исключена",
+      "logic": {
+        "invariants": [
+          "time-монотонность",
+          "OHLC-валидность",
+          "ticker/TF соответствие",
+          "epoch-версионирование"
+        ],
+        "viewport": "fitContent после истории; live не трогает viewport"
+      },
+      "tests": [
+        "CDP 14/14: 10 переключений TF, смена инструмента, 30с live, 0 Value is null"
+      ],
+      "changes": [
+        {
+          "date": "2026-08-17",
+          "action": "created",
+          "note": "goal 49649e5c, полная реорганизация по требованию Дмитрия"
+        }
+      ]
+    },
     {
-     "date": "2026-08-27",
-     "action": "created",
-     "note": "по репорту Дмитрия: нажал Запустить и ничего не увидел"
-    }
-   ]
-  },
-  {
-   "id": "F-012",
-   "name": "Запуск робота одной кнопкой (process manager на сервере)",
-   "area": "infra",
-   "status": "done",
-   "owner": "main",
-   "version_introduced": "app.js v85",
-   "commits": [
-    "см. git log F-012"
-   ],
-   "summary": "Кнопка ▶ в UI сама поднимает python-процесс робота через C#-сервер (RobotProcessManager), ждёт health, потом включает торговлю. Никаких ручных консолей.",
-   "logic": {
-    "chain": "кнопка ▶ → POST /api/of/process/{of|of_mx}/start (spawn+health-wait ≤25с) → POST :508x/start → mode=running",
-    "logs": "console робота пишется в robot/logs/{of|of_mx}_console_YYYYMMDD.{log,err}",
-    "stop_semantics": "⏹ останавливает торговлю и закрывает позиции; процесс остаётся жить для быстрого рестарта",
-    "authonomy_principle": "по требованию Дмитрия: сигнал из UI достаточен, ничего вручную пинать не нужно"
-   },
-   "tests": [
-    "API: start→pid, mode=running; stop→stopped; полный цикл PASS",
-    "живой запуск MX: 17с до health OK"
-   ],
-   "changes": [
+      "id": "F-008",
+      "name": "Paper Lab (robot/paper_lab)",
+      "area": "infra",
+      "status": "deprecated",
+      "owner": "main",
+      "commits": [
+        "455da1b",
+        "819e96c",
+        "3570399",
+        "a25d89e"
+      ],
+      "summary": "Изолированная лаборатория для обкатки перед PORT: papercuts.md (журнал PC-XXX), 4 слоя изоляции",
+      "logic": {
+        "lifecycle": "эксперимент ≥1 торговый дня → вердикт PORT/DROP → перенос отдельным коммитом",
+        "verdicts": "PC-005 (новый стек) PORT выполнен; paper-режим лаборатории приостановлен решением Дмитрия 25.08"
+      },
+      "tests": [
+        "soak 32ч: 0 рестартов, 0 трейсбеков; вердикт ГОТОВ К PORT"
+      ],
+      "changes": [
+        {
+          "date": "2026-08-18",
+          "action": "created",
+          "note": "по требованию Дмитрия: отдельное пространство для paper-тестов"
+        },
+        {
+          "date": "2026-08-20",
+          "action": "deprecated",
+          "note": "paper-тесты заморожены: paper только по явному указанию"
+        }
+      ]
+    },
     {
-     "date": "2026-08-27",
-     "action": "created",
-     "note": "по требованию Дмитрия: «пришёл сигнал запуска — должно всё запускаться»"
+      "id": "F-009",
+      "name": "Threaded API роботов",
+      "area": "robots",
+      "status": "done",
+      "owner": "main",
+      "commits": [
+        "c4d2111"
+      ],
+      "summary": "HTTPServer → ThreadingMixIn у обоих OF-роботов: поллинг UI больше не блокирует /stop и другие запросы",
+      "logic": {
+        "mro": "socketserver.ThreadingMixIn + HTTPServer, daemon_threads"
+      },
+      "tests": [
+        "10x /status за 2.4с без блокировок"
+      ],
+      "changes": [
+        {
+          "date": "2026-08-21",
+          "action": "created",
+          "note": "найдено при разборе зависания /status"
+        }
+      ]
+    },
+    {
+      "id": "F-010",
+      "name": "Параметры панелей при остановленном роботе (/api/of/config прокси)",
+      "area": "ui",
+      "status": "done",
+      "owner": "main",
+      "version_introduced": "app.js v83",
+      "commits": [
+        "bfc92d0"
+      ],
+      "summary": "Открытие и сохранение панелей параметров Si/MX работает при мёртвом роботе: C#-прокси читает/пишет robot/of_config*.json напрямую",
+      "logic": {
+        "read_priority": "живой робот /status → иначе конфиг через сервер (раньше: фантазийные дефолты)",
+        "save_chain": "робот live → POST /params; робот offline → POST /api/of/config (merge в существующий json)",
+        "badge": "бейдж источника в шапке панели: 🟢 от робота / 💾 из конфига",
+        "root_cause_fixed": "панель читала только живой /status; при остановленном роботе показывала дефолты и save уходил в мёртвый порт"
+      },
+      "tests": [
+        "CDP-приёмка 5/5: мёртвый робот → панель из конфига (lots=3/step=99), бейдж, save=777 пережил переоткрытие",
+        "API-тест merge/rollback на of_mx"
+      ],
+      "changes": [
+        {
+          "date": "2026-08-27",
+          "action": "created",
+          "note": "по репорту Дмитрия «кнопка сохранить ничего не сохраняет» — корень: чтение только с живого робота"
+        }
+      ]
+    },
+    {
+      "id": "F-011",
+      "name": "Видимая обратная связь кнопок управления роботами",
+      "area": "ui",
+      "status": "done",
+      "owner": "main",
+      "version_introduced": "app.js v84",
+      "commits": [
+        "см. git log F-011"
+      ],
+      "summary": "Кнопки ▶⏸⏹ всех роботов: результат действия виден всегда. Добавлена отсутствовавшая ofRobotApi (Si-кнопки молча кидали ReferenceError), toast-уведомления при недоступном роботе",
+      "logic": {
+        "root_causes_fixed": [
+          "ofRobotApi не существовала — клик ничего не делал визуально",
+          "ошибки fetch писались только в лог на вкладке Торговля"
+        ],
+        "feedback_chain": "живой робот → лог статуса; мёртвый → красный toast поверх любой вкладки + запись в лог"
+      },
+      "tests": [
+        "CDP: typeof ofRobotApi=function; клик при мёртвом роботе → тост «Робот SiU6 не отвечает» + запись в лог"
+      ],
+      "changes": [
+        {
+          "date": "2026-08-27",
+          "action": "created",
+          "note": "по репорту Дмитрия: нажал Запустить и ничего не увидел"
+        }
+      ]
+    },
+    {
+      "id": "F-012",
+      "name": "Запуск робота одной кнопкой (process manager на сервере)",
+      "area": "infra",
+      "status": "done",
+      "owner": "main",
+      "version_introduced": "app.js v85",
+      "commits": [
+        "см. git log F-012"
+      ],
+      "summary": "Кнопка ▶ в UI сама поднимает python-процесс робота через C#-сервер (RobotProcessManager), ждёт health, потом включает торговлю. Никаких ручных консолей.",
+      "logic": {
+        "chain": "кнопка ▶ → POST /api/of/process/{of|of_mx}/start (spawn+health-wait ≤25с) → POST :508x/start → mode=running",
+        "logs": "console робота пишется в robot/logs/{of|of_mx}_console_YYYYMMDD.{log,err}",
+        "stop_semantics": "⏹ останавливает торговлю и закрывает позиции; процесс остаётся жить для быстрого рестарта",
+        "authonomy_principle": "по требованию Дмитрия: сигнал из UI достаточен, ничего вручную пинать не нужно"
+      },
+      "tests": [
+        "API: start→pid, mode=running; stop→stopped; полный цикл PASS",
+        "живой запуск MX: 17с до health OK"
+      ],
+      "changes": [
+        {
+          "date": "2026-08-27",
+          "action": "created",
+          "note": "по требованию Дмитрия: «пришёл сигнал запуска — должно всё запускаться»"
+        }
+      ]
+    },
+    {
+      "id": "F-013",
+      "area": "robot/orders",
+      "status": "done",
+      "owner": "main",
+      "commits": [
+        "df925e1"
+      ],
+      "summary": "PnL и fill-цены по фактическим сделкам брокера (VWAP по order_id), limit_price-фолбэк удалён",
+      "logic": "wait_fill: average_price -> get_today_trades VWAP -> None; исключена запись цены ЗАЯВКИ как цены ИСПОЛНЕНИЯ (фантомный PnL/ложные стопы)",
+      "tests": [
+        "unit 4/4 PASS (average_price, VWAP, None-no-limit, paper)",
+        "integration: get_today_trades live 41 сделка"
+      ],
+      "changes": [
+        "robot/finam_rest4.py: +get_today_trades()",
+        "robot/orders_rest4.py: wait_fill real-ветка переписана"
+      ]
+    },
+    {
+      "id": "F-014",
+      "area": "ui/robots-tab",
+      "status": "done",
+      "owner": "main",
+      "commits": [
+        "см. git log --grep=F-014"
+      ],
+      "summary": "Статус SiU6 OF-робота в таблице роботов: poll :5080 + живой рендер (была вечная заглушка «Не запущен»)",
+      "logic": "ofRobotPoll() каждые 2с -> ofRobot -> renderRobots показывает реальный mode",
+      "tests": [
+        "CDP live: Работает/Остановлен скриншоты",
+        "node --check OK"
+      ],
+      "changes": [
+        "app.js: +ofRobotPoll, 2с-цикл",
+        "index.html: v=86"
+      ]
+    },
+    {
+      "id": "F-015",
+      "name": "Суточная ротация лог-файлов роботов (DailyFileHandler)",
+      "area": "robot/logging",
+      "status": "done",
+      "owner": "main",
+      "commits": [
+        "4978f58"
+      ],
+      "summary": "Процессы, живущие через полночь, писали в файл с датой старта; теперь DailyFileHandler создаёт of[_mx]_<дата>.log за текущие сутки",
+      "tests": [
+        "живой MX-процесс через полночь: новый файл за следующие сутки"
+      ],
+      "changes": [
+        "robot/main_of.py, main_of_mx.py: DailyFileHandler вместо FileHandler"
+      ]
+    },
+    {
+      "id": "F-017",
+      "name": "Живая смена контракта OF-роботов (UI селект -> робот)",
+      "area": "robots/instrument-switch",
+      "status": "done",
+      "owner": "main",
+      "commits": [
+        "55ff947",
+        "85193d8"
+      ],
+      "summary": "Смена контракта из UI работает: живой POST /instrument (guarded stopped+FLAT, 409 иначе) с пересозданием стратегии/ордеров/hub-подписок и прогревом VWEMA; fallback в robot/.env при остановленном роботе; селект отражает живой symbol из /status",
+      "logic": "applyInstrument(): робот поднят -> POST :5080/:5081/instrument; running -> 409 -> сохранить в .env для следующего старта; робот не поднят -> /api/robot/update-instrument (пишет robot/.env, robot=of|of_mx). Общая логика пересборки в robot/instrument_switch.py",
+      "tests": [
+        "live: MXU6->MXZ6->MXU6 (подписки+VWEMA прогрев, история сохранена)",
+        "рестарт процесса: MXZ6 сохранился (env)",
+        "409 на running-роботе",
+        "Si unchanged path + регистр SiU6 сохранён",
+        "py_compile + node --check OK"
+      ],
+      "changes": [
+        "robot/main_of.py, main_of_mx.py: POST /instrument",
+        "robot/instrument_switch.py: общий rebuild",
+        "Program.cs: /api/robot/update-instrument -> robot/.env (был /root/... Linux-путь), robot=of|of_mx",
+        "app.js: applyInstrument + живой symbol в селекте, v=89..90"
+      ]
+    },
+    {
+      "id": "F-018",
+      "name": "Арб-роботы в UI + process manager",
+      "area": "robots/arb",
+      "status": "done",
+      "owner": "code",
+      "commits": [
+        "fa1fe72",
+        "33e6726",
+        "a11dadf"
+      ],
+      "summary": "Арбитражные роботы подключены к веб-UI и process manager'у сервера (статус 'process not raised' при мёртвом процессе); Finam gRPC wiring без автостарта — старт только Дмитрием.",
+      "logic": "UI → server process manager → python main_arb.py (:5090/:5091); Finam gRPC подписки quote/OB без автозапуска торговли.",
+      "tests": [
+        "см. коммиты"
+      ],
+      "note": "Запись восстановлена 23.09 из commit-сообщений при аудите реестра: в период 18–22.09 полная схема (logic/tests/changes) не велась."
+    },
+    {
+      "id": "F-019",
+      "name": "Быстрое исполнение арба (1+3+5)",
+      "area": "robots/arb-execution",
+      "status": "done",
+      "owner": "code",
+      "commits": [
+        "8438b60",
+        "af89317"
+      ],
+      "summary": "Fast execution: batch cancel, ожидание fill через REST, заливки через WS ORDERS — сокращение времени выставления/подтверждения.",
+      "logic": "batch cancel + REST fill wait + WS ORDERS fills.",
+      "tests": [
+        "см. коммиты"
+      ],
+      "note": "Запись восстановлена 23.09 из commit-сообщений при аудите реестра: в период 18–22.09 полная схема (logic/tests/changes) не велась."
+    },
+    {
+      "id": "F-020",
+      "name": "Per-instance arb config",
+      "area": "ui/arb-panels",
+      "status": "done",
+      "owner": "code",
+      "commits": [
+        "50d3a0a"
+      ],
+      "summary": "Карточка SBER писала конфиг GAZP-робота (общий файл). Конфиги разделены по инстансам: arb_config_gazp.json / arb_config_sber.json.",
+      "logic": "каждой карточке — свой конфиг-файл по инстансу.",
+      "tests": [
+        "см. коммиты"
+      ],
+      "note": "Запись восстановлена 23.09 из commit-сообщений при аудите реестра: в период 18–22.09 полная схема (logic/tests/changes) не велась."
+    },
+    {
+      "id": "F-021",
+      "name": "Надёжное сохранение arb-параметров",
+      "area": "ui/arb-panels",
+      "status": "done",
+      "owner": "code",
+      "commits": [
+        "7374287",
+        "b03a85b",
+        "6585c0e"
+      ],
+      "summary": "Save параметров: десятичные запятые, отбраковка null; dev-поля в sber-панели больше не теряются; повторное открытие панели показывает свежие параметры (race fix).",
+      "logic": "валидация на клиенте+сервере; перечитывание при открытии.",
+      "tests": [
+        "см. коммиты"
+      ],
+      "note": "Запись восстановлена 23.09 из commit-сообщений при аудите реестра: в период 18–22.09 полная схема (logic/tests/changes) не велась."
+    },
+    {
+      "id": "F-022",
+      "name": "Пара инструментов = личность инстанса",
+      "area": "ui/arb-panels",
+      "status": "done",
+      "owner": "code",
+      "commits": [
+        "86188bd",
+        "3db88b9"
+      ],
+      "summary": "Пара (GAZP/GZZ6, SBER/SRZ6) — идентичность инстанса, а не сохраняемый параметр; восстановлен глобальный arbPyData после рендера панели (корень кросс-инстансовых сохранений).",
+      "logic": "pair фиксируется на инстансе (env/файл), UI не сохраняет её как параметр.",
+      "tests": [
+        "см. коммиты"
+      ],
+      "note": "Запись восстановлена 23.09 из commit-сообщений при аудите реестра: в период 18–22.09 полная схема (logic/tests/changes) не велась."
+    },
+    {
+      "id": "F-023",
+      "name": "Per-instance arb state + журнал",
+      "area": "robots/arb",
+      "status": "done",
+      "owner": "code",
+      "commits": [
+        "c060014"
+      ],
+      "summary": "Разделение state-файлов по инстансам (arb_state_gazp/sber.json) + чистка журнала; фантомные −93.7K PnL исчезли.",
+      "logic": "state по инстансам, journal scope = instance.",
+      "tests": [
+        "см. коммиты"
+      ],
+      "note": "Запись восстановлена 23.09 из commit-сообщений при аудите реестра: в период 18–22.09 полная схема (logic/tests/changes) не велась."
+    },
+    {
+      "id": "F-024",
+      "name": "Кросс-панельные DOM коллизии + no-cache",
+      "area": "ui/arb-panels",
+      "status": "done",
+      "owner": "code",
+      "commits": [
+        "971a01c",
+        "1704ffb"
+      ],
+      "summary": "Открытие одной панели закрывало другие (DOM collision); браузер отдавал устаревший app.js — добавлен no-cache для JS (F-024b).",
+      "logic": "изоляция DOM-поддерев панелей; Cache-Control no-cache на статику.",
+      "tests": [
+        "см. коммиты"
+      ],
+      "note": "Запись восстановлена 23.09 из commit-сообщений при аудите реестра: в период 18–22.09 полная схема (logic/tests/changes) не велась."
+    },
+    {
+      "id": "F-025",
+      "name": "Warmup dev-истории с H1 + auth токеном",
+      "area": "robots/arb",
+      "status": "done",
+      "owner": "code",
+      "commits": [
+        "57994ec"
+      ],
+      "summary": "Предзаполнение истории отклонений от справедливой стоимости по H1-барам (мгновенный рабочий Z/dev после старта) + авторизация стрима клиентским токеном.",
+      "logic": "dev history warmup from H1 bars; stream auth via client token.",
+      "tests": [
+        "см. коммиты"
+      ],
+      "note": "Запись восстановлена 23.09 из commit-сообщений при аудите реестра: в период 18–22.09 полная схема (logic/tests/changes) не велась."
+    },
+    {
+      "id": "F-026",
+      "name": "arbNum не определена (корень «save не работает»)",
+      "area": "ui/arb-panels",
+      "status": "done",
+      "owner": "code",
+      "commits": [
+        "9c9d648"
+      ],
+      "summary": "Функция arbNum вызывалась, но нигде не была определена — корневая причина «кнопка save ничего не делает»; добавлена реализация.",
+      "logic": "численный парсинг параметров панелей.",
+      "tests": [
+        "см. коммиты"
+      ],
+      "note": "Запись восстановлена 23.09 из commit-сообщений при аудите реестра: в период 18–22.09 полная схема (logic/tests/changes) не велась."
+    },
+    {
+      "id": "F-027",
+      "name": "Самодиагностика кнопок save",
+      "area": "ui/arb-panels",
+      "status": "done",
+      "owner": "code",
+      "commits": [
+        "bc2b421"
+      ],
+      "summary": "Кнопки сохранения пишут лог клика + guard от устаревшего скрипта (stale-script) — сбой виден сразу.",
+      "logic": "click-log + stale-script guard.",
+      "tests": [
+        "см. коммиты"
+      ],
+      "note": "Запись восстановлена 23.09 из commit-сообщений при аудите реестра: в период 18–22.09 полная схема (logic/tests/changes) не велась."
+    },
+    {
+      "id": "F-028",
+      "name": "Дневной стоп не циклит убыток",
+      "area": "robots/arb",
+      "status": "done",
+      "owner": "code",
+      "commits": [
+        "73d0a79"
+      ],
+      "summary": "После daily stop робот больше не входит и тут же не закрывается по daily_stop_blocked: залипший daily_stop_active из state сбрасывается при загрузке; новые входы запрещены до авто-сброса 07:00 МСК.",
+      "logic": "daily_stop_active=False при load_state; вход блокируется, пока активен стоп.",
+      "tests": [
+        "см. коммиты"
+      ],
+      "note": "Запись восстановлена 23.09 из commit-сообщений при аудите реестра: в период 18–22.09 полная схема (logic/tests/changes) не велась."
+    },
+    {
+      "id": "F-029",
+      "name": "Подпись Instrument B (futures)",
+      "area": "ui/arb-panels",
+      "status": "done",
+      "owner": "code",
+      "commits": [
+        "6ddfae1"
+      ],
+      "summary": "Восстановлена подпись фьючерсного инструмента в панелях параметров арба.",
+      "logic": "UI label.",
+      "tests": [
+        "см. коммиты"
+      ],
+      "note": "Запись восстановлена 23.09 из commit-сообщений при аудите реестра: в период 18–22.09 полная схема (logic/tests/changes) не велась."
+    },
+    {
+      "id": "F-030",
+      "name": "Per-instance журналы карточек",
+      "area": "ui/arb-panels",
+      "status": "done",
+      "owner": "code",
+      "commits": [
+        "19da1de"
+      ],
+      "summary": "Фидбек save карточки SBER уходил в лог GAZP — журналы разделены по инстансам.",
+      "logic": "card log scope = instance.",
+      "tests": [
+        "см. коммиты"
+      ],
+      "note": "Запись восстановлена 23.09 из commit-сообщений при аудите реестра: в период 18–22.09 полная схема (logic/tests/changes) не велась."
+    },
+    {
+      "id": "F-031",
+      "name": "Dropdown выбора инструментов в панелях",
+      "area": "ui/arb-panels",
+      "status": "done",
+      "owner": "code",
+      "commits": [
+        "8fee6b3"
+      ],
+      "summary": "Восстановлены dropdown выбора инструментов в arb-панелях (как было до рефакторинга).",
+      "logic": "UI select.",
+      "tests": [
+        "см. коммиты"
+      ],
+      "note": "Запись восстановлена 23.09 из commit-сообщений при аудите реестра: в период 18–22.09 полная схема (logic/tests/changes) не велась."
+    },
+    {
+      "id": "F-032",
+      "name": "Save кнопки SBER/BR через addEventListener",
+      "area": "ui/arb-panels",
+      "status": "done",
+      "owner": "code",
+      "commits": [
+        "637f27e"
+      ],
+      "summary": "Перепривязка кнопок сохранения через addEventListener — защита от потери обработчиков при ре-рендере.",
+      "logic": "event listeners вместо inline.",
+      "tests": [
+        "см. коммиты"
+      ],
+      "note": "Запись восстановлена 23.09 из commit-сообщений при аудите реестра: в период 18–22.09 полная схема (logic/tests/changes) не велась."
+    },
+    {
+      "id": "F-033",
+      "name": "Единая arb-панель (один код, save по инстансу)",
+      "area": "ui/arb-panels",
+      "status": "done",
+      "owner": "code",
+      "commits": [
+        "ab225d4"
+      ],
+      "summary": "Унификация arb-панелей: один кодовый путь, сохранение всегда от открытого инстанса (ARB_INSTANCE_MAP, делегированный listener; suffix: акции @MISX, фьючерсы @RTSX).",
+      "logic": "единый шаблон панели + instance-scoped save.",
+      "tests": [
+        "см. коммиты"
+      ],
+      "note": "Запись восстановлена 23.09 из commit-сообщений при аудите реестра: в период 18–22.09 полная схема (logic/tests/changes) не велась."
+    },
+    {
+      "id": "F-034",
+      "name": "Видимая стрелка dropdown",
+      "area": "ui/arb-panels",
+      "status": "done",
+      "owner": "code",
+      "commits": [
+        "9eb4f8d"
+      ],
+      "summary": "Видимая стрелка у селектов инструментов arb-панелей.",
+      "logic": "CSS.",
+      "tests": [
+        "см. коммиты"
+      ],
+      "note": "Запись восстановлена 23.09 из commit-сообщений при аудите реестра: в период 18–22.09 полная схема (logic/tests/changes) не велась."
+    },
+    {
+      "id": "F-035",
+      "name": "Полная arb-панель восстановлена",
+      "area": "ui/arb-panels",
+      "status": "done",
+      "owner": "code",
+      "commits": [
+        "fa08c5f"
+      ],
+      "summary": "Центр, спред-метрики, калькулятор, L2, журнал — полный состав панели восстановлен после унификации (сверка с git show во избежание тихих пропаж секций).",
+      "logic": "см. коммит.",
+      "tests": [
+        "см. коммиты"
+      ],
+      "note": "Запись восстановлена 23.09 из commit-сообщений при аудите реестра: в период 18–22.09 полная схема (logic/tests/changes) не велась."
+    },
+    {
+      "id": "F-036",
+      "name": "Зеркалирование логов арба в общий event log",
+      "area": "robots/arb-logging",
+      "status": "done",
+      "owner": "code",
+      "commits": [
+        "62ac229"
+      ],
+      "summary": "События арб-роботов зеркалируются в общий журнал событий сервера.",
+      "logic": "log event mirror.",
+      "tests": [
+        "см. коммиты"
+      ],
+      "note": "Запись восстановлена 23.09 из commit-сообщений при аудите реестра: в период 18–22.09 полная схема (logic/tests/changes) не велась."
+    },
+    {
+      "id": "F-037",
+      "name": "Только общий event log для событий арба",
+      "area": "robots/arb-logging",
+      "status": "done",
+      "owner": "code",
+      "commits": [
+        "e9b2494"
+      ],
+      "summary": "Все события арб-роботов маршрутизируются только в общий event log (без дублей).",
+      "logic": "single sink routing.",
+      "tests": [
+        "см. коммиты"
+      ],
+      "note": "Запись восстановлена 23.09 из commit-сообщений при аудите реестра: в период 18–22.09 полная схема (logic/tests/changes) не велась."
+    },
+    {
+      "id": "F-038",
+      "name": "Тейк-профит по реализуемому PnL (стакан, FIFO по слоям)",
+      "area": "robots/arb",
+      "status": "done",
+      "owner": "main",
+      "commits": [
+        "b82ecd0"
+      ],
+      "summary": "Корень утечки: 147/149 выходов profit_target были отрицательными (avg −17,13 ₽) — тейк считался по last-принтам неликвидного GZZ6, а исполнение платило спред+slippage (≈15,5 ₽ круг). Теперь решение о выходе по реализуемому PnL: bid/ask из OB-трекеров − slippage 5bps − комиссии; протухший стакан (>3с) блокирует решение; подтверждение 3 тика подряд; закрытие FIFO по слоям (как набирали); групповой выход сохранён. Входы не тронуты (basis_calc остался на last). risk-exits без подтверждения. min_profit_type: rub/pct — по realizable, pts — легаси. Исправлен paper-факт: лимит ноги A по стороне (SELL→bid). Тесты: 42 PASS / 0 FAIL (25 старых + 9 новых).",
+      "logic": "_layer_realizable_pnl() читает ob_a/ob_b напрямую; check_exit() FIFO; _EXIT_CONFIRM_TICKS=3; _exit_qualifies() по типу порога",
+      "tests": [
+        "realizable math short/long — сходится до копейки",
+        "phantom print при неподвижном стакане → тейк НЕ срабатывает",
+        "stale OB → None, no exit",
+        "3-tick confirmation: 1–2 тик нет, 3-й срабатывает",
+        "FIFO: закрывается старейший слой"
+      ],
+      "changes": [
+        "robot/arb_common/strategy_arb.py: _layer_realizable_pnl, check_exit, _exit_qualifies, счётчики подтверждения",
+        "robot/main_arb.py: paper EXIT ALL по стакану, лимит A по стороне, лог факт vs предсказание",
+        "robot/test_arb_fair.py: +9 кейсов",
+        ".gitignore: robot/arb_state_*.json"
+      ],
+      "note": "Решение согласовано с Дмитрием 23.09: входы не трогать, закрывать слоями, доверять стакану, min_hold заменён подтверждением 3 тика."
+    },
+    {
+      "id": "F-039",
+      "name": "Честные фиды для механизма мин. профита (BR-календарь)",
+      "area": "robots/arb",
+      "status": "done",
+      "owner": "main",
+      "commits": [
+        "380d72f"
+      ],
+      "summary": "BRV6/BRZ6: механизм тейка F-032 (закрытие слоями при реализуемом ≥ 25 ₽) не имел данных для работы: финамовский quote-стрим в цикле UNAUTHENTICATED, ISS-fallback подпитывал только фьючерсную ногу B, а маршрутизация «last < 1000 → нога A» на календарном спреде лила BRZ6-принты в price_a BRV6 (last 95,3 vs OB 105,6) → фантомный Unrealized +47 ₽ при реализуемом −0,8 ₽/слой. Фиксы: (1) route_quote — тикер, затем ближайший OB mid ±2%, двусмысленные котировки отбрасываются; (2) ISS-подпитка фьючерсной ноги A; (3) last доверяется только при согласии со стаканом ±2% (обновление mid при расхождении); (4) карточка Unrealized показывает реализуемый PnL (те же цены, что решают тейк), last-вариант в localUnrealizedPnl. Входы не тронуты. Тесты: 53 PASS / 0 FAIL (11 новых F-039).",
+      "logic": "route_quote() в strategy_arb: ticker match → nearest OB mid ±2% → drop; _total_realizable() для карточки; main_arb: _moex_poller ветка futures-A + last-guard ±2% для обеих ног",
+      "tests": [
+        "route by ticker A/B",
+        "unknown symbol → nearest OB mid",
+        "ambiguous quote (между ног) → drop",
+        "empty OB → legacy magnitude heuristic",
+        "total_realizable = сумма слоёв / None при протухшем OB",
+        "card unrealizedPnl == realizableUnrealizedPnl",
+        "53/53 test_arb_fair"
+      ],
+      "changes": [
+        "robot/arb_common/strategy_arb.py: route_quote, _total_realizable, get_status card",
+        "robot/main_arb.py: _on_quote routing, _moex_poller futures-A + last-guard",
+        "robot/test_arb_fair.py: +11 кейсов F-039"
+      ],
+      "note": "Решение Дмитрия 25.09: «Робот должен закрывать позицию слоями при мин профит 25 руб — это единственный выход. Сделать»."
+    },
+    {
+      "id": "F-040",
+      "name": "Санитарный контроль стакана на входе (защита журнала от фантомных кругов)",
+      "area": "robots/arb",
+      "status": "done",
+      "owner": "main",
+      "commits": [
+        "58f4aa4"
+      ],
+      "summary": "Утром 28.09 в 07:14 Finam вернул мусорный OB GAZP (ask=93.00, затем bid=105.00 при рынке 98.6-99.8) — 12 фантомных кругов за 27 сек: paper-вход по 93.00 → мгновенный тейк по 105.00 (realizable +1183.56 ₽), по +1183.56 в журнал × 12 = +16 632 ₽ фантома, realized скакнул с −1 693 до +15 228. PnL считался честно от фантомных цен — ошибка была в доверии мусорному стакану на ВХОДЕ (выход защищён F-032/F-039). Фиксы: (1) _orderbook_sane() в check_entry: OB свежий (<5с), без креста, mid ±1% от last, спред ≤2% — иначе вход блокируется; до первого снапшота OB (ts=0) вход не блокируется (тесты/старое поведение); (2) в _ob_poller снапшоты с крестом (top_bid >= top_ask) отбрасываются с WARNING до попадания в трекер. Тесты: 59 PASS / 0 FAIL (6 новых F-040).",
+      "logic": "_orderbook_sane(max_dev_pct=1.0, max_spread_pct=2.0): freshness+cross+mid-vs-last+spread; check_entry гейт; OB-поллер дроп креста",
+      "tests": [
+        "crossed OB (93/105) → insane, entry blocked",
+        "sane OB → pass",
+        "last ±1.4% от mid → blocked",
+        "stale OB (>5с) → blocked",
+        "wide spread 3% → blocked",
+        "59/59 test_arb_fair"
+      ],
+      "changes": [
+        "robot/arb_common/strategy_arb.py: _orderbook_sane + гейт в check_entry",
+        "robot/main_arb.py: дроп crossed-снапшотов в _ob_poller",
+        "robot/test_arb_fair.py: +6 кейсов F-040"
+      ],
+      "note": "Кейс Дмитрия 28.09: «в торговом журнале ошибка подсчёта PnL» — журнал верен, ошибка была в ценах входа/выхода из мусорного OB."
+    },
+    {
+      "id": "F-041",
+      "name": "Фильтр направления (ЛОНГ/ШОРТ/ОБА) в OF-панелях — починка UI-провода",
+      "area": "robots/of",
+      "status": "done",
+      "owner": "main",
+      "commits": [
+        "15d5b9c"
+      ],
+      "summary": "28.09 Дмитрий: робот Si не переключается между шорт/лонг — торгует оба всегда. Причина: в app.js отсутствовали ОБЕ функции-обработчика Si-панели: ofSetDirection (селектор «Фильтр» ОБА/LONG/SHORT) и toggleOfSignal (чекбоксы CVD Trend/dm_wall/CVD Accel) — клики падали с ReferenceError в консоли, значение никуда не уходило; селектор визуально переключался (браузер меняет value до onchange), создавая ложное впечатление работы. Дополнительно ofRobotSaveFromPanel/ofMxRobotSaveFromPanel не включали direction_filter в save-body — «Сохранить» не переносило фильтр. Робот (strategy_of.py:751 check_entry) и REST /params direction_filter поддерживали полностью (проверено POST short/long/both на живой 5080 — принимает, status отражает, of_config.json сохраняет). Фиксы: (1) добавлены ofSetDirection + toggleOfSignal (POST OF_ROBOT_API /params, лог в Журнал); (2) оба save-body дополнены direction_filter из своих селекторов; (3) v=113, деплой в bin wwwroot. Проверка: node --check OK; сервер отдаёт v=113 с функциями; E2E API-эмуляция действий панели: direction_filter short→long→both на 5080, cfg on-disk = short после save, restored both. Браузерная проверка через autoglm не удалась (Extension did not connect in time) — попросить Дмитрия подтвердить Ctrl+F5 → селектор → журнал 'OF-Si direction filter → SHORT'."
+    },
+    {
+      "id": "F-042",
+      "name": "Самоисцеление импорта websockets в finam_hub (reconnect loop)",
+      "area": "infra/hub",
+      "status": "done",
+      "owner": "main",
+      "commits": [],
+      "summary": "28.09: повреждённый кэш модуля websockets в sys.modules не самоисцелялся при реконнектах (import вне while-loop). Зомби-процессы 5080/5081 (19100, 9684) спамили 'no attribute connect' (MX: 1336 за день). Зомби убиты; фикс pop+reimport запланирован в finam_hub.py.",
+      "date": "2026-09-28"
+    },
+    {
+      "id": "F-043",
+      "name": "Анти-дабл-клоз защита close_all (фантомные позиции)",
+      "area": "robots/of",
+      "status": "done",
+      "owner": "main",
+      "commits": [
+        "7eb550d"
+      ],
+      "summary": "28.09 DESYNC-шторм Si: close_all исполнился на бирже (IOC 2 лота @85748), но REST-ответ не вернулся за таймаут -> 'keeping position, will retry' -> повторный close -> неттинг превратил SHORT -2 в фантомный LONG +2. Фикс: guard перед ретраем close_all — сверка с брокером (FLAT -> синк робота, иначе блок ретрая), разряд guard после подтверждения, авто-истечение 5 мин. VA-stop: wait_fill 2с + запись сделки в историю + верификация при DP-fail. Тест tmp/test_f043_guard.py 7/7 PASS. Файлы: main_of.py + main_of_mx.py, коммит 7eb550d.",
+      "date": "2026-09-28"
+    },
+    {
+      "id": "F-044",
+      "name": "Порт фич OF-Si с server-main: HL-фильтр, VA-пауза усреднения, VP backfill, /restart",
+      "area": "robots/of",
+      "status": "done",
+      "owner": "main",
+      "commits": [],
+      "summary": "28.09 (план утверждён Дмитрием): с тест-ветки server-main перенесены 1) HL-фильтр входа only_strict (hl_filter/hl_window/hl_delta, get_hl_window, _hl_state с verdict both, гейт после direction_filter) — ca58913; 2) пауза усреднения вне VA (AVG VA BLOCK + catch-up при возврате) + УДАЛЁН жёсткий VA BREAKOUT STOP из main_loop — a6ec3b8; 3) VP backfill при старте (сегодняшние M1-бары с полуночи МСК в Volume Profile через REST get_bars); 4) POST /restart (FLAT-чек 409, cooldown 90с в of_restart_ts.json, detached-перезапуск: Windows helper 'старт нового → kill старого', Linux systemd-run) — 24e6cb2. Решения Дмитрия: (5) live /instrument сохранён, guard 409 (stopped+FLAT) уже был — подтверждён; (6) параметры of_config.json не менять. Документация: docs/ORDERFLOW_ROBOT_SI.md переписан под нашу hub-архитектуру (заменил устаревший orderflow-spec.md v3 от 19.06). Тест: tests/test_of_port_features.py 5/5 PASS (get_hl_window, вердикты, HL-гейт, VA-пауза+catch-up, дефолт OFF). py_compile 3 файлов OK. Не откатывать: F-043 guard, F-019 fast exec, threaded API, honest sync, PAUSE-семантика, ротация логов. || F-044b (dd89150): UI — HL-секция в Si-панели (чекбокс/окно/Δ/живой вердикт OFF|прогрев|any|SHORT only|LONG only|блок) + hl_* в save-body (v=114, деплой в bin); кнопка 🔄 в строке Si-робота (тосты на 409 позиция/429 cooldown); hardened ▶ — probe /health перед спавном (живой робот не дублируется); фикс Windows-helper рестарта: сначала kill старого, потом старт нового (порядок старт-первым дал двойного слушателя на 5080 через SO_REUSEADDR — живой инцидент 28.09: PID 32 старый код + PID 15496). Проверено: node --check, сервер отдаёт v=114 со всеми блоками, py_compile, порт освобождён (оба зависших процесса убиты при stopped+FLAT), hl_filter=true 24/150 включён в of_config.json.",
+      "date": "2026-09-28"
+    },
+    {
+      "id": "F-045",
+      "name": "Фикс краша check_entry у арб-роботов (тейк-профит не вычислялся)",
+      "area": "robots/arb",
+      "status": "done",
+      "owner": "main",
+      "commits": [
+        "2828c2b"
+      ],
+      "summary": "29.09: GAZP/GZZ6 SHORT 10×1 не закрывался по мин-профиту. Корень: check_entry обращался к signal['side'] при signal=None (слой открыт + dev_ann в мёртвой зоне) → TypeError каждый такой тик; check_exit стоит ПОСЛЕ check_entry в main loop и пропускался. 1107 крашей 10:00–10:30 (общий arb-лог; код общий для SBER/BR). Фикс: guard `signal and self.layers and ...`. Воспроизведено на реальном коде, тест tmp/test_f045_arb_entry.py 6/6 PASS. Нюанс: выходы считаются только в сессии 10:00–18:45 (use_evening=false); у GAZP-слоя min_profit=15₽ по реализуемому PnL (стакан − slippage − комиссии), панельный +59,8₽ считался от mid без издержек. Вступает в силу при следующем ▶ роботов. Активировано 29.09 12:11: перезапуск всех троих (GAZP live 2368, SBER 12560, BR 3868), слои из state 1-в-1, 0 крашей, realizable PnL обновляется.",
+      "date": "2026-09-29"
+    },
+    {
+      "id": "F-046",
+      "name": "JWT self-heal в FinamClient (убийца шторма token expired / слепоты тейка)",
+      "area": "robots/common",
+      "status": "done",
+      "owner": "main",
+      "commits": [
+        "61aedbc"
+      ],
+      "summary": "29.09: арб-роботы слепли по стакану → тейк не оценивался (realizable=null). Корень: FinamClient.__init__ брал JWT через asyncio.get_event_loop() — в не-main потоках (_reconnect_finam из OB-poller) молча падал; после ~15 мин JWT протухал и все gRPC-вызовы ловили UNAUTHENTICATED ('Missing auth token'/'Invalid access key'), reconnect не помогал (новый клиент — тот же баг). get_token() ещё и фолбэкал на raw-секрет (Finam его отвергает). Фикс: _refresh_jwt() — threading.Lock + monotonic-троттлинг 9 мин + asyncio.run() (свежий loop в любом потоке) + громкий лог ошибок; get_token() дёргает рефреш при отсутствии/старении JWT и НИКОГДА не возвращает raw-секрет. Тест tmp/test_f046_jwt.py 7/7 PASS (вкл. рефреш из не-main потока и сохранение старого JWT при сбое). Шторм 350 строк/мин → 0 после рестарта. Активирован рестартом 13:11-13:13.",
+      "date": "2026-09-29"
+    },
+    {
+      "id": "F-047",
+      "name": "Панель арб-роботов: Unrealized PnL = реализуемый PnL (критерий тейка)",
+      "area": "ui",
+      "status": "done",
+      "owner": "main",
+      "commits": [
+        "f3cfce9"
+      ],
+      "summary": "29.09: панель показывала +30,9 ₽ (last-оценка без издержек), а робот правильно держал позицию — критерий тейка realizableUnrealizedPnl был −19…−23 ₽ (стакан − slippage 5bps − комиссии < порога 15 ₽). Карточка теперь показывает realizable напрямую; при протухшем стакане (>3 с) — last-оценка с префиксом '~' и tooltip-пояснением. v=115, node --check OK, сервер отдаёт фикс (проверено :5050).",
+      "date": "2026-09-29"
+    },
+    {
+      "id": "F-048",
+      "name": "Торговый журнал арб-роботов = реальные цены брокера (REST GetTrades + auth-стримы + авторесинк)",
+      "area": "robots/arb",
+      "status": "done",
+      "owner": "main",
+      "commits": [
+        "0103c49"
+      ],
+      "summary": "29.09: журнал писал оценки (leg A — лимитка, leg B — стакан): gRPC SubscribeTrades/Orders/Bars/OrderBook падали без authorization metadata (12607 ошибок/день), в proto Order нет average_price → GetOrder подставлял лимитку. Реальный итог 29.09: −69.62₽ вместо +644.19₽ на бумаге (расхождения leg B до 126 пт). Фикс: (1) finam_compat.py — auth metadata во все 6 стримов; (2) orders_arb.py — _resolve_fill_price (trade sub → REST GetTrades wavg 6 дней → gRPC avg → оценка с флагом is_real), _get_broker_trades_window с force-refresh; (3) strategy_arb.py — ArbLayer.order_id_a/b + price_real_a/b, в trade-записи priceSource (broker/mixed/estimate) и id всех 4 ордеров, персист в save/load_state; (4) main_arb.py — авто-ресинк журнала при старте (resync_silent) + POST /reload-state; (5) finam_rest4.get_trades(start,end) с symbol; (6) новый robot/resync_journal.py (dry-run/--apply, матч ордеров к слоям по времени ±120с, фильтр чужих фьючерсов 9000–11000). Ресинк применён и подтверждён перезапуском 17:52 29.09 (API: realizedPnl=−69.62, все записи priceSource=broker).",
+      "date": "2026-09-29"
+    },
+    {
+      "id": "F-050",
+      "name": "Логирование POST /start /stop /pause во всех роботах + подтверждение кнопок в UI",
+      "area": "ui+robots/common",
+      "status": "done",
+      "owner": "main",
+      "commits": [
+        "0103c49"
+      ],
+      "summary": "30.09 два инцидента из одного корня: (a) «SiU6 остановлен и не стартует» — обработчик /start не логировался, запрос от вкладки не доходил/не виден; (b) открытая вкладка веб-UI сама слала POST /start при загрузке — включала остановленных роботов (OF Si успел набрать 4 лота лонга за 12:00–13:25). Фикс: (1) main_of.py / main_of_mx.py / main_arb.py — log.warning при каждой смене режима с переходом и размером позиции; (2) app.js — confirm() на Start/Pause/Stop и startViaServer (фоновая вкладка не может молча включить торговлю). py_compile 3/3 OK, node --check OK, тесты 25/25.",
+      "date": "2026-09-30"
+    },
+    {
+      "id": "F-051",
+      "name": "STARTUP reconciliation OF-роботов: сравнение с позицией из state вместо безусловного stopped",
+      "area": "robots/of",
+      "status": "done",
+      "owner": "main",
+      "commits": [
+        "42875bc"
+      ],
+      "summary": "30.09 инцидент: оба OF-робота (5080 Si, 5081 MX) после рестарта 13:26 сразу в mode=stopped с открытыми позициями. Причина: reconciliation (PORT-B1) любой ненулевой брокерский лот трактовал как «robot FLAT» и ставил stopped, даже когда позиция успешно восстановлена из state и совпадает с брокерской (Si 4 лота dir=1 avg=85055 = брокер; MX 1 лот dir=1 avg=227850 ≈ брокер 227875). Фикс main_of.py + main_of_mx.py: reconciliation сравнивает strategy.in_position/direction/total_lots с get_broker_position(): совпало → «position OK», mode сохраняется; robot FLAT + брокер в позиции → stopped (старое поведение); robot в позиции + брокер FLAT → stopped (новая ветка desync); оба в позиции, но lots/dir не совпадают → stopped. py_compile 2/2 OK, decision matrix 6/6, SMOKE PASS (test_of_port_features).",
+      "date": "2026-09-30"
+    },
+    {
+      "id": "F-052",
+      "name": "Запрет тейка по фантомному стакану: честный OB в ISS-поллере + sanity last-vs-OB + гейт тейка перед ордерами",
+      "area": "robots/arb",
+      "status": "done",
+      "owner": "main",
+      "commits": [
+        "bb551ae"
+      ],
+      "summary": "30.09 инцидент GZZ6 (запрос Дмитрия «запретил закрывать с убытком»): 15/18 сделок GAZP-арба reason=profit_target с PnL −2..−14₽, realized −103.15₽. Механизм: MOEX ISS-поллер в main_arb.py подставлял ask=LAST при OFFER=null (BID=10083/OFFER=null по GZZ6), gRPC-стакан в 429-бэкоффе → realizable считался по фантомному аску (15:31:27 realizable=+51.89 при last-unreal=−11.60, факт −13.10₽); на выходе sanity не было (на входе F-040 был). Фикс: (1) ISS-поллер обеих ног (futures A и B) пушит в OrderBookTracker только реальные строки — нет OFFER → best_ask=0 → realizable=None; (2) strategy_arb._layer_realizable_pnl: sanity last∈[bid×(1−eps), ask×(1+eps)], eps 0.5% фьючерсы / 0.2% акции, интервальная форма (широкий реальный стакан BR проходит); (3) гейт profit_target в _execute_single_exit перед отправкой ордеров — повторная квалификация по живому стакану (main_arb + arb_sber_sru6 + arb_br_calendar); (4) групповой гейт profit_target_total в exit_all: батч закрывается только если ВСЕ слои >0 и сумма ≥ порога; (5) F-052 ALARM в логе, если тейк всё же закрылся в минус. Риск-выходы (stop_loss/daily_stop_loss) и manual_stop/cleanup без гейта. Тесты: блок F-052 в test_arb_fair.py, 62/62 PASS. Торговая логика входов не тронута (R-002).",
+      "date": "2026-09-30"
+    },
+    {
+      "id": "F-055",
+      "title": "Order Flow BR robot (Brent): port from server-main + Windows/UI integration",
+      "status": "done",
+      "commit": "75e18a9,b7dd4b6,c4504d8,16917d2,17094d7,acab25a,e0833ae,06331fe",
+      "date": "2026-10-01",
+      "notes": "Two instances :5082 main/1225953 and :5083 edp/2049688; F-048 finam_compat streams; UI panel covers doc S11 fully + sync lots, close_price_all button, OB liquidity, start retries",
+      "summary": " | 06.10: Close % All 60/70 добавлены также в панели OF-Si и OF-MX (продолжение b9b48e3, бэкенд не менялся — формула порога универсальна)."
+    },
+    {
+      "id": "F-056",
+      "name": "Уборка проекта: −5,6 ГБ мусора, код-зомби удалён, папки-инстансы сжаты до examples",
+      "area": "infra/cleanup",
+      "status": "done",
+      "owner": "main",
+      "commits": [],
+      "summary": "01.10 (поручение Дмитрия, план утверждён): удалены soak-логи robot/*.txt (5398 МБ), *.phase1.bak, corrupt-state, paper_lab артефакты, .openclaw-build.log, of_pt.json. Из git: main_patch.py/collector.py/orders_grpc.py (без импортов; gRPC запрещён) и arb_lkoh_lku6/ (старая схема, не запускался). arb_sber_sru6/arb_br_calendar сжаты до *.example (устаревшие копии main_arb.py удалены; живые 5091/5092 используют корневой main_arb.py). robot/README.md — таблица под env-схему. Правило R-020: ротация логов 30 дней (удалено 53 файла/208 МБ). Боевые роботы не затронуты.",
+      "date": "2026-10-01"
+    },
+    {
+      "id": "F-057",
+      "name": "UI арба: базис из стакана (консистентен с реализуемым PnL) + обновление шапки/панели 1с вместо 3с/2с",
+      "area": "robots/arb",
+      "status": "done",
+      "owner": "main",
+      "date": "2026-10-01",
+      "summary": "Запрос Дмитрия 01.10: «Unrealized PnL отстаёт, не может быть такой PnL при такой раздвижке». Причина: Basis в шапке считался от last-цен (GZZ6 last-принт отстаёт от стакана на ~10-46 п.), а Unrealized PnL — реализуемый по стакану (F-047) — два разных источника. Fix: (1) arbClosingBasis() в app.js — базис закрытия по стакану по правилу позиции (SHORT: ask_B - bid_A*hedge; LONG: bid_B - ask_A*hedge; флэт: mid), tooltip с last-базисом, fallback «≈» при протухшем стакане; (2) серверное closing_basis в /status (strategy_arb._closing_basis, приоритет над клиентским расчётом, подхватится при рестарте робота — торговая логика не тронута, R-002); (3) таймеры 3с/2с -> 1с; (4) cache-buster v=116. Верификация: closing basis 298.0 по стакану при PnL -25.22 (сошлось с ручным пересчётом -25.24); тесты 64/64 PASS; скриншот-проверка браузером не выполнена (расширение AutoGLM не подключено) — требуется визуальная проверка Дмитрием (Ctrl+F5)."
+    },
+    {
+      "id": "F-058",
+      "name": "Гибрид C: раздвижечный вход (₽+σ гейты по стакану), послойный тейк по возврату раздвижки, dev-стоп 30₽, time-stop 240мин, маркет-фолбэк выхода",
+      "area": "robots/arb",
+      "status": "done",
+      "owner": "main",
+      "date": "2026-10-02",
+      "summary": "Решение Дмитрия по инциденту 01.10 (выбор варианта C с уточнением «выход послойно только при условии что раздвижка ниже/выше той что при входе на величину мин профита»). Вход: entry_dev_rub=15 (realizable_spread − fair ≥ 15₽) + entry_z_sigma=1.0 (dev − dev_mean ≥ 1σ шума) — оба по реализуемой раздвижке из стакана, а не по last (урок 11:52, гэп GZZ6 ~46п). Выход: exit_mode=spread — послойный тейк FIFO при rs ≤ entry_basis − min_profit (SHORT) / ≥ entry_basis + min_profit (LONG), 3 тика подтверждения (F-032), групповой profit_target_total отключён; dev-стоп: раздвижка хуже входной на 30₽ → exit_all; time-stop 240 мин → exit_all; при протухшем стакане решений нет. Исполнение выхода: execute_exit переписан — нога A лимитка leg_a_limit_seconds=2с → МАРКЕТ-фолбэк + допокупка остатка при частичном филле, нога B маркетом (инцидент 12:41: leg_a_timeout оставлял слой висеть сутки). /params whitelist + UI-панель (режим выхода, 5 полей гибрида). Конфиг GAZP: min_profit 20→10₽. Тесты F-058-1..13 + регресс: 78/78 PASS."
+    },
+    {
+      "id": "F-059",
+      "name": "Single-instance lock роботов + startup-always-stopped + Windows kill по порту",
+      "area": "robots/infra",
+      "status": "done",
+      "owner": "main",
+      "date": "2026-10-02",
+      "summary": "Инцидент: Дмитрий нажал Стоп у MXU6, робот продолжил торговать. Причина: 3 копии main_of_mx.py одновременно слушали :5081 (Windows допускает повторный bind при allow_reuse_address), Стоп гасил одну копию, зомби вели позицию (MXZ6 до -3, сироты на счёте). Фикс: (1) robot/instance_lock.py — файловый exclusive-lock per robot_key+port, второй экземпляр завершается sys.exit(2) до подписок/ордеров; (2) startup always stopped — после смерти процесса позиция восстанавливается в журнал, но торговля возобновляется только явным POST /start; (3) /api/instance/stop на Windows убивает LISTENING-процессы по порту через netstat+taskkill (раньше только Linux fuser — на Windows молча не работал); (4) StartAsync probe /health перед спавном — не создаёт копию, если порт уже отвечает живым роботом. Стейты MX/BR-edp сброшены в stopped/flat, сиротские позиции закрыты (MXZ6 вручную/др., BRX6 штатным /stop). Замок протестирован: 1-й захват OK, 2-й в child-процессе отклонён (rc=7), после release — OK."
+    },
+    {
+      "id": "F-060",
+      "name": "Идемпотентный /stop: mutex + re-check позиции под замком (все 4 робота)",
+      "area": "robots/infra",
+      "status": "done",
+      "owner": "main",
+      "date": "2026-10-02",
+      "summary": "Инцидент OF-Si 19:23:51: два POST /stop в одну секунду, оба прочли in_position до сброса → двойной close buy 6 + buy 6 против short 6 → инверсия в long 6. Фикс: _stop_lock в main_of/main_of_mx/main_of_br (тело /stop + re-check in_position под замком), в main_arb тело /stop под execution_lock с re-check strategy.layers. Статические проверки 11/11 PASS, py_compile 4/4. Роботы не перезапускались (R-001), фикс подхватится при следующем старте."
+    },
+    {
+      "id": "F-061",
+      "name": "OF-перпетьюал USDRUBF: точная копия OF-Si (main_of_perp.py, :5084) на вечный фьючерс USD/RUB",
+      "area": "robots/stocks",
+      "status": "in_progress",
+      "owner": "main",
+      "date": "2026-10-06",
+      "summary": "Запрос Дмитрия уточнён: «вечный Si» = USDRUBF@RTSX — бессрочный фьючерс на USD/RUB (MOEX perpetual, экспирации нет — ролловер не нужен, si_rollover.py удалён). main_of_perp.py — 1:1 копия main_of.py (1483 строки, дифф с нормализацией идентичности: 0 расхождений). Отличия только идентичность: logger robot_of_perp, config_of_perp.py, of_config_perp.json, of_state_perp.json (3 точки), of_restart_ts_perp.json, env ROBOT_SYMBOL_PERP/ROBOT_TICKER_PERP, дефолт USDRUBF@RTSX. Порт 5084. Инструмент проверен живым котиром (last 85.48, bid/ask 85.48/85.49, оборот 212K лотов, лот=1000 USD подтверждён turnover/price/volume≈1000). Конфиг: структурные параметры 1:1 с OF-Si; ценовые параметры пересчитаны /1000 (SiZ6 котируется в пунктах ×1000, USDRUBF — в рублях, тик 0.01): spread 33→0.033, step_average 36→0.036, min_profit 35→0.035, hl_delta 55→0.055, stop_loss 30000→30₽, vah_val_bin 53→0.053; объёмные пороги пересчитаны по фактическим объёмам (USDRUBF M5 ~1310 лотов vs SiZ6 ~20935, /16): cvd_accel_threshold 777→50, ob_min_lots 20→5; margin_per_lot 8500₽ (1000 USD × 85.5). Проверки: py_compile 3/3, identity-checks 33/33 PASS. Робот НЕ запускался (R-001). Запуск: python main_of_perp.py --port 5084. Живой котир получен после запуска — params можно править панелью позже (UI-интеграция по запросу). | 07.10 16:4x: (1) строка перенесена сразу под OF-Si (порядок: VP Grid Copy → OF-Si → OF-PERP → OF-MX → OF-BR×2); (2) двойной клик открывает ПОЛНУЮ панель параметров (клон MX-панели 37KB: индикаторы CVD/Accel/VAH-POC-VAL, фильтр направления, коррекция позиции, все параметры с PERP-масштабом step 0.001, VWEMA, VAH/VAL, торговый журнал с фильтрами и статистикой); (3) найден и устранён конфликт портов: 5084 занята SAREMA sar_sber → PERP перенесён на 5095 (Program.cs spec, robot --port default, OF_PERP_ROBOT_API); SAREMA-панель «нет связи 5084/5085» — превалид их роботов, не связано. node --check OK, MX-функции не тронуты (24/24 проверки), build OK, bin wwwroot обновлён. | 07.10 16:5x: добавлен HL Filter в панель PERP (клон OF-Si блока: чекбокс+окно 15+Δ 0.055₽+живой вердикт, поля в /params и живой апдейт) — «как у SiU6»; сохранение сделано устойчивым на старом сервере: робот → /api/of/config/of_perp → localStorage-очередь с автовыдачей роботу при старте (ofPerpRobotPoll), т.к. запущенный exe от 01.10 не содержит of_perp-маппинга (проверено бинарём) — полный конфиг-сейв заработает после рестарта сервера. HL-блок: node --check OK, 4/4 проверки. | 08.10: ПОДКЛЮЧЕН. Поднят процесс OF-PERP (PID 53616, :5095, режим stopped): WS Finam ok, котировки тикают (85.38→85.285, priceStale=false), счёт main сверен FLAT/FLAT. Лог разделён of_perp_YYYYMMDD.log (был общий с OF-Si). Сервер C# обновлён: 11920 (exe 01.10 без of_perp) → пересобран и перезапущен (PID 51240, health 200); в exe теперь spec of_perp :5095 + config-proxy of_perp. Кнопка ▶ OF-PERP в UI теперь работает (spec резолвится, процесс уже поднят — /start вернёт alreadyOnPort). Торговля НЕ включена (R-001) — старт по кнопке Дмитрия. Заодно: спека 5084→5095 дедуплицирована с sar_sber (коммит 2acf7b7)."
+    },
+    {
+      "id": "F-062",
+      "name": "OF-PERP: фикс торгового журнала — множитель лота (1000) и реальные цены слоёв в close-пакетах",
+      "area": "robots/stocks",
+      "status": "done",
+      "owner": "main",
+      "date": "2026-10-09",
+      "summary": "Запрос Дмитрия после дневной сессии: журнал показывал realizedPnL −71.71₽, брокер — другую цифру. Контракт USDRUBF сверен с MOEX ISS: LOTVOLUME=1000 USD, MINSTEP=0.01, STEPPRICE=10₽ (BUYSELLFEE 3.95, SCALPERFEE 1.98 за лот). Лента брокера (get_trades 2049688, 73 сделки USDRUBF@RTSX) → FIFO: 40 куплено vwap 84.9235 / 40 продано vwap 84.9265, позиция 0. GROSS +120₽; комиссия по конфигу 1.8₽/лот RT → NET +48₽ (с биржевым скальпер-сбором 1.98×2 −158₽ → −38.40₽; фактическая комиссия требует сверки по брокерскому отчёту). Два бага _record_broker_trade: (1) формула PnL без множителя лота 1000 — сделка +30₽ gross писалась как 0.03−1.8=−1.77₽ (у OF-Si не проявлялся: там цена = ₽/лот, множитель 1); (2) close_all/close_half брали дневную среднюю (avg 85.08) вместо реальных слоёв LIFO-очереди (~84.85) → перекос −1830₽ на пакете 8 лотов. Фикс: LOT_SIZE=1000 в main_of_perp.py; _record_broker_trade считает PnL = (exit−entry)×1000×lots−comm; _close_all теперь отдаёт 'layers' (снимок _lot_queue до сброса), close-пакеты пишутся по wavg слоёв. Реконсиляция: новая формула на ленте брокера даёт gross +120/net +48 — сходится с FIFO 1:1. Формат лога %.0f→%.2f (85.00 вместо 84.90). Коммит 6cd22b5. Подхват журнала — при рестарте робота (R-001, рестарт за Дмитрием)."
     }
-   ]
-  },
-  {
-   "id": "F-013",
-   "area": "robot/orders",
-   "status": "done",
-   "owner": "main",
-   "commits": [
-    "df925e1"
-   ],
-   "summary": "PnL и fill-цены по фактическим сделкам брокера (VWAP по order_id), limit_price-фолбэк удалён",
-   "logic": "wait_fill: average_price -> get_today_trades VWAP -> None; исключена запись цены ЗАЯВКИ как цены ИСПОЛНЕНИЯ (фантомный PnL/ложные стопы)",
-   "tests": [
-    "unit 4/4 PASS (average_price, VWAP, None-no-limit, paper)",
-    "integration: get_today_trades live 41 сделка"
-   ],
-   "changes": [
-    "robot/finam_rest4.py: +get_today_trades()",
-    "robot/orders_rest4.py: wait_fill real-ветка переписана"
-   ]
-  },
-  {
-   "id": "F-014",
-   "area": "ui/robots-tab",
-   "status": "done",
-   "owner": "main",
-   "commits": [
-    "см. git log --grep=F-014"
-   ],
-   "summary": "Статус SiU6 OF-робота в таблице роботов: poll :5080 + живой рендер (была вечная заглушка «Не запущен»)",
-   "logic": "ofRobotPoll() каждые 2с -> ofRobot -> renderRobots показывает реальный mode",
-   "tests": [
-    "CDP live: Работает/Остановлен скриншоты",
-    "node --check OK"
-   ],
-   "changes": [
-    "app.js: +ofRobotPoll, 2с-цикл",
-    "index.html: v=86"
-   ]
-  },
-  {
-   "id": "F-015",
-   "name": "Суточная ротация лог-файлов роботов (DailyFileHandler)",
-   "area": "robot/logging",
-   "status": "done",
-   "owner": "main",
-   "commits": [
-    "4978f58"
-   ],
-   "summary": "Процессы, живущие через полночь, писали в файл с датой старта; теперь DailyFileHandler создаёт of[_mx]_<дата>.log за текущие сутки",
-   "tests": [
-    "живой MX-процесс через полночь: новый файл за следующие сутки"
-   ],
-   "changes": [
-    "robot/main_of.py, main_of_mx.py: DailyFileHandler вместо FileHandler"
-   ]
-  },
-  {
-   "id": "F-017",
-   "name": "Живая смена контракта OF-роботов (UI селект -> робот)",
-   "area": "robots/instrument-switch",
-   "status": "done",
-   "owner": "main",
-   "commits": [
-    "55ff947",
-    "85193d8"
-   ],
-   "summary": "Смена контракта из UI работает: живой POST /instrument (guarded stopped+FLAT, 409 иначе) с пересозданием стратегии/ордеров/hub-подписок и прогревом VWEMA; fallback в robot/.env при остановленном роботе; селект отражает живой symbol из /status",
-   "logic": "applyInstrument(): робот поднят -> POST :5080/:5081/instrument; running -> 409 -> сохранить в .env для следующего старта; робот не поднят -> /api/robot/update-instrument (пишет robot/.env, robot=of|of_mx). Общая логика пересборки в robot/instrument_switch.py",
-   "tests": [
-    "live: MXU6->MXZ6->MXU6 (подписки+VWEMA прогрев, история сохранена)",
-    "рестарт процесса: MXZ6 сохранился (env)",
-    "409 на running-роботе",
-    "Si unchanged path + регистр SiU6 сохранён",
-    "py_compile + node --check OK"
-   ],
-   "changes": [
-    "robot/main_of.py, main_of_mx.py: POST /instrument",
-    "robot/instrument_switch.py: общий rebuild",
-    "Program.cs: /api/robot/update-instrument -> robot/.env (был /root/... Linux-путь), robot=of|of_mx",
-    "app.js: applyInstrument + живой symbol в селекте, v=89..90"
-   ]
-  },
-  {
-   "id": "F-018",
-   "name": "Арб-роботы в UI + process manager",
-   "area": "robots/arb",
-   "status": "done",
-   "owner": "code",
-   "commits": [
-    "fa1fe72",
-    "33e6726",
-    "a11dadf"
-   ],
-   "summary": "Арбитражные роботы подключены к веб-UI и process manager'у сервера (статус 'process not raised' при мёртвом процессе); Finam gRPC wiring без автостарта — старт только Дмитрием.",
-   "logic": "UI → server process manager → python main_arb.py (:5090/:5091); Finam gRPC подписки quote/OB без автозапуска торговли.",
-   "tests": [
-    "см. коммиты"
-   ],
-   "note": "Запись восстановлена 23.09 из commit-сообщений при аудите реестра: в период 18–22.09 полная схема (logic/tests/changes) не велась."
-  },
-  {
-   "id": "F-019",
-   "name": "Быстрое исполнение арба (1+3+5)",
-   "area": "robots/arb-execution",
-   "status": "done",
-   "owner": "code",
-   "commits": [
-    "8438b60",
-    "af89317"
-   ],
-   "summary": "Fast execution: batch cancel, ожидание fill через REST, заливки через WS ORDERS — сокращение времени выставления/подтверждения.",
-   "logic": "batch cancel + REST fill wait + WS ORDERS fills.",
-   "tests": [
-    "см. коммиты"
-   ],
-   "note": "Запись восстановлена 23.09 из commit-сообщений при аудите реестра: в период 18–22.09 полная схема (logic/tests/changes) не велась."
-  },
-  {
-   "id": "F-020",
-   "name": "Per-instance arb config",
-   "area": "ui/arb-panels",
-   "status": "done",
-   "owner": "code",
-   "commits": [
-    "50d3a0a"
-   ],
-   "summary": "Карточка SBER писала конфиг GAZP-робота (общий файл). Конфиги разделены по инстансам: arb_config_gazp.json / arb_config_sber.json.",
-   "logic": "каждой карточке — свой конфиг-файл по инстансу.",
-   "tests": [
-    "см. коммиты"
-   ],
-   "note": "Запись восстановлена 23.09 из commit-сообщений при аудите реестра: в период 18–22.09 полная схема (logic/tests/changes) не велась."
-  },
-  {
-   "id": "F-021",
-   "name": "Надёжное сохранение arb-параметров",
-   "area": "ui/arb-panels",
-   "status": "done",
-   "owner": "code",
-   "commits": [
-    "7374287",
-    "b03a85b",
-    "6585c0e"
-   ],
-   "summary": "Save параметров: десятичные запятые, отбраковка null; dev-поля в sber-панели больше не теряются; повторное открытие панели показывает свежие параметры (race fix).",
-   "logic": "валидация на клиенте+сервере; перечитывание при открытии.",
-   "tests": [
-    "см. коммиты"
-   ],
-   "note": "Запись восстановлена 23.09 из commit-сообщений при аудите реестра: в период 18–22.09 полная схема (logic/tests/changes) не велась."
-  },
-  {
-   "id": "F-022",
-   "name": "Пара инструментов = личность инстанса",
-   "area": "ui/arb-panels",
-   "status": "done",
-   "owner": "code",
-   "commits": [
-    "86188bd",
-    "3db88b9"
-   ],
-   "summary": "Пара (GAZP/GZZ6, SBER/SRZ6) — идентичность инстанса, а не сохраняемый параметр; восстановлен глобальный arbPyData после рендера панели (корень кросс-инстансовых сохранений).",
-   "logic": "pair фиксируется на инстансе (env/файл), UI не сохраняет её как параметр.",
-   "tests": [
-    "см. коммиты"
-   ],
-   "note": "Запись восстановлена 23.09 из commit-сообщений при аудите реестра: в период 18–22.09 полная схема (logic/tests/changes) не велась."
-  },
-  {
-   "id": "F-023",
-   "name": "Per-instance arb state + журнал",
-   "area": "robots/arb",
-   "status": "done",
-   "owner": "code",
-   "commits": [
-    "c060014"
-   ],
-   "summary": "Разделение state-файлов по инстансам (arb_state_gazp/sber.json) + чистка журнала; фантомные −93.7K PnL исчезли.",
-   "logic": "state по инстансам, journal scope = instance.",
-   "tests": [
-    "см. коммиты"
-   ],
-   "note": "Запись восстановлена 23.09 из commit-сообщений при аудите реестра: в период 18–22.09 полная схема (logic/tests/changes) не велась."
-  },
-  {
-   "id": "F-024",
-   "name": "Кросс-панельные DOM коллизии + no-cache",
-   "area": "ui/arb-panels",
-   "status": "done",
-   "owner": "code",
-   "commits": [
-    "971a01c",
-    "1704ffb"
-   ],
-   "summary": "Открытие одной панели закрывало другие (DOM collision); браузер отдавал устаревший app.js — добавлен no-cache для JS (F-024b).",
-   "logic": "изоляция DOM-поддерев панелей; Cache-Control no-cache на статику.",
-   "tests": [
-    "см. коммиты"
-   ],
-   "note": "Запись восстановлена 23.09 из commit-сообщений при аудите реестра: в период 18–22.09 полная схема (logic/tests/changes) не велась."
-  },
-  {
-   "id": "F-025",
-   "name": "Warmup dev-истории с H1 + auth токеном",
-   "area": "robots/arb",
-   "status": "done",
-   "owner": "code",
-   "commits": [
-    "57994ec"
-   ],
-   "summary": "Предзаполнение истории отклонений от справедливой стоимости по H1-барам (мгновенный рабочий Z/dev после старта) + авторизация стрима клиентским токеном.",
-   "logic": "dev history warmup from H1 bars; stream auth via client token.",
-   "tests": [
-    "см. коммиты"
-   ],
-   "note": "Запись восстановлена 23.09 из commit-сообщений при аудите реестра: в период 18–22.09 полная схема (logic/tests/changes) не велась."
-  },
-  {
-   "id": "F-026",
-   "name": "arbNum не определена (корень «save не работает»)",
-   "area": "ui/arb-panels",
-   "status": "done",
-   "owner": "code",
-   "commits": [
-    "9c9d648"
-   ],
-   "summary": "Функция arbNum вызывалась, но нигде не была определена — корневая причина «кнопка save ничего не делает»; добавлена реализация.",
-   "logic": "численный парсинг параметров панелей.",
-   "tests": [
-    "см. коммиты"
-   ],
-   "note": "Запись восстановлена 23.09 из commit-сообщений при аудите реестра: в период 18–22.09 полная схема (logic/tests/changes) не велась."
-  },
-  {
-   "id": "F-027",
-   "name": "Самодиагностика кнопок save",
-   "area": "ui/arb-panels",
-   "status": "done",
-   "owner": "code",
-   "commits": [
-    "bc2b421"
-   ],
-   "summary": "Кнопки сохранения пишут лог клика + guard от устаревшего скрипта (stale-script) — сбой виден сразу.",
-   "logic": "click-log + stale-script guard.",
-   "tests": [
-    "см. коммиты"
-   ],
-   "note": "Запись восстановлена 23.09 из commit-сообщений при аудите реестра: в период 18–22.09 полная схема (logic/tests/changes) не велась."
-  },
-  {
-   "id": "F-028",
-   "name": "Дневной стоп не циклит убыток",
-   "area": "robots/arb",
-   "status": "done",
-   "owner": "code",
-   "commits": [
-    "73d0a79"
-   ],
-   "summary": "После daily stop робот больше не входит и тут же не закрывается по daily_stop_blocked: залипший daily_stop_active из state сбрасывается при загрузке; новые входы запрещены до авто-сброса 07:00 МСК.",
-   "logic": "daily_stop_active=False при load_state; вход блокируется, пока активен стоп.",
-   "tests": [
-    "см. коммиты"
-   ],
-   "note": "Запись восстановлена 23.09 из commit-сообщений при аудите реестра: в период 18–22.09 полная схема (logic/tests/changes) не велась."
-  },
-  {
-   "id": "F-029",
-   "name": "Подпись Instrument B (futures)",
-   "area": "ui/arb-panels",
-   "status": "done",
-   "owner": "code",
-   "commits": [
-    "6ddfae1"
-   ],
-   "summary": "Восстановлена подпись фьючерсного инструмента в панелях параметров арба.",
-   "logic": "UI label.",
-   "tests": [
-    "см. коммиты"
-   ],
-   "note": "Запись восстановлена 23.09 из commit-сообщений при аудите реестра: в период 18–22.09 полная схема (logic/tests/changes) не велась."
-  },
-  {
-   "id": "F-030",
-   "name": "Per-instance журналы карточек",
-   "area": "ui/arb-panels",
-   "status": "done",
-   "owner": "code",
-   "commits": [
-    "19da1de"
-   ],
-   "summary": "Фидбек save карточки SBER уходил в лог GAZP — журналы разделены по инстансам.",
-   "logic": "card log scope = instance.",
-   "tests": [
-    "см. коммиты"
-   ],
-   "note": "Запись восстановлена 23.09 из commit-сообщений при аудите реестра: в период 18–22.09 полная схема (logic/tests/changes) не велась."
-  },
-  {
-   "id": "F-031",
-   "name": "Dropdown выбора инструментов в панелях",
-   "area": "ui/arb-panels",
-   "status": "done",
-   "owner": "code",
-   "commits": [
-    "8fee6b3"
-   ],
-   "summary": "Восстановлены dropdown выбора инструментов в arb-панелях (как было до рефакторинга).",
-   "logic": "UI select.",
-   "tests": [
-    "см. коммиты"
-   ],
-   "note": "Запись восстановлена 23.09 из commit-сообщений при аудите реестра: в период 18–22.09 полная схема (logic/tests/changes) не велась."
-  },
-  {
-   "id": "F-032",
-   "name": "Save кнопки SBER/BR через addEventListener",
-   "area": "ui/arb-panels",
-   "status": "done",
-   "owner": "code",
-   "commits": [
-    "637f27e"
-   ],
-   "summary": "Перепривязка кнопок сохранения через addEventListener — защита от потери обработчиков при ре-рендере.",
-   "logic": "event listeners вместо inline.",
-   "tests": [
-    "см. коммиты"
-   ],
-   "note": "Запись восстановлена 23.09 из commit-сообщений при аудите реестра: в период 18–22.09 полная схема (logic/tests/changes) не велась."
-  },
-  {
-   "id": "F-033",
-   "name": "Единая arb-панель (один код, save по инстансу)",
-   "area": "ui/arb-panels",
-   "status": "done",
-   "owner": "code",
-   "commits": [
-    "ab225d4"
-   ],
-   "summary": "Унификация arb-панелей: один кодовый путь, сохранение всегда от открытого инстанса (ARB_INSTANCE_MAP, делегированный listener; suffix: акции @MISX, фьючерсы @RTSX).",
-   "logic": "единый шаблон панели + instance-scoped save.",
-   "tests": [
-    "см. коммиты"
-   ],
-   "note": "Запись восстановлена 23.09 из commit-сообщений при аудите реестра: в период 18–22.09 полная схема (logic/tests/changes) не велась."
-  },
-  {
-   "id": "F-034",
-   "name": "Видимая стрелка dropdown",
-   "area": "ui/arb-panels",
-   "status": "done",
-   "owner": "code",
-   "commits": [
-    "9eb4f8d"
-   ],
-   "summary": "Видимая стрелка у селектов инструментов arb-панелей.",
-   "logic": "CSS.",
-   "tests": [
-    "см. коммиты"
-   ],
-   "note": "Запись восстановлена 23.09 из commit-сообщений при аудите реестра: в период 18–22.09 полная схема (logic/tests/changes) не велась."
-  },
-  {
-   "id": "F-035",
-   "name": "Полная arb-панель восстановлена",
-   "area": "ui/arb-panels",
-   "status": "done",
-   "owner": "code",
-   "commits": [
-    "fa08c5f"
-   ],
-   "summary": "Центр, спред-метрики, калькулятор, L2, журнал — полный состав панели восстановлен после унификации (сверка с git show во избежание тихих пропаж секций).",
-   "logic": "см. коммит.",
-   "tests": [
-    "см. коммиты"
-   ],
-   "note": "Запись восстановлена 23.09 из commit-сообщений при аудите реестра: в период 18–22.09 полная схема (logic/tests/changes) не велась."
-  },
-  {
-   "id": "F-036",
-   "name": "Зеркалирование логов арба в общий event log",
-   "area": "robots/arb-logging",
-   "status": "done",
-   "owner": "code",
-   "commits": [
-    "62ac229"
-   ],
-   "summary": "События арб-роботов зеркалируются в общий журнал событий сервера.",
-   "logic": "log event mirror.",
-   "tests": [
-    "см. коммиты"
-   ],
-   "note": "Запись восстановлена 23.09 из commit-сообщений при аудите реестра: в период 18–22.09 полная схема (logic/tests/changes) не велась."
-  },
-  {
-   "id": "F-037",
-   "name": "Только общий event log для событий арба",
-   "area": "robots/arb-logging",
-   "status": "done",
-   "owner": "code",
-   "commits": [
-    "e9b2494"
-   ],
-   "summary": "Все события арб-роботов маршрутизируются только в общий event log (без дублей).",
-   "logic": "single sink routing.",
-   "tests": [
-    "см. коммиты"
-   ],
-   "note": "Запись восстановлена 23.09 из commit-сообщений при аудите реестра: в период 18–22.09 полная схема (logic/tests/changes) не велась."
-  },
-  {
-   "id": "F-038",
-   "name": "Тейк-профит по реализуемому PnL (стакан, FIFO по слоям)",
-   "area": "robots/arb",
-   "status": "done",
-   "owner": "main",
-   "commits": [
-    "b82ecd0"
-   ],
-   "summary": "Корень утечки: 147/149 выходов profit_target были отрицательными (avg −17,13 ₽) — тейк считался по last-принтам неликвидного GZZ6, а исполнение платило спред+slippage (≈15,5 ₽ круг). Теперь решение о выходе по реализуемому PnL: bid/ask из OB-трекеров − slippage 5bps − комиссии; протухший стакан (>3с) блокирует решение; подтверждение 3 тика подряд; закрытие FIFO по слоям (как набирали); групповой выход сохранён. Входы не тронуты (basis_calc остался на last). risk-exits без подтверждения. min_profit_type: rub/pct — по realizable, pts — легаси. Исправлен paper-факт: лимит ноги A по стороне (SELL→bid). Тесты: 42 PASS / 0 FAIL (25 старых + 9 новых).",
-   "logic": "_layer_realizable_pnl() читает ob_a/ob_b напрямую; check_exit() FIFO; _EXIT_CONFIRM_TICKS=3; _exit_qualifies() по типу порога",
-   "tests": [
-    "realizable math short/long — сходится до копейки",
-    "phantom print при неподвижном стакане → тейк НЕ срабатывает",
-    "stale OB → None, no exit",
-    "3-tick confirmation: 1–2 тик нет, 3-й срабатывает",
-    "FIFO: закрывается старейший слой"
-   ],
-   "changes": [
-    "robot/arb_common/strategy_arb.py: _layer_realizable_pnl, check_exit, _exit_qualifies, счётчики подтверждения",
-    "robot/main_arb.py: paper EXIT ALL по стакану, лимит A по стороне, лог факт vs предсказание",
-    "robot/test_arb_fair.py: +9 кейсов",
-    ".gitignore: robot/arb_state_*.json"
-   ],
-   "note": "Решение согласовано с Дмитрием 23.09: входы не трогать, закрывать слоями, доверять стакану, min_hold заменён подтверждением 3 тика."
-  },
-  {
-   "id": "F-039",
-   "name": "Честные фиды для механизма мин. профита (BR-календарь)",
-   "area": "robots/arb",
-   "status": "done",
-   "owner": "main",
-   "commits": [
-    "380d72f"
-   ],
-   "summary": "BRV6/BRZ6: механизм тейка F-032 (закрытие слоями при реализуемом ≥ 25 ₽) не имел данных для работы: финамовский quote-стрим в цикле UNAUTHENTICATED, ISS-fallback подпитывал только фьючерсную ногу B, а маршрутизация «last < 1000 → нога A» на календарном спреде лила BRZ6-принты в price_a BRV6 (last 95,3 vs OB 105,6) → фантомный Unrealized +47 ₽ при реализуемом −0,8 ₽/слой. Фиксы: (1) route_quote — тикер, затем ближайший OB mid ±2%, двусмысленные котировки отбрасываются; (2) ISS-подпитка фьючерсной ноги A; (3) last доверяется только при согласии со стаканом ±2% (обновление mid при расхождении); (4) карточка Unrealized показывает реализуемый PnL (те же цены, что решают тейк), last-вариант в localUnrealizedPnl. Входы не тронуты. Тесты: 53 PASS / 0 FAIL (11 новых F-039).",
-   "logic": "route_quote() в strategy_arb: ticker match → nearest OB mid ±2% → drop; _total_realizable() для карточки; main_arb: _moex_poller ветка futures-A + last-guard ±2% для обеих ног",
-   "tests": [
-    "route by ticker A/B",
-    "unknown symbol → nearest OB mid",
-    "ambiguous quote (между ног) → drop",
-    "empty OB → legacy magnitude heuristic",
-    "total_realizable = сумма слоёв / None при протухшем OB",
-    "card unrealizedPnl == realizableUnrealizedPnl",
-    "53/53 test_arb_fair"
-   ],
-   "changes": [
-    "robot/arb_common/strategy_arb.py: route_quote, _total_realizable, get_status card",
-    "robot/main_arb.py: _on_quote routing, _moex_poller futures-A + last-guard",
-    "robot/test_arb_fair.py: +11 кейсов F-039"
-   ],
-   "note": "Решение Дмитрия 25.09: «Робот должен закрывать позицию слоями при мин профит 25 руб — это единственный выход. Сделать»."
-  },
-  {
-   "id": "F-040",
-   "name": "Санитарный контроль стакана на входе (защита журнала от фантомных кругов)",
-   "area": "robots/arb",
-   "status": "done",
-   "owner": "main",
-   "commits": [
-    "58f4aa4"
-   ],
-   "summary": "Утром 28.09 в 07:14 Finam вернул мусорный OB GAZP (ask=93.00, затем bid=105.00 при рынке 98.6-99.8) — 12 фантомных кругов за 27 сек: paper-вход по 93.00 → мгновенный тейк по 105.00 (realizable +1183.56 ₽), по +1183.56 в журнал × 12 = +16 632 ₽ фантома, realized скакнул с −1 693 до +15 228. PnL считался честно от фантомных цен — ошибка была в доверии мусорному стакану на ВХОДЕ (выход защищён F-032/F-039). Фиксы: (1) _orderbook_sane() в check_entry: OB свежий (<5с), без креста, mid ±1% от last, спред ≤2% — иначе вход блокируется; до первого снапшота OB (ts=0) вход не блокируется (тесты/старое поведение); (2) в _ob_poller снапшоты с крестом (top_bid >= top_ask) отбрасываются с WARNING до попадания в трекер. Тесты: 59 PASS / 0 FAIL (6 новых F-040).",
-   "logic": "_orderbook_sane(max_dev_pct=1.0, max_spread_pct=2.0): freshness+cross+mid-vs-last+spread; check_entry гейт; OB-поллер дроп креста",
-   "tests": [
-    "crossed OB (93/105) → insane, entry blocked",
-    "sane OB → pass",
-    "last ±1.4% от mid → blocked",
-    "stale OB (>5с) → blocked",
-    "wide spread 3% → blocked",
-    "59/59 test_arb_fair"
-   ],
-   "changes": [
-    "robot/arb_common/strategy_arb.py: _orderbook_sane + гейт в check_entry",
-    "robot/main_arb.py: дроп crossed-снапшотов в _ob_poller",
-    "robot/test_arb_fair.py: +6 кейсов F-040"
-   ],
-   "note": "Кейс Дмитрия 28.09: «в торговом журнале ошибка подсчёта PnL» — журнал верен, ошибка была в ценах входа/выхода из мусорного OB."
-  },
-  {
-   "id": "F-041",
-   "name": "Фильтр направления (ЛОНГ/ШОРТ/ОБА) в OF-панелях — починка UI-провода",
-   "area": "robots/of",
-   "status": "done",
-   "owner": "main",
-   "commits": [
-    "15d5b9c"
-   ],
-   "summary": "28.09 Дмитрий: робот Si не переключается между шорт/лонг — торгует оба всегда. Причина: в app.js отсутствовали ОБЕ функции-обработчика Si-панели: ofSetDirection (селектор «Фильтр» ОБА/LONG/SHORT) и toggleOfSignal (чекбоксы CVD Trend/dm_wall/CVD Accel) — клики падали с ReferenceError в консоли, значение никуда не уходило; селектор визуально переключался (браузер меняет value до onchange), создавая ложное впечатление работы. Дополнительно ofRobotSaveFromPanel/ofMxRobotSaveFromPanel не включали direction_filter в save-body — «Сохранить» не переносило фильтр. Робот (strategy_of.py:751 check_entry) и REST /params direction_filter поддерживали полностью (проверено POST short/long/both на живой 5080 — принимает, status отражает, of_config.json сохраняет). Фиксы: (1) добавлены ofSetDirection + toggleOfSignal (POST OF_ROBOT_API /params, лог в Журнал); (2) оба save-body дополнены direction_filter из своих селекторов; (3) v=113, деплой в bin wwwroot. Проверка: node --check OK; сервер отдаёт v=113 с функциями; E2E API-эмуляция действий панели: direction_filter short→long→both на 5080, cfg on-disk = short после save, restored both. Браузерная проверка через autoglm не удалась (Extension did not connect in time) — попросить Дмитрия подтвердить Ctrl+F5 → селектор → журнал 'OF-Si direction filter → SHORT'."
-  },
-  {
-   "id": "F-042",
-   "name": "Самоисцеление импорта websockets в finam_hub (reconnect loop)",
-   "area": "infra/hub",
-   "status": "done",
-   "owner": "main",
-   "commits": [],
-   "summary": "28.09: повреждённый кэш модуля websockets в sys.modules не самоисцелялся при реконнектах (import вне while-loop). Зомби-процессы 5080/5081 (19100, 9684) спамили 'no attribute connect' (MX: 1336 за день). Зомби убиты; фикс pop+reimport запланирован в finam_hub.py.",
-   "date": "2026-09-28"
-  },
-  {
-   "id": "F-043",
-   "name": "Анти-дабл-клоз защита close_all (фантомные позиции)",
-   "area": "robots/of",
-   "status": "done",
-   "owner": "main",
-   "commits": [
-    "7eb550d"
-   ],
-   "summary": "28.09 DESYNC-шторм Si: close_all исполнился на бирже (IOC 2 лота @85748), но REST-ответ не вернулся за таймаут -> 'keeping position, will retry' -> повторный close -> неттинг превратил SHORT -2 в фантомный LONG +2. Фикс: guard перед ретраем close_all — сверка с брокером (FLAT -> синк робота, иначе блок ретрая), разряд guard после подтверждения, авто-истечение 5 мин. VA-stop: wait_fill 2с + запись сделки в историю + верификация при DP-fail. Тест tmp/test_f043_guard.py 7/7 PASS. Файлы: main_of.py + main_of_mx.py, коммит 7eb550d.",
-   "date": "2026-09-28"
-  },
-  {
-   "id": "F-044",
-   "name": "Порт фич OF-Si с server-main: HL-фильтр, VA-пауза усреднения, VP backfill, /restart",
-   "area": "robots/of",
-   "status": "done",
-   "owner": "main",
-   "commits": [],
-   "summary": "28.09 (план утверждён Дмитрием): с тест-ветки server-main перенесены 1) HL-фильтр входа only_strict (hl_filter/hl_window/hl_delta, get_hl_window, _hl_state с verdict both, гейт после direction_filter) — ca58913; 2) пауза усреднения вне VA (AVG VA BLOCK + catch-up при возврате) + УДАЛЁН жёсткий VA BREAKOUT STOP из main_loop — a6ec3b8; 3) VP backfill при старте (сегодняшние M1-бары с полуночи МСК в Volume Profile через REST get_bars); 4) POST /restart (FLAT-чек 409, cooldown 90с в of_restart_ts.json, detached-перезапуск: Windows helper 'старт нового → kill старого', Linux systemd-run) — 24e6cb2. Решения Дмитрия: (5) live /instrument сохранён, guard 409 (stopped+FLAT) уже был — подтверждён; (6) параметры of_config.json не менять. Документация: docs/ORDERFLOW_ROBOT_SI.md переписан под нашу hub-архитектуру (заменил устаревший orderflow-spec.md v3 от 19.06). Тест: tests/test_of_port_features.py 5/5 PASS (get_hl_window, вердикты, HL-гейт, VA-пауза+catch-up, дефолт OFF). py_compile 3 файлов OK. Не откатывать: F-043 guard, F-019 fast exec, threaded API, honest sync, PAUSE-семантика, ротация логов. || F-044b (dd89150): UI — HL-секция в Si-панели (чекбокс/окно/Δ/живой вердикт OFF|прогрев|any|SHORT only|LONG only|блок) + hl_* в save-body (v=114, деплой в bin); кнопка 🔄 в строке Si-робота (тосты на 409 позиция/429 cooldown); hardened ▶ — probe /health перед спавном (живой робот не дублируется); фикс Windows-helper рестарта: сначала kill старого, потом старт нового (порядок старт-первым дал двойного слушателя на 5080 через SO_REUSEADDR — живой инцидент 28.09: PID 32 старый код + PID 15496). Проверено: node --check, сервер отдаёт v=114 со всеми блоками, py_compile, порт освобождён (оба зависших процесса убиты при stopped+FLAT), hl_filter=true 24/150 включён в of_config.json.",
-   "date": "2026-09-28"
-  },
-  {
-   "id": "F-045",
-   "name": "Фикс краша check_entry у арб-роботов (тейк-профит не вычислялся)",
-   "area": "robots/arb",
-   "status": "done",
-   "owner": "main",
-   "commits": [
-    "2828c2b"
-   ],
-   "summary": "29.09: GAZP/GZZ6 SHORT 10×1 не закрывался по мин-профиту. Корень: check_entry обращался к signal['side'] при signal=None (слой открыт + dev_ann в мёртвой зоне) → TypeError каждый такой тик; check_exit стоит ПОСЛЕ check_entry в main loop и пропускался. 1107 крашей 10:00–10:30 (общий arb-лог; код общий для SBER/BR). Фикс: guard `signal and self.layers and ...`. Воспроизведено на реальном коде, тест tmp/test_f045_arb_entry.py 6/6 PASS. Нюанс: выходы считаются только в сессии 10:00–18:45 (use_evening=false); у GAZP-слоя min_profit=15₽ по реализуемому PnL (стакан − slippage − комиссии), панельный +59,8₽ считался от mid без издержек. Вступает в силу при следующем ▶ роботов. Активировано 29.09 12:11: перезапуск всех троих (GAZP live 2368, SBER 12560, BR 3868), слои из state 1-в-1, 0 крашей, realizable PnL обновляется.",
-   "date": "2026-09-29"
-  },
-  {
-   "id": "F-046",
-   "name": "JWT self-heal в FinamClient (убийца шторма token expired / слепоты тейка)",
-   "area": "robots/common",
-   "status": "done",
-   "owner": "main",
-   "commits": [
-    "61aedbc"
-   ],
-   "summary": "29.09: арб-роботы слепли по стакану → тейк не оценивался (realizable=null). Корень: FinamClient.__init__ брал JWT через asyncio.get_event_loop() — в не-main потоках (_reconnect_finam из OB-poller) молча падал; после ~15 мин JWT протухал и все gRPC-вызовы ловили UNAUTHENTICATED ('Missing auth token'/'Invalid access key'), reconnect не помогал (новый клиент — тот же баг). get_token() ещё и фолбэкал на raw-секрет (Finam его отвергает). Фикс: _refresh_jwt() — threading.Lock + monotonic-троттлинг 9 мин + asyncio.run() (свежий loop в любом потоке) + громкий лог ошибок; get_token() дёргает рефреш при отсутствии/старении JWT и НИКОГДА не возвращает raw-секрет. Тест tmp/test_f046_jwt.py 7/7 PASS (вкл. рефреш из не-main потока и сохранение старого JWT при сбое). Шторм 350 строк/мин → 0 после рестарта. Активирован рестартом 13:11-13:13.",
-   "date": "2026-09-29"
-  },
-  {
-   "id": "F-047",
-   "name": "Панель арб-роботов: Unrealized PnL = реализуемый PnL (критерий тейка)",
-   "area": "ui",
-   "status": "done",
-   "owner": "main",
-   "commits": [
-    "f3cfce9"
-   ],
-   "summary": "29.09: панель показывала +30,9 ₽ (last-оценка без издержек), а робот правильно держал позицию — критерий тейка realizableUnrealizedPnl был −19…−23 ₽ (стакан − slippage 5bps − комиссии < порога 15 ₽). Карточка теперь показывает realizable напрямую; при протухшем стакане (>3 с) — last-оценка с префиксом '~' и tooltip-пояснением. v=115, node --check OK, сервер отдаёт фикс (проверено :5050).",
-   "date": "2026-09-29"
-  },
-  {
-   "id": "F-048",
-   "name": "Торговый журнал арб-роботов = реальные цены брокера (REST GetTrades + auth-стримы + авторесинк)",
-   "area": "robots/arb",
-   "status": "done",
-   "owner": "main",
-   "commits": [
-    "0103c49"
-   ],
-   "summary": "29.09: журнал писал оценки (leg A — лимитка, leg B — стакан): gRPC SubscribeTrades/Orders/Bars/OrderBook падали без authorization metadata (12607 ошибок/день), в proto Order нет average_price → GetOrder подставлял лимитку. Реальный итог 29.09: −69.62₽ вместо +644.19₽ на бумаге (расхождения leg B до 126 пт). Фикс: (1) finam_compat.py — auth metadata во все 6 стримов; (2) orders_arb.py — _resolve_fill_price (trade sub → REST GetTrades wavg 6 дней → gRPC avg → оценка с флагом is_real), _get_broker_trades_window с force-refresh; (3) strategy_arb.py — ArbLayer.order_id_a/b + price_real_a/b, в trade-записи priceSource (broker/mixed/estimate) и id всех 4 ордеров, персист в save/load_state; (4) main_arb.py — авто-ресинк журнала при старте (resync_silent) + POST /reload-state; (5) finam_rest4.get_trades(start,end) с symbol; (6) новый robot/resync_journal.py (dry-run/--apply, матч ордеров к слоям по времени ±120с, фильтр чужих фьючерсов 9000–11000). Ресинк применён и подтверждён перезапуском 17:52 29.09 (API: realizedPnl=−69.62, все записи priceSource=broker).",
-   "date": "2026-09-29"
-  },
-  {
-   "id": "F-050",
-   "name": "Логирование POST /start /stop /pause во всех роботах + подтверждение кнопок в UI",
-   "area": "ui+robots/common",
-   "status": "done",
-   "owner": "main",
-   "commits": [
-    "0103c49"
-   ],
-   "summary": "30.09 два инцидента из одного корня: (a) «SiU6 остановлен и не стартует» — обработчик /start не логировался, запрос от вкладки не доходил/не виден; (b) открытая вкладка веб-UI сама слала POST /start при загрузке — включала остановленных роботов (OF Si успел набрать 4 лота лонга за 12:00–13:25). Фикс: (1) main_of.py / main_of_mx.py / main_arb.py — log.warning при каждой смене режима с переходом и размером позиции; (2) app.js — confirm() на Start/Pause/Stop и startViaServer (фоновая вкладка не может молча включить торговлю). py_compile 3/3 OK, node --check OK, тесты 25/25.",
-   "date": "2026-09-30"
-  },
-  {
-   "id": "F-051",
-   "name": "STARTUP reconciliation OF-роботов: сравнение с позицией из state вместо безусловного stopped",
-   "area": "robots/of",
-   "status": "done",
-   "owner": "main",
-   "commits": [
-    "42875bc"
-   ],
-   "summary": "30.09 инцидент: оба OF-робота (5080 Si, 5081 MX) после рестарта 13:26 сразу в mode=stopped с открытыми позициями. Причина: reconciliation (PORT-B1) любой ненулевой брокерский лот трактовал как «robot FLAT» и ставил stopped, даже когда позиция успешно восстановлена из state и совпадает с брокерской (Si 4 лота dir=1 avg=85055 = брокер; MX 1 лот dir=1 avg=227850 ≈ брокер 227875). Фикс main_of.py + main_of_mx.py: reconciliation сравнивает strategy.in_position/direction/total_lots с get_broker_position(): совпало → «position OK», mode сохраняется; robot FLAT + брокер в позиции → stopped (старое поведение); robot в позиции + брокер FLAT → stopped (новая ветка desync); оба в позиции, но lots/dir не совпадают → stopped. py_compile 2/2 OK, decision matrix 6/6, SMOKE PASS (test_of_port_features).",
-   "date": "2026-09-30"
-  },
-  {
-   "id": "F-052",
-   "name": "Запрет тейка по фантомному стакану: честный OB в ISS-поллере + sanity last-vs-OB + гейт тейка перед ордерами",
-   "area": "robots/arb",
-   "status": "done",
-   "owner": "main",
-   "commits": [
-    "bb551ae"
-   ],
-   "summary": "30.09 инцидент GZZ6 (запрос Дмитрия «запретил закрывать с убытком»): 15/18 сделок GAZP-арба reason=profit_target с PnL −2..−14₽, realized −103.15₽. Механизм: MOEX ISS-поллер в main_arb.py подставлял ask=LAST при OFFER=null (BID=10083/OFFER=null по GZZ6), gRPC-стакан в 429-бэкоффе → realizable считался по фантомному аску (15:31:27 realizable=+51.89 при last-unreal=−11.60, факт −13.10₽); на выходе sanity не было (на входе F-040 был). Фикс: (1) ISS-поллер обеих ног (futures A и B) пушит в OrderBookTracker только реальные строки — нет OFFER → best_ask=0 → realizable=None; (2) strategy_arb._layer_realizable_pnl: sanity last∈[bid×(1−eps), ask×(1+eps)], eps 0.5% фьючерсы / 0.2% акции, интервальная форма (широкий реальный стакан BR проходит); (3) гейт profit_target в _execute_single_exit перед отправкой ордеров — повторная квалификация по живому стакану (main_arb + arb_sber_sru6 + arb_br_calendar); (4) групповой гейт profit_target_total в exit_all: батч закрывается только если ВСЕ слои >0 и сумма ≥ порога; (5) F-052 ALARM в логе, если тейк всё же закрылся в минус. Риск-выходы (stop_loss/daily_stop_loss) и manual_stop/cleanup без гейта. Тесты: блок F-052 в test_arb_fair.py, 62/62 PASS. Торговая логика входов не тронута (R-002).",
-   "date": "2026-09-30"
-  },
-  {
-   "id": "F-055",
-   "title": "Order Flow BR robot (Brent): port from server-main + Windows/UI integration",
-   "status": "done",
-   "commit": "75e18a9,b7dd4b6,c4504d8,16917d2,17094d7,acab25a,e0833ae,06331fe",
-   "date": "2026-10-01",
-   "notes": "Two instances :5082 main/1225953 and :5083 edp/2049688; F-048 finam_compat streams; UI panel covers doc S11 fully + sync lots, close_price_all button, OB liquidity, start retries",
-   "summary": " | 06.10: Close % All 60/70 добавлены также в панели OF-Si и OF-MX (продолжение b9b48e3, бэкенд не менялся — формула порога универсальна)."
-  },
-  {
-   "id": "F-056",
-   "name": "Уборка проекта: −5,6 ГБ мусора, код-зомби удалён, папки-инстансы сжаты до examples",
-   "area": "infra/cleanup",
-   "status": "done",
-   "owner": "main",
-   "commits": [],
-   "summary": "01.10 (поручение Дмитрия, план утверждён): удалены soak-логи robot/*.txt (5398 МБ), *.phase1.bak, corrupt-state, paper_lab артефакты, .openclaw-build.log, of_pt.json. Из git: main_patch.py/collector.py/orders_grpc.py (без импортов; gRPC запрещён) и arb_lkoh_lku6/ (старая схема, не запускался). arb_sber_sru6/arb_br_calendar сжаты до *.example (устаревшие копии main_arb.py удалены; живые 5091/5092 используют корневой main_arb.py). robot/README.md — таблица под env-схему. Правило R-020: ротация логов 30 дней (удалено 53 файла/208 МБ). Боевые роботы не затронуты.",
-   "date": "2026-10-01"
-  },
-  {
-   "id": "F-057",
-   "name": "UI арба: базис из стакана (консистентен с реализуемым PnL) + обновление шапки/панели 1с вместо 3с/2с",
-   "area": "robots/arb",
-   "status": "done",
-   "owner": "main",
-   "date": "2026-10-01",
-   "summary": "Запрос Дмитрия 01.10: «Unrealized PnL отстаёт, не может быть такой PnL при такой раздвижке». Причина: Basis в шапке считался от last-цен (GZZ6 last-принт отстаёт от стакана на ~10-46 п.), а Unrealized PnL — реализуемый по стакану (F-047) — два разных источника. Fix: (1) arbClosingBasis() в app.js — базис закрытия по стакану по правилу позиции (SHORT: ask_B - bid_A*hedge; LONG: bid_B - ask_A*hedge; флэт: mid), tooltip с last-базисом, fallback «≈» при протухшем стакане; (2) серверное closing_basis в /status (strategy_arb._closing_basis, приоритет над клиентским расчётом, подхватится при рестарте робота — торговая логика не тронута, R-002); (3) таймеры 3с/2с -> 1с; (4) cache-buster v=116. Верификация: closing basis 298.0 по стакану при PnL -25.22 (сошлось с ручным пересчётом -25.24); тесты 64/64 PASS; скриншот-проверка браузером не выполнена (расширение AutoGLM не подключено) — требуется визуальная проверка Дмитрием (Ctrl+F5)."
-  },
-  {
-   "id": "F-058",
-   "name": "Гибрид C: раздвижечный вход (₽+σ гейты по стакану), послойный тейк по возврату раздвижки, dev-стоп 30₽, time-stop 240мин, маркет-фолбэк выхода",
-   "area": "robots/arb",
-   "status": "done",
-   "owner": "main",
-   "date": "2026-10-02",
-   "summary": "Решение Дмитрия по инциденту 01.10 (выбор варианта C с уточнением «выход послойно только при условии что раздвижка ниже/выше той что при входе на величину мин профита»). Вход: entry_dev_rub=15 (realizable_spread − fair ≥ 15₽) + entry_z_sigma=1.0 (dev − dev_mean ≥ 1σ шума) — оба по реализуемой раздвижке из стакана, а не по last (урок 11:52, гэп GZZ6 ~46п). Выход: exit_mode=spread — послойный тейк FIFO при rs ≤ entry_basis − min_profit (SHORT) / ≥ entry_basis + min_profit (LONG), 3 тика подтверждения (F-032), групповой profit_target_total отключён; dev-стоп: раздвижка хуже входной на 30₽ → exit_all; time-stop 240 мин → exit_all; при протухшем стакане решений нет. Исполнение выхода: execute_exit переписан — нога A лимитка leg_a_limit_seconds=2с → МАРКЕТ-фолбэк + допокупка остатка при частичном филле, нога B маркетом (инцидент 12:41: leg_a_timeout оставлял слой висеть сутки). /params whitelist + UI-панель (режим выхода, 5 полей гибрида). Конфиг GAZP: min_profit 20→10₽. Тесты F-058-1..13 + регресс: 78/78 PASS."
-  },
-  {
-   "id": "F-059",
-   "name": "Single-instance lock роботов + startup-always-stopped + Windows kill по порту",
-   "area": "robots/infra",
-   "status": "done",
-   "owner": "main",
-   "date": "2026-10-02",
-   "summary": "Инцидент: Дмитрий нажал Стоп у MXU6, робот продолжил торговать. Причина: 3 копии main_of_mx.py одновременно слушали :5081 (Windows допускает повторный bind при allow_reuse_address), Стоп гасил одну копию, зомби вели позицию (MXZ6 до -3, сироты на счёте). Фикс: (1) robot/instance_lock.py — файловый exclusive-lock per robot_key+port, второй экземпляр завершается sys.exit(2) до подписок/ордеров; (2) startup always stopped — после смерти процесса позиция восстанавливается в журнал, но торговля возобновляется только явным POST /start; (3) /api/instance/stop на Windows убивает LISTENING-процессы по порту через netstat+taskkill (раньше только Linux fuser — на Windows молча не работал); (4) StartAsync probe /health перед спавном — не создаёт копию, если порт уже отвечает живым роботом. Стейты MX/BR-edp сброшены в stopped/flat, сиротские позиции закрыты (MXZ6 вручную/др., BRX6 штатным /stop). Замок протестирован: 1-й захват OK, 2-й в child-процессе отклонён (rc=7), после release — OK."
-  },
-  {
-   "id": "F-060",
-   "name": "Идемпотентный /stop: mutex + re-check позиции под замком (все 4 робота)",
-   "area": "robots/infra",
-   "status": "done",
-   "owner": "main",
-   "date": "2026-10-02",
-   "summary": "Инцидент OF-Si 19:23:51: два POST /stop в одну секунду, оба прочли in_position до сброса → двойной close buy 6 + buy 6 против short 6 → инверсия в long 6. Фикс: _stop_lock в main_of/main_of_mx/main_of_br (тело /stop + re-check in_position под замком), в main_arb тело /stop под execution_lock с re-check strategy.layers. Статические проверки 11/11 PASS, py_compile 4/4. Роботы не перезапускались (R-001), фикс подхватится при следующем старте."
-  },
-  {
-   "id": "F-061",
-   "name": "OF-перпетьюал USDRUBF: точная копия OF-Si (main_of_perp.py, :5084) на вечный фьючерс USD/RUB",
-   "area": "robots/stocks",
-   "status": "in_progress",
-   "owner": "main",
-   "date": "2026-10-06",
-   "summary": "Запрос Дмитрия уточнён: «вечный Si» = USDRUBF@RTSX — бессрочный фьючерс на USD/RUB (MOEX perpetual, экспирации нет — ролловер не нужен, si_rollover.py удалён). main_of_perp.py — 1:1 копия main_of.py (1483 строки, дифф с нормализацией идентичности: 0 расхождений). Отличия только идентичность: logger robot_of_perp, config_of_perp.py, of_config_perp.json, of_state_perp.json (3 точки), of_restart_ts_perp.json, env ROBOT_SYMBOL_PERP/ROBOT_TICKER_PERP, дефолт USDRUBF@RTSX. Порт 5084. Инструмент проверен живым котиром (last 85.48, bid/ask 85.48/85.49, оборот 212K лотов, лот=1000 USD подтверждён turnover/price/volume≈1000). Конфиг: структурные параметры 1:1 с OF-Si; ценовые параметры пересчитаны /1000 (SiZ6 котируется в пунктах ×1000, USDRUBF — в рублях, тик 0.01): spread 33→0.033, step_average 36→0.036, min_profit 35→0.035, hl_delta 55→0.055, stop_loss 30000→30₽, vah_val_bin 53→0.053; объёмные пороги пересчитаны по фактическим объёмам (USDRUBF M5 ~1310 лотов vs SiZ6 ~20935, /16): cvd_accel_threshold 777→50, ob_min_lots 20→5; margin_per_lot 8500₽ (1000 USD × 85.5). Проверки: py_compile 3/3, identity-checks 33/33 PASS. Робот НЕ запускался (R-001). Запуск: python main_of_perp.py --port 5084. Живой котир получен после запуска — params можно править панелью позже (UI-интеграция по запросу). | 07.10 16:4x: (1) строка перенесена сразу под OF-Si (порядок: VP Grid Copy → OF-Si → OF-PERP → OF-MX → OF-BR×2); (2) двойной клик открывает ПОЛНУЮ панель параметров (клон MX-панели 37KB: индикаторы CVD/Accel/VAH-POC-VAL, фильтр направления, коррекция позиции, все параметры с PERP-масштабом step 0.001, VWEMA, VAH/VAL, торговый журнал с фильтрами и статистикой); (3) найден и устранён конфликт портов: 5084 занята SAREMA sar_sber → PERP перенесён на 5095 (Program.cs spec, robot --port default, OF_PERP_ROBOT_API); SAREMA-панель «нет связи 5084/5085» — превалид их роботов, не связано. node --check OK, MX-функции не тронуты (24/24 проверки), build OK, bin wwwroot обновлён. | 07.10 16:5x: добавлен HL Filter в панель PERP (клон OF-Si блока: чекбокс+окно 15+Δ 0.055₽+живой вердикт, поля в /params и живой апдейт) — «как у SiU6»; сохранение сделано устойчивым на старом сервере: робот → /api/of/config/of_perp → localStorage-очередь с автовыдачей роботу при старте (ofPerpRobotPoll), т.к. запущенный exe от 01.10 не содержит of_perp-маппинга (проверено бинарём) — полный конфиг-сейв заработает после рестарта сервера. HL-блок: node --check OK, 4/4 проверки. | 08.10: ПОДКЛЮЧЕН. Поднят процесс OF-PERP (PID 53616, :5095, режим stopped): WS Finam ok, котировки тикают (85.38→85.285, priceStale=false), счёт main сверен FLAT/FLAT. Лог разделён of_perp_YYYYMMDD.log (был общий с OF-Si). Сервер C# обновлён: 11920 (exe 01.10 без of_perp) → пересобран и перезапущен (PID 51240, health 200); в exe теперь spec of_perp :5095 + config-proxy of_perp. Кнопка ▶ OF-PERP в UI теперь работает (spec резолвится, процесс уже поднят — /start вернёт alreadyOnPort). Торговля НЕ включена (R-001) — старт по кнопке Дмитрия. Заодно: спека 5084→5095 дедуплицирована с sar_sber (коммит 2acf7b7)."
-  }
- ]
+  ]
 }
