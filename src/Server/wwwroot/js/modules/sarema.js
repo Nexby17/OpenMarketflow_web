@@ -411,12 +411,13 @@ function sarRenderTable() {
     if (!tbody) return;
     const noMsg = document.getElementById('sarNoRobots');
     let rows = '';
+    if (noMsg) noMsg.style.display = SAR_INSTANCE_ORDER.length ? 'none' : '';
     for (const inst of SAR_INSTANCE_ORDER) {
         const cfg = sarCfg(inst);
         const st = window['sarRobot_' + inst];
         const activeBg = (sarPanelInst === inst) ? ' style="background:rgba(79,143,247,.12)"' : '';
         if (!st) {
-            if (noMsg) noMsg.style.display = '';
+            if (noMsg) noMsg.style.display = 'none';
             rows += `<tr data-inst="${inst}"${activeBg} style="cursor:pointer" title="Двойной клик — панель робота (доступна оффлайн)">
                 <td><strong>${cfg.label}</strong></td>
                 <td class="red">● оффлайн</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td>
