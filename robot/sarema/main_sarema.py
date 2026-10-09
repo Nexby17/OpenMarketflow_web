@@ -165,6 +165,85 @@ def bars(tf_min: int = 60, limit: int = 300):
         return {"bars": [], "indicators": [], "error": str(e)}
 
 
+class PositionAdjust(BaseModel):
+    qty: int                      # штуки СО ЗНАКОМ: абсолютная позиция (2, -1, 0=FLAT)
+    price: float = 0.0            # средняя цена входа (обязательна при qty!=0)
+
+
+@app.post("/position/adjust")
+def position_adjust(body: PositionAdjust):
+    """Ручная корректировка позиции (как у OF-роботов): синхронизация state с брокером
+    БЕЗ ордеров. Используется после ручной сделки Дмитрия в терминале.
+    qty: 0 = FLAT (обнулить), положительное = LONG qty штук, отрицательное = SHORT.
+    price: средняя цена входа (при qty!=0 обязательна > 0).
+    Стоп выставляется по 3×ATR от price (или сохранённый, если баров нет)."""
+    import time as _t
+    qty = int(body.qty)
+    price = float(body.price or 0)
+    if qty != 0 and price <= 0:
+        raise HTTPException(400, {"ok": False, "error": "при qty!=0 требуется price > 0"})
+    if abs(qty) > 100000:
+        raise HTTPException(400, {"ok": False, "error": "|qty| > 100000 — подозрительно много"})
+
+    # остановить трейдинг-логику на время правки (режим сохраняем)
+    was_running = state.mode == "running"
+    state.mode = "paused"
+
+    try:
+        # отменить активный брокер-стоп перед правкой
+        if strategy.stop_order_id:
+            orders.cancel(strategy.stop_order_id)
+            strategy.stop_order_id = None
+
+        if qty == 0:
+            old = f"{state.direction} {state.lots_qty}"
+            state.direction = 0
+            state.lots_qty = 0
+            state.entry_price = 0.0
+            state.stop_price = 0.0
+            state.entry_time = None
+            log.info(f"MANUAL ADJUST: FLAT (было {old}, ордеров НЕ было)")
+            action = "FLAT"
+        else:
+            new_dir = 1 if qty > 0 else -1
+            abs_qty = abs(qty)
+            state.direction = new_dir
+            state.lots_qty = abs_qty
+            state.entry_price = price
+            state.stop_price = price if price > 0 else 0.0
+            state.entry_time = datetime.utcnow().isoformat()
+            # стоп по 3×ATR от указанной цены (если есть бары)
+            atr_now = None
+            try:
+                if feed.bars is not None and len(feed.bars) >= 20:
+                    from sarema import sarema_engine as _eng
+                    _df = feed.bars.rename(columns={'begin': 't'}) if 't' not in feed.bars.columns else feed.bars
+                    g = _eng.m5_extras(_eng.tf_bars(_df, f"{int(cfg.get('tf_min', 60))}min"))
+                    atr_now = float(g["atr"].iloc[-1])
+            except Exception as _e:
+                log.warning(f"adjust ATR calc failed: {_e}")
+                atr_now = None
+            if atr_now and atr_now > 0:
+                sd = cfg.get("init_stop_atr", 3.0) * atr_now
+                state.stop_price = round(price - sd if new_dir == 1 else price + sd, 2)
+            log.info(f"MANUAL ADJUST: {'LONG' if new_dir == 1 else 'SHORT'} {abs_qty} шт @ {price:.2f}, стоп {state.stop_price:.2f} (ордеров НЕ было)")
+            action = f"{new_dir} {abs_qty} @ {price}"
+            # выставить брокер-стоп на новую позицию
+            strategy._place_broker_stop(state.stop_price, abs_qty, new_dir)
+
+        state.save()
+        if was_running:
+            state.mode = "running"      # вернуться в running (позиция теперь «своя»)
+            state.save()
+        return {"ok": True, "dir": state.direction, "qty": state.lots_qty,
+                "entry": state.entry_price, "stop": state.stop_price, "mode": state.mode}
+    except HTTPException:
+        raise
+    except Exception as e:
+        log.exception(f"MANUAL ADJUST error: {e}")
+        raise HTTPException(500, {"ok": False, "error": str(e)})
+
+
 @app.get("/journal")
 def journal():
     """Журнал позиций (логика таблицы Дмитрия): открытые сверху, закрытие дозаписывается.

@@ -62,6 +62,15 @@ function sarSwitchInstance(inst) {
             <!-- Живые метрики -->
             <div class="metrics-row" style="flex-wrap:wrap;margin-bottom:12px" id="sarLiveMetrics"></div>
             <hr style="border-color:#2D2D44;margin:12px 0">
+            <!-- Ручная корректировка позиции (как у OF-роботов): синхронизация с брокером БЕЗ ордеров -->
+            <div style="font-weight:700;margin-bottom:6px">Ручная корректировка позиции <span class="text-secondary" style="font-size:11.5px;font-weight:400">— после ручной сделки в терминале; ордеров не ставит, только синхронизирует робота</span></div>
+            <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px">
+                <input id="sarAdjQty" type="number" step="1" placeholder="шт: 2 / -1 / 0" title="Абсолютная позиция в штуках со знаком: 2 = LONG 2, -1 = SHORT 1, 0 = FLAT" style="width:110px;padding:6px 8px;background:#0D1117;color:#fff;border:1px solid #607D8B;border-radius:4px;font-size:13px">
+                <input id="sarAdjPrice" type="number" step="0.01" placeholder="средняя цена" title="Средняя цена входа (обязательна при шт != 0)" style="width:120px;padding:6px 8px;background:#0D1117;color:#fff;border:1px solid #607D8B;border-radius:4px;font-size:13px">
+                <button class="btn btn-primary btn-sm" onclick="sarAdjustPosition()" title="Установить позицию робота = указанной (ордеров НЕ выставляет)">Корректировать</button>
+                <span id="sarAdjResult" style="font-size:12px;color:#B0BEC5"></span>
+            </div>
+            <hr style="border-color:#2D2D44;margin:12px 0">
             <!-- Параметры -->
             <div style="font-weight:700;margin-bottom:8px">Лимиты и риск</div>
             <div class="metrics-row" style="flex-wrap:wrap;margin-bottom:8px">
@@ -241,6 +250,44 @@ async function sarUpdateLiveMetrics(inst) {
         <div class="metric-card"><div class="metric-label">PnL (брокер)${priceSrc}</div><div style="font-size:1.05em;font-weight:700;color:${pnlText.startsWith('-') ? 'var(--red)' : 'var(--green)'}">${pnlText}</div></div>
         <div class="metric-card"><div class="metric-label">Последний H1</div><div style="font-size:0.95em;font-weight:600">${lastBar}</div></div>
     `;
+}
+
+// ---------- ручная корректировка позиции (как у OF) ----------
+async function sarAdjustPosition() {
+    const inst = sarPanelInst;
+    if (!inst) return;
+    const cfg = sarCfg(inst);
+    const qtyEl = document.getElementById('sarAdjQty');
+    const priceEl = document.getElementById('sarAdjPrice');
+    const resEl = document.getElementById('sarAdjResult');
+    const qty = parseInt(qtyEl.value);
+    const price = parseFloat(priceEl.value);
+    if (isNaN(qty)) { resEl.textContent = '❌ Введите штуки (2 / -1 / 0)'; resEl.style.color = '#ff9800'; return; }
+    if (qty !== 0 && (isNaN(price) || price <= 0)) { resEl.textContent = '❌ При шт != 0 укажите цену > 0'; resEl.style.color = '#ff9800'; return; }
+    const posText = qty === 0 ? 'FLAT' : (qty > 0 ? 'LONG ' + qty : 'SHORT ' + Math.abs(qty));
+    if (!confirm(`Установить позицию ${cfg.label}: ${posText}${qty !== 0 ? ' @ ' + price : ''}?\nОрдера НЕ выставляются — только синхронизация робота с фактом.`)) return;
+    try {
+        const resp = await fetch(sarApi(inst) + '/position/adjust', {
+            method: 'POST', headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({qty: qty, price: qty === 0 ? 0 : price}),
+            signal: AbortSignal.timeout(6000)
+        });
+        const data = await resp.json();
+        if (data.ok) {
+            resEl.textContent = '✓ ' + (qty === 0 ? 'FLAT' : (data.dir === 1 ? 'LONG' : 'SHORT') + ' ' + data.qty + ' @ ' + data.entry + ', стоп ' + data.stop);
+            resEl.style.color = '#4caf50';
+            sarLog('SAREMA[' + cfg.label + ']: ручная корректировка: ' + posText + (qty !== 0 ? ' @ ' + price : ''), 'INFO');
+            setTimeout(() => sarPollAll(), 500);
+        } else {
+            const err = data.error || (data.detail && data.detail.error) || 'ошибка';
+            resEl.textContent = '❌ ' + err;
+            resEl.style.color = '#ef4444';
+            sarLog('SAREMA[' + cfg.label + ']: adjust error: ' + err, 'ERROR');
+        }
+    } catch (e) {
+        resEl.textContent = '❌ Робот недоступен';
+        resEl.style.color = '#ef4444';
+    }
 }
 
 // ---------- сохранение лимитов (только открытый инстанс — урок 22.09) ----------
