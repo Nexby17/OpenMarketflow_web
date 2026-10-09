@@ -56,7 +56,7 @@ function sarSwitchInstance(inst) {
             <span class="text-secondary" style="font-size:12px">лимиты владельца · сигнальные параметры read-only</span>
             <span style="flex:1"></span>
             <button class="btn btn-primary btn-sm" onclick="sarSaveParams()">💾 Сохранить</button>
-            <button class="btn btn-secondary btn-sm" onclick="document.getElementById('sarEditPanel')?.remove(); sarPanelInst=null;">✖ Закрыть</button>
+            <button class="btn btn-secondary btn-sm" onclick="(function(){ const h=document.getElementById('sarChartHost'); if(h) document.body.appendChild(h); document.getElementById('sarEditPanel')?.remove(); sarPanelInst=null; })()">✖ Закрыть</button>
         </div>
         <div style="padding:12px">
             <!-- Живые метрики -->
@@ -103,7 +103,7 @@ function sarSwitchInstance(inst) {
                     <label class="text-secondary" style="font-size:12px;display:flex;gap:3px;align-items:center"><input type="checkbox" id="sarChkStop" checked onchange="sarChartReload()"> стоп</label>
                 </div>
             </div>
-            <div id="sarChart" style="height:320px;border:1px solid #2D2D44;border-radius:8px;background:#121826"></div>
+            <div id="sarChartSlot" style="min-height:320px;border:1px solid #2D2D44;border-radius:8px;background:#121826"></div>
             <div id="sarChartInfo" class="text-secondary" style="font-size:11.5px;margin-top:4px"></div>
             <hr style="border-color:#2D2D44;margin:12px 0">
             <!-- Торговый журнал: логика таблицы Дмитрия — открытые позиции сверху, закрытие дозаписывается справа -->
@@ -646,6 +646,8 @@ document.addEventListener('click', function (ev) {
     if (!other) return;
     const panel = document.getElementById('sarEditPanel');
     if (panel) { panel.remove(); sarPanelInst = null; }
+    const host = document.getElementById('sarChartHost');
+    if (host) document.body.appendChild(host);   // узел выживает — график всегда открывается
     if (window._sarPanelTimer) { clearInterval(window._sarPanelTimer); window._sarPanelTimer = null; }
     if (window._sarChartTimer) { clearInterval(window._sarChartTimer); window._sarChartTimer = null; }
 }, true);
@@ -678,9 +680,24 @@ function sarChartReload() {
 }
 
 function _sarChartEnsure(inst) {
-    // ChartController.init ленивый и переиспользует уже созданный график
+    // Постоянный хост графика: создаётся один раз на body, переносится в popup.
+    // lightweight-charts привязан к узлу — пересоздание узла давало «через раз».
     if (!window.ChartController) return Promise.reject(new Error('ChartController not loaded'));
-    return window.ChartController.init('sarChart', { autoSize: true });
+    let host = document.getElementById('sarChartHost');
+    if (!host) {
+        host = document.createElement('div');
+        host.id = 'sarChartHost';
+        host.style.cssText = 'height:320px;background:#121826';
+        document.body.appendChild(host);
+    }
+    const slot = document.getElementById('sarChartSlot');
+    if (slot && host.parentElement !== slot) slot.appendChild(host);
+    if (!window._sarChartInited) {
+        window._sarChartInited = true;
+        return window.ChartController.init('sarChartHost', { autoSize: true });
+    }
+    window.ChartController.resize();
+    return Promise.resolve(window.ChartController);
 }
 
 async function sarChartLoad(inst) {
@@ -799,7 +816,7 @@ async function sarChartLoad(inst) {
         // автообновление свечей/индикаторов раз в 60с
         if (_sarChartRefreshTimer) clearInterval(_sarChartRefreshTimer);
         _sarChartRefreshTimer = setInterval(() => {
-            if (!document.getElementById('sarChart') || !sarPanelInst) { clearInterval(_sarChartRefreshTimer); return; }
+            if (!document.getElementById('sarChartHost') || !sarPanelInst) { clearInterval(_sarChartRefreshTimer); return; }
             sarChartLoad(sarPanelInst);
         }, 60000);
     } catch (e) {
