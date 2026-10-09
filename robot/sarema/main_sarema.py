@@ -18,7 +18,6 @@ _ROBOT_DIR = _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__)))
 if _ROBOT_DIR not in _sys.path:
     _sys.path.insert(0, _ROBOT_DIR)
 import uvicorn
-import uvicorn
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 
@@ -44,6 +43,17 @@ orders = SaremaOrders(ACCOUNT_ID, SYMBOL)
 strategy = SaremaStrategy(cfg, state, orders, feed, lot_size=LOT_SIZE, ticker=TICKER)
 
 app = FastAPI(title=f"SAREMA {TICKER}", version="1.0")
+
+# CORS: UI (:5050 и зеркала) читает /status //journal напрямую с порта робота
+from fastapi.middleware.cors import CORSMiddleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:5050", "http://127.0.0.1:5050",
+                   "http://localhost:5099", "http://127.0.0.1:5099"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 _stop_lock = threading.Lock()             # F-060: идемпотентный /stop
 _SAR_LAST_RESTART = [0.0]                 # restart cooldown (90с, урок F-059)
 
@@ -220,12 +230,82 @@ def _main_loop():
     strategy.on_closed_bar(). Рестарт между итерациями через state."""
     import time
     log.info("main loop started")
+    # --- Live H1 feed: Finam REST напрямую (JWT 15 мин, кэшируем) ---
+    import urllib.request as _uq
+    import json as _json
+    from datetime import datetime as _dt, timedelta as _td
+    _feed_state = {"tok": None, "tok_ts": 0.0, "last_closed": None}
+
+    def _finam_token():
+        if _feed_state["tok"] and time.time() - _feed_state["tok_ts"] < 800:
+            return _feed_state["tok"]
+        env_path = os.environ.get("FINAM_API_KEY")
+        if not env_path:
+            # .env рядом с robot/../src/... (как в orders_sarema)
+            for cand in (os.path.join(_ROBOT_DIR, "..", "src", "Server", "bin", "Debug", "net10.0", ".env"),):
+                if os.path.exists(cand):
+                    with open(cand, encoding="utf-8-sig") as f:
+                        for line in f:
+                            if line.strip().startswith("FINAM_API_KEY="):
+                                env_path = line.split("=", 1)[1].strip()
+                                break
+        if not env_path:
+            raise RuntimeError("FINAM_API_KEY not found")
+        r = _uq.Request("https://api.finam.ru/v1/sessions",
+                        data=_json.dumps({"secret": env_path}).encode(), method="POST")
+        r.add_header("Content-Type", "application/json")
+        with _uq.urlopen(r, timeout=15) as resp:
+            tok = _json.loads(resp.read().decode())["token"]
+        _feed_state["tok"] = tok
+        _feed_state["tok_ts"] = time.time()
+        return tok
+
+    def _fetch_recent_h1():
+        """Последние 2 дня H1 LKOH-класса (акции), возвращает список закрытых баров (кроме текущего часа)."""
+        tok = _finam_token()
+        now = _dt.utcnow()
+        url = (f"https://api.finam.ru/v1/instruments/{SYMBOL}/bars?timeframe=TIME_FRAME_H1"
+               f"&interval.start_time={(now - _td(days=3)).strftime('%Y-%m-%dT%H:%M:%SZ')}"
+               f"&interval.end_time={now.strftime('%Y-%m-%dT%H:%M:%SZ')}")
+        r = _uq.Request(url)
+        r.add_header("Authorization", tok)
+        with _uq.urlopen(r, timeout=15) as resp:
+            d = _json.loads(resp.read().decode())
+        out = []
+        hour_ago = now - _td(minutes=65)   # бар закрыт, если его час закончился минуту назад
+        for b in d.get("bars", []):
+            ts = b.get("timestamp", "").replace("Z", "").replace("+00:00", "")
+            g = lambda k: b.get(k, {}).get("value", b.get(k))
+            try:
+                bt = _dt.strptime(ts, "%Y-%m-%dT%H:%M:%S")
+            except Exception:
+                continue
+            # фильтр основной сессии 07:00-15:40 UTC + только закрытые
+            tod = bt.hour * 3600 + bt.minute * 60
+            if not (7 * 3600 <= tod <= 15 * 3600 + 40 * 60):
+                continue
+            if bt >= hour_ago:
+                continue
+            out.append((bt, float(g("open")), float(g("high")), float(g("low")),
+                        float(g("close")), float(g("volume") or 0)))
+        return out
+
     while True:
         try:
             if state.mode == "running":
-                # TODO этап 2 finalization: подписка/поллинг REST-баров Finam,
-                # append_closed_bar -> on_closed_bar; до тех пор loop в standby
-                pass
+                try:
+                    bars = _fetch_recent_h1()
+                    new_count = 0
+                    for (bt, o, h, l, c, v) in bars:
+                        if feed.append_closed_bar(bt, o, h, l, c, v):
+                            new_count += 1
+                    if new_count:
+                        log.info(f"live feed: +{new_count} closed H1 bars (last {bars[-1][0] if bars else '?'})")
+                        ev = strategy.on_closed_bar()
+                        if ev.get("events"):
+                            log.info(f"strategy events: {ev['events']}")
+                except Exception as fe:
+                    log.error(f"live feed error: {fe}")
         except Exception as e:
             log.exception(f"loop error: {e}")
         time.sleep(60)

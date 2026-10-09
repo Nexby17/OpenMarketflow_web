@@ -322,6 +322,10 @@ async function sarRobotApi(inst, action) {
             }
             showToast('✅ Процесс ' + cfg.label + ' запущен' + (pd.alreadyRunning ? ' (уже работал)' : '') + (pd.alreadyOnPort ? ' (порт уже занят живым роботом)' : ''), 'ok');
             sarLog('SAREMA[' + cfg.label + ']: process started (pid=' + (pd.pid || '?') + ')', 'INFO');
+            // F-059: робот стартует в stopped — после spawn переводим в running
+            await new Promise(r => setTimeout(r, 800));
+            await fetch(sarApi(inst) + '/start', {method: 'POST', signal: AbortSignal.timeout(3000)});
+            sarLog('SAREMA[' + cfg.label + ']: trading started (mode=running)', 'INFO');
         }
         if (action === 'stop') {
             // OF-паттерн: сначала /stop API (позиция FLAT, отмена ордеров), затем процесс stop
