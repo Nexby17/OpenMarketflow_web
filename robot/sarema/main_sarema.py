@@ -61,7 +61,8 @@ _SAR_LAST_RESTART = [0.0]                 # restart cooldown (90с, урок F-0
 class ParamsPatch(BaseModel):
     base: float | None = None
     risk_pct: float | None = None
-    max_qty: int | float | None = None
+    max_long_qty: int | float | None = None
+    max_short_qty: int | float | None = None
     max_value_rub: float | None = None
     liq_frac: float | None = None
     day_kill_R: float | None = None
@@ -86,9 +87,11 @@ def status():
         "stop_order_id": strategy.stop_order_id,
     }
     limits_used = {
-        "max_qty": cfg.get("max_qty"),
+        "max_long_qty": cfg.get("max_long_qty"),
+        "max_short_qty": cfg.get("max_short_qty"),
         "max_value_rub": cfg.get("max_value_rub"),
         "qty_used": state.lots_qty,
+        "dir": state.direction,
         "value_used": state.lots_qty * state.entry_price if state.entry_price else 0.0,
     }
     return {

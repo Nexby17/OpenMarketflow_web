@@ -44,8 +44,10 @@ DEFAULTS = {
     "base": 1_000_000.0,
     "risk_pct": 0.005,
     "compound": False,
-    # === Limits Dmitry (D2): null = без лимита, 0 = запрещено ===
-    "max_qty": None,
+    # === Limits Dmitry (D2): null = без лимита, 0 = направление НЕ торгуется ===
+    # Предельная позиция ЛОНГ/ШОРТ в штуках (запрос Дмитрия 09.10, как у OF-роботов)
+    "max_long_qty": None,
+    "max_short_qty": None,
     "max_value_rub": None,
     "liq_frac": 0.05,
     "day_kill_R": None,
@@ -81,13 +83,13 @@ def validate_params(patch: dict) -> tuple[dict, list[str]]:
             errors.append("risk_pct must be in (0, 0.1]")
         else:
             clean["risk_pct"] = float(v)
-    for k in ("max_qty", "max_value_rub"):
+    for k in ("max_long_qty", "max_short_qty", "max_value_rub"):
         if k in patch:
             v = patch[k]
             if v is None:
                 clean[k] = None                       # без лимита
             elif isinstance(v, (int, float)) and v >= 0:
-                clean[k] = int(v) if k == "max_qty" else float(v)
+                clean[k] = int(v) if k != "max_value_rub" else float(v)
             else:
                 errors.append(f"{k} must be null (no limit) or >= 0")
     if "liq_frac" in patch:
@@ -128,22 +130,28 @@ def validate_params(patch: dict) -> tuple[dict, list[str]]:
     return clean, errors
 
 
-def apply_limits_qty(risk_sizing: int, price: float, cfg: dict) -> tuple[int, str]:
-    """Финальный размер по D2: min(risk_sizing, max_qty, max_value_rub/price).
+def apply_limits_qty(risk_sizing: int, price: float, cfg: dict, direction: int = 0) -> tuple[int, str]:
+    """Финальный размер по D2: min(risk_sizing, предельная позиция направления, max_value_rub/price).
 
-    Возвращает (qty, reason) где reason — какой лимит сработал (для журнала).
-    None-лимит не ограничивает; 0 запрещает любую позицию.
+    direction: 1 = LONG (лимит max_long_qty), -1 = SHORT (max_short_qty).
+    Предельная позиция 0 → направление не торгуется (замечание Дмитрия: «шорт 0 — шорт не торгует»).
+    None-лимит не ограничивает; 0 запрещает. Возвращает (qty, reason) для журнала.
     """
     if risk_sizing < 1:
         return 0, "risk_sizing<1"
     cap = risk_sizing
     reason = "risk_sizing"
-    mq = cfg.get("max_qty")
+    if direction == 1:
+        mq = cfg.get("max_long_qty")
+    elif direction == -1:
+        mq = cfg.get("max_short_qty")
+    else:
+        mq = None
     if mq is not None:
         if mq <= 0:
-            return 0, "max_qty=0"
+            return 0, ("max_long_qty=0" if direction == 1 else "max_short_qty=0")
         if mq < cap:
-            cap, reason = int(mq), "max_qty"
+            cap, reason = int(mq), ("max_long_qty" if direction == 1 else "max_short_qty")
     mv = cfg.get("max_value_rub")
     if mv is not None:
         if mv <= 0:

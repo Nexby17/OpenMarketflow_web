@@ -65,7 +65,8 @@ function sarSwitchInstance(inst) {
             <!-- Параметры -->
             <div style="font-weight:700;margin-bottom:8px">Лимиты и риск</div>
             <div class="metrics-row" style="flex-wrap:wrap;margin-bottom:8px">
-                <div class="metric-card"><div class="metric-label">Макс. штук (пусто = ∞)</div><input id="sarMaxQty" class="input" placeholder="без лимита" style="width:90px"></div>
+                <div class="metric-card"><div class="metric-label">Предельн. ЛОНГ (шт, 0=нет)</div><input id="sarMaxLong" class="input" placeholder="без лимита" style="width:90px"></div>
+                <div class="metric-card"><div class="metric-label">Предельн. ШОРТ (шт, 0=нет)</div><input id="sarMaxShort" class="input" placeholder="без лимита" style="width:90px"></div>
                 <div class="metric-card"><div class="metric-label">Макс. стоимость ₽ (пусто = ∞)</div><input id="sarMaxValue" class="input" placeholder="без лимита" style="width:110px"></div>
                 <div class="metric-card"><div class="metric-label">База R (₽)</div><input id="sarBase" class="input" style="width:110px"></div>
                 <div class="metric-card"><div class="metric-label">Риск на сделку %</div><input id="sarRiskPct" class="input" style="width:70px"></div>
@@ -140,7 +141,7 @@ async function sarLoadPanelData(inst) {
     const msg = document.getElementById('sarPanelMsg');
     const set = (id, v) => { const e = document.getElementById(id); if (e) e.value = v; };
     // дефолты
-    set('sarMaxQty', ''); set('sarMaxValue', ''); set('sarBase', 1000000);
+    set('sarMaxLong', ''); set('sarMaxShort', ''); set('sarMaxValue', ''); set('sarBase', 1000000);
     set('sarRiskPct', ''); set('sarDayKill', ''); set('sarLiqFrac', 0.05);
     set('sarAf0', 0.02); set('sarStep', 0.2); set('sarMax', 0.2);
     set('sarEmaN', 12); set('sarStopAtr', 3); set('sarTfMin', 60);
@@ -149,7 +150,8 @@ async function sarLoadPanelData(inst) {
         const raw = localStorage.getItem('sarSavedParams_' + inst);
         if (raw) {
             const d = JSON.parse(raw);
-            set('sarMaxQty', d.max_qty ?? '');
+            set('sarMaxLong', d.max_long_qty ?? '');
+            set('sarMaxShort', d.max_short_qty ?? '');
             set('sarMaxValue', d.max_value_rub ?? '');
             set('sarBase', d.base ?? 1000000);
             set('sarRiskPct', d.risk_pct != null ? (d.risk_pct * 100).toFixed(1) : '');
@@ -168,7 +170,8 @@ async function sarLoadPanelData(inst) {
         const resp = await fetch(sarApi(inst) + '/params', {signal: AbortSignal.timeout(2500)});
         if (resp.ok) {
             const p = await resp.json();
-            set('sarMaxQty', p.max_qty ?? '');
+            set('sarMaxLong', p.max_long_qty ?? '');
+            set('sarMaxShort', p.max_short_qty ?? '');
             set('sarMaxValue', p.max_value_rub ?? '');
             set('sarBase', p.base ?? 1000000);
             set('sarRiskPct', p.risk_pct != null ? (p.risk_pct * 100).toFixed(1) : '');
@@ -234,14 +237,15 @@ async function sarSaveParams() {
         if (!isFinite(n) || n < 0) return undefined;       // ошибка валидации
         return integer ? Math.floor(n) : n;
     };
-    const maxQty = numOrNull('sarMaxQty', true);
+    const maxLong = numOrNull('sarMaxLong', true);
+    const maxShort = numOrNull('sarMaxShort', true);
     const maxValue = numOrNull('sarMaxValue', false);
     const baseRaw = (document.getElementById('sarBase')?.value || '').trim();
     const riskRaw = (document.getElementById('sarRiskPct')?.value || '').trim().replace(',', '.');
     const killRaw = (document.getElementById('sarDayKill')?.value || '').trim().replace(',', '.');
     const liqRaw = (document.getElementById('sarLiqFrac')?.value || '').trim().replace(',', '.');
     const msg = document.getElementById('sarPanelMsg');
-    if (maxQty === undefined || maxValue === undefined) { if (msg) msg.textContent = '❌ Лимиты: число ≥ 0 или пусто (без лимита)'; return; }
+    if (maxLong === undefined || maxShort === undefined || maxValue === undefined) { if (msg) msg.textContent = '❌ Лимиты: число ≥ 0 или пусто (без лимита)'; return; }
     if (riskRaw !== '' && (!isFinite(parseFloat(riskRaw)) || parseFloat(riskRaw) <= 0 || parseFloat(riskRaw) > 10)) { if (msg) msg.textContent = '❌ Риск %: (0, 10]'; return; }
     if (killRaw !== '' && !isNaN(parseFloat(killRaw)) && parseFloat(killRaw) >= 0) { if (msg) msg.textContent = '❌ Kill-switch: отрицательный R или пусто (выкл)'; return; }
     const numField = (id, lo, hi) => {
@@ -261,7 +265,8 @@ async function sarSaveParams() {
         .filter(([, v]) => v === 'ERR').map(([n_]) => n_);
     if (sigErr.length) { if (msg) msg.textContent = '❌ Вне диапазона: ' + sigErr.join(', '); return; }
     const patch = {
-        max_qty: maxQty,
+        max_long_qty: maxLong,
+        max_short_qty: maxShort,
         max_value_rub: maxValue,
         base: baseRaw !== '' ? parseFloat(baseRaw.replace(',', '.')) : undefined,
         risk_pct: riskRaw !== '' ? parseFloat(riskRaw) / 100 : undefined,
@@ -443,9 +448,10 @@ function sarRenderTable() {
         const stopText = p.stop ? p.stop.toFixed(2) : '—';
         const pnl = st.pnl ? st.pnl.total : 0;
         const lim = st.limits || {};
-        const limMaxQty = lim.max_qty ?? '∞';
+        const isLong = p.dir === 1;
+        const limDir = isLong ? (lim.max_long_qty ?? '∞') : (p.dir === -1 ? (lim.max_short_qty ?? '∞') : (lim.max_long_qty ?? '∞'));
         const limMaxVal = lim.max_value_rub != null ? Number(lim.max_value_rub).toFixed(0) : '∞';
-        const limUsed = `${lim.qty_used ?? 0}/${limMaxQty} шт · ${(lim.value_used ?? 0).toFixed(0)}/${limMaxVal} ₽`;
+        const limUsed = `L:${lim.max_long_qty ?? '∞'} / S:${lim.max_short_qty ?? '∞'} · ${(lim.value_used ?? 0).toFixed(0)}/${limMaxVal} ₽`;
         const risk = st.risk || {};
         const killText = risk.day_kill_R != null ? `kill ${risk.day_kill_R}R` : 'kill выкл';
         const online = window['_sarWasOnline_' + inst];
@@ -493,7 +499,11 @@ async function sarLoadJournal(inst) {
     if (!body) return;
     body.innerHTML = '<tr><td colspan="14" style="text-align:center;padding:16px;color:#9CA3AF">Загрузка...</td></tr>';
     try {
-        const resp = await fetch('/api/sarema/journal/' + inst, {signal: AbortSignal.timeout(4000)});
+        let resp = await fetch('/api/sarema/journal/' + inst, {signal: AbortSignal.timeout(4000)});
+        if (resp.status === 404) {
+            // C# proxy ещё без нового эндпоинта (сервер не перезапущен) — читаем у робота напрямую
+            resp = await fetch(sarApi(inst) + '/journal', {signal: AbortSignal.timeout(4000)});
+        }
         const data = await resp.json();
         _sarJournalOpen = data.open || [];
         _sarJournalClosed = data.closed || [];

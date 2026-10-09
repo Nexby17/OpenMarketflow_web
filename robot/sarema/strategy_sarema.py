@@ -84,7 +84,7 @@ class SaremaStrategy:
         if stop_dist <= 0:
             return {"event": "skip", "reason": "bad_atr"}
         rs = risk_sizing(self.state.base, self.cfg.get("risk_pct", 0.005), stop_dist)
-        qty, reason = apply_limits_qty(rs, price_hint, self.cfg)
+        qty, reason = apply_limits_qty(rs, price_hint, self.cfg, direction)
         if qty < 1:
             self.state.save()
             return {"event": "signal_skipped", "reason": reason, "risk_sizing": rs}

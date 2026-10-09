@@ -1,7 +1,6 @@
 {
  "base": 1000000,
  "risk_pct": 0.005,
- "max_qty": null,
  "max_value_rub": null,
  "liq_frac": 0.05,
  "day_kill_R": null,
@@ -13,5 +12,7 @@
  "init_stop_atr": 3.0,
  "tf_min": 60,
  "ticker": "SNGS",
- "port": 5110
+ "port": 5110,
+ "max_long_qty": null,
+ "max_short_qty": null
 }
