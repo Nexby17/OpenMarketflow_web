@@ -1,0 +1,17 @@
+{
+ "base": 1000000,
+ "risk_pct": 0.005,
+ "max_qty": null,
+ "max_value_rub": null,
+ "liq_frac": 0.05,
+ "day_kill_R": null,
+ "compound": false,
+ "sar_af0": 0.02,
+ "sar_step": 0.2,
+ "sar_max": 0.2,
+ "ema_n": 12,
+ "init_stop_atr": 3.0,
+ "tf_min": 60,
+ "ticker": "GAZP",
+ "port": 5102
+}

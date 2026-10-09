@@ -19,7 +19,7 @@ const SAR_INSTANCES = {
     mtss: { port: 5109, ticker: 'MTSS', label: 'MTSS' },
     sngs: { port: 5110, ticker: 'SNGS', label: 'SNGS' },
 };
-const SAR_INSTANCE_ORDER = ['sber', 'gazp'];   // первая волна; остальные вписываются по мере запуска
+const SAR_INSTANCE_ORDER = ['sber', 'gazp', 'lkoh', 'rosn', 'tatn', 'gmkn', 'nvtk', 'plzl', 'mtss', 'sngs'];   // все 10 (Дмитрий 09.10)
 SAR_INSTANCE_ORDER.forEach(k => { window['sarRobot_' + k] = null; window['_sarWasOnline_' + k] = false; });
 let sarPanelInst = null;            // экземпляр, чей popup открыт (null = закрыт)
 let _sarTimer = null;

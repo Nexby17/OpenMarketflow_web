@@ -12,6 +12,12 @@ import os
 import threading
 from datetime import datetime
 
+import os as _os
+import sys as _sys
+_ROBOT_DIR = _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__)))
+if _ROBOT_DIR not in _sys.path:
+    _sys.path.insert(0, _ROBOT_DIR)
+import uvicorn
 import uvicorn
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
