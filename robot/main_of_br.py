@@ -153,6 +153,11 @@ _running = True
 _mode = "stopped"  # stopped, running, paused
 _last_broker_lots = None  # last known broker lots (from periodic /position sync)
 _last_fp_reconnect: float = 0.0  # guard against reconnect loop
+# F-063: counters/state for watchdog diagnostics + post-reconnect grace
+_reconnect_count: int = 0
+_reconnect_no_data: bool = False
+_watchdog_grace_until: float = 0.0
+_hard_restart_scheduled: bool = False
 
 # --- Current price (thread-safe via lock) ---
 _price_lock = threading.Lock()
@@ -460,27 +465,95 @@ def _to_float(val) -> float:
     return float(val)
 
 
+def _in_session_now() -> bool:
+    """F-063: true, если сейчас торговое время FORTS (для hard-restart guard)."""
+    now_msk = datetime.now(MSK)
+    t = now_msk.hour * 60 + now_msk.minute
+    return ((9*60) <= t < (13*60+59)) or ((14*60+5) <= t < (18*60+49)) or ((19*60+5) <= t < (23*60+50))
+
+
+def _hard_self_restart():
+    """F-063: last-resort перезапуск процесса (execv — процесс заменяется, PID сохраняется).
+    С защитой от цикла: если за последний час было уже 3 рестарта — откладываем на 10 мин
+    (растущая задержка), чтобы не устраивать бесконечный restart-шторм."""
+    global _last_fp_reconnect
+    marker = os.path.join(os.getcwd(), f"of_hard_restart_br{STATE_SUFFIX}.json")
+    now_ts = time.time()
+    try:
+        with open(marker) as f:
+            stamps = json.load(f)
+    except Exception:
+        stamps = []
+    stamps = [s for s in stamps if now_ts - s < 3600]
+    if len(stamps) >= 3:
+        log.error("[WATCHDOG] 3 hard restarts in 1h — back off 10 min (cooling down, not exiting)")
+        time.sleep(600)
+        return
+    stamps.append(now_ts)
+    try:
+        with open(marker, "w") as f:
+            json.dump(stamps, f)
+    except Exception as e:
+        log.warning(f"Hard-restart marker write failed: {e}")
+    # Кулдаун против Finam rate limit (90с по регламенту /restart)
+    time.sleep(90)
+    log.warning("[WATCHDOG] execv self-restart NOW")
+    sys.stdout.flush()
+    python = sys.executable
+    os.execv(python, [python] + sys.argv)
+
+
 def _reconnect_finampy():
-    """Shutdown old FinamPy and reconnect all subscriptions."""
-    global fp, _last_fp_reconnect
+    """Shutdown old FinamPy and reconnect all subscriptions.
+
+    F-063 (12.10.2026): полная пересборка без зомби.
+    1. fp.close() теперь останавливает ВСЕ стрим-потоки (stop_event в finam_compat) —
+       старые потоки не копятся (инцидент 08-12.10: 4.5 дня шторма 'Not connected').
+    2. Расширенное окно вне торговой сессии: между 18:50 и 09:15 МСК (и в клиринг
+       14:00-14:05) данные НЕ идут по определению — реконнект там бессмыслен,
+       watchdog откладывается до открытия.
+    3. После реконнекта сбрасываем baseline свежести (_last_trade_ts/_last_price_update),
+       чтобы новым стримам дали 90 сек разогрева — иначе они объявлялись мёртвыми
+       раньше первого тика и цикл реконнектов становился бесконечным."""
+    global fp, _last_fp_reconnect, _reconnect_count, _reconnect_no_data, _watchdog_grace_until
     now = time.time()
     if now - _last_fp_reconnect < 30:
         return  # don't reconnect more than once per 30s
+
+    # F-063: вне сессии рыночных данных не бывает — реконнект по watchdog бессмыслен.
+    # FORTS: 09:00-14:00, клиринг 14:00-14:05, 14:05-18:50, клиринг 18:50-19:05,
+    # вечер 19:05-23:50. Окна с запасом на старт стримов.
+    now_msk = datetime.now(MSK)
+    t = now_msk.hour * 60 + now_msk.minute
+    in_session = ((9*60) <= t < (13*60+59)) or ((14*60+5) <= t < (18*60+49)) or ((19*60+5) <= t < (23*60+50))
+    if not in_session:
+        if not _reconnect_no_data:  # логируем ТОЛЬКО переход в ночной режим, не каждые 30с
+            log.warning("[WATCHDOG] Data stale but market closed (" + now_msk.strftime("%H:%M") + " MSK) — waiting for session open")
+        _reconnect_no_data = True
+        _last_fp_reconnect = now
+        return
+    _reconnect_no_data = False
+
+    _reconnect_count += 1
     _last_fp_reconnect = now
-    log.warning("[WATCHDOG] Price stale — reconnecting FinamPy...")
+    log.warning("[WATCHDOG] Streams stale (reconnect #%d) — full FinamPy rebuild...", _reconnect_count)
     try:
         if fp is not None:
             try:
-                fp.close()
+                fp.close()  # F-063: останавливает все стрим-потоки
             except Exception:
                 pass
         time.sleep(1)
         fp = None
         ok = connect_finam()
         if ok:
-            log.info("[WATCHDOG] FinamPy reconnected OK")
+            # F-063: сброс baseline свежести — новым стримам 90 сек на первый тик
+            strategy._last_trade_ts = time.time()
+            strategy._last_price_update = time.time()
+            _watchdog_grace_until = time.time() + 90
+            log.info("[WATCHDOG] FinamPy rebuilt OK (grace 90s for first ticks)")
         else:
-            log.error("[WATCHDOG] FinamPy reconnect failed")
+            log.error("[WATCHDOG] FinamPy rebuild failed")
     except Exception as e:
         log.error(f"[WATCHDOG] Reconnect error: {e}")
 
@@ -591,9 +664,30 @@ def main_loop():
             if strategy._is_price_stale(max_age_sec=60):
                 _reconnect_finampy()
 
+            # === F-063: LAST RESORT — hard self-restart ===
+            # Если в сессии данные мёртвые уже 15 минут, а реконнекты не помогли
+            # (случай 08-12.10: зомби 4.5 дня) — перезапускаем процесс целиком.
+            # Windows: os.execv заменяет процесс без systemd; замок F-059 и
+            # SO_REUSEADDR позволяют новому процессу cleanly перехватить порт.
+            if (
+                time.time() >= _watchdog_grace_until
+                and strategy._is_price_stale(max_age_sec=900)
+                and strategy._last_trade_ts > 0
+                and (time.time() - strategy._last_trade_ts) > 900
+                and _in_session_now()
+                and not _hard_restart_scheduled
+            ):
+                _hard_restart_scheduled = True
+                log.error("[WATCHDOG] Streams dead >15min in-session despite reconnects — HARD SELF-RESTART scheduled")
+                save_state()
+                threading.Thread(target=_hard_self_restart, daemon=True, name="hard-restart").start()
+
             # === WATCHDOG: reconnect if CVD/LatestTrades stream dead > 120s ===
-            # Price can survive via Quotes while trade stream dies silently
-            if hasattr(strategy, '_last_trade_ts') and strategy._last_trade_ts > 0:
+            # Price can survive via Quotes while trade stream dies silently.
+            # F-063: в grace-окно (90 сек после реконнекта) стримам даём набрать данные —
+            # иначе новый поток объявлялся мёртвым раньше первого тика (корень
+            # бесконечного цикла реконнектов 08-12.10).
+            if time.time() >= _watchdog_grace_until and hasattr(strategy, '_last_trade_ts') and strategy._last_trade_ts > 0:
                 trade_age = time.time() - strategy._last_trade_ts
                 if trade_age > 120:
                     log.warning(f"[WATCHDOG] LatestTrades stream dead for {trade_age:.0f}s — reconnecting")

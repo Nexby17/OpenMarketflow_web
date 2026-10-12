@@ -169,6 +169,12 @@ class FinamPyCompat:
         self.on_latest_trades = Event()
         self.on_order_book = Event()
 
+        # F-063: registry of subscription threads + shutdown signal.
+        # Реконнект (fp.close() -> connect()) больше не плодит зомби-потоки:
+        # close() сигналит stop_event, потоки выходят, новые создаются после connect().
+        self._sub_threads: list[threading.Thread] = []
+        self._stop_event = threading.Event()
+
         # Compatibility properties
         self._account_ids: list[str] = []
 
@@ -218,6 +224,9 @@ class FinamPyCompat:
 
     def connect(self) -> None:
         """Create FinamClient and discover account IDs."""
+        # F-063: fresh session — clear stop signal and dead thread refs
+        self._stop_event.clear()
+        self._sub_threads = [t for t in self._sub_threads if t.is_alive()]
         self._client = FinamClient(self._token)
         # Fetch account IDs from environment (new SDK doesn't auto-discover)
         try:
@@ -264,19 +273,36 @@ class FinamPyCompat:
     # === Subscription threads (blocking, with auto-reconnect) ===
     # Each runs in a daemon thread, iterates over streaming RPC responses,
     # and dispatches to the corresponding Event.
+    # F-063: все циклы завершаются по self._stop_event (выставляется в close()).
+    # Клиринговые паузы/ночь больше не копят ошибки и потоки бесконечно.
+
+    def _spawn(self, target, name: str, args: tuple = ()) -> threading.Thread:
+        """F-063: запустить поток-подписку под учётом + stop_event."""
+        t = threading.Thread(target=target, args=args, daemon=True, name=name)
+        with threading.Lock():
+            # подчистить мёртвые, чтобы список не рос бесконечно
+            self._sub_threads = [x for x in self._sub_threads if x.is_alive()]
+            self._sub_threads.append(t)
+        t.start()
+        return t
 
     def subscribe_bars_thread(self, symbol: str, timeframe) -> None:
         """Blocking: iterates SubscribeBars stream, emits on_new_bar."""
         req = md.SubscribeBarsRequest(symbol=symbol, timeframe=timeframe)
-        while True:
+        while not self._stop_event.is_set():
             try:
                 # F-047: streams require explicit authorization metadata (см. subscribe_trades_thread)
                 stream = self.client.market_data.SubscribeBars(req, metadata=[("authorization", self.client.get_token())])
                 for response in stream:
+                    if self._stop_event.is_set():
+                        return
                     self.on_new_bar.emit(response, timeframe)
             except Exception as e:
+                if self._stop_event.is_set():
+                    return  # F-063: штатное закрытие — не спамим
                 logger.warning("SubscribeBars stream error: %s - reconnecting", e)
-                time.sleep(3)
+                if self._stop_event.wait(3):
+                    return
 
     def subscribe_quote_thread(self, symbols) -> None:
         """Blocking: iterates SubscribeQuote stream, emits on_quote."""
@@ -285,28 +311,38 @@ class FinamPyCompat:
         else:
             symbols_field = [symbols]
         req = md.SubscribeQuoteRequest(symbols=symbols_field)
-        while True:
+        while not self._stop_event.is_set():
             try:
                 stream = self.client.market_data.SubscribeQuote(req, metadata=[("authorization", self.client.get_token())])
                 for response in stream:
+                    if self._stop_event.is_set():
+                        return
                     self.on_quote.emit(response)
             except Exception as e:
+                if self._stop_event.is_set():
+                    return
                 logger.warning("SubscribeQuote stream error: %s - reconnecting", e)
-                time.sleep(3)
+                if self._stop_event.wait(3):
+                    return
 
     def subscribe_orders_thread(self, account_id: str = "") -> None:
         """Blocking: iterates SubscribeOrders stream, emits on_order."""
         req = ord_pb.SubscribeOrdersRequest(account_id=account_id)
-        while True:
+        while not self._stop_event.is_set():
             try:
                 # F-047: streams require explicit authorization metadata
                 stream = self.client.orders.SubscribeOrders(req, metadata=[("authorization", self.client.get_token())])
                 for response in stream:
+                    if self._stop_event.is_set():
+                        return
                     for o in response.orders:
                         self.on_order.emit(o)
             except Exception as e:
+                if self._stop_event.is_set():
+                    return
                 logger.warning("SubscribeOrders stream error: %s - reconnecting", e)
-                time.sleep(3)
+                if self._stop_event.wait(3):
+                    return
 
     def subscribe_trades_thread(self, account_id: str = "") -> None:
         """Blocking: iterates SubscribeTrades stream, emits on_trade.
@@ -316,41 +352,56 @@ class FinamPyCompat:
         12607 ошибок за день 29.09, ни одного on_trade: в торговый журнал писались
         оценки (лимитная цена / стакан) вместо реальных цен сделок брокера."""
         req = ord_pb.SubscribeTradesRequest(account_id=account_id)
-        while True:
+        while not self._stop_event.is_set():
             try:
                 stream = self.client.orders.SubscribeTrades(
                     req, metadata=[("authorization", self.client.get_token())])
                 for response in stream:
+                    if self._stop_event.is_set():
+                        return
                     for t in response.trades:
                         self.on_trade.emit(t)
             except Exception as e:
+                if self._stop_event.is_set():
+                    return
                 logger.warning("SubscribeTrades stream error: %s - reconnecting", e)
-                time.sleep(3)
+                if self._stop_event.wait(3):
+                    return
 
     def subscribe_latest_trades_thread(self, symbol: str) -> None:
         """Blocking: iterates SubscribeLatestTrades stream, emits on_latest_trades."""
         req = md.SubscribeLatestTradesRequest(symbol=symbol)
-        while True:
+        while not self._stop_event.is_set():
             try:
                 stream = self.client.market_data.SubscribeLatestTrades(req, metadata=[("authorization", self.client.get_token())])
                 for response in stream:
+                    if self._stop_event.is_set():
+                        return
                     self.on_latest_trades.emit(response)
             except Exception as e:
+                if self._stop_event.is_set():
+                    return
                 logger.warning("SubscribeLatestTrades stream error: %s - reconnecting", e)
-                time.sleep(3)
+                if self._stop_event.wait(3):
+                    return
 
     def subscribe_order_book_thread(self, symbol: str) -> None:
         """Blocking: iterates SubscribeOrderBook stream, emits on_order_book."""
         req = md.SubscribeOrderBookRequest(symbol=symbol)
-        while True:
+        while not self._stop_event.is_set():
             try:
                 # F-047: streams require explicit authorization metadata
                 stream = self.client.market_data.SubscribeOrderBook(req, metadata=[("authorization", self.client.get_token())])
                 for response in stream:
+                    if self._stop_event.is_set():
+                        return
                     self.on_order_book.emit(response)
             except Exception as e:
+                if self._stop_event.is_set():
+                    return
                 logger.warning("SubscribeOrderBook stream error: %s - reconnecting", e)
-                time.sleep(3)
+                if self._stop_event.wait(3):
+                    return
 
     def subscribe_orders_trades(self, orders: bool = True, trades: bool = True,
                                  account_id: str = "") -> None:
@@ -363,7 +414,7 @@ class FinamPyCompat:
         req = ord_pb.OrderTradeRequest(
             account_id=params.get("account_id", ""),
         )
-        while True:
+        while not self._stop_event.is_set():
             try:
                 # F-047: streams require explicit authorization metadata
                 # F-055 fix: SubscribeOrderTrade is a bidi stream — server expects a request ITERATOR,
@@ -372,6 +423,8 @@ class FinamPyCompat:
                 stream = self.client.orders.SubscribeOrderTrade(
                     req_iter, metadata=[("authorization", self.client.get_token())])
                 for response in stream:
+                    if self._stop_event.is_set():
+                        return
                     if params.get("trades"):
                         for t in response.trades:
                             self.on_trade.emit(t)
@@ -379,10 +432,25 @@ class FinamPyCompat:
                         for o in response.orders:
                             self.on_order.emit(o)
             except Exception as e:
+                if self._stop_event.is_set():
+                    return
                 logger.warning("SubscribeOrderTrade stream error: %s - reconnecting", e)
-                time.sleep(3)
+                if self._stop_event.wait(3):
+                    return
 
     def close(self) -> None:
+        """F-063: full shutdown — stop all subscription threads, then drop client.
+        Раньше занулялся только _client: старые потоки вечно крутились с
+        'Not connected. Call connect() first.' и копились при каждом реконнекте
+        (зомби-BR 08-12.10: тысячи потоков/каналов, watchdog не мог восстановить
+        данные, потому что базлайн _last_trade_ts не сбрасывался)."""
+        self._stop_event.set()
+        for t in list(self._sub_threads):
+            try:
+                t.join(timeout=2)
+            except Exception:
+                pass
+        self._sub_threads = []
         if self._client:
             try:
                 self._client.close()
