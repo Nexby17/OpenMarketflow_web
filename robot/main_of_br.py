@@ -968,6 +968,7 @@ class APIHandler(BaseHTTPRequestHandler):
             status["activeAccount"] = ACTIVE_ACCOUNT_KEY
             status["activeAccountId"] = ACCOUNTS.get(ACTIVE_ACCOUNT_KEY, ACCOUNT)
             status["directionFilter"] = params.direction_filter
+            status["timingGate"] = strategy.is_timing_gate_closed()  # F-064: timing gate state for UI
             status["brokerLots"] = _last_broker_lots
             status["brokerMismatch"] = (_last_broker_lots is not None and _last_broker_lots != strategy._total_lots)
             

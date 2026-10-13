@@ -7949,6 +7949,19 @@ function ofBrPanelBodyHtml(inst, p) {
             <div class="metric-card" style="min-width:70px"><div class="metric-label">VAL</div><div id="ofBrVpVal" style="font-size:16px;font-weight:bold;color:#42A5F5">—</div></div>
         </div>
         <hr style="border-color:#2D2D44;margin:12px 0">
+        <!-- F-064: Торговый тайминг (додержать позицию) — как у SiU6 -->
+        <div class="metrics-row" style="flex-wrap:wrap;margin-bottom:16px;align-items:center">
+            <div class="metric-card" style="display:flex;align-items:center;gap:8px">
+                <label style="display:flex;align-items:center;gap:6px;cursor:pointer" title="Включено: новые циклы только внутри окна. После времени выключения открытая позиция торгует как обычно (выходы/усреднение работают), но новые входы запрещены до завтрашнего окна">
+                    <input id="editOfBrUseTiming" type="checkbox" ${(p.use_timing)?'checked':''} style="width:18px;height:18px;cursor:pointer">
+                    <span style="font-weight:bold;color:#AB47BC">⏱ Тайминг</span>
+                </label>
+            </div>
+            <div class="metric-card"><div class="metric-label">Время с</div><input id="editOfBrTimingStart" class="input" type="time" value="${p.timing_start||''}" style="width:110px"></div>
+            <div class="metric-card"><div class="metric-label">Выключение</div><input id="editOfBrTimingEnd" class="input" type="time" value="${p.timing_end||''}" style="width:110px"></div>
+            <div class="metric-card" style="min-width:150px"><div class="metric-label">Гейт сейчас</div><div id="ofBrTimingVerdict" style="font-size:14px;font-weight:bold;color:#9CA3AF">—</div></div>
+        </div>
+        <hr style="border-color:#2D2D44;margin:12px 0">
         <!-- BR-специфика (нет у SiU6): риск-допы + OB + сессия -->
         <div style="font-size:12px;color:#9CA3AF;margin-bottom:6px;font-weight:bold">BR-ДОПОЛНИТЕЛЬНО</div>
         <div class="metrics-row" style="flex-wrap:wrap;margin-bottom:12px">
@@ -8079,6 +8092,15 @@ function ofBrUpdateLive(inst) {
         else if (hl.verdict === 'long_only') { v.textContent = `🟢 LONG only (${(hl.winLow||0).toFixed(2)})`; v.style.color = '#4CAF50'; }
         else { v.textContent = `✖ блок ${hl.winLow != null ? hl.winLow.toFixed(2) : '—'}–${hl.winHigh != null ? hl.winHigh.toFixed(2) : '—'}`; v.style.color = '#FF9800'; }
     }
+    // F-064: тайминг-гейт (как у SiU6)
+    if (el('ofBrTimingVerdict')) {
+        const v = el('ofBrTimingVerdict');
+        const tp = s.params || {};
+        if (!tp.use_timing) { v.textContent = 'OFF'; v.style.color = '#6B7280'; }
+        else if (!tp.timing_start || !tp.timing_end) { v.textContent = '⚠ не задано время'; v.style.color = '#FF9800'; }
+        else if (s.timingGate) { v.textContent = '⛔ закрыт (вне окна)'; v.style.color = '#F44336'; }
+        else { v.textContent = '🟢 открыт — торгуем'; v.style.color = '#4CAF50'; }
+    }
 }
 
 async function ofBrRobotSaveFromPanel() {
@@ -8147,6 +8169,9 @@ async function ofBrRobotSaveFromPanel() {
         vwema_avg_exit: el('editOfBrVwemaAvgExit')?.checked === true,
         step_atr: false,  // F-055: fixed off for BR (ATR adaptation zeroes fractional step) — managed via config only
         direction_filter: el('ofBrDirFilter')?.value || 'both',
+        use_timing: el('editOfBrUseTiming')?.checked || false,
+        timing_start: (el('editOfBrTimingStart')?.value || '').trim(),
+        timing_end: (el('editOfBrTimingEnd')?.value || '').trim(),
     };
     // 1) localStorage (offline-буфер)
     localStorage.setItem('ofBrSavedParams_' + inst, JSON.stringify(body));
