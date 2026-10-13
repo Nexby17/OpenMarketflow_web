@@ -520,3 +520,9 @@ BR-edp (b9b48e3) → добавлены те же варианты 60%/70% в в
 - UI sarema.js: блок VP фильтр (Mode select, VA%, Bin, Окно, VAH/POC/VAL, вердикт); офлайн-сейв в localStorage; bin wwwroot обновлён.
 - Тесты: tests/test_vp_sarema.py 13/13; suite 53/53; API smoke 7/7 (TestClient, без брокера).
 - Статус: код готов, инстансы не запущены; дефолт off — режим включит Дмитрий в панели.
+
+### 2026-10-13 (вечер) — F-066: хаб переживает сбой импорта websockets
+- Инцидент: OF-MX 14:57 / OF-Si+PERP 16:24 — хаб-поток умер при старте (Errno13 py4-файлы + websockets.asyncio not found, транзиент), `raise` в `_run` = смерть навсегда. MX остался running-слепым (цена 0, stale).
+- finam_hub.py `_run`: импорт в retry-цикле с backoff вместо raise; лог «retry in Ns (thread stays alive)».
+- Тест: meta_path-хук (2 первых сбоя) → READY. py_compile OK.
+- Ждёт Дмитрия (R-001): рестарт 5080/5081/5095. BR 5083 (16:39) здоров.

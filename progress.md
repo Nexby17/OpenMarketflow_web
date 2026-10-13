@@ -540,3 +540,18 @@ BR-edp (b9b48e3) → добавлены те же варианты 60%/70% в в
 **Проверки:** py_compile 4/4 OK; node --check OK; tests/test_vp_sarema.py 13/13 PASS (VP расчёт, гейты range/fade/breakout, авто-бин, nice-bin, валидация, дефолт off); полный suite 53/53 PASS; API smoke (TestClient, тестовый инстанс TEST:5199, брокера не трогали): /status vp-block, /params POST persistence в конфиг-файл, битый mode → 400, zero-semantics (bin=0→авто, pct=0→70), reset off — 7/7 PASS.
 
 **Деплой/статус:** SAREMA-инстансы сейчас НЕ запущены (порты 5101-5110 свободны) — R-001, старт только Дмитрием; при старте подхватят VP-параметры (дефолт off → поведение как раньше, пока Дмитрий не включит режим в панели). Браузерная приёмка панели ограничена паролем UI (APP_PASS_HASH в .env, известен только Дмитрию) — статика и API проверены, DOM-проверку Дмитрию по Ctrl+F5.
+
+
+---
+
+## 2026-10-13 (вечер) — F-066: finam_hub переживает сбой импорта websockets
+
+**Инцидент.** Дмитрий: «Пустые поля. что то с роботом не так» (скрин панели MXU6: Цена/Ср.цена/PnL — прочерки, VAH/POC/VAL пустые).
+
+**Диагноз.** OF-MX :5081 в running с 14:57 С МЁРТВЫМ хабом: currentPrice=0, priceStale=true, cvd/vwema not ready, vp пустой. Логи: `finam_hub ERROR websockets import failed: No module named 'websockets.asyncio'` в первую секунду жизни процесса (MX 14:57:21, Si 16:24:25, PERP 16:24:28 — Дмитрий пере启动 ивал в 16:24, обе не прошли) + `PermissionError Errno13 py4\typing_extensions.py` (REST4-проба, VWEMA warmup). Причина: транзиентная недоступность py4-файлов при старте процесса (волна отпустила к 16:35 — последующие 5 репро и OF-BR 16:39 проходят чисто). Дизайн-дефект: `finam_hub._run` при ошибке импорта делал `raise` → хаб-поток умирал навсегда, повторных попыток нет.
+
+**Фикс.** finam_hub.py `_run`: импорт websockets в retry-цикле с backoff (RECONNECT_BASE→RECONNECT_MAX, как WS-реконнект), `log.error ... retry in Ns (thread stays alive)` вместо raise. Поток хаба не умирает, восстанавливается сам.
+
+**Тест.** meta_path-хук роняет первые 2 импорта websockets: хаб дважды логирует сбой, восстанавливается и подключается — `RESULT: READY | import attempts: 25` (внутренние ленивые импорты 17.x тоже идут через хук). py_compile OK.
+
+**Действия Дмитрия (R-001):** перезапустить оглохших — OF-Si :5080, OF-MX :5081 (в running, слепой), OF-PERP :5095 (кнопки ▶/⏹ в UI или POST /restart). OF-BR :5083 (16:39) живой — не трогать.
