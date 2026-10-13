@@ -1137,7 +1137,7 @@
       "status": "done (проверено CDP-эмуляцией, скриншоты)",
       "owner": "main",
       "date": "2026-10-13",
-      "summary": "Дмитрий: «график не должен исчезать; у каждого робота свой график — для SBER/GAZP нет». Причина: общий ChartController-синглтон на один DOM-узел — попапы боролись за владение, переключение инстансов/вкладок убивало график чужого попапа. Переписано: каждый попап создаёт СВОЙ lightweight-charts (chart.remove() при закрытии), хост в шаблоне попапа, MutationObserver-страховка. Данные: /api/candles (ЦБ) -> fallback /bars робота. Индикаторы: с робота (/bars indicators) -> фолбэк локальные calcSAR/calcEMA. Дефолт-зум: последние 60 баров (300 сливались в линию). sarema.js v14. Проверено CDP: LKOH->close->SBER->GAZP->LKOH — у каждого свой график, свечи+SAR+EMA, маркеры сделок.",
+      "summary": "v3 (полная переделка после ревью Дмитрия): candles по цепочке C# /api/candles -> DP :5060 -> робот /bars; SAR/EMA ВСЕГДА считаются в браузере из фактических свечей (_sarLocalPSAR/_sarLocalEMA) — работают при любом состоянии робота. Попутно: /api/candles исключён из auth (read-only), акции SBER/GAZP/LKOH+7 добавлены в _tickerToFinam (@MISX, был @RTSX -> пустые бары), CORS в DataProvider, восстановлены потерянные декларации MSK_OFFSET_SAR/_sarChartRefreshTimer. Проверка CDP: LKOH 300 свечей + SAR/EMA, SBER 80, GAZP 80, переоткрытие живое, скриншоты подтверждены.",
       "date_updated": "2026-10-13"
     }
   ]

@@ -792,78 +792,125 @@ document.addEventListener('DOMContentLoaded', () => setTimeout(sarStartPolling, 
 // === по параметрам ЭТОГО экземпляра; позиции — маркеры из /journal. ===
 // ============================================================================
 
-const MSK_OFFSET_SAR = 10800;   // MSK offset как в chart.js (локальная константа)
-let _sarChartInst = null;
+
+
+const MSK_OFFSET_SAR = 10800;   // F-069: MSK offset (локальная константа, не из chart.js)
 let _sarChartRefreshTimer = null;
-let _sarChartBuilt = false;
-
-function sarChartReload() {
-    // F-068: у каждого экземпляра СВОЙ график; reload = перерисовать текущий
-    const inst = sarPanelInst;
-    if (!inst) return;
-    sarClosePanel(); sarSwitchInstance(inst);
-}
-
-// --- F-068: lifecycle per-instance графика (уничтожение при закрытии/переключении) ---
-let _sarLC = null;          // { chart, candle, sar, ema, markerSet } текущего попапа
-let _sarLCInst = null;      // какому inst принадлежит _sarLC
 
 function _sarChartDestroy() {
-    // Полностью убиваем chart текущего попапа: DOM-узел + экземпляр lightweight-charts.
-    try {
-        if (_sarLC && _sarLC.chart) { try { _sarLC.chart.remove(); } catch (e) {} }
-    } catch (e) {}
-    _sarLC = null; _sarLCInst = null;
-    const host = document.getElementById('sarChartHost');
-    if (host) host.innerHTML = '';
+    try { if (window._sarLC && window._sarLC.chart) { try { window._sarLC.chart.remove(); } catch (e) {} } } catch (e) {}
+    window._sarLC = null; window._sarLCInst = null; window._sarLCStopLine = null;
     if (_sarChartRefreshTimer) { clearInterval(_sarChartRefreshTimer); _sarChartRefreshTimer = null; }
 }
 
 function _sarClosePanelDom() {
-    // Единая точка закрытия попапа (F-068): убить график, потом панель.
     _sarChartDestroy();
     const panel = document.getElementById('sarEditPanel');
     if (panel) panel.remove();
     sarPanelInst = null;
 }
 
-function sarClosePanel() {
-    // кнопка «Закрыть»
-    _sarClosePanelDom();
-}
+function sarClosePanel() { _sarClosePanelDom(); }
 
 function _sarChartEnsure(inst) {
-    // F-068: хост живёт ВНУТРИ попапа (шаблон содержит #sarChartHost), создаётся заново
-    // на каждое открытие — никаких переиспользуемых узлов и общего синглтона.
-    if (!_sarLC) {
-        const host = document.getElementById('sarChartHost');
-        if (!host || host.offsetWidth === 0) return null;
-        const w = host.clientWidth || 900, h = host.clientHeight || 320;
-        const chart = LightweightCharts.createChart(host, {
-            width: w, height: h,
-            layout: { background: { color: '#121826' }, textColor: '#9CA3AF' },
-            grid: { vertLines: { color: '#2D2D44' }, horzLines: { color: '#2D2D44' } },
-            crosshair: { mode: LightweightCharts.CrosshairMode.Normal },
-            timeScale: { timeVisible: true, secondsVisible: false },
-            localization: { timeFormatter: t => new Date(t * 1000).toISOString().slice(11, 16),
-                            dateFormat: t => new Date(t * 1000).toISOString().slice(0, 10) },
-        });
-        const candle = chart.addCandlestickSeries({
-            upColor: '#22C55E', downColor: '#EF4444',
-            borderUpColor: '#22C55E', borderDownColor: '#EF4444',
-            wickUpColor: '#22C55E', wickDownColor: '#EF4444',
-        });
-        const sar = chart.addLineSeries({ color: '#FFD700', lineWidth: 1, priceLineVisible: false, lastValueVisible: false, title: 'SAR' });
-        const ema = chart.addLineSeries({ color: '#00BFFF', lineWidth: 2, priceLineVisible: false, lastValueVisible: false, title: 'EMA' });
-        _sarLC = { chart, candle, sar, ema };
-        _sarLCInst = inst;
-        // destroy попапа по крестику окна — на случай закрытия не нашими обработчиками
-        const mo = new MutationObserver(() => {
-            if (!document.getElementById('sarEditPanel')) { _sarChartDestroy(); mo.disconnect(); }
-        });
-        mo.observe(document.body, { childList: true });
+    if (window._sarLC) return window._sarLC;
+    const host = document.getElementById('sarChartHost');
+    if (!host || !host.offsetWidth) return null;
+    const w = host.clientWidth || 900, h = host.clientHeight || 320;
+    const chart = LightweightCharts.createChart(host, {
+        width: w, height: h,
+        layout: { background: { color: '#121826' }, textColor: '#9CA3AF' },
+        grid: { vertLines: { color: '#2D2D44' }, horzLines: { color: '#2D2D44' } },
+        crosshair: { mode: LightweightCharts.CrosshairMode.Normal },
+        timeScale: { timeVisible: true, secondsVisible: false },
+        localization: { timeFormatter: t => new Date(t * 1000).toISOString().slice(11, 16),
+                        dateFormat: t => new Date(t * 1000).toISOString().slice(0, 10) },
+    });
+    const candle = chart.addCandlestickSeries({
+        upColor: '#22C55E', downColor: '#EF4444',
+        borderUpColor: '#22C55E', borderDownColor: '#EF4444',
+        wickUpColor: '#22C55E', wickDownColor: '#EF4444',
+    });
+    const sar = chart.addLineSeries({ color: '#FFD700', lineWidth: 1, priceLineVisible: false, lastValueVisible: false, title: 'SAR' });
+    const ema = chart.addLineSeries({ color: '#00BFFF', lineWidth: 2, priceLineVisible: false, lastValueVisible: false, title: 'EMA' });
+    window._sarLC = { chart, candle, sar, ema };
+    window._sarLCInst = inst;
+    // страховка: попап удалён мимо наших обработчиков → убить chart
+    const mo = new MutationObserver(() => {
+        if (!document.getElementById('sarEditPanel')) { _sarChartDestroy(); mo.disconnect(); }
+    });
+    mo.observe(document.body, { childList: true });
+    return window._sarLC;
+}
+
+async function _sarFetchCandles(inst, cfg, tf) {
+    // 1) C# сервер (Finam REST, лучший источник; на зеркалах 401/404 — молча идём дальше)
+    try {
+        const r = await fetch('/api/candles?ticker=' + cfg.ticker + '&tf=' + tf + '&days=30', { signal: AbortSignal.timeout(6000) });
+        if (r.ok) {
+            const arr = await r.json();
+            if (Array.isArray(arr) && arr.length)
+                return { src: 'ЦБ /api/candles', bars: arr.map(x => ({ t: x.t + MSK_OFFSET_SAR, o: x.o, h: x.h, l: x.l, c: x.c, v: x.v || 0 })) };
+        }
+    } catch (e) {}
+    // 2) DataProvider :5060 (работает при живом DP независимо от робота)
+    try {
+        const r2 = await fetch('http://' + window.location.hostname + ':5060/candles/' + cfg.ticker + '@MISX?tf=H1&limit=300', { signal: AbortSignal.timeout(6000) });
+        if (r2.ok) {
+            const d2 = await r2.json();
+            if (d2 && Array.isArray(d2.bars) && d2.bars.length)
+                return { src: 'DP :5060', bars: d2.bars.map(b => ({
+                    t: Math.floor(new Date(b.timestamp.replace(/\.\d+/, '').replace('T', ' ')).getTime() / 1000) + MSK_OFFSET_SAR,
+                    o: b.open, h: b.high, l: b.low, c: b.close, v: b.volume || 0 })) };
+        }
+    } catch (e) {}
+    // 3) сам робот /bars (может быть оффлайн — тогда已是 без свечей)
+    try {
+        const r3 = await fetch(sarApi(inst) + '/bars?tf_min=' + tf + '&limit=300', { signal: AbortSignal.timeout(6000) });
+        if (r3.ok) {
+            const d3 = await r3.json();
+            if (d3 && d3.bars && d3.bars.length)
+                return { src: 'робот /bars', bars: d3.bars.map(b => ({
+                    t: Math.floor(new Date(b.t.replace(' ', 'T') + 'Z').getTime() / 1000) + MSK_OFFSET_SAR,
+                    o: b.o, h: b.h, l: b.l, c: b.c, v: b.v || 0 })) };
+        }
+    } catch (e) {}
+    return null;
+}
+
+// --- браузерный расчёт SAR/EMA (как indicators.js, но привязан к фактическим точкам) ---
+function _sarLocalPSAR(bars, af0, afStep, afMax) {
+    if (bars.length < 2) return [];
+    let af = af0, isLong = bars[1].c > bars[0].c;
+    let sar = isLong ? bars[0].l : bars[0].h;
+    let ep = isLong ? bars[0].h : bars[0].l;
+    const out = [];
+    for (let i = 1; i < bars.length; i++) {
+        const prev = sar;
+        sar = prev + af * (ep - prev);
+        if (isLong) {
+            sar = Math.min(sar, bars[i-1].l, i >= 2 ? bars[i-2].l : bars[i-1].l);
+            if (bars[i].l < sar) { isLong = false; sar = ep; ep = bars[i].l; af = af0; }
+            else if (bars[i].h > ep) { ep = bars[i].h; af = Math.min(af + afStep, afMax); }
+        } else {
+            sar = Math.max(sar, bars[i-1].h, i >= 2 ? bars[i-2].h : bars[i-1].h);
+            if (bars[i].h > sar) { isLong = true; sar = ep; ep = bars[i].h; af = af0; }
+            else if (bars[i].l < ep) { ep = bars[i].l; af = Math.min(af + afStep, afMax); }
+        }
+        out.push({ t: bars[i].t, value: sar });
     }
-    return _sarLC;
+    return out;
+}
+
+function _sarLocalEMA(bars, period) {
+    if (bars.length < period) return [];
+    const k = 2 / (period + 1);
+    let e = 0;
+    for (let i = 0; i < period; i++) e += bars[i].c;
+    e /= period;
+    const out = [{ t: bars[period-1].t, value: e }];
+    for (let i = period; i < bars.length; i++) { e = bars[i].c * k + e * (1 - k); out.push({ t: bars[i].t, value: e }); }
+    return out;
 }
 
 async function sarChartLoad(inst) {
@@ -878,106 +925,52 @@ async function sarChartLoad(inst) {
     if (info) info.textContent = 'Загрузка графика...';
     window._sarLastClose = window._sarLastClose || {};
 
-    // F-068: при смене экземпляра — гарантированно чужой график уничтожить
-    if (_sarLC && _sarLCInst !== inst) _sarChartDestroy();
-
-    // хост внутри попапа: панель уже в DOM (создана sarSwitchInstance)
+    if (window._sarLC && window._sarLCInst !== inst) _sarChartDestroy();
     if (!document.getElementById('sarEditPanel')) return;
     let lc = _sarChartEnsure(inst);
     if (!lc) {
-        // панель скрыта (display:none) — подождать видимость, потом создать
-        await new Promise(r => setTimeout(r, 120));
+        await new Promise(r => setTimeout(r, 150));
         if (!document.getElementById('sarEditPanel')) return;
         lc = _sarChartEnsure(inst);
         if (!lc) { if (info) info.textContent = 'График: контейнер не виден'; return; }
     }
-    if (sarPanelInst !== inst) return;   // панель переключили пока инициализировались
+    if (sarPanelInst !== inst) return;
 
     try {
-        // 1) свечи: C# /api/candles (работает и при выключенном роботе), fallback — /bars робота
-        let candles = [];
-        try {
-            const pre = await fetch('/api/candles?ticker=' + cfg.ticker + '&tf=' + tf + '&days=30', {signal: AbortSignal.timeout(6000)});
-            if (pre.ok) {
-                const arr = await pre.json();
-                if (Array.isArray(arr) && arr.length) {
-                    candles = arr.map(r => ({ time: r.t + MSK_OFFSET_SAR, open: r.o, high: r.h, low: r.l, close: r.c, volume: r.v || 0 }));
-                }
-            }
-        } catch (e) { /* fallback ниже */ }
-        let source = 'ЦБ /api/candles';
-        if (!candles.length) {
-            const rb = await fetch(sarApi(inst) + '/bars?tf_min=' + tf + '&limit=300', {signal: AbortSignal.timeout(6000)});
-            const db = await rb.json();
-            if (sarPanelInst !== inst) return;
-            if (db.bars && db.bars.length) {
-                candles = db.bars.map(b => ({
-                    time: Math.floor(new Date(b.t.replace(' ', 'T') + 'Z').getTime() / 1000) + MSK_OFFSET_SAR,
-                    open: b.o, high: b.h, low: b.l, close: b.c, volume: b.v || 0,
-                }));
-                source = 'робот /bars';
-            }
-        }
+        const got = await _sarFetchCandles(inst, cfg, tf);
         if (sarPanelInst !== inst) return;
-        if (!candles.length) {
-            if (info) info.textContent = 'Нет данных: ни /api/candles, ни /bars робота';
+        if (!got) {
+            lc.candle.setData([]); lc.sar.setData([]); lc.ema.setData([]);
+            if (info) info.textContent = 'Нет данных: /api/candles, DP :5060 и робот недоступны';
             return;
         }
-        // дедуп + сортировка (lightweight-charts требует монотонное время)
+        // дедуп + сортировка по времени
         const seen = new Set();
-        candles = candles.filter(c => c.time > 0 && !seen.has(c.time) && seen.add(c.time)).sort((a, b) => a.time - b.time);
-        lc.candle.setData(candles);
-        // F-068: дефолт-зум — последние 60 баров (300 в 919px сливаются в «линию»);
-        // пользователь может отзумить колесом на всю историю
+        const bars = got.bars.filter(b => b.t > 0 && !seen.has(b.t) && seen.add(b.t)).sort((a, b) => a.t - b.t);
+        lc.candle.setData(bars.map(b => ({ time: b.t, open: b.o, high: b.h, low: b.l, close: b.c })));
         try {
-            const from = Math.max(0, candles.length - 60);
-            lc.chart.timeScale().setVisibleLogicalRange({ from: from - 1, to: candles.length + 2 });
+            const from = Math.max(0, bars.length - 60);
+            lc.chart.timeScale().setVisibleLogicalRange({ from: from - 1, to: bars.length + 2 });
         } catch (e) { lc.chart.timeScale().fitContent(); }
-        window._sarLastClose[inst] = candles[candles.length - 1].close;
+        window._sarLastClose[inst] = bars.length ? bars[bars.length - 1].c : null;
 
-        // 2) SAR/EMA по параметрам ЭТОГО экземпляра — локальный расчёт от тех же свечей
-        const raw = candles.map(c => ({ t: c.time - MSK_OFFSET_SAR, h: c.high, l: c.low, c: c.close }));
+        // SAR/EMA — ВСЕГДА считаем в браузере из фактических свечей (не зависим от робота)
+        const raw = bars.map(b => ({ t: b.t - MSK_OFFSET_SAR, h: b.h, l: b.l, c: b.c }));
         const sarP = {
             start: parseFloat((document.getElementById('sarAf0') || {}).value) || 0.02,
             step: parseFloat((document.getElementById('sarStep') || {}).value) || 0.2,
             max: parseFloat((document.getElementById('sarMax') || {}).value) || 0.2,
         };
         const emaN = parseInt((document.getElementById('sarEmaN') || {}).value) || 12;
-        // F-068: локальные calcSAR ждут поле t как raw-UTC и ВНУТРИ не добавляют офсет; но их сид/клампинг
-        // немного отличается от боевого движка робота. Приоритет — индикаторы С САМОГО РОБОТА (/bars indicators):
-        let sarArr = [], emaArr = [];
-        try {
-            const rb2 = await fetch(sarApi(inst) + '/bars?tf_min=' + tf + '&limit=300', {signal: AbortSignal.timeout(6000)});
-            if (rb2.ok) {
-                const db2 = await rb2.json();
-                if (Array.isArray(db2.indicators) && db2.indicators.length >= 20) {
-                    const toT = x => Math.floor(new Date(x.t.replace(' ', 'T') + 'Z').getTime() / 1000) + MSK_OFFSET_SAR;
-                    sarArr = db2.indicators.map(x => ({ t: toT(x) - MSK_OFFSET_SAR, value: x.sar }));
-                    emaArr = db2.indicators.map(x => ({ t: toT(x) - MSK_OFFSET_SAR, value: x.ema }));
-                }
-            }
-        } catch (e) { /* фолбэк на локальный расчёт */ }
-        if (!sarArr.length) {
-            sarArr = (typeof calcSAR === 'function') ? calcSAR(raw, sarP.start, sarP.step, sarP.max) : [];
-        }
-        if (!emaArr.length) {
-            emaArr = (typeof calcEMA === 'function') ? calcEMA(raw, emaN) : [];
-        }
-        // F-068: fitContent по СВЕЧАМ уже сделан; индикаторы могут менять масштаб —
-        // если у робота индикаторов нет (заглушка/оффлайн), считаем локально по свечам.
-        const sarSeriesData = sarArr.length ? sarArr.map(d => ({ time: d.t + MSK_OFFSET_SAR, value: d.value }))
-                                            : (typeof calcSAR === 'function' ? calcSAR(raw, sarP.start, sarP.step, sarP.max).map(d => ({ time: d.t + MSK_OFFSET_SAR, value: d.value })) : []);
-        const emaSeriesData = emaArr.length ? emaArr.map(d => ({ time: d.t + MSK_OFFSET_SAR, value: d.value }))
-                                            : (typeof calcEMA === 'function' ? calcEMA(raw, emaN).map(d => ({ time: d.t + MSK_OFFSET_SAR, value: d.value })) : []);
-        lc.sar.setData(sarSeriesData);
-        lc.ema.setData(emaSeriesData);
-        // (fitContent убран: перебивал дефолт-зум «последние 60 баров» — F-068)
+        const sarPts = _sarLocalPSAR(raw, sarP.start, sarP.step, sarP.max).map(d => ({ time: d.t + MSK_OFFSET_SAR, value: d.value }));
+        const emaPts = _sarLocalEMA(raw, emaN).map(d => ({ time: d.t + MSK_OFFSET_SAR, value: d.value }));
+        lc.sar.setData(sarPts);
+        lc.ema.setData(emaPts);
 
-        // 3) позиции: маркеры вход/выход из журнала + линия стопа
+        // маркеры сделок из журнала + линия стопа/входа
         if (lc.candle.setMarkers) {
             const markers = [];
-            const closed = _sarJournalClosed || [];
-            closed.forEach(r => {
+            (_sarJournalClosed || []).forEach(r => {
                 const tOpen = Math.floor(new Date((r.date_open || '') + 'T' + (r.time_open || '00:00:00')).getTime() / 1000) + MSK_OFFSET_SAR;
                 if (Number.isFinite(tOpen) && r.entry) {
                     markers.push({ time: tOpen, position: r.dir === 'L' ? 'belowBar' : 'aboveBar',
@@ -987,27 +980,25 @@ async function sarChartLoad(inst) {
                 if (r.close) {
                     const tClose = Math.floor(new Date((r.close.date_close || '') + 'T' + (r.close.time_close || '00:00:00')).getTime() / 1000) + MSK_OFFSET_SAR;
                     if (Number.isFinite(tClose) && r.close.exit) {
-                        markers.push({ time: tClose, position: 'aboveBar', color: '#e6ebf5', shape: 'circle', text: (r.close.pnl >= 0 ? '+' : '') + r.close.pnl.toFixed(0) + '\u20bd' });
+                        markers.push({ time: tClose, position: 'aboveBar', color: '#e6ebf5', shape: 'circle', text: (r.close.pnl >= 0 ? '+' : '') + r.close.pnl.toFixed(0) + '₽' });
                     }
                 }
             });
             markers.sort((a, b) => a.time - b.time);
             lc.candle.setMarkers(markers);
         }
-        if (lc.chart.removePriceLine) {
-            // линия стопа: пересоздаём при каждом update
-            if (_sarLCStopLine) { try { lc.candle.removePriceLine(_sarLCStopLine); } catch (e) {} _sarLCStopLine = null; }
+        if (lc.candle.createPriceLine) {
+            if (window._sarLCStopLine) { try { lc.candle.removePriceLine(window._sarLCStopLine); } catch (e) {} window._sarLCStopLine = null; }
             const st = window['sarRobot_' + inst];
             const openPos = (_sarJournalOpen && _sarJournalOpen[0]) || null;
             if (openPos && st && st.position && st.position.stop) {
-                _sarLCStopLine = lc.candle.createPriceLine({ price: st.position.stop, color: '#ef6461', lineWidth: 1, lineStyle: LightweightCharts.LineStyle.Dashed, title: 'стоп' });
+                window._sarLCStopLine = lc.candle.createPriceLine({ price: st.position.stop, color: '#ef6461', lineWidth: 1, lineStyle: LightweightCharts.LineStyle.Dashed, title: 'стоп' });
             } else if (openPos && openPos.entry) {
-                _sarLCStopLine = lc.candle.createPriceLine({ price: openPos.entry, color: '#e6ebf5', lineWidth: 1, lineStyle: LightweightCharts.LineStyle.Dotted, title: 'вход ' + openPos.dir });
+                window._sarLCStopLine = lc.candle.createPriceLine({ price: openPos.entry, color: '#e6ebf5', lineWidth: 1, lineStyle: LightweightCharts.LineStyle.Dotted, title: 'вход ' + openPos.dir });
             }
         }
-        if (info) info.textContent = cfg.label + ' · ' + (tf < 60 ? 'M' + tf : 'H' + tf / 60) + ' · ' + candles.length + ' баров (' + source + ')';
+        if (info) info.textContent = cfg.label + ' · ' + (tf < 60 ? 'M' + tf : 'H' + tf / 60) + ' · ' + bars.length + ' баров (' + got.src + ') · SAR/EMA: локальный расчёт';
 
-        // автообновление свечей/индикаторов раз в 60с (только пока открыт этот попап)
         if (_sarChartRefreshTimer) clearInterval(_sarChartRefreshTimer);
         _sarChartRefreshTimer = setInterval(() => {
             if (!document.getElementById('sarEditPanel') || !sarPanelInst) { clearInterval(_sarChartRefreshTimer); _sarChartRefreshTimer = null; return; }
@@ -1017,20 +1008,3 @@ async function sarChartLoad(inst) {
         if (info) info.textContent = 'Ошибка графика: ' + e.message;
     }
 }
-
-let _sarLCStopLine = null;
-
-function _sarChartCandles() {
-    // данные свечей из ChartController (после loadHistory)
-    // ФИКС 13.10: _lastCandles хранит {time,open,high,low,close} в chart-time;
-    // локальные calcSAR/calcEMA ждут {t,h,l,c} в raw-UTC — конвертируем.
-    try {
-        const legacy = window._lastCandles;
-        if (Array.isArray(legacy) && legacy.length) {
-            return legacy.map(c => ({ t: c.time - MSK_OFFSET_SAR, h: c.high, l: c.low, c: c.close }));
-        }
-    } catch (e) {}
-    return [];
-}
-
-// F-068: страховка внизу не нужна — таймеры гасятся в _sarChartDestroy()

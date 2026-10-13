@@ -1,4 +1,4 @@
-using Microsoft.AspNetCore.SignalR;
+﻿using Microsoft.AspNetCore.SignalR;
 using HedgeFund.Server.Hubs;
 using HedgeFund.Server.Connectors;
 using HedgeFund.Server.Services;
@@ -203,6 +203,7 @@ app.Use(async (HttpContext ctx, Func<Task> next) =>
     if (path.StartsWith("/api/login") || 
         path.StartsWith("/api/logout") ||
         path.StartsWith("/strategy/") ||
+        path.StartsWith("/api/candles") || // F-069: read-only candles for popup charts (mirrors too)
         path.StartsWith("/api/active") ||
         path.StartsWith("/connect-broker") || 
         path.StartsWith("/api/accounts") ||
@@ -265,6 +266,11 @@ var _tickerToFinam = new Dictionary<string, string>(StringComparer.OrdinalIgnore
     ["RIU6"] = "RIU6@RTSX",
     ["LKOH"] = "LKOH@MISX", ["GMKN"] = "GMKN@MISX", ["NVTK"] = "NVTK@MISX",
     ["ROSN"] = "ROSN@MISX", ["SNGS"] = "SNGS@MISX", ["YNDX"] = "YNDX@MISX",
+
+    // F-069: акции SAREMA (@MISX TQBR) — иначе дефолт @RTSX давал пустые бары
+    ["SBER"] = "SBER@MISX", ["GAZP"] = "GAZP@MISX", ["LKOH"] = "LKOH@MISX",
+    ["ROSN"] = "ROSN@MISX", ["TATN"] = "TATN@MISX", ["GMKN"] = "GMKN@MISX",
+    ["NVTK"] = "NVTK@MISX", ["PLZL"] = "PLZL@MISX", ["MTSS"] = "MTSS@MISX", ["SNGS"] = "SNGS@MISX",
 };
 string ToFinamSymbol(string ticker) => _tickerToFinam.GetValueOrDefault(ticker, ticker.Contains('@') ? ticker : ticker + "@RTSX");
 

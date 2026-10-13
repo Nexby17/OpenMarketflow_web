@@ -57,6 +57,15 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="Finam DataProvider", lifespan=lifespan)
 
+# F-069: CORS — UI (дашборд :5050 и зеркала) читает /candles прямо из браузера
+from fastapi.middleware.cors import CORSMiddleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["GET", "POST"],
+    allow_headers=["*"],
+)
+
 
 @app.get("/status")
 def get_status():
