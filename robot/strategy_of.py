@@ -639,6 +639,16 @@ class OrderFlowStrategy:
             d = self.vwema.direction
             if d != 0:
                 log.debug(f"VWEMA trend: {'UP' if d > 0 else 'DOWN'} ({self.vwema.state})")
+        # F-064 fix (17.10.2026): CVD Trend EMA должен обновляться на КАЖДОМ закрытом баре,
+        # независимо от тайминг-гейта/позиции. Раньше EMA жил только внутри generate_signals
+        # (путь входа), который вне окна не вызывался → CVD Trend «замерзал» (ready=False,
+        # emaFast=None) и после открытия окна первые 15 баров индикатор был холодным.
+        # Здесь только прогрев состояния: результат сигнала отбрасывается, входы по-прежнему
+        # под полным контролем process_tick (тайминг-гейт/фильтры не затронуты).
+        try:
+            self.signals.check_cvd_trend(self._current_price)
+        except Exception:
+            pass
 
     def process_tick(self, current_price: float, now: datetime) -> list[dict]:
         """Main strategy loop — called on each price update.
