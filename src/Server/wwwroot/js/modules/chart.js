@@ -519,20 +519,27 @@ const ChartController = (() => {
     function resize() {
         if (!_isReady()) return;
         const container = document.getElementById('chartContainer');
-        const target = container || (_chart.container ? _chart.container.parentElement : null);
-        if (!target) return;
+        // ФИКС 13.10: скрытый chartContainer (другая вкладка) давал width=0 —
+        // график попапа SAREMA схлопывался при повторном открытии. Если основной
+        // контейнер скрыт — измеряем родителя контейнера самого графика.
+        const target = (container && container.offsetWidth > 0)
+            ? container
+            : (_chart.container ? _chart.container.parentElement : null);
+        if (!target || target.offsetWidth === 0) return;
         try {
             _chart.applyOptions({ width: target.offsetWidth, height: target.offsetHeight || 400 });
         } catch (e) { /* noop */ }
     }
 
-    function reset() {
+    function reset(ticker, tfMinutes) {
         if (!_isReady()) return;
         _epochCounter++;
         _state.epoch = _epochCounter;
         _clearAllSeries();
-        _state.ticker = null;
-        _state.tf = 5;
+        // ФИКС 13.10: опциональный контекст (sarema fallback) — без него _matchesContext
+        // отбрасывал все applyCandle после reset (ticker=null != 'LKOH'), график оставался без свечей.
+        _state.ticker = ticker != null ? _normTicker(ticker) : null;
+        _state.tf = parseInt(tfMinutes) || 5;
         _state.lastCandleTime = 0;
         _state.loading = false;
         _state.ohlcMerged = false;

@@ -871,12 +871,14 @@ async function sarChartLoad(inst) {
             // прямой setData через ChartController.setStrategySeries + свечи через loadHistory-подобный путь:
             // ChartController.loadHistory тянет только /api/candles, поэтому рисуем через applyCandle по одной
             const t0 = Math.floor(new Date(db.bars[0].t + 'Z').getTime() / 1000) + MSK_OFFSET_SAR;
-            window.ChartController.reset();
-            await window.ChartController.init('sarChart', { autoSize: true });
-            // наполнение через applyCandle
+            window.ChartController.reset(cfg.ticker, tf);  // FIX 13.10: context for _matchesContext (else applyCandle dropped)
+            // ФИКС 13.10: init должен указывать на реальный хост 'sarChartHost' (id 'sarChart'
+            // не существует -> 5с ретраев -> reject -> график оставался пустым после reset)
+            await window.ChartController.init('sarChartHost', { autoSize: true });
+            // наполнение через applyCandle (ожидает t/o/h/l/c, MSK_OFFSET добавляет сам)
             db.bars.forEach(b => {
-                const tsec = Math.floor(new Date(b.t.replace(' ', 'T') + 'Z').getTime() / 1000) + MSK_OFFSET_SAR;
-                window.ChartController.applyCandle(cfg.ticker, tf, { time: tsec, open: b.o, high: b.h, low: b.l, close: b.c });
+                const tsec = Math.floor(new Date(b.t.replace(' ', 'T') + 'Z').getTime() / 1000);
+                window.ChartController.applyCandle(cfg.ticker, tf, { t: tsec, o: b.o, h: b.h, l: b.l, c: b.c, v: b.v });
             });
             window._sarLastClose[inst] = db.bars[db.bars.length - 1].c;   // F-065
             // индикаторы считаны роботом (/bars indicators — по текущему конфигу экземпляра)
@@ -906,9 +908,12 @@ async function sarChartLoad(inst) {
             const emaN = parseInt((document.getElementById('sarEmaN') || {}).value) || 12;
             const sar = (typeof calcSAR === 'function') ? calcSAR(candles, sarP.start, sarP.step, sarP.max) : [];
             const ema = (typeof calcEMA === 'function') ? calcEMA(candles, emaN) : [];
+            // ФИКС 13.10: MSK_OFFSET не существует в этом модуле (приватная константа chart.js)
+            // -> ReferenceError гасил SAR/EMA-оверлеи, маркеры и перезапуск авто-обновления.
+            // Используем локальную MSK_OFFSET_SAR.
             window.ChartController.setStrategySeries({
-                sar: sar.map(d => ({ time: d.time + MSK_OFFSET, value: d.value })),
-                ema: ema.map(d => ({ time: d.time + MSK_OFFSET, value: d.value })),
+                sar: sar.map(d => ({ time: d.time + MSK_OFFSET_SAR, value: d.value })),
+                ema: ema.map(d => ({ time: d.time + MSK_OFFSET_SAR, value: d.value })),
             });
         }
 
@@ -958,11 +963,12 @@ async function sarChartLoad(inst) {
 
 function _sarChartCandles() {
     // данные свечей из ChartController (после loadHistory)
+    // ФИКС 13.10: _lastCandles хранит {time,open,high,low,close} в chart-time;
+    // локальные calcSAR/calcEMA ждут {t,h,l,c} в raw-UTC — конвертируем.
     try {
-        const refs = window.ChartController.getState ? window.ChartController.getState() : null;
         const legacy = window._lastCandles;
         if (Array.isArray(legacy) && legacy.length) {
-            return legacy.map(c => ({ time: c.time, open: c.open, high: c.high, low: c.low, close: c.close }));
+            return legacy.map(c => ({ t: c.time - MSK_OFFSET_SAR, h: c.high, l: c.low, c: c.close }));
         }
     } catch (e) {}
     return [];

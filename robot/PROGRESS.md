@@ -533,3 +533,5 @@ BR-edp (b9b48e3) → добавлены те же варианты 60%/70% в в
 - app.js MX-панель: блок ⏱Тайминг после VAH/VAL (editOfMxUseTiming / editOfMxTimingStart / editOfMxTimingEnd / ofMxTimingVerdict), вердикт в ofMxUpdateLive (OFF/не задано/закрыт/открыт), поля use_timing/timing_start/timing_end в ofMxRobotSaveFromPanel. app.js v120, bin wwwroot синхронизирован, node --check OK.
 - Применено к живому MXU6: POST /params use_timing=true 09:50-18:15 (конфиг persists). timingGate не появился → рестарт процесса (python держит старый код) → PID 13960, хаб чисто, /start → running, gate=False (17:1x внутри окна), цена live.
 - Итог F-064: все 4 OF-робота (Si, PERP, MX, BR) с одинаковым таймингом.
+
+### 2026-10-13 — Sarema LKOH: stopped -> START 16:37 (Дмитрий), фид +26 H1; сигнал на 12:00 отсутствует (SAR<<EMA), лонга нет — штатно; UI-график попапа починен (F-067, 5 багов), проверено CDP-эмуляцией на :5099 и :5050.
