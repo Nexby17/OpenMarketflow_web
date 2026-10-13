@@ -2393,8 +2393,13 @@ async function renderRobots() {
     if (ofRobot) {
         const s = ofRobot;
         const mode = s.mode || 'stopped';
-        const modeText = mode === 'running' ? '🟢 Работает' : mode === 'paused' ? '🟡 Пауза' : '🔴 Остановлен';
-        const modeCls = mode === 'running' ? 'green' : mode === 'paused' ? 'yellow' : 'red';
+        const _gateClosed = s.timingGate === true;
+        const modeText = mode === 'running'
+            ? (_gateClosed ? '⏳ Вне окна (тайминг)' : '🟢 Работает')
+            : mode === 'paused' ? '🟡 Пауза' : '🔴 Остановлен';
+        const modeCls = mode === 'running'
+            ? (_gateClosed ? 'yellow' : 'green')
+            : mode === 'paused' ? 'yellow' : 'red';
         const dirText = s.direction === 'LONG' ? 'Лонг' : s.direction === 'SHORT' ? 'Шорт' : 'Флэт';
         const dirCls = s.direction === 'LONG' ? 'green' : s.direction === 'SHORT' ? 'red' : '';
         const pnlCls = v => v >= 0 ? 'green' : 'red';
@@ -2451,8 +2456,13 @@ async function renderRobots() {
     if (ofMxRobot) {
         const s = ofMxRobot;
         const mode = s.mode || 'stopped';
-        const modeText = mode === 'running' ? '🟢 Работает' : mode === 'paused' ? '🟡 Пауза' : '🔴 Остановлен';
-        const modeCls = mode === 'running' ? 'green' : mode === 'paused' ? 'yellow' : 'red';
+        const _gateClosed = s.timingGate === true;
+        const modeText = mode === 'running'
+            ? (_gateClosed ? '⏳ Вне окна (тайминг)' : '🟢 Работает')
+            : mode === 'paused' ? '🟡 Пауза' : '🔴 Остановлен';
+        const modeCls = mode === 'running'
+            ? (_gateClosed ? 'yellow' : 'green')
+            : mode === 'paused' ? 'yellow' : 'red';
         const dirText = s.direction === 'LONG' ? 'Лонг' : s.direction === 'SHORT' ? 'Шорт' : 'Флат';
         const dirCls = s.direction === 'LONG' ? 'green' : s.direction === 'SHORT' ? 'red' : '';
         const pnlCls = v => v >= 0 ? 'green' : 'red';
@@ -2509,8 +2519,13 @@ async function renderRobots() {
     if (ofPerpRobot) {
         const s = ofPerpRobot;
         const mode = s.mode || 'stopped';
-        const modeText = mode === 'running' ? '🟢 Работает' : mode === 'paused' ? '🟡 Пауза' : '🔴 Остановлен';
-        const modeCls = mode === 'running' ? 'green' : mode === 'paused' ? 'yellow' : 'red';
+        const _gateClosed = s.timingGate === true;
+        const modeText = mode === 'running'
+            ? (_gateClosed ? '⏳ Вне окна (тайминг)' : '🟢 Работает')
+            : mode === 'paused' ? '🟡 Пауза' : '🔴 Остановлен';
+        const modeCls = mode === 'running'
+            ? (_gateClosed ? 'yellow' : 'green')
+            : mode === 'paused' ? 'yellow' : 'red';
         const dirText = s.direction === 'LONG' ? 'Лонг' : s.direction === 'SHORT' ? 'Шорт' : 'Флэт';
         const dirCls = s.direction === 'LONG' ? 'green' : s.direction === 'SHORT' ? 'red' : '';
         const pnlCls = v => v >= 0 ? 'green' : 'red';
@@ -2557,8 +2572,13 @@ async function renderRobots() {
         const s = window['ofBrRobot_' + inst];
         if (s) {
             const mode = s.mode || 'stopped';
-            const modeText = mode === 'running' ? '🟢 Работает' : mode === 'paused' ? '🟡 Пауза' : '🔴 Остановлен';
-            const modeCls = mode === 'running' ? 'green' : mode === 'paused' ? 'yellow' : 'red';
+            const _gateClosed = s.timingGate === true;
+        const modeText = mode === 'running'
+            ? (_gateClosed ? '⏳ Вне окна (тайминг)' : '🟢 Работает')
+            : mode === 'paused' ? '🟡 Пауза' : '🔴 Остановлен';
+            const modeCls = mode === 'running'
+            ? (_gateClosed ? 'yellow' : 'green')
+            : mode === 'paused' ? 'yellow' : 'red';
             const dirText = s.direction === 'LONG' ? 'Лонг' : s.direction === 'SHORT' ? 'Шорт' : 'Флэт';
             const dirCls = s.direction === 'LONG' ? 'green' : s.direction === 'SHORT' ? 'red' : '';
             const pnlCls = v => v >= 0 ? 'green' : 'red';
