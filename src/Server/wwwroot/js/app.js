@@ -5341,6 +5341,19 @@ async function ofRobotEditPanel() {
                 <div class="metric-card" style="min-width:60px"><div class="metric-label">VAL</div><div id="ofVpVal" style="font-size:16px;font-weight:bold;color:#4CAF50">—</div></div>
             </div>
             <hr style="border-color:#2D2D44;margin:12px 0">
+            <!-- F-064: Торговый тайминг (додержать позицию) -->
+            <div class="metrics-row" style="flex-wrap:wrap;margin-bottom:16px;align-items:center">
+                <div class="metric-card" style="display:flex;align-items:center;gap:8px">
+                    <label style="display:flex;align-items:center;gap:6px;cursor:pointer" title="Включено: новые циклы только внутри окна. После времени выключения открытая позиция додерживается штатно (усреднение/пирамида/выходы) до закрытия">
+                        <input id="editOfUseTiming" type="checkbox" ${(p.use_timing)?'checked':''} style="width:18px;height:18px;cursor:pointer">
+                        <span style="font-weight:bold;color:#AB47BC">⏱ Тайминг</span>
+                    </label>
+                </div>
+                <div class="metric-card"><div class="metric-label">Время с</div><input id="editOfTimingStart" class="input" type="time" value="${p.timing_start||''}" style="width:100px"></div>
+                <div class="metric-card"><div class="metric-label">Выключение</div><input id="editOfTimingEnd" class="input" type="time" value="${p.timing_end||''}" style="width:100px"></div>
+                <div class="metric-card" style="min-width:150px"><div class="metric-label">Гейт сейчас</div><div id="ofTimingVerdict" style="font-size:14px;font-weight:bold;color:#9CA3AF">—</div></div>
+            </div>
+            <hr style="border-color:#2D2D44;margin:12px 0">
             <!-- Торговый журнал -->
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
                 <strong>📋 Торговый журнал</strong>
@@ -5500,6 +5513,15 @@ function ofUpdatePanel() {
         else if (hl.verdict === 'long_only') { v.textContent = `🟢 LONG only (${(hl.winLow||0).toFixed(0)})`; v.style.color = '#4CAF50'; }
         else { v.textContent = `⛔ блок ${Math.round(hl.winLow||0)}–${Math.round(hl.winHigh||0)}`; v.style.color = '#FF9800'; }
     }
+    // F-064: тайминг-гейт
+    if (el('ofTimingVerdict')) {
+        const v = el('ofTimingVerdict');
+        const tp = s.params || {};
+        if (!tp.use_timing) { v.textContent = 'OFF'; v.style.color = '#6B7280'; }
+        else if (!tp.timing_start || !tp.timing_end) { v.textContent = '⚠ не задано время'; v.style.color = '#FF9800'; }
+        else if (s.timingGate) { v.textContent = '⛔ закрыт (вне окна)'; v.style.color = '#F44336'; }
+        else { v.textContent = '🟢 открыт — торгуем'; v.style.color = '#4CAF50'; }
+    }
 }
 
 async function ofRobotSaveFromPanel() {
@@ -5549,6 +5571,10 @@ async function ofRobotSaveFromPanel() {
         hl_window: Math.max(2, Math.min(parseInt(el('editOfHlWindow')?.value) || 24, 30)),
         hl_delta: parseFloat(el('editOfHlDelta')?.value) || 150,
         direction_filter: el('ofDirFilter')?.value || 'both',
+
+        use_timing: el('editOfUseTiming')?.checked || false,
+        timing_start: (el('editOfTimingStart')?.value || '').trim(),
+        timing_end: (el('editOfTimingEnd')?.value || '').trim(),
     };
     try {
         // F-010: если робот offline — пишем конфиг через сервер (применится при старте)
@@ -5947,6 +5973,19 @@ async function ofPerpRobotEditPanel() {
                 <div class="metric-card" style="min-width:80px"><div class="metric-label">VAL</div><div id="ofPerpVpVal" style="font-size:16px;font-weight:bold;color:#42A5F5">—</div></div>
             </div>
             <hr style="border-color:#2D2D44;margin:12px 0">
+            <!-- F-064: Торговый тайминг (додержать позицию) -->
+            <div class="metrics-row" style="flex-wrap:wrap;margin-bottom:16px;align-items:center">
+                <div class="metric-card" style="display:flex;align-items:center;gap:8px">
+                    <label style="display:flex;align-items:center;gap:6px;cursor:pointer" title="Включено: новые циклы только внутри окна. После времени выключения открытая позиция додерживается штатно (усреднение/пирамида/выходы) до закрытия">
+                        <input id="editOfPerpUseTiming" type="checkbox" ${(p.use_timing)?'checked':''} style="width:18px;height:18px;cursor:pointer">
+                        <span style="font-weight:bold;color:#AB47BC">⏱ Тайминг</span>
+                    </label>
+                </div>
+                <div class="metric-card"><div class="metric-label">Время с</div><input id="editOfPerpTimingStart" class="input" type="time" value="${p.timing_start||''}" style="width:100px"></div>
+                <div class="metric-card"><div class="metric-label">Выключение</div><input id="editOfPerpTimingEnd" class="input" type="time" value="${p.timing_end||''}" style="width:100px"></div>
+                <div class="metric-card" style="min-width:150px"><div class="metric-label">Гейт сейчас</div><div id="ofPerpTimingVerdict" style="font-size:14px;font-weight:bold;color:#9CA3AF">—</div></div>
+            </div>
+            <hr style="border-color:#2D2D44;margin:12px 0">
             <!-- Торговый журнал -->
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
                 <strong>📋 Торговый журнал</strong>
@@ -6064,6 +6103,15 @@ function ofPerpUpdateLive() {
         else if (hl.verdict === 'long_only') { v.textContent = `🟢 LONG only (${(hl.winLow||0).toFixed(2)})`; v.style.color = '#4CAF50'; }
         else { v.textContent = `⛔ блок ${(hl.winLow||0).toFixed(2)}–${(hl.winHigh||0).toFixed(2)}`; v.style.color = '#FF9800'; }
     }
+    // F-064: тайминг-гейт
+    if (el('ofPerpTimingVerdict')) {
+        const v = el('ofPerpTimingVerdict');
+        const tp = s.params || {};
+        if (!tp.use_timing) { v.textContent = 'OFF'; v.style.color = '#6B7280'; }
+        else if (!tp.timing_start || !tp.timing_end) { v.textContent = '⚠ не задано время'; v.style.color = '#FF9800'; }
+        else if (s.timingGate) { v.textContent = '⛔ закрыт (вне окна)'; v.style.color = '#F44336'; }
+        else { v.textContent = '🟢 открыт — торгуем'; v.style.color = '#4CAF50'; }
+    }
 }
 
 async function ofPerpRobotSaveFromPanel() {
@@ -6110,6 +6158,10 @@ async function ofPerpRobotSaveFromPanel() {
         hl_window: Math.max(2, Math.min(parseInt(el('editOfPerpHlWindow')?.value) || 15, 30)),
         hl_delta: parseFloat(el('editOfPerpHlDelta')?.value) || 0.055,
         direction_filter: el('ofPerpDirFilter')?.value || 'both',
+
+        use_timing: el('editOfPerpUseTiming')?.checked || false,
+        timing_start: (el('editOfPerpTimingStart')?.value || '').trim(),
+        timing_end: (el('editOfPerpTimingEnd')?.value || '').trim(),
     };
     // Always save to localStorage first
     localStorage.setItem('ofPerpSavedParams', JSON.stringify(body));
@@ -6670,7 +6722,7 @@ async function ofMxRobotEditPanel() {
                 </div>
                 <div class="metric-card"><div class="metric-label">Value Area %</div><input id="editOfMxVahValPct" class="input" type="number" min="50" max="90" value="${p.vah_val_pct||70}" style="width:60px"></div>
                 <div class="metric-card"><div class="metric-label">VP Bin Size</div><input id="editOfMxVahValBin" class="input" type="number" min="1" max="500" value="${p.vah_val_bin_size||5}" style="width:60px"></div>
-                <div class="metric-card"><div class="metric-label">VP Mode</div><select id="editOfMxVahValMode" class="input" style="width:90px;font-size:12px;background:transparent;color:#fff;border:1px solid #2D4A6D"><option value="fade" ${(p.vah_val_mode||'fade')==='fade'?'selected':''}>Fade</option><option value="breakout" ${(p.vah_val_mode||'fade')==='breakout'?'selected':''}>Breakout</option></select></div>
+                <div class="metric-card"><div class="metric-label">VP Mode</div><select id="editOfMxVahValMode" class="input" style="width:90px;font-size:12px;background:transparent;color:#fff;border:1px solid #2D4A6D"><option value="range" ${(p.vah_val_mode||'range')==='range'?'selected':''}>Range</option><option value="fade" ${p.vah_val_mode==='fade'?'selected':''}>Fade</option><option value="breakout" ${p.vah_val_mode==='breakout'?'selected':''}>Breakout</option></select></div>
                 <div class="metric-card" style="min-width:80px"><div class="metric-label">VAH</div><div id="ofMxVpVah" style="font-size:16px;font-weight:bold;color:#42A5F5">—</div></div>
                 <div class="metric-card" style="min-width:80px"><div class="metric-label">POC</div><div id="ofMxVpPoc" style="font-size:16px;font-weight:bold;color:#FFB74D">—</div></div>
                 <div class="metric-card" style="min-width:80px"><div class="metric-label">VAL</div><div id="ofMxVpVal" style="font-size:16px;font-weight:bold;color:#42A5F5">—</div></div>
@@ -6821,7 +6873,7 @@ async function ofMxRobotSaveFromPanel() {
         vwema_avg_exit: el('editOfMxVwemaAvgExit')?.checked || false,
         vah_val_pct: parseInt(el('editOfMxVahValPct')?.value) || 70,
         vah_val_bin_size: parseInt(el('editOfMxVahValBin')?.value) || 5,
-        vah_val_mode: el('editOfMxVahValMode')?.value || 'fade',
+        vah_val_mode: el('editOfMxVahValMode')?.value || 'range',
         use_vah_val: el('editOfMxUseVahVal')?.checked || el('toggleMxVp')?.checked || false,
         direction_filter: el('ofMxDirFilter')?.value || 'both',
     };

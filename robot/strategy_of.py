@@ -90,6 +90,15 @@ class OFParams:
     # Outside the window: no new entries; position is force-closed (session_close).
     session_start: str = ""       # e.g. "10:30"
     session_end: str = ""         # e.g. "18:30"
+    # F-064: Торговый тайминг с семантикой «додержать позицию» (Дмитрий 12.10.2026).
+    # use_timing ON + окно задано: внутри окна — полная торговля; после end — НОВЫЕ
+    # циклы запрещены, но открытая позиция продолжает вестись штатно (усреднение/
+    # пирамида/выходы) до закрытия. Если позиция закрылась уже после старта нового
+    # дня → торговля продолжается (стейтлесс-гейт, без флагов). Legacy session_*
+    # (форс-закрытие) — независимый механизм, не трогаем.
+    use_timing: bool = False
+    timing_start: str = ""        # "09:50"
+    timing_end: str = ""          # "17:55"
     # VAH/VAL Volume Profile filter
     use_vah_val: bool = False      # enable VAH/VAL entry filter
     vah_val_pct: int = 70          # value area percentage (70%)
@@ -447,6 +456,48 @@ class OrderFlowStrategy:
             return False
         return cur < int(h1) * 60 + int(m1) or cur > int(h2) * 60 + int(m2)
 
+    @staticmethod
+    def _parse_hhmm(s: str) -> Optional[int]:
+        """'09:50' → 590 (минуты от полуночи). None если пусто/битое."""
+        try:
+            s = (s or "").strip()
+            if not s or ":" not in s:
+                return None
+            h, m = s.split(":", 1)
+            h, m = int(h), int(m)
+            if not (0 <= h <= 23 and 0 <= m <= 59):
+                return None
+            return h * 60 + m
+        except Exception:
+            return None
+
+    def _timing_gate_closed(self, now: datetime) -> bool:
+        """F-064: True → новые торговые циклы сейчас запрещены.
+
+        Стейтлесс (чистая функция времени) — рестарты и ночные кейсы обрабатываются
+        автоматически, без флагов в состоянии:
+          - после timing_end флэт-робот ждёт до следующего дня (timing_start);
+          - открытая позиция торгует как обычно (гейт блокирует только НОВЫЕ входы);
+          - позиция закрылась после старта нового дня → окно уже открыто, робот
+            продолжает торговать; закрылась до старта → ждёт старта.
+        Битое/пустое время → гейт неактивен (как в legacy session-проверке).
+        """
+        if not self.p.use_timing:
+            return False
+        start = self._parse_hhmm(self.p.timing_start)
+        end = self._parse_hhmm(self.p.timing_end)
+        if start is None or end is None:
+            return False
+        msk = now.astimezone(MSK)
+        cur = msk.hour * 60 + msk.minute
+        if start <= end:
+            return not (start <= cur <= end)
+        return not (cur >= start or cur <= end)  # окно через полночь (22:00→03:00)
+
+    def is_timing_gate_closed(self) -> bool:
+        """F-064: состояние гейта прямо сейчас (для UI /status)."""
+        return self._timing_gate_closed(datetime.now(MSK))
+
     def _is_entry_locked(self) -> bool:
         return time.time() < self._entry_lock_until
 
@@ -673,6 +724,10 @@ class OrderFlowStrategy:
 
             else:
                 # Not in position — check for entry
+                # F-064: тайминг-гейт — вне окна новые циклы запрещены (флэт → ждём старта).
+                # Открытая позиция сюда не доходит: усреднение/пирамида/выходы выше работают штатно.
+                if self._timing_gate_closed(now):
+                    return []
                 if not self._is_entry_locked():
                     entry_action = self._check_entry(current_price, now)
                     if entry_action:
