@@ -526,3 +526,10 @@ BR-edp (b9b48e3) → добавлены те же варианты 60%/70% в в
 - finam_hub.py `_run`: импорт в retry-цикле с backoff вместо raise; лог «retry in Ns (thread stays alive)».
 - Тест: meta_path-хук (2 первых сбоя) → READY. py_compile OK.
 - Ждёт Дмитрия (R-001): рестарт 5080/5081/5095. BR 5083 (16:39) здоров.
+
+### 2026-10-13 17:0x-17:1x — F-064 parity: тайминг в MX (завершение четвёрки)
+- Дмитрий прислал скрин блока «⏱ Тайминг» (Время с 09:50, Выключение 18:15, Гейт: открыт — торгуем): «Сделай для робота такой же тайминг». Контекст: MXU6.
+- main_of_mx.py: status["timingGate"] = strategy.is_timing_gate_closed() (движок F-064 в strategy_of общий — MX уже имел гейт входа, не было только статуса/UI).
+- app.js MX-панель: блок ⏱Тайминг после VAH/VAL (editOfMxUseTiming / editOfMxTimingStart / editOfMxTimingEnd / ofMxTimingVerdict), вердикт в ofMxUpdateLive (OFF/не задано/закрыт/открыт), поля use_timing/timing_start/timing_end в ofMxRobotSaveFromPanel. app.js v120, bin wwwroot синхронизирован, node --check OK.
+- Применено к живому MXU6: POST /params use_timing=true 09:50-18:15 (конфиг persists). timingGate не появился → рестарт процесса (python держит старый код) → PID 13960, хаб чисто, /start → running, gate=False (17:1x внутри окна), цена live.
+- Итог F-064: все 4 OF-робота (Si, PERP, MX, BR) с одинаковым таймингом.

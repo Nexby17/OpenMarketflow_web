@@ -6728,6 +6728,19 @@ async function ofMxRobotEditPanel() {
                 <div class="metric-card" style="min-width:80px"><div class="metric-label">VAL</div><div id="ofMxVpVal" style="font-size:16px;font-weight:bold;color:#42A5F5">—</div></div>
             </div>
             <hr style="border-color:#2D2D44;margin:12px 0">
+            <!-- F-064: Торговый тайминг (додержать позицию) — как у OF-Si -->
+            <div class="metrics-row" style="flex-wrap:wrap;margin-bottom:16px;align-items:center">
+                <div class="metric-card" style="display:flex;align-items:center;gap:8px">
+                    <label style="display:flex;align-items:center;gap:6px;cursor:pointer" title="Включено: новые циклы только внутри окна. После времени выключения открытая позиция додерживается штатно (усреднение/пирамида/выходы) до закрытия">
+                        <input id="editOfMxUseTiming" type="checkbox" ${(p.use_timing)?'checked':''} style="width:18px;height:18px;cursor:pointer">
+                        <span style="font-weight:bold;color:#AB47BC">⏱ Тайминг</span>
+                    </label>
+                </div>
+                <div class="metric-card"><div class="metric-label">Время с</div><input id="editOfMxTimingStart" class="input" type="time" value="${p.timing_start||''}" style="width:100px"></div>
+                <div class="metric-card"><div class="metric-label">Выключение</div><input id="editOfMxTimingEnd" class="input" type="time" value="${p.timing_end||''}" style="width:100px"></div>
+                <div class="metric-card" style="min-width:150px"><div class="metric-label">Гейт сейчас</div><div id="ofMxTimingVerdict" style="font-size:14px;font-weight:bold;color:#9CA3AF">—</div></div>
+            </div>
+            <hr style="border-color:#2D2D44;margin:12px 0">
             <!-- Торговый журнал -->
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
                 <strong>📋 Торговый журнал</strong>
@@ -6833,6 +6846,15 @@ function ofMxUpdateLive() {
         const vwDir = s.vwema.direction > 0 ? '↑ UP' : s.vwema.direction < 0 ? '↓ DOWN' : '→ FLAT';
         setText('ofMxVwemaTrend', vwDir + ' (f=' + (s.vwema.ema_f ? s.vwema.ema_f.toFixed(0) : '—') + ' s=' + (s.vwema.ema_s ? s.vwema.ema_s.toFixed(0) : '—') + ')');
     }
+    // F-064: тайминг-гейт (как у OF-Si)
+    if (el('ofMxTimingVerdict')) {
+        const v = el('ofMxTimingVerdict');
+        const tp = s.params || {};
+        if (!tp.use_timing) { v.textContent = 'OFF'; v.style.color = '#6B7280'; }
+        else if (!tp.timing_start || !tp.timing_end) { v.textContent = '⚠ не задано время'; v.style.color = '#FF9800'; }
+        else if (s.timingGate) { v.textContent = '⛔ закрыт (вне окна)'; v.style.color = '#F44336'; }
+        else { v.textContent = '🟢 открыт — торгуем'; v.style.color = '#4CAF50'; }
+    }
 }
 
 async function ofMxRobotSaveFromPanel() {
@@ -6876,6 +6898,9 @@ async function ofMxRobotSaveFromPanel() {
         vah_val_mode: el('editOfMxVahValMode')?.value || 'range',
         use_vah_val: el('editOfMxUseVahVal')?.checked || el('toggleMxVp')?.checked || false,
         direction_filter: el('ofMxDirFilter')?.value || 'both',
+        use_timing: el('editOfMxUseTiming')?.checked || false,
+        timing_start: (el('editOfMxTimingStart')?.value || '').trim(),
+        timing_end: (el('editOfMxTimingEnd')?.value || '').trim(),
     };
     // Always save to localStorage first
     localStorage.setItem('ofMxSavedParams', JSON.stringify(body));

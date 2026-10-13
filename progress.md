@@ -555,3 +555,10 @@ BR-edp (b9b48e3) → добавлены те же варианты 60%/70% в в
 **Тест.** meta_path-хук роняет первые 2 импорта websockets: хаб дважды логирует сбой, восстанавливается и подключается — `RESULT: READY | import attempts: 25` (внутренние ленивые импорты 17.x тоже идут через хук). py_compile OK.
 
 **Действия Дмитрия (R-001):** перезапустить оглохших — OF-Si :5080, OF-MX :5081 (в running, слепой), OF-PERP :5095 (кнопки ▶/⏹ в UI или POST /restart). OF-BR :5083 (16:39) живой — не трогать.
+
+## 2026-10-13 ~17:15 — F-064 parity: тайминг для MXU6
+- Скрин от Дмитрия: блок «⏱ Тайминг» как у SiU6 (09:50-18:15, гейт «открыт — торгуем»). Просьба: «Сделай для робота такой же тайминг».
+- MX (main_of_mx.py) использует общий strategy_of.py — движок гейта уже был (F-064 core); не хватало status.timingGate + UI.
+- Правки: main_of_mx.py (+timingGate в /status), app.js (MX-панель: ⏱Тайминг блок + ofMxTimingVerdict в ofMxUpdateLive + 3 поля в save), v120, bin sync.
+- Live: POST /params use_timing=true 09:50-18:15 → рестарт процесса (старый код в памяти) → /start. Статус: running, gate=False (внутри окна), цена live, VP/CVD ready.
+- Все 4 OF-робота теперь с таймингом.
