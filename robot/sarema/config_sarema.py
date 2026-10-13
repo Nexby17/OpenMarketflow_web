@@ -52,6 +52,14 @@ DEFAULTS = {
     "liq_frac": 0.05,
     "day_kill_R": None,
     "warmup_bars": 300,
+    # === F-065: Volume Profile фильтр входа (как у OF-Si «VP Mode») ===
+    # mode: off = как раньше (без фильтра); range = вход только внутри VA;
+    # fade/breakout = вход только от краёв VA. Значения None = дефолт подтипа:
+    # bin None → авто из размаха окна; pct None → 70; lookback None → 200 баров H1.
+    "vah_val_mode": "off",
+    "vah_val_bin": None,
+    "vah_val_pct": None,
+    "vah_val_lookback": None,
 }
 
 
@@ -127,6 +135,30 @@ def validate_params(patch: dict) -> tuple[dict, list[str]]:
                 errors.append(f"{k} must be in [{lo}, {hi}]")
             else:
                 clean[k] = typ(v)
+    # F-065: VP Mode Range/Fade/Breakout + подтипы
+    if "vah_val_mode" in patch:
+        m = patch["vah_val_mode"]
+        if m in ("off", "range", "fade", "breakout"):
+            clean["vah_val_mode"] = m
+        else:
+            errors.append("vah_val_mode must be off|range|fade|breakout")
+    for k in ("vah_val_bin", "vah_val_pct", "vah_val_lookback"):
+        if k in patch:
+            v = patch[k]
+            if v is None:
+                clean[k] = None                      # дефолт подтипа
+            elif isinstance(v, (int, float)) and v >= 0:
+                # 0 = «авто/дефолт» (bin: авто из размаха; pct/lookback: дефолт 70/200)
+                if v == 0:
+                    clean[k] = 0.0 if k == "vah_val_bin" else None
+                else:
+                    clean[k] = float(v) if k == "vah_val_bin" else int(v)
+            else:
+                errors.append(f"{k} must be null/0 (default) or > 0")
+    if "vah_val_pct" in clean and clean["vah_val_pct"] is not None and clean["vah_val_pct"] != 0 and not (50 <= clean["vah_val_pct"] <= 100):
+        errors.append("vah_val_pct must be in [50, 100] or null/0")
+    if "vah_val_lookback" in clean and clean["vah_val_lookback"] is not None and not (30 <= clean["vah_val_lookback"] <= 2000):
+        errors.append("vah_val_lookback must be in [30, 2000] or null")
     return clean, errors
 
 

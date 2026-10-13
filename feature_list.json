@@ -1090,6 +1090,16 @@
       "date": "2026-10-13",
       "summary": "Запрос Дмитрия 12.10.2026: торговый тайминг для OF-Si (main_of.py :5080) и OF-PERP (main_of_perp.py :5084). Семантика: галочка use_timing включает окно timing_start/timing_end (МСК); внутри окна — обычная торговля; после end НОВЫЕ циклы запрещены, но открытая позиция додерживается штатно (усреднение/пирамида/выходы работают) до закрытия; если позиция закрылась после старта следующего дня — торговля продолжается. Реализация: strategy_of.py общий (3 поля OFParams + стейтлесс-гейт _timing_gate_closed, чистая функция времени — рестарты/ночные кейсы без флагов), гейт только перед _check_entry в process_tick; legacy session_start/session_end (форс-закрытие, используется BR/MX) НЕ тронут. /status обоих роботов: timingGate. UI (app.js, обе панели): чекбокс Тайминг + type=time Время с/Выключение + live-вердикт Гейт сейчас (OFF/не задано/закрыт/открыт); сохранение через /params робота или /api/of/config/{name} прокси при offline. Дефолты use_timing:false в of_config.json/of_config_perp.json. Тесты: test_of_timing.py 11/11 PASS (грани окна, через полночь, блок входа флэта, выходы/усреднение при закрытом гейте); регресс test_of_br_logic PASS; node --check app.js OK; app.js скопирован в bin wwwroot. Предсуществующие падения test_of_br_params (BRV6/BRX6 дрейф, live-правки EDP конфига) и test_risk (ModuleNotFound risk) — не связаны, подтверждено git stash-прогоном до правок.",
       "date_updated": "2026-10-13"
+    },
+    {
+      "id": "F-065",
+      "name": "SAREMA: VP Mode (Range/Fade/Breakout) — Volume Profile фильтр входа как у SiU6 Order Flow",
+      "area": "robots/stocks",
+      "status": "done (код+тесты+UI; дефолт off, включение — Дмитрием в панели R-002)",
+      "owner": "main",
+      "date": "2026-10-13",
+      "summary": "Запрос Дмитрия 12.10.2026: добавить режим VP Mode Range роботу как у SiU6 OF (PYTHON). Носитель — SAREMA (SAR×EMA H1, 10 инстансов акций 5101-5110): VAH/VAL у него не было. Реализация: (1) robot/sarema/vp_sarema.py — VolumeProfileSarema (скользящее окно H1-баров, типичная цена (H+L+C)/3 как VP backfill OF; авто-бин из размаха с округлением 1/2/2.5/5×10^k — масштабы акций SBER~300₽/LKOH~7000₽; VA-расширение от POC — порт OF-семантики) + gate_check (range=вход только внутри VA; fade/breakout=только от краёв VA; чистая функция); (2) config_sarema.py — vah_val_mode/bin/pct/lookback в DEFAULTS (дефолт off — поведение не меняется) + валидация /params; (3) strategy_sarema.py — VP строится из окна закрытых H1 каждый бар, гейт до лимитов/сайзинга (сигнал не расходуется), зона режима в журнал позиций; (4) main_sarema.py — /status vp-блок, ParamsPatch поля; (5) UI sarema.js — блок VP фильтр в popup-панели: VP Mode select Off/Range/Fade/Breakout, Value Area % (пусто=70), VP Bin (пусто=авто), Окно баров (пусто=200), живые VAH/POC/VAL + вердикт (внутри VA/вне VA/у VAH/у VAL), сохранение офлайн в localStorage (паттерн панели); (6) тесты tests/test_vp_sarema.py 13 PASS + API smoke 7 PASS, полный suite 53/53. bin wwwroot скопирован (живой сервер отдаёт новый UI после Ctrl+F5). SAREMA-инстансы не запущены (R-001), подхватят параметры при старте.",
+      "date_updated": "2026-10-13"
     }
   ]
 }

@@ -10,6 +10,7 @@ from sarema.config_sarema import apply_limits_qty
 from sarema.risk_sarema import (risk_sizing, apply_lot_rounding, apply_liq_cap,
                                 check_kill_switch)
 from sarema.orders_sarema import BUY, SELL
+from sarema.vp_sarema import VolumeProfileSarema, gate_check
 
 log = logging.getLogger("sarema.strategy")
 
@@ -26,6 +27,25 @@ class SaremaStrategy:
         self.ticker = ticker
         self.stop_order_id: str | None = None
         self.last_stats: dict = {}
+        # F-065: Volume Profile (VAH/VAL/POC) — фильтр входа как у OF-роботов
+        self.vp = VolumeProfileSarema(
+            bin_size=cfg.get("vah_val_bin") or 0.0,
+            va_pct=cfg.get("vah_val_pct") or 70.0,
+            lookback=cfg.get("vah_val_lookback") or 200,
+        )
+
+    # ---------- F-065: VP helpers ----------
+    def _vp_mode(self) -> str:
+        return (self.cfg.get("vah_val_mode") or "off").lower()
+
+    def _vp_rebuild_if_needed(self) -> None:
+        """Пересоздать VP при смене подтипов через /params (mode меняет только гейт)."""
+        bin_p = self.cfg.get("vah_val_bin") or 0.0
+        pct_p = self.cfg.get("vah_val_pct") or 70.0
+        lb_p = self.cfg.get("vah_val_lookback") or 200
+        if (self.vp.bin_size != bin_p or self.vp.va_pct != pct_p
+                or self.vp.lookback != lb_p):
+            self.vp = VolumeProfileSarema(bin_size=bin_p, va_pct=pct_p, lookback=lb_p)
 
     # ---------- сигнальный проход на закрытом H1 ----------
     def on_closed_bar(self) -> dict:
@@ -34,6 +54,14 @@ class SaremaStrategy:
         g = self.feed.bars
         if g is None or len(g) < 3:
             return {"event": "skip", "reason": "no_bars"}
+        # F-065: VP всегда строится из окна закрытых H1 (считается до ветки входа —
+        # чтобы /status показывал VAH/VAL/POC даже при открытой позиции)
+        self._vp_rebuild_if_needed()
+        try:
+            self.vp.feed_bars(g)
+            self.vp.calculate()
+        except Exception:
+            pass
         # пересчёт индикаторов на всей истории (порт движка, дешёво на H1)
         # параметры берутся из конфига экземпляра (редактируемые Дмитрием в popup)
         df = g.rename(columns={"begin": "t"})
@@ -57,6 +85,19 @@ class SaremaStrategy:
 
         # 2) вход: сигнал на закрытом баре, флэт, входы не заблокированы
         if self.state.direction == FLAT and (dn[i] or up[i]):
+            # F-065: VA-гейт (VP Mode) — ДО лимитов/сайзинга; сигнал не расходуется
+            vp_mode = self._vp_mode()
+            if vp_mode != "off":
+                price_ref = float(g2["close"].iloc[i])
+                allowed, reason, zone = gate_check(vp_mode, price_ref,
+                                                   self.vp.vah, self.vp.val)
+                if not allowed:
+                    events.append({"event": "entry_blocked_vp", "mode": vp_mode,
+                                   "reason": reason, "price": round(price_ref, 4),
+                                   "vah": round(self.vp.vah, 4), "val": round(self.vp.val, 4)})
+                    return {"events": events, "last_bar": str(g2["begin"].iloc[-1])}
+            else:
+                zone = ""
             today = date.today()
             if self.state.entries_blocked(today):
                 events.append({"event": "entry_blocked_kill_day"})
@@ -107,6 +148,7 @@ class SaremaStrategy:
         from datetime import date as _date
         _now = datetime.utcnow()
         risk_pts = stop_dist
+        vp_mode = self._vp_mode()
         self.state.journal_open({
             "tic": self.ticker,
             "tf": "H1",
@@ -119,6 +161,7 @@ class SaremaStrategy:
             "risk_pct": round(qty * stop_dist / max(1e-9, self.state.base) * 100, 2),
             "risk_pts": round(risk_pts, 2),
             "stop": round(stop0, 2),
+            "vp": (f"{vp_mode}:{zone}" if vp_mode != "off" and zone else (vp_mode if vp_mode != "off" else "signal")),
         })
         self.state.direction = direction
         self.state.lots_qty = qty

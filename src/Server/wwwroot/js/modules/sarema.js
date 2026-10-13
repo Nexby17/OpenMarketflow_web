@@ -94,7 +94,20 @@ function sarSwitchInstance(inst) {
                 <div class="metric-card"><div class="metric-label">Стоп = N×ATR (1–10)</div><input id="sarStopAtr" class="input" placeholder="3" style="width:70px"></div>
                 <div class="metric-card"><div class="metric-label">Таймфрейм мин (5–240)</div><input id="sarTfMin" class="input" placeholder="60" style="width:70px"></div>
             </div>
-            <div class="text-secondary" style="font-size:11.5px;margin-bottom:4px">Штат бэктеста: AF0 0.02 · Step 0.2 · Max 0.2 · EMA 12 · стоп 3×ATR · H1 · полярность std (не менять — урок WF) · трейлинг PSAR · овернайты разрешены</div>
+            <div class="text-secondary" style="font-size:11.5px;margin-bottom:4px">Штат бэктеста: AF0 0.02 · Step 0.2 · Max 0.2 · EMA 12 · стоп 3×ATR · H1 · полярность std (не менять — урок WF) · трей
+            <hr style="border-color:#2D2D44;margin:12px 0">
+            <!-- F-065: VAH/VAL Volume Profile Filter — как у OF-Si (VP Mode Range/Fade/Breakout) -->
+            <div style="font-weight:700;margin-bottom:8px">VP фильтр <span class="text-secondary" style="font-size:11.5px;font-weight:400">— Volume Profile входа, как у SiU6 OF · off = без фильтра</span></div>
+            <div class="metrics-row" style="flex-wrap:wrap;margin-bottom:6px">
+                <div class="metric-card"><div class="metric-label">VP Mode</div><select id="sarVpMode" class="input" style="width:100px"><option value="off">Off</option><option value="range">Range</option><option value="fade">Fade</option><option value="breakout">Breakout</option></select></div>
+                <div class="metric-card"><div class="metric-label">Value Area % (пусто = 70)</div><input id="sarVpPct" class="input" placeholder="70" style="width:70px"></div>
+                <div class="metric-card"><div class="metric-label">VP Bin (пусто = авто)</div><input id="sarVpBin" class="input" placeholder="авто" style="width:80px"></div>
+                <div class="metric-card"><div class="metric-label">Окно баров (пусто = 200)</div><input id="sarVpLookback" class="input" placeholder="200" style="width:70px"></div>
+                <div class="metric-card" style="min-width:70px"><div class="metric-label">VAH</div><div id="sarVpVah" style="font-size:16px;font-weight:bold;color:#EF5350">—</div></div>
+                <div class="metric-card" style="min-width:70px"><div class="metric-label">POC</div><div id="sarVpPoc" style="font-size:16px;font-weight:bold;color:#FFA726">—</div></div>
+                <div class="metric-card" style="min-width:70px"><div class="metric-label">VAL</div><div id="sarVpVal" style="font-size:16px;font-weight:bold;color:#66BB6A">—</div></div>
+                <div class="metric-card" style="min-width:130px"><div class="metric-label">VP вердикт</div><div id="sarVpVerdict" style="font-size:14px;font-weight:bold;color:#9CA3AF">—</div></div>
+            </div>линг PSAR · овернайты разрешены</div>
             <hr style="border-color:#2D2D44;margin:12px 0">
             <!-- График инструмента: свечи + EMA + PSAR + позиции + трейлинг-стоп -->
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
@@ -174,6 +187,9 @@ async function sarLoadPanelData(inst) {
     set('sarRiskPct', ''); set('sarDayKill', ''); set('sarLiqFrac', 0.05);
     set('sarAf0', 0.02); set('sarStep', 0.2); set('sarMax', 0.2);
     set('sarEmaN', 12); set('sarStopAtr', 3); set('sarTfMin', 60);
+    // F-065: VP дефолты
+    const sarVpModeEl = document.getElementById('sarVpMode'); if (sarVpModeEl) sarVpModeEl.value = 'off';
+    set('sarVpPct', ''); set('sarVpBin', ''); set('sarVpLookback', '');
     // черновик этого экземпляра (оффлайн-сохранение)
     try {
         const raw = localStorage.getItem('sarSavedParams_' + inst);
@@ -192,6 +208,11 @@ async function sarLoadPanelData(inst) {
             set('sarEmaN', d.ema_n ?? 12);
             set('sarStopAtr', d.init_stop_atr ?? 3);
             set('sarTfMin', d.tf_min ?? 60);
+            // F-065
+            const mv = document.getElementById('sarVpMode'); if (mv) mv.value = d.vah_val_mode || 'off';
+            set('sarVpPct', d.vah_val_pct ?? '');
+            set('sarVpBin', d.vah_val_bin ?? '');
+            set('sarVpLookback', d.vah_val_lookback ?? '');
         }
     } catch (e) {}
     // живой робот — источник истины (только его /params)
@@ -212,6 +233,11 @@ async function sarLoadPanelData(inst) {
             set('sarEmaN', p.ema_n ?? 12);
             set('sarStopAtr', p.init_stop_atr ?? 3);
             set('sarTfMin', p.tf_min ?? 60);
+            // F-065
+            const mv = document.getElementById('sarVpMode'); if (mv) mv.value = p.vah_val_mode || 'off';
+            set('sarVpPct', p.vah_val_pct ?? '');
+            set('sarVpBin', p.vah_val_bin ?? '');
+            set('sarVpLookback', p.vah_val_lookback ?? '');
             if (msg) msg.textContent = '';
         } else if (msg) {
             msg.textContent = '⚠️ Робот оффлайн — показаны сохранённые значения (применятся при его старте)';
@@ -250,6 +276,49 @@ async function sarUpdateLiveMetrics(inst) {
         <div class="metric-card"><div class="metric-label">PnL (брокер)${priceSrc}</div><div style="font-size:1.05em;font-weight:700;color:${pnlText.startsWith('-') ? 'var(--red)' : 'var(--green)'}">${pnlText}</div></div>
         <div class="metric-card"><div class="metric-label">Последний H1</div><div style="font-size:0.95em;font-weight:600">${lastBar}</div></div>
     `;
+    // F-065: живой VP-блок панели (VAH/VAL/POC + вердикт гейта)
+    sarUpdateVpBlock(inst, st);
+}
+
+// F-065: VAH/VAL/POC + вердикт VP Mode в панели SAREMA
+function sarUpdateVpBlock(inst, st) {
+    const elVah = document.getElementById('sarVpVah');
+    const elPoc = document.getElementById('sarVpPoc');
+    const elVal = document.getElementById('sarVpVal');
+    const elVd = document.getElementById('sarVpVerdict');
+    if (!elVah || !elPoc || !elVal || !elVd) return;
+    const stVp = st && st.vp ? st.vp : null;
+    if (!stVp || stVp.mode === 'off') {
+        elVah.textContent = '—'; elPoc.textContent = '—'; elVal.textContent = '—';
+        elVd.textContent = stVp && stVp.mode === 'off' ? 'OFF' : '—';
+        elVd.style.color = '#9CA3AF';
+        return;
+    }
+    const fx = (x) => (x != null && x > 0 ? Number(x).toFixed(2) : '—');
+    elVah.textContent = fx(stVp.vah);
+    elPoc.textContent = fx(stVp.poc);
+    elVal.textContent = fx(stVp.val);
+    if (!stVp.ready) {
+        elVd.textContent = 'прогрев VP'; elVd.style.color = '#FFA726';
+        return;
+    }
+    // текущая цена: последний close из /bars (кэш графика), иначе вердикт по режиму
+    const px = (window._sarLastClose && window._sarLastClose[inst] > 0) ? window._sarLastClose[inst] : null;
+    if (px == null) {
+        elVd.textContent = stVp.mode + ': ready'; elVd.style.color = '#26C6DA';
+        return;
+    }
+    const inside = px >= stVp.val && px <= stVp.vah;
+    let txt, color;
+    if (stVp.mode === 'range') {
+        txt = inside ? 'внутри VA → входы OK' : 'вне VA → блок';
+        color = inside ? '#3ecf8e' : '#ef6461';
+    } else {
+        txt = inside ? 'внутри VA → блок' : (px >= stVp.vah ? 'у VAH → входы OK' : 'у VAL → входы OK');
+        color = inside ? '#ef6461' : '#3ecf8e';
+    }
+    elVd.textContent = txt;
+    elVd.style.color = color;
 }
 
 // ---------- ручная корректировка позиции (как у OF) ----------
@@ -328,7 +397,13 @@ async function sarSaveParams() {
     const emaN = numField('sarEmaN', 5, 50);
     const stopAtr = numField('sarStopAtr', 1, 10);
     const tfMin = numField('sarTfMin', 5, 240);
-    const sigErr = [['SAR AF0', af0], ['SAR Step', step], ['SAR Max', smax], ['EMA', emaN], ['Стоп×ATR', stopAtr], ['ТФ', tfMin]]
+    // F-065: VP Mode + подтипы (пустые поля не отправляем = дефолт робота)
+    const vpModeEl = document.getElementById('sarVpMode');
+    const vpMode = vpModeEl ? vpModeEl.value : 'off';
+    const vpPct = numField('sarVpPct', 50, 100);
+    const vpBin = numField('sarVpBin', 0.0001, 1000000);
+    const vpLookback = numField('sarVpLookback', 30, 2000);
+    const sigErr = [['SAR AF0', af0], ['SAR Step', step], ['SAR Max', smax], ['EMA', emaN], ['Стоп×ATR', stopAtr], ['ТФ', tfMin], ['VA %', vpPct], ['VP Bin', vpBin], ['VP Окно', vpLookback]]
         .filter(([, v]) => v === 'ERR').map(([n_]) => n_);
     if (sigErr.length) { if (msg) msg.textContent = '❌ Вне диапазона: ' + sigErr.join(', '); return; }
     const patch = {
@@ -343,6 +418,10 @@ async function sarSaveParams() {
         ema_n: emaN != null ? Math.round(emaN) : undefined,
         init_stop_atr: stopAtr,
         tf_min: tfMin != null ? Math.round(tfMin) : undefined,
+        vah_val_mode: vpMode,
+        vah_val_pct: vpPct != null ? Math.round(vpPct) : undefined,
+        vah_val_bin: vpBin != null ? vpBin : undefined,
+        vah_val_lookback: vpLookback != null ? Math.round(vpLookback) : undefined,
     };
     Object.keys(patch).forEach(k => patch[k] === undefined && delete patch[k]);
     try {
@@ -757,6 +836,7 @@ async function sarChartLoad(inst) {
     const tickerEl = document.getElementById('sarChartTicker');
     if (tickerEl) tickerEl.textContent = cfg.label;
     if (info) info.textContent = 'Загрузка графика...';
+    window._sarLastClose = window._sarLastClose || {};   // F-065: close для VP-вердикта
 
     // скрыть легенду вкладки «График» если она привязана к тому же контейнеру —
     // ChartController сам управляет отрисовкой; наша панель — отдельный контейнер sarChart
@@ -798,6 +878,7 @@ async function sarChartLoad(inst) {
                 const tsec = Math.floor(new Date(b.t.replace(' ', 'T') + 'Z').getTime() / 1000) + MSK_OFFSET_SAR;
                 window.ChartController.applyCandle(cfg.ticker, tf, { time: tsec, open: b.o, high: b.h, low: b.l, close: b.c });
             });
+            window._sarLastClose[inst] = db.bars[db.bars.length - 1].c;   // F-065
             // индикаторы считаны роботом (/bars indicators — по текущему конфигу экземпляра)
             const inds = db.indicators || [];
             const toT = x => Math.floor(new Date(x.t.replace(' ', 'T') + 'Z').getTime() / 1000) + MSK_OFFSET_SAR;
@@ -809,6 +890,10 @@ async function sarChartLoad(inst) {
         }
         await window.ChartController.loadHistory(cfg.ticker, tf);
         if (sarPanelInst !== inst) return;
+        try {   // F-065: последняя цена для VP-вердикта
+            const sc = _sarChartCandles();
+            if (sc && sc.length) window._sarLastClose[inst] = sc[sc.length - 1].close;
+        } catch (e) {}
 
         // 2) SAR/EMA по параметрам ЭТОГО экземпляра: берём данные свечей и считаем локально
         const candles = window.ChartController.isReady() ? _sarChartCandles() : [];

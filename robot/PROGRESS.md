@@ -510,3 +510,13 @@ BR-edp (b9b48e3) → добавлены те же варианты 60%/70% в в
 - Диагностика пропущенного сигнала: risk_sizing=0 при 1R<стопа - признак слишком мелкой базы/риска, проверять при вводе новых бумаг.
 - MTLR: R-тест пройден, ждёт решения о включении 11-м.
 - Открыто: брокер-стоп через gRPC-канал (REST-заглушка логирует), /resync fills, перезапуск C# сервера для кнопок sar_* и journal-proxy (R-001 - только Дмитрий).
+
+### 2026-10-13 — F-065: SAREMA VP Mode (Range/Fade/Breakout)
+- Робот: SAREMA (все 10 инстансов sar_* 5101-5110) — новый код, старт только Дмитрием (R-001).
+- robot/sarema/vp_sarema.py (новый): VolumeProfileSarema (окно H1, типичная цена (H+L+C)/3, авто-бин 1/2/2.5/5×10^k, VA от POC) + gate_check(range/fade/breakout).
+- sarema/config_sarema.py: vah_val_mode/bin/pct/lookback (дефолт off) + валидация.
+- sarema/strategy_sarema.py: VP из закрытых H1 каждый бар; VA-гейт до лимитов (сигнал не расходуется, entry_blocked_vp в events); zone в journal_open.
+- sarema/main_sarema.py: /status vp-блок; ParamsPatch VP-поля. Root main_sarema.py синхронизирован.
+- UI sarema.js: блок VP фильтр (Mode select, VA%, Bin, Окно, VAH/POC/VAL, вердикт); офлайн-сейв в localStorage; bin wwwroot обновлён.
+- Тесты: tests/test_vp_sarema.py 13/13; suite 53/53; API smoke 7/7 (TestClient, без брокера).
+- Статус: код готов, инстансы не запущены; дефолт off — режим включит Дмитрий в панели.

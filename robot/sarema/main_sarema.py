@@ -27,7 +27,6 @@ from sarema.state_sarema import SaremaState
 from sarema.feed_sarema import H1Feed
 from sarema.orders_sarema import SaremaOrders
 from sarema.strategy_sarema import SaremaStrategy, FLAT
-
 logging.basicConfig(level=logging.INFO,
                     format="%(asctime)s %(name)s %(levelname)s %(message)s")
 log = logging.getLogger("sarema.main")
@@ -74,6 +73,11 @@ class ParamsPatch(BaseModel):
     ema_n: int | float | None = None
     init_stop_atr: float | None = None
     tf_min: int | float | None = None
+    # F-065: VP Mode (range/fade/breakout/off) + подтипы (null = дефолт)
+    vah_val_mode: str | None = None
+    vah_val_bin: float | None = None
+    vah_val_pct: float | None = None
+    vah_val_lookback: int | float | None = None
 
 
 @app.get("/status")
@@ -106,6 +110,8 @@ def status():
         "stale": feed.check_stale(),
         "gaps": feed.check_gaps(),
         "warmup_ok": feed.bars is not None and len(feed.bars) >= cfg.get("warmup_bars", 300),
+        # F-065: VP Mode + живой VP (VAH/VAL/POC) для панели UI
+        "vp": {"mode": cfg.get("vah_val_mode", "off"), **strategy.vp.state()},
     }
 
 
