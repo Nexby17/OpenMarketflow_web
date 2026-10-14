@@ -14,6 +14,7 @@ const ChartController = (() => {
     let _sarSeries = null, _emaSeries = null, _stdSeries = null;
     let _positionSeries = null;
     let _orderLineSeries = [];
+    let _phaseHiSeries = null, _phaseLoSeries = null, _phaseMidSeries = null; // F-067 Phase Zones
 
     const _state = {
         ticker: null,        // текущий инструмент ('SiU6', без @RTSX)
@@ -80,6 +81,9 @@ const ChartController = (() => {
         if (_emaSeries) _emaSeries.setData([]);
         if (_stdSeries) _stdSeries.setData([]);
         if (_positionSeries) _positionSeries.setData([]);
+        if (_phaseHiSeries) _phaseHiSeries.setData([]);
+        if (_phaseLoSeries) _phaseLoSeries.setData([]);
+        if (_phaseMidSeries) _phaseMidSeries.setData([]);
         _clearOrderLinesImpl();
         if (_candleSeries) _candleSeries.setMarkers([]);
         _state.markers = [];
@@ -189,6 +193,20 @@ const ChartController = (() => {
             title: 'Position',
         });
 
+        // F-067: Phase Zones (Donchian channel thirds) — скрыты по умолчанию
+        _phaseHiSeries = _chart.addLineSeries({
+            color: 'rgba(239,68,68,0.55)', lineWidth: 1, lineStyle: LightweightCharts.LineStyle.Dotted,
+            priceLineVisible: false, lastValueVisible: false, title: 'Phase Hi', visible: false,
+        });
+        _phaseLoSeries = _chart.addLineSeries({
+            color: 'rgba(34,197,94,0.55)', lineWidth: 1, lineStyle: LightweightCharts.LineStyle.Dotted,
+            priceLineVisible: false, lastValueVisible: false, title: 'Phase Lo', visible: false,
+        });
+        _phaseMidSeries = _chart.addLineSeries({
+            color: 'rgba(250,204,21,0.45)', lineWidth: 1, lineStyle: LightweightCharts.LineStyle.Dotted,
+            priceLineVisible: false, lastValueVisible: false, title: 'Phase Mid', visible: false,
+        });
+
         // Auto-follow: отслеживаем, находится ли вьюпорт у правого края
         try {
             _chart.timeScale().subscribeVisibleLogicalRangeChange(range => {
@@ -229,6 +247,9 @@ const ChartController = (() => {
             emaSeries: _emaSeries,
             stdSeries: _stdSeries,
             positionSeries: _positionSeries,
+            phaseHiSeries: _phaseHiSeries,
+            phaseLoSeries: _phaseLoSeries,
+            phaseMidSeries: _phaseMidSeries,
         };
     }
 
@@ -420,6 +441,66 @@ const ChartController = (() => {
 
     // === Маркеры ===
 
+    // === F-067: Phase Zones (вариант A: Donchian-канал, трети) ===
+    // Рисует верхнюю/нижнюю границы канала и среднюю линию; красит зоны:
+    //   нижняя треть — зона LONG (зелёная), верхняя — SHORT (красная), середина — BOTH (жёлтая).
+    // Зоны отображаются границами: трейдеру видно, где какая фаза.
+    function setPhaseZones(ticker, opts) {
+        if (!_isReady()) return;
+        if (ticker != null && !_matchesContext(ticker, null)) return;
+        const o = opts || {};
+        const visible = !!o.visible;
+        [_phaseHiSeries, _phaseLoSeries, _phaseMidSeries].forEach(s => {
+            if (s) s.applyOptions({ visible });
+        });
+        if (!visible) return;
+
+        const win = Math.max(10, parseInt(o.window) || 96);
+        const lowerPct = Math.min(0.49, Math.max(0.05, parseFloat(o.lower) || 0.33));
+        const upperPct = Math.min(0.95, Math.max(0.51, parseFloat(o.upper) || 0.67));
+
+        const bars = _candleSeries.data();
+        if (!bars || bars.length < win) return;
+
+        // Donchian по закрытым барам (включая текущий бар — канал «дышит» в live)
+        const hi = [], lo = [], mid = [];
+        for (let i = win - 1; i < bars.length; i++) {
+            let hh = -Infinity, ll = Infinity;
+            for (let j = i - win + 1; j <= i; j++) {
+                if (bars[j].high > hh) hh = bars[j].high;
+                if (bars[j].low < ll) ll = bars[j].low;
+            }
+            const t = bars[i].time;
+            const range = hh - ll;
+            hi.push({ time: t, value: hh });
+            lo.push({ time: t, value: ll });
+            mid.push({ time: t, value: ll + range * (lowerPct + upperPct) / 2 });
+        }
+        // Границы зон: уровни нижней трети и верхней трети последнего окна
+        const last = bars[bars.length - 1];
+        let hh = -Infinity, ll = Infinity;
+        for (let j = bars.length - win; j < bars.length; j++) {
+            if (bars[j].high > hh) hh = bars[j].high;
+            if (bars[j].low < ll) ll = bars[j].low;
+        }
+        const range = hh - ll;
+        const zoneLo = ll + range * lowerPct;
+        const zoneHi = ll + range * upperPct;
+        _phaseHiSeries.setData([{ time: last.time - win * 60, value: hh }, { time: last.time + 300, value: hh }]);
+        _phaseLoSeries.setData([{ time: last.time - win * 60, value: ll }, { time: last.time + 300, value: ll }]);
+        // Средняя линия = граница между зонами (lower/upper отметки)
+        _phaseMidSeries.setData([
+            { time: last.time - win * 60, value: zoneLo },
+            { time: last.time + 300, value: zoneLo },
+        ]);
+        // Верхняя граница зоны LONG-only / нижняя SHORT-only рисуется как mid; вторая граница — hi/lo сами канальные.
+        // Подписи зон через title серий обновляем:
+        _phaseLoSeries.applyOptions({ title: '🟢 LONG-зона низ ' + ll.toFixed(0) });
+        _phaseMidSeries.applyOptions({ title: '🟡 BOTH граница ' + zoneLo.toFixed(0) });
+        _phaseHiSeries.applyOptions({ title: '🔴 SHORT-зона верх ' + hh.toFixed(0) });
+        try { console.log('[PhaseZones] on:', win, 'bars | zoneLo', zoneLo.toFixed(0), '| zoneHi', zoneHi.toFixed(0)); } catch (e) {}
+    }
+
     function setMarkers(ticker, markers) {
         if (!_isReady()) return;
         if (!_matchesContext(ticker, null)) return;
@@ -556,6 +637,7 @@ const ChartController = (() => {
         applyTick,
         applyCandle,
         setMarkers,
+        setPhaseZones,
         setPositionLine,
         refreshOrderLines,
         clearOrderLines,

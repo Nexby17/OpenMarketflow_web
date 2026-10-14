@@ -145,6 +145,10 @@ function arbInstancePanel(inst) {
         // F-035: кнопки панели — copy (только показывает позицию копирования), close
         const copyBtn = el('arbPanelCopyBtn');
         if (copyBtn) copyBtn.onclick = () => arbCopyPositionDialog(inst);
+        const adjApplyBtn = el('arbAdjApplyBtn');
+        if (adjApplyBtn) adjApplyBtn.onclick = () => arbAdjustApply(inst);
+        const adjFillBtn = el('arbAdjFillBtn');
+        if (adjFillBtn) adjFillBtn.onclick = () => arbAdjustFillFromBroker(inst);
         const closeBtn = el('arbPanelCloseBtn');
         if (closeBtn) closeBtn.onclick = () => { el('arbInstanceEditPanel')?.remove(); arbPanelInstance = null; _arbJournalInstance = null; };
         arbPanelUpdateMetrics();
@@ -988,6 +992,18 @@ function showIndicatorMenu(x, y) {
             <div><label style="color:#9CA3AF;font-size:11px">Period</label><input id="indEmaPeriod" class="input" type="number" value="${window._emaPeriod || 30}" style="width:80px"></div>
                 <div><label style="color:#9CA3AF;font-size:11px">STD</label><label style="color:#FF6B6B;font-size:11px;margin-left:4px">Period</label><input id="indStdPeriod" class="input" type="number" value="${parseInt(localStorage.getItem('v7_stdPeriod'))||14}" style="width:50px"><label style="color:#FF6B6B;font-size:11px;margin-left:4px">Mult</label><input id="indStdMult" class="input" type="number" step="0.1" value="${parseFloat(localStorage.getItem('v7_stdMult'))||1.5}" style="width:50px"><input id="indStdVisible" type="checkbox" style="width:16px;height:16px;vertical-align:middle" title="Показать STD"></div>
         </div>
+        <div style="margin-bottom:12px;border-top:1px solid #2D2D44;padding-top:8px">
+            <div style="color:#FACC15;margin-bottom:4px;font-size:12px">◫ Фазы рынка (канал, трети)</div>
+            <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+                <label style="display:flex;align-items:center;gap:4px;color:#9CA3AF;font-size:11px">
+                    <input id="indPhaseVisible" type="checkbox" ${window._phaseZones.visible?'checked':''} style="width:16px;height:16px;cursor:pointer"> Показать
+                </label>
+                <div><label style="color:#9CA3AF;font-size:11px">Окно (баров)</label><input id="indPhaseWindow" class="input" type="number" min="10" max="500" value="${window._phaseZones.window}" style="width:70px"></div>
+                <div><label style="color:#22C55E;font-size:11px">Низ %</label><input id="indPhaseLower" class="input" type="number" step="0.01" min="0.05" max="0.49" value="${window._phaseZones.lower}" style="width:60px"></div>
+                <div><label style="color:#EF4444;font-size:11px">Верх %</label><input id="indPhaseUpper" class="input" type="number" step="0.01" min="0.51" max="0.95" value="${window._phaseZones.upper}" style="width:60px"></div>
+            </div>
+            <div style="color:#6B7280;font-size:10.5px;margin-top:3px">🟢 низ → LONG only · 🟡 середина → both · 🔴 верх → SHORT only (Donchian)</div>
+        </div>
         <div style="display:flex;gap:8px">
             <button class="btn btn-primary btn-sm" onclick="applyIndicatorParams()" style="flex:1">✅ Применить</button>
             <button class="btn btn-secondary btn-sm" onclick="el('indicatorMenu').remove()" style="flex:1">Отмена</button>
@@ -1030,12 +1046,53 @@ function applyIndicatorParams() {
             { period: stdPeriod, mult: stdMult }
         );
     }
+
+    // F-067: Phase Zones
+    if (el('indPhaseVisible')) {
+        window._phaseZones = {
+            visible: el('indPhaseVisible')?.checked || false,
+            window: parseInt(el('indPhaseWindow')?.value) || 96,
+            lower: parseFloat(el('indPhaseLower')?.value) || 0.33,
+            upper: parseFloat(el('indPhaseUpper')?.value) || 0.67,
+        };
+        localStorage.setItem('phaseZonesVisible', window._phaseZones.visible ? '1' : '0');
+        localStorage.setItem('phaseZonesWindow', String(window._phaseZones.window));
+        localStorage.setItem('phaseZonesLower', String(window._phaseZones.lower));
+        localStorage.setItem('phaseZonesUpper', String(window._phaseZones.upper));
+        phaseZonesApply();
+        addLog(nowTime(), 'INFO', '◫ Фазы рынка: ' + (window._phaseZones.visible ? 'ON, окно ' + window._phaseZones.window + ' баров, зоны ' + (window._phaseZones.lower*100).toFixed(0) + '%/' + (window._phaseZones.upper*100).toFixed(0) + '%' : 'OFF'));
+    }
     el('indicatorMenu')?.remove();
 }
 
 // Инициализация параметров
 window._sarParams = { start: 0.009, step: 0.01, max: 0.2 };
 window._emaPeriod = 30;
+
+// === F-067: Phase Zones (вариант A — Donchian-канал, трети) ===
+window._phaseZones = {
+    visible: localStorage.getItem('phaseZonesVisible') === '1',
+    window: parseInt(localStorage.getItem('phaseZonesWindow')) || 96,
+    lower: parseFloat(localStorage.getItem('phaseZonesLower')) || 0.33,
+    upper: parseFloat(localStorage.getItem('phaseZonesUpper')) || 0.67,
+};
+
+function phaseZonesApply() {
+    try {
+        if (window.ChartController && window.ChartController.isReady()) {
+            const st = window.ChartController.getState();
+            window.ChartController.setPhaseZones(st.ticker, window._phaseZones);
+        }
+    } catch (e) { console.error('phaseZonesApply', e); }
+}
+// перерисовка после загрузки истории (loadHistory чистит серии)
+const _origLoadHistory = window.ChartController.loadHistory.bind(window.ChartController);
+window.ChartController.loadHistory = function(ticker, tf) {
+    return _origLoadHistory(ticker, tf).then(res => {
+        if (window._phaseZones && window._phaseZones.visible) phaseZonesApply();
+        return res;
+    });
+};
 
 function switchOrderBookInstrument() {
     const ticker = el('obInstrument')?.value;
@@ -7385,6 +7442,26 @@ function PANEL_TEMPLATE_HTML(cfg, p, data) {
                 </table>
             </div>
             <div id="arbJournalInfo" style="font-size:12px;color:#9CA3AF;margin-top:8px"></div>
+                </div>
+
+        <!-- ==================== F-067: ручная корректировка позиций (обе ноги) ==================== -->
+        <div style="border-top:1px solid var(--border-color);margin-top:8px;padding:14px 16px 4px">
+            <div style="font-weight:600;margin-bottom:8px">🛠 Ручная корректировка позиций (обе ноги)</div>
+            <div style="font-size:12px;color:#9CA3AF;margin-bottom:10px">
+                Синхронизация стейта с брокером <b>без ордеров</b> — после ручной сделки в терминале или рассинхрона.
+                Направление пары задаёт нога B (фьючерс): +1 LONG, −1 SHORT, 0/0 = FLAT (очистить слои).
+                Позиции вводить в <b>лотах</b> со знаком: B&gt;0 → LONG, B&lt;0 → SHORT.
+                Робот поставит тейк-заявки на min_profit от указанных цен.
+            </div>
+            <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end">
+                <div><div class="metric-label">A (акция), лоты</div><input id="arbAdjQtyA" class="input" type="number" step="1" style="width:90px" placeholder="напр. 10"></div>
+                <div><div class="metric-label">Цена A</div><input id="arbAdjPriceA" class="input" type="number" step="0.01" style="width:100px" placeholder="средняя"></div>
+                <div><div class="metric-label">B (фьюч), лоты</div><input id="arbAdjQtyB" class="input" type="number" step="1" style="width:90px" placeholder="напр. -1"></div>
+                <div><div class="metric-label">Цена B</div><input id="arbAdjPriceB" class="input" type="number" step="0.01" style="width:100px" placeholder="средняя"></div>
+                <button class="btn btn-warning btn-sm" id="arbAdjApplyBtn">⚠ Применить</button>
+                <button class="btn btn-secondary btn-sm" id="arbAdjFillBtn">⇩ Из брокера</button>
+                <span id="arbAdjStatus" style="font-size:12px"></span>
+            </div>
         </div>
     `;
 }
@@ -7476,6 +7553,62 @@ function arbEntryModeToggle() {
 function arbCopyPositionDialog(inst) {
     const cfg = ARB_INSTANCE_MAP[inst] || ARB_INSTANCE_MAP.gazp;
     arbLog(inst, '📋 Копирование параметров ' + cfg.label + ': выберите робота-приёмник', 'INFO');
+}
+
+// ============================================================================
+// === F-067: ручная корректировка позиций арб-робота (обе ноги) ==============
+// ============================================================================
+async function arbAdjustFillFromBroker(inst) {
+    // Подтянуть текущие позиции обеих ног с сервера и подставить в поля:
+    // qty_b — из фактического знака позиций ног (робот ведёт парную позицию).
+    const cfg = ARB_INSTANCE_MAP[inst] || ARB_INSTANCE_MAP.gazp;
+    const api = window['arbApi_' + inst];
+    if (!api) return;
+    try {
+        // позиции берём из аккаунта через серверный /accounts (positions содержат обе ноги)
+        const base = api.baseUrl;
+        const r = await fetch(base + '/accounts', {signal: AbortSignal.timeout(8000)});
+        const d = await r.json();
+        const acc = (d.accounts || [])[0];
+        if (!acc || !acc.positions) { el('arbAdjStatus').textContent = 'нет данных по позициям'; return; }
+        const symA = (cfg.symA) ; const symB = (cfg.symB);
+        const pa = acc.positions.find(p => (p.symbol||'').split('@')[0] === symA);
+        const pb = acc.positions.find(p => (p.symbol||'').split('@')[0] === symB);
+        el('arbAdjQtyA').value = pa ? pa.qty : 0;
+        el('arbAdjQtyB').value = pb ? pb.qty : 0;
+        // цены не знает брокер в этом запросе — оставить как есть, оператор введёт средние
+        el('arbAdjStatus').textContent = 'лоты подставлены, введите средние цены';
+    } catch(e) { el('arbAdjStatus').textContent = 'ошибка: ' + e.message; }
+}
+
+async function arbAdjustApply(inst) {
+    const cfg = ARB_INSTANCE_MAP[inst] || ARB_INSTANCE_MAP.gazp;
+    const api = window['arbApi_' + inst];
+    if (!api) return;
+    const qa = parseInt(el('arbAdjQtyA')?.value || '0', 10) || 0;
+    const qb = parseInt(el('arbAdjQtyB')?.value || '0', 10) || 0;
+    const prA = parseFloat(el('arbAdjPriceA')?.value || '0') || 0;
+    const prB = parseFloat(el('arbAdjPriceB')?.value || '0') || 0;
+    if (qa === 0 && qb === 0) {
+        if (!confirm('Обнулить слои робота ' + cfg.label + ' (FLAT)? Позиции на брокере НЕ трогаются.')) return;
+    } else {
+        if (qa !== 0 && prA <= 0) { alert('Укажите среднюю цену ноги A'); return; }
+        if (qb !== 0 && prB <= 0) { alert('Укажите среднюю цену ноги B'); return; }
+        const dirB = qb > 0 ? 'LONG' : 'SHORT';
+        if (!confirm(cfg.label + ': применить позицию A=' + qa + ' @ ' + prA + ', B=' + qb + ' (' + dirB + ') @ ' + prB + '?\nОрдера НЕ отправляются — только запись в стейт. Старые слои будут заменены.')) return;
+    }
+    el('arbAdjStatus').textContent = 'применяю...';
+    try {
+        const resp = await fetch(api.baseUrl + '/position/adjust', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({qty_a: qa, price_a: prA, qty_b: qb, price_b: prB}), signal: AbortSignal.timeout(15000)});
+        const d = await resp.json();
+        if (!resp.ok || !d.ok) { el('arbAdjStatus').textContent = 'ошибка: ' + (d.error || resp.status); arbLog(inst, '❌ Adjust failed: ' + (d.error || resp.status), 'ERROR'); return; }
+        el('arbAdjStatus').textContent = '✓ применено';
+        arbLog(inst, '🛠 MANUAL ADJUST ' + cfg.label + ': ' + (d.action === 'FLAT' ? 'FLAT (было: ' + d.was + ')' : d.action + ' A=' + d.qty_a + '@' + d.price_a + ' B=' + d.qty_b + '@' + d.price_b + ' (было: ' + d.was + ')'), 'WARN');
+        await api.refresh();
+        arbPanelUpdateMetrics();
+        arbLoadJournal();
+        setTimeout(() => { el('arbAdjStatus').textContent = ''; }, 4000);
+    } catch(e) { el('arbAdjStatus').textContent = 'ошибка: ' + e.message; }
 }
 
 // ============================================================================
