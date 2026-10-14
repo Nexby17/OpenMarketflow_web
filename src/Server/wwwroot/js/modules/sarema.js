@@ -138,7 +138,7 @@ function sarSwitchInstance(inst) {
                 <table style="width:100%;border-collapse:collapse;font-size:12.5px">
                     <thead style="position:sticky;top:0;z-index:1">
                         <tr style="background:#1a2332;border-bottom:2px solid var(--accent)">
-                            <th colspan="2" style="padding:6px 8px;text-align:center;border-right:2px solid var(--accent);color:#60A5FA">Открытие</th>
+                            <th colspan="3" style="padding:6px 8px;text-align:center;border-right:2px solid var(--accent);color:#60A5FA">Открытие</th>
                             <th colspan="3" style="padding:6px 8px;text-align:center;border-right:2px solid var(--accent);color:#60A5FA">Позиция</th>
                             <th colspan="3" style="padding:6px 8px;text-align:center;border-right:2px solid var(--accent);color:#60A5FA">Стоп</th>
                             <th colspan="5" style="padding:6px 8px;text-align:center;color:#34D399">Закрытие</th>
@@ -149,6 +149,7 @@ function sarSwitchInstance(inst) {
                             <th style="padding:6px 8px;text-align:center">L/S</th>
                             <th style="padding:6px 8px;text-align:right">Цена</th>
                             <th style="padding:6px 8px;text-align:right">Шт</th>
+                            <th style="padding:6px 8px;text-align:right">Объём ₽</th>
                             <th style="padding:6px 8px;text-align:right">Риск ₽</th>
                             <th style="padding:6px 8px;text-align:right">Стоп</th>
                             <th style="padding:6px 8px;text-align:right">Риск %</th>
@@ -160,7 +161,7 @@ function sarSwitchInstance(inst) {
                             <th style="padding:6px 8px;text-align:right">R</th>
                         </tr>
                     </thead>
-                    <tbody id="sarJournalBody" style="background:var(--bg)"><tr><td colspan="14" style="text-align:center;padding:24px;color:#9CA3AF">Загрузка...</td></tr></tbody>
+                    <tbody id="sarJournalBody" style="background:var(--bg)"><tr><td colspan="15" style="text-align:center;padding:24px;color:#9CA3AF">Загрузка...</td></tr></tbody>
                 </table>
             </div>
             <div id="sarJournalInfo" style="font-size:12px;color:#9CA3AF;margin-top:8px"></div>
@@ -646,7 +647,7 @@ async function sarLoadJournal(inst) {
     const cfg = sarCfg(inst);
     const body = document.getElementById('sarJournalBody');
     if (!body) return;
-    body.innerHTML = '<tr><td colspan="14" style="text-align:center;padding:16px;color:#9CA3AF">Загрузка...</td></tr>';
+    body.innerHTML = '<tr><td colspan="15" style="text-align:center;padding:16px;color:#9CA3AF">Загрузка...</td></tr>';
     // F-071a fix2: proxy может быть 401/404/500 (auth/нет эндпоинта/ошибка) — при ЛЮБОМ не-OK идём к роботу.
     // Робот — источник истины (пишет state-файл сам). Только если и он недоступен — «оффлайн».
     const fetchJson = async (url, ms) => {
@@ -675,7 +676,7 @@ async function sarLoadJournal(inst) {
                 sarRenderJournal();
             } catch (e3) {
                 const b2 = document.getElementById('sarJournalBody');
-                if (b2) b2.innerHTML = '<tr><td colspan="14" style="text-align:center;padding:16px;color:#9CA3AF">Робот оффлайн — журнал недоступен</td></tr>';
+                if (b2) b2.innerHTML = '<tr><td colspan="15" style="text-align:center;padding:16px;color:#9CA3AF">Робот оффлайн — журнал недоступен</td></tr>';
                 const info = document.getElementById('sarJournalInfo');
                 if (info) info.textContent = '';
             }
@@ -719,6 +720,7 @@ function sarRenderJournal() {
             <td style="padding:5px 8px;text-align:center;font-weight:700;font-size:12px;color:${r.dir === 'L' ? 'var(--green)' : 'var(--red)'}">${r.dir || '—'}</td>
             <td style="padding:5px 8px;text-align:right;font-weight:600">${r.entry != null ? Number(r.entry).toFixed(2) : '—'}</td>
             <td style="padding:5px 8px;text-align:right">${r.qty ?? '—'}</td>
+            <td style="padding:5px 8px;text-align:right;color:#B0BEC5">${r.volume != null ? Number(r.volume).toFixed(0) : '—'}</td>
             <td style="padding:5px 8px;text-align:right;color:#F59E0B">${r.risk_pts != null ? Number(r.risk_pts).toFixed(2) : '—'}</td>
             <td style="padding:5px 8px;text-align:right">${r.stop != null ? Number(r.stop).toFixed(2) : '—'}</td>
             <td style="padding:5px 8px;text-align:right;color:#F59E0B">${r.risk_pct != null ? Number(r.risk_pct).toFixed(2) + '%' : '—'}</td>
@@ -739,6 +741,7 @@ function sarRenderJournal() {
             <td style="padding:5px 8px;text-align:center;font-weight:700;font-size:12px;color:${r.dir === 'L' ? 'var(--green)' : 'var(--red)'}">${r.dir || '—'}</td>
             <td style="padding:5px 8px;text-align:right">${r.entry != null ? Number(r.entry).toFixed(2) : '—'}</td>
             <td style="padding:5px 8px;text-align:right">${r.qty ?? '—'}</td>
+            <td style="padding:5px 8px;text-align:right;color:#B0BEC5">${r.volume != null ? Number(r.volume).toFixed(0) : '—'}</td>
             <td style="padding:5px 8px;text-align:right;color:#F59E0B">${r.risk_pts != null ? Number(r.risk_pts).toFixed(2) : '—'}</td>
             <td style="padding:5px 8px;text-align:right">${r.stop != null ? Number(r.stop).toFixed(2) : '—'}</td>
             <td style="padding:5px 8px;text-align:right;color:#F59E0B">${r.risk_pct != null ? Number(r.risk_pct).toFixed(2) + '%' : '—'}</td>
@@ -751,7 +754,7 @@ function sarRenderJournal() {
         </tr>`);
     }
     body.innerHTML = rows.length ? rows.join('') :
-        '<tr><td colspan="14" style="text-align:center;padding:24px;color:#9CA3AF">Сделок ещё не было — робот начнёт писать журнал при первом входе</td></tr>';
+        '<tr><td colspan="15" style="text-align:center;padding:24px;color:#9CA3AF">Сделок ещё не было — робот начнёт писать журнал при первом входе</td></tr>';
     if (info) info.textContent = `${open.length} открытых · ${closed.length} закрытых · Σ ${sumPnl >= 0 ? '+' : ''}${sumPnl.toFixed(0)}₽ / ${sumR >= 0 ? '+' : ''}${sumR.toFixed(2)}R`;
 }
 
