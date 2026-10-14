@@ -635,3 +635,9 @@ BR-edp (b9b48e3) → добавлены те же варианты 60%/70% в в
 - pnl.total был только реализованный. Добавлен _pnl_block(): unrealized = (mark − entry) × dir × qty; mark = close последнего ЗАКРЫТОГО H1 из фида (у брокера отметка по текущей цене — цифры расходятся на несколько ₽, это честная отметка по закрытию часа). /status: pnl.unrealized + total_with_unrealized. UI: «+5 ₽ (тек.) · Σ +5 ₽».
 - Инцидент с рестартом: /restart → старый процесс ещё держал порт → raise упал по bind 10048 → старый продолжал отвечать старым кодом. Решение: убить старый PID точно, поднять нового. Урок: после /restart проверять OwningProcess порта.
 - Проверено: /status unrealized=5.0, UI-метрика «+5 ₽ (тек.) · Σ +5 ₽» (CDP). sarema.js v20.
+
+### 2026-10-14 13:30 — F-072 fix2: PnL реал-тайм как у брокера (Дмитрий: «сделай риал тайм»)
+- Отметка позиции теперь по ЖИВОМУ тику: C# /api/quote (Finam quotes/latest, выведен из-под auth) → DP /quote → fallback close H1. Кэш 10с (rate-limit). /status: mark_source показывает источник («Finam tick»).
+- Проверено: mark_source=Finam tick, unrealized скачет с тиком (51→52→57), UI «+57 ₽ (тек.) · Σ +57 ₽».
+- Инцидент-цепочка: _CS_PORT забыл объявить (NameError глотался except → тихий fallback на H1 close). Урок: except: pass в новых фичах — только с логом warning.
+- sarema.js v20 (UI уже поддерживал), сервер пересобран (quote без auth).

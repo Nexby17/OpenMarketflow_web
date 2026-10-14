@@ -204,6 +204,7 @@ app.Use(async (HttpContext ctx, Func<Task> next) =>
         path.StartsWith("/api/logout") ||
         path.StartsWith("/strategy/") ||
         path.StartsWith("/api/candles") || // F-069: read-only candles for popup charts (mirrors too)
+        path.StartsWith("/api/quote") || // F-072: read-only тик для реал-тайм PnL роботов
         path.StartsWith("/api/sarema/journal") || // F-071a: read-only журнал сделок (работает без логина, для зеркал тоже)
         path.StartsWith("/api/active") ||
         path.StartsWith("/connect-broker") || 

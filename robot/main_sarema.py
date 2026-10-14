@@ -80,19 +80,67 @@ class ParamsPatch(BaseModel):
     vah_val_lookback: int | float | None = None
 
 
-def _pnl_block() -> dict:
-    """F-072: реализованный + нереализованный PnL. Отметка по close последнего закрытого
-    H1-бара из фида (живой цены может не быть при оффлайне — тогда None)."""
-    unreal = None
+_CS_PORT = int(os.environ.get("CS_SERVER_PORT", "5050"))  # F-072: C# server for live tick
+_QUOTE_CACHE = {"mark": None, "ts": 0.0, "src": ""}
+
+
+def _live_mark() -> tuple[float | None, str]:
+    """F-072 fix2: реал-тайм отметка (тик). Приоритет: C# /api/quote (Finam last) →
+    DP /quote → close последнего закрытого H1. Кэш 10с (Finam rate-limit)."""
+    import time as _t
+    import urllib.request as _uq
+    import json as _json
+    if _QUOTE_CACHE["mark"] is not None and _t.time() - _QUOTE_CACHE["ts"] < 10:
+        return _QUOTE_CACHE["mark"], _QUOTE_CACHE["src"]
+    # 1) C# сервер (тот же тик, что показывает брокерский ПнЛ)
     try:
-        if state.direction != 0 and feed.bars is not None and len(feed.bars):
-            mark = float(feed.bars["close"].iloc[-1])
-            unreal = round((mark - state.entry_price) * state.direction * state.lots_qty, 2)
+        with _uq.urlopen(f"http://127.0.0.1:{_CS_PORT}/api/quote?ticker={TICKER}", timeout=4) as r:
+            q = _json.loads(r.read())
+        last = float(q.get("last") or 0)
+        if last > 0:
+            _QUOTE_CACHE.update(mark=last, ts=_t.time(), src="Finam tick")
+            return last, _QUOTE_CACHE["src"]
+    except Exception as _e1:
+        try:
+            log.warning(f"live mark step1 failed: {type(_e1).__name__}: {_e1}")
+        except Exception:
+            pass
+    # 2) DataProvider (стрим кэша)
+    try:
+        with _uq.urlopen(f"{DP_URL}/quote/{SYMBOL}", timeout=4) as r:
+            q = _json.loads(r.read())
+        last = float(q.get("last") or 0)
+        if last > 0:
+            _QUOTE_CACHE.update(mark=last, ts=_t.time(), src="DP")
+            return last, _QUOTE_CACHE["src"]
+    except Exception:
+        pass
+    # 3) fallback: close последнего закрытого H1
+    try:
+        if feed.bars is not None and len(feed.bars):
+            last = float(feed.bars["close"].iloc[-1])
+            _QUOTE_CACHE.update(mark=last, ts=_t.time(), src="H1 close")
+            return last, _QUOTE_CACHE["src"]
+    except Exception:
+        pass
+    return None, ""
+
+
+def _pnl_block() -> dict:
+    """F-072: реализованный + нереализованный PnL. Отметка реал-тайм (тик брокера),
+    fallback H1-close. source — откуда отметка."""
+    unreal = None
+    src = ""
+    try:
+        if state.direction != 0:
+            mark, src = _live_mark()
+            if mark is not None:
+                unreal = round((mark - state.entry_price) * state.direction * state.lots_qty, 2)
     except Exception:
         pass
     total = round(state.total_pnl + (unreal or 0.0), 2)
     return {"total": state.total_pnl, "trades": state.trades_done,
-            "unrealized": unreal, "total_with_unrealized": total}
+            "unrealized": unreal, "total_with_unrealized": total, "mark_source": src}
 
 
 @app.get("/status")
