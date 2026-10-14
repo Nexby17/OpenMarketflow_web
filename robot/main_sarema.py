@@ -80,6 +80,21 @@ class ParamsPatch(BaseModel):
     vah_val_lookback: int | float | None = None
 
 
+def _pnl_block() -> dict:
+    """F-072: реализованный + нереализованный PnL. Отметка по close последнего закрытого
+    H1-бара из фида (живой цены может не быть при оффлайне — тогда None)."""
+    unreal = None
+    try:
+        if state.direction != 0 and feed.bars is not None and len(feed.bars):
+            mark = float(feed.bars["close"].iloc[-1])
+            unreal = round((mark - state.entry_price) * state.direction * state.lots_qty, 2)
+    except Exception:
+        pass
+    total = round(state.total_pnl + (unreal or 0.0), 2)
+    return {"total": state.total_pnl, "trades": state.trades_done,
+            "unrealized": unreal, "total_with_unrealized": total}
+
+
 @app.get("/status")
 def status():
     pos = {
@@ -101,7 +116,7 @@ def status():
     return {
         "robot": "sarema", "ticker": TICKER, "symbol": SYMBOL, "port": PORT,
         "mode": state.mode, "position": pos,
-        "pnl": {"total": state.total_pnl, "trades": state.trades_done},
+        "pnl": _pnl_block(),
         "risk": {"base": state.base, "risk_pct": cfg.get("risk_pct"),
                  "compound": cfg.get("compound"), "day_kill_R": cfg.get("day_kill_R"),
                  "kill_day": state.kill_day},
@@ -399,10 +414,8 @@ def _main_loop():
                 bt = _dt.strptime(ts, "%Y-%m-%dT%H:%M:%S")
             except Exception:
                 continue
-            # фильтр основной сессии 07:00-15:40 UTC + только закрытые
-            tod = bt.hour * 3600 + bt.minute * 60
-            if not (7 * 3600 <= tod <= 15 * 3600 + 40 * 60):
-                continue
+# F-071 fix2: session-фильтр удалён — вечерняя/утренняя сессии MOEX реальны;
+# их выброс ломал SAR-траекторию и рассинхронизировал сигналы с графиком.
             if bt >= hour_ago:
                 continue
             out.append((bt, float(g("open")), float(g("high")), float(g("low")),

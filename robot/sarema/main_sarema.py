@@ -82,6 +82,21 @@ class ParamsPatch(BaseModel):
     max_signal_age: int | float | None = None   # F-071: вход при старте, сигнал не старше N баров
 
 
+def _pnl_block() -> dict:
+    """F-072: реализованный + нереализованный PnL. Отметка по close последнего закрытого
+    H1-бара из фида (живой цены может не быть при оффлайне — тогда None)."""
+    unreal = None
+    try:
+        if state.direction != 0 and feed.bars is not None and len(feed.bars):
+            mark = float(feed.bars["close"].iloc[-1])
+            unreal = round((mark - state.entry_price) * state.direction * state.lots_qty, 2)
+    except Exception:
+        pass
+    total = round(state.total_pnl + (unreal or 0.0), 2)
+    return {"total": state.total_pnl, "trades": state.trades_done,
+            "unrealized": unreal, "total_with_unrealized": total}
+
+
 @app.get("/status")
 def status():
     pos = {
@@ -103,7 +118,7 @@ def status():
     return {
         "robot": "sarema", "ticker": TICKER, "symbol": SYMBOL, "port": PORT,
         "mode": state.mode, "position": pos,
-        "pnl": {"total": state.total_pnl, "trades": state.trades_done},
+        "pnl": _pnl_block(),
         "risk": {"base": state.base, "risk_pct": cfg.get("risk_pct"),
                  "compound": cfg.get("compound"), "day_kill_R": cfg.get("day_kill_R"),
                  "kill_day": state.kill_day},

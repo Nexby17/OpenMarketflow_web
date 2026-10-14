@@ -268,8 +268,15 @@ async function sarUpdateLiveMetrics(inst) {
         entryText = p.entry ? p.entry.toFixed(2) : '—';
         stopText = p.stop ? p.stop.toFixed(2) : '—';
         priceSrc = p.priceSource ? ` (${p.priceSource})` : '';
-        const pnl = st.pnl ? st.pnl.total : 0;
-        pnlText = (pnl >= 0 ? '+' : '') + pnl.toFixed(0) + ' ₽';
+        // F-072: нереализованный PnL по открытой позиции (отметка по последнему закрытому H1)
+        const pTotal = st.pnl ? st.pnl.total : 0;
+        const pUnreal = st.pnl ? st.pnl.unrealized : null;
+        if (pUnreal != null && st.position && st.position.dir) {
+            pnlText = (pUnreal >= 0 ? '+' : '') + pUnreal.toFixed(0) + ' ₽ (тек.) · Σ ' +
+                      ((pTotal + pUnreal) >= 0 ? '+' : '') + (pTotal + pUnreal).toFixed(0) + ' ₽';
+        } else {
+            pnlText = (pTotal >= 0 ? '+' : '') + pTotal.toFixed(0) + ' ₽';
+        }
         lastBar = st.last_bar ? String(st.last_bar).replace('T', ' ').slice(0, 16) : '—';
     }
     box.innerHTML = `
