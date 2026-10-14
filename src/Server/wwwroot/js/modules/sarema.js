@@ -647,20 +647,39 @@ async function sarLoadJournal(inst) {
     const body = document.getElementById('sarJournalBody');
     if (!body) return;
     body.innerHTML = '<tr><td colspan="14" style="text-align:center;padding:16px;color:#9CA3AF">Загрузка...</td></tr>';
+    // F-071a fix2: proxy может быть 401/404/500 (auth/нет эндпоинта/ошибка) — при ЛЮБОМ не-OK идём к роботу.
+    // Робот — источник истины (пишет state-файл сам). Только если и он недоступен — «оффлайн».
+    const fetchJson = async (url, ms) => {
+        const r = await fetch(url, {signal: AbortSignal.timeout(ms)});
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        return await r.json();
+    };
     try {
-        let resp = await fetch('/api/sarema/journal/' + inst, {signal: AbortSignal.timeout(4000)});
-        if (resp.status === 404) {
-            // C# proxy ещё без нового эндпоинта (сервер не перезапущен) — читаем у робота напрямую
-            resp = await fetch(sarApi(inst) + '/journal', {signal: AbortSignal.timeout(4000)});
-        }
-        const data = await resp.json();
+        let data = null;
+        try { data = await fetchJson('/api/sarema/journal/' + inst, 4000); }
+        catch (e1) { data = await fetchJson(sarApi(inst) + '/journal', 4000); }
+        if (!data || typeof data !== 'object') throw new Error('bad payload');
         _sarJournalOpen = data.open || [];
         _sarJournalClosed = data.closed || [];
         sarRenderJournal();
     } catch (e) {
-        body.innerHTML = '<tr><td colspan="14" style="text-align:center;padding:16px;color:#9CA3AF">Робот оффлайн — журнал недоступен</td></tr>';
-        const info = document.getElementById('sarJournalInfo');
-        if (info) info.textContent = '';
+        // одна повторная попытка через 2с (робот/сеть могли мигнуть), потом «оффлайн»
+        setTimeout(async () => {
+            if (sarPanelInst !== inst || !document.getElementById('sarEditPanel')) return;
+            try {
+                let data = null;
+                try { data = await fetchJson('/api/sarema/journal/' + inst, 4000); }
+                catch (e2) { data = await fetchJson(sarApi(inst) + '/journal', 4000); }
+                _sarJournalOpen = data.open || [];
+                _sarJournalClosed = data.closed || [];
+                sarRenderJournal();
+            } catch (e3) {
+                const b2 = document.getElementById('sarJournalBody');
+                if (b2) b2.innerHTML = '<tr><td colspan="14" style="text-align:center;padding:16px;color:#9CA3AF">Робот оффлайн — журнал недоступен</td></tr>';
+                const info = document.getElementById('sarJournalInfo');
+                if (info) info.textContent = '';
+            }
+        }, 2000);
     }
 }
 
