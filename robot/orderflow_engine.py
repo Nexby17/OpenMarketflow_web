@@ -338,6 +338,10 @@ class SignalEngine:
         self._close_history: deque[float] = deque(maxlen=max(cvd_lookback * 2, 30))
         self._high_history: deque[float] = deque(maxlen=max(cvd_lookback * 2, 30))
         self._low_history: deque[float] = deque(maxlen=max(cvd_lookback * 2, 30))
+        # F-067: отдельные буферы канала фаз — до 2000 баров (не урезаются 30-барным maxlen
+        # CVD-истории; иначе Donchian за phase_window считался по куцему окну и фаза врала)
+        self._phase_highs: deque[float] = deque(maxlen=2000)
+        self._phase_lows: deque[float] = deque(maxlen=2000)
         self._bars_added: int = 0  # total bars added (unlike len(deque) which is capped)
 
         # CVD Trend EMA state
@@ -353,6 +357,8 @@ class SignalEngine:
 
     def add_bar(self, metrics: BarMetrics, bar_high: float, bar_low: float, bar_close: float):
         """Feed completed bar metrics into the signal engine."""
+        self._phase_highs.append(bar_high)
+        self._phase_lows.append(bar_low)
         self._bar_history.append(metrics)
         self._close_history.append(bar_close)
         self._high_history.append(bar_high)
@@ -374,6 +380,20 @@ class SignalEngine:
         if n < 2:
             return None
         return max(list(self._high_history)[-n:]), min(list(self._low_history)[-n:])
+
+    def get_phase_channel(self, window: int):
+        """F-067: Donchian high/low за последние window баров из ПОЛНОГО фазового буфера.
+        Возвращает (high, low) или None если баров меньше 10."""
+        n = min(window, len(self._phase_highs))
+        if n < 10:
+            return None
+        return max(list(self._phase_highs)[-n:]), min(list(self._phase_lows)[-n:])
+
+    def seed_phase_history(self, bars: list):
+        """F-067: прогрев фазового канала историческими барами [(high, low), ...] при старте."""
+        for h, l in bars:
+            self._phase_highs.append(float(h))
+            self._phase_lows.append(float(l))
 
     def set_agg_window(self, window: int):
         """Update aggression tracking window."""

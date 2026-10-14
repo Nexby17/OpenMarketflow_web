@@ -1362,6 +1362,7 @@ def _warmup_vwema():
         if resp and resp.bars:
             bars = list(resp.bars)
             fed = 0
+            _phase_bars = []
             for bar in bars:
                 h = _to_float(bar.high)
                 l = _to_float(bar.low)
@@ -1369,7 +1370,12 @@ def _warmup_vwema():
                 v = _to_float(bar.volume)
                 if c > 0:
                     strategy.vwema.update(c, h, l, volume=v)
+                    if hasattr(strategy.signals, "seed_phase_history"):
+                        _phase_bars.append((h, l))
                     fed += 1
+            if _phase_bars and hasattr(strategy.signals, "seed_phase_history"):
+                strategy.signals.seed_phase_history(_phase_bars[-2000:])
+                log.info(f"Phase channel warmup: {len(_phase_bars[-2000:])} bars seeded")
             state = strategy.vwema.state
             log.info(f"VWEMA warmup: {fed} bars fed | ready={strategy.vwema.ready} | dir={state['direction']} | ema_f={state['ema_f']} ema_s={state['ema_s']} atr={state['atr']}")
         else:

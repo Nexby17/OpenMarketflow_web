@@ -1478,7 +1478,7 @@ class OrderFlowStrategy:
         Возвращает слепок для гейта и /status.
         """
         win = max(10, int(self.p.phase_window))
-        hl = self.signals.get_hl_window(win)
+        hl = self.signals.get_phase_channel(win)   # F-067: полный буфер, не 30-барная CVD-история
         if hl is None:
             return {"enabled": bool(self.p.phase_filter), "ready": False,
                     "window": win, "dir": 0}
