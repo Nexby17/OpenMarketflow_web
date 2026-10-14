@@ -610,3 +610,9 @@ BR-edp (b9b48e3) → добавлены те же варианты 60%/70% в в
 - Фикс: локальные const _ofMxInstrument в ofMxRobotEditPanel и ofMxOpenPhaseChart (symbol робота → localStorage → MXZ6).
 - v126, bin sync, node --check OK, сервер отдаёт v126 с локальным скоупом. Урок: template-literal вставки в панели
   не видят локальные переменные renderRobots — в панельных функциях брать из ofMxRobot/localStorage.
+
+### 2026-10-14 17:1x — v127: дубль-фикс двойного клика (порядок объявления)
+- Дмитрий: «не открываются двойной клик не работает. Быстро исправляй» — вчерашний фикс v126 был неполный:
+  const _ofMxInstrument стоял ПЕРЕД const s = ofMxRobot → TDZ 'Cannot access s before initialization'.
+- Фикс: переставлен после объявления s. Симуляция (node vm, stub DOM): PANEL BUILT 23119 символов,
+  все блоки (фазы/тайминг/кнопка графика) на месте, ${} резолвится. v127, bin sync, сервер отдаёт.

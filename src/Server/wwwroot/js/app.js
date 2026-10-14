@@ -6738,9 +6738,9 @@ async function ofRobotPoll() {
 async function ofMxRobotEditPanel() {
     const existing = el('ofMxRobotEditPanel');
     if (existing) { existing.remove(); return; }
-    const _ofMxInstrument = (s.symbol ? s.symbol.split('@')[0] : (localStorage.getItem('ofMxRobotInstrument') || 'MXU6')); // F-067 fix: was global-scoped -> ReferenceError killed dblclick
 
     const s = ofMxRobot || {};
+    const _ofMxInstrument = (s.symbol ? s.symbol.split('@')[0] : (localStorage.getItem('ofMxRobotInstrument') || 'MXU6')); // F-067 fix: was global-scoped -> ReferenceError killed dblclick
     // F-010: живой робот -> его params; иначе config через сервер (localStorage больше не нужен)
     let _cfgSrc = 'robot';
     let p = s.params || null;
