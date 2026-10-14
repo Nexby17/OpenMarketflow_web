@@ -83,8 +83,29 @@ class SaremaStrategy:
                 self._replace_broker_stop(new_stop)
                 self.state.stop_price = new_stop
 
-        # 2) вход: сигнал на закрытом баре, флэт, входы не заблокированы
-        if self.state.direction == FLAT and (dn[i] or up[i]):
+        # 2) вход: сигнал на закрытом баре, флэт, входы не заблокированы.
+        # F-071 (Дмитрий 14.10: «при включении должен входить, если сигнал 1-3 бара назад»):
+        # сканируем окно последних max_signal_age баров; берём САМЫЙ СВЕЖИЙ кросс.
+        # Сигнал недействителен, если: уже отработан (last_entry_signal_bar) или
+        # SAR уже вернулся на другую сторону EMA (кросс отменился).
+        entry_sig = None                      # (j, dir) — самый свежий сигнал в окне
+        age = max(1, int(self.cfg.get("max_signal_age", 3)))
+        for j in range(i, max(i - age, -1), -1):
+            if dn[j] or up[j]:
+                entry_sig = (j, LONG if dn[j] else SHORT)
+                break
+        if entry_sig:
+            j, direction = entry_sig
+            sig_bar = str(g2["begin"].iloc[j])
+            if self.state.last_entry_signal_bar == sig_bar:
+                entry_sig = None              # этот сигнал уже отработан
+            elif direction == LONG and not (float(g2["sar"].iloc[i]) < float(g2["ema"].iloc[i])):
+                entry_sig = None              # SAR уже вернулся выше EMA — лонг-кросс отменился
+            elif direction == SHORT and not (float(g2["sar"].iloc[i]) > float(g2["ema"].iloc[i])):
+                entry_sig = None              # SAR уже вернулся ниже EMA — шорт-кросс отменился
+        if self.state.direction == FLAT and entry_sig:
+            j, direction = entry_sig
+            sig_age = i - j
             # F-065: VA-гейт (VP Mode) — ДО лимитов/сайзинга; сигнал не расходуется
             vp_mode = self._vp_mode()
             if vp_mode != "off":
@@ -108,8 +129,10 @@ class SaremaStrategy:
                     self.state.save()
                     events.append({"event": "kill_switch_on", "kill_day": new_kill})
                 else:
-                    ev = self._try_enter(int(dn[i]) and LONG or SHORT, float(atr[i]),
-                                         float(g2["volume"].iloc[i]))
+                    ev = self._try_enter(direction, float(atr[j]),
+                                         float(g2["volume"].iloc[j]),
+                                         signal_bar=str(g2["begin"].iloc[j]),
+                                         signal_age=sig_age)
                     events.append(ev)
 
         # 3) pending_signal не используется: вход по рынку сразу после закрытия бара
@@ -118,7 +141,8 @@ class SaremaStrategy:
         return {"events": events, "last_bar": str(g2["begin"].iloc[-1])}
 
     # ---------- вход ----------
-    def _try_enter(self, direction: int, atr_signal: float, bar_volume: float) -> dict:
+    def _try_enter(self, direction: int, atr_signal: float, bar_volume: float,
+                   signal_bar: str = "", signal_age: int = 0) -> dict:
         last = self.feed.bars.iloc[-1]
         price_hint = float(last["close"])
         stop_dist = self.cfg.get("init_stop_atr", 3.0) * atr_signal
@@ -169,10 +193,14 @@ class SaremaStrategy:
         self.state.stop_price = stop0
         self.state.entry_time = datetime.utcnow().isoformat()
         self._place_broker_stop(stop0, qty, direction)
+        if signal_bar:
+            self.state.last_entry_signal_bar = signal_bar   # F-071: сигнал потрачен
         self.state.save()
-        log.info(f"entry dir={direction} qty={qty} entry≈{price_hint:.2f} stop={stop0:.2f} reason={reason}")
+        log.info(f"entry dir={direction} qty={qty} entry≈{price_hint:.2f} stop={stop0:.2f} "
+                 f"signal_age={signal_age} signal_bar={signal_bar} reason={reason}")
         return {"event": "entry", "dir": direction, "qty": qty,
-                "entry": price_hint, "stop": stop0, "limit_reason": reason}
+                "entry": price_hint, "stop": stop0, "limit_reason": reason,
+                "signal_age": signal_age, "signal_bar": signal_bar}
 
     # ---------- брокер-стоп ----------
     def _place_broker_stop(self, stop: float, qty: int, direction: int) -> None:

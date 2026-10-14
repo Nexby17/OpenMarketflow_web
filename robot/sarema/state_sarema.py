@@ -24,12 +24,17 @@ class SaremaState:
         self.day_realized_R: dict = {}         # 'YYYY-MM-DD' -> сумма R
         self.total_pnl = 0.0
         self.trades_done = 0
+        # F-071: последний ОТРАБОТАННЫЙ сигнал-бар (защита от повторного входа на том же кроссе)
+        self.last_entry_signal_bar: Optional[str] = None
+        # F-059a (Дмитрий 14.10: «выключаю только я»): режим running переживает рестарт процесса
+        self.persist_mode = True
         # F-061 журнал позиций (логика таблицы Дмитрия): открытые сверху, закрытие дозаписывается
         self.trade_history = []
 
     def save(self) -> None:
         data = {
-            "mode": "stopped",             # сохраняем всегда stopped (F-059)
+            # F-059a: persist_mode — running переживает рестарт процесса (выключение только кнопкой ⏹)
+            "mode": self.mode if self.persist_mode else "stopped",
             "direction": self.direction,
             "lots_qty": self.lots_qty,
             "entry_price": self.entry_price,
@@ -41,6 +46,7 @@ class SaremaState:
             "day_realized_R": self.day_realized_R,
             "total_pnl": self.total_pnl,
             "trades_done": self.trades_done,
+            "last_entry_signal_bar": self.last_entry_signal_bar,
             "trade_history": self.trade_history[-500:],
         }
         tmp = self.path + ".tmp"
@@ -66,7 +72,10 @@ class SaremaState:
         self.total_pnl = float(data.get("total_pnl", 0.0))
         self.trades_done = int(data.get("trades_done", 0))
         self.trade_history = list(data.get("trade_history", []))
-        self.mode = "stopped"          # startup-always-stopped (F-059)
+        # F-071: последний отработанный сигнал-бар
+        self.last_entry_signal_bar = data.get("last_entry_signal_bar")
+        # F-059a: режим из файла (running переживает рестарт процесса)
+        self.mode = data.get("mode", "stopped")
         return True
 
     def entries_blocked(self, today: date) -> bool:

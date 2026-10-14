@@ -1,4 +1,4 @@
-"""F-061: Per-instance config for SAR×EMA stocks robot (1 robot = 1 ticker).
+﻿"""F-061: Per-instance config for SAR×EMA stocks robot (1 robot = 1 ticker).
 
 Env (per-instance, паттерн arb-роботов):
   SAREMA_CONFIG_FILE  — путь к JSON-конфигу экземпляра
@@ -60,6 +60,8 @@ DEFAULTS = {
     "vah_val_bin": None,
     "vah_val_pct": None,
     "vah_val_lookback": None,
+    # F-071 (Дмитрий 14.10): при включении входить, если сигнал не старше N закрытых баров (1-3)
+    "max_signal_age": 3,
 }
 
 
@@ -108,6 +110,14 @@ def validate_params(patch: dict) -> tuple[dict, list[str]]:
             clean["liq_frac"] = float(v)
         else:
             errors.append("liq_frac must be in (0, 1] or null")
+    if "max_signal_age" in patch:
+        v = patch["max_signal_age"]
+        if v is None:
+            clean["max_signal_age"] = None
+        elif isinstance(v, (int, float)) and 1 <= v <= 10:
+            clean["max_signal_age"] = int(v)
+        else:
+            errors.append("max_signal_age must be in [1, 10] or null")
     if "day_kill_R" in patch:
         v = patch["day_kill_R"]
         if v is None:

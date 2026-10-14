@@ -1,9 +1,9 @@
-"""F-061: main_sarema.py — сервис одноинстансового робота SAR×EMA.
+﻿"""F-061: main_sarema.py — сервис одноинстансового робота SAR×EMA.
 
 Env: SAREMA_TICKER, SAREMA_PORT, SAREMA_CONFIG_FILE, SAREMA_STATE_FILE,
 SAREMA_ACCOUNT_ID, DP_URL, SAREMA_DATA_DIR (прогрев), FINAM_API_KEY.
 
-Startup-always-stopped (F-059). Идемпотентный /stop (F-060).
+Режим персистится (F-059a: running переживает рестарт; стоп только кнопкой ⏹). Идемпотентный /stop (F-060).
 Запуск: python main_sarema.py (cwd = robot/sarema или PYTHONPATH с robot/).
 """
 import json
@@ -36,7 +36,8 @@ LOT_SIZE = float(os.environ.get("SAREMA_LOT_SIZE", "1"))
 
 cfg = load_config()
 state = SaremaState(STATE_FILE or f"sarema_state_{TICKER}.json", ticker=TICKER)
-state.load()                              # восстановление; mode всё равно stopped
+state.load()   # F-059a: режим из файла — running переживает рестарт (выключаю только я)
+# F-071: если загрузился running — live-цикл сам догонит фид и проверит сигнал 1-3 баров
 feed = H1Feed(DATA_DIR or None)
 orders = SaremaOrders(ACCOUNT_ID, SYMBOL)
 strategy = SaremaStrategy(cfg, state, orders, feed, lot_size=LOT_SIZE, ticker=TICKER)
@@ -78,6 +79,7 @@ class ParamsPatch(BaseModel):
     vah_val_bin: float | None = None
     vah_val_pct: float | None = None
     vah_val_lookback: int | float | None = None
+    max_signal_age: int | float | None = None   # F-071: вход при старте, сигнал не старше N баров
 
 
 @app.get("/status")
@@ -331,7 +333,9 @@ def get_params():
 
 @app.post("/params")
 def post_params(patch: ParamsPatch):
-    clean, errors = validate_params(patch.model_dump(exclude_none=True))
+    # F-070: exclude_none выкидывал null-поля (day_kill_R, max_*_qty, liq_frac) — очистка
+    # через пустое поле не работала. exclude_unset: null доходит, необязательные незаполненные поля не мешают.
+    clean, errors = validate_params(patch.model_dump(exclude_unset=True))
     if errors:
         raise HTTPException(400, {"errors": errors})
     cfg.update(clean)
@@ -399,10 +403,8 @@ def _main_loop():
                 bt = _dt.strptime(ts, "%Y-%m-%dT%H:%M:%S")
             except Exception:
                 continue
-            # фильтр основной сессии 07:00-15:40 UTC + только закрытые
-            tod = bt.hour * 3600 + bt.minute * 60
-            if not (7 * 3600 <= tod <= 15 * 3600 + 40 * 60):
-                continue
+            # F-071 fix2: session-фильтр УБРАН — вечерняя/утренняя сессии MOEX реальны,
+            # их выброс ломал SAR-траекторию (сигналы робота != график). Только закрытые бары.
             if bt >= hour_ago:
                 continue
             out.append((bt, float(g("open")), float(g("high")), float(g("low")),
