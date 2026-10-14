@@ -565,3 +565,15 @@ BR-edp (b9b48e3) → добавлены те же варианты 60%/70% в в
 - _manage_prearm тик: A-исполнилась → B в маркет; B-исполнилась → A добор маркетом; TTL 60с → откат; сигнал ушёл → досрочный откат.
 - Параметры в конфигах всех инстансов; переключение live через POST /params {entry_prearm: true/false}.
 - Деплой 22:26: все 3 арба на новом коде, stopped, слои 0.
+
+## 2026-10-14 — F-069 фиксы: призрачная prearm-лимитка + stock-closed-first
+- BUG-1: при завершении prearm-пары не отменялась вторая лимитка → GZZ6 @10886 исполнилась через час (лишний шорт). Fix: cancel покоящейся ноги перед маркетом + страховочный cancel обеих в _prearm_complete.
+- BUG-2: тейк акции @entry_price при prearm исполняется мгновенно, робот ждал fut_closed чтобы отметить закрытие акции → считал несуществующую акцию в позиции. Fix: ArbLayer.stock_closed/stock_exit_price (persist), _fix_stock_leg_pnl, _close_passive_layer умеет fut-only финал, реарм акции блокирован, unrealized по stock_closed слою — только фьючерс.
+- Инцидент: оба слоя GAZP закрылись тейками 11:04 (+25.57/+58.57 broker). Деплой 11:2x, все 3 арба stopped, слои 0.
+
+## 2026-10-14 11:44 — F-069 v4: cleanup учитывает stock_closed (fut-only закрытие)
+- Инцидент: cleanup-рестарт продал акцию повторно (слой stock_closed) → GAZP −100.
+- Fix: _execute_single_exit (обе ветки) при stock_closed — маркет только по фьючерсу, close_layer с фикс. ценой акции.
+- Также v3: краш need в ветке B-first устранён; B-first = акционная лимитка ждёт (правило Дмитрия), A-first = cancel B + market B.
+
+### 2026-10-14 12:00 — F-071: вход при старте по сигналу ≤3 баров (max_signal_age, configurable); F-059a: running персистится (выключение только ⏹). Live feed без session-фильтра (вечерние бары ломали SAR). Живой вход: LONG LKOH 2 @ 6069 (signal_age=0), crash-restart x3 — позиция и режим выжили.
