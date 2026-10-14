@@ -6738,6 +6738,7 @@ async function ofRobotPoll() {
 async function ofMxRobotEditPanel() {
     const existing = el('ofMxRobotEditPanel');
     if (existing) { existing.remove(); return; }
+    const _ofMxInstrument = (s.symbol ? s.symbol.split('@')[0] : (localStorage.getItem('ofMxRobotInstrument') || 'MXU6')); // F-067 fix: was global-scoped -> ReferenceError killed dblclick
 
     const s = ofMxRobot || {};
     // F-010: живой робот -> его params; иначе config через сервер (localStorage больше не нужен)
@@ -6976,8 +6977,10 @@ async function ofMxRobotEditPanel() {
 async function ofMxOpenPhaseChart() {
     const wrap = document.getElementById('ofMxPhaseChartWrap');
     if (!wrap) return;
+    const s = ofMxRobot || {};
+    const _ofMxInstrument = (s.symbol ? s.symbol.split('@')[0] : (localStorage.getItem('ofMxRobotInstrument') || 'MXZ6')); // F-067: локальный скоуп
     wrap.style.display = 'block';
-    const ticker = (_ofMxInstrument || 'MXZ6');
+    const ticker = _ofMxInstrument;
     const tf = parseInt(document.getElementById('ofMxPhaseChartTf')?.value) || 5;
     const win = parseInt(document.getElementById('editOfMxPhaseWin')?.value) || 96;
     const pLo = parseFloat(document.getElementById('editOfMxPhaseLower')?.value) || 0.33;
