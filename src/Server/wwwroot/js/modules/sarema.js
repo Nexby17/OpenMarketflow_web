@@ -1,4 +1,4 @@
-// ============================================================================
+﻿// ============================================================================
 // === F-061: SAREMA — Роботы Акции (SAR×EMA H1, per-ticker инстансы) ===
 // === 1 робот = 1 акция; экземпляры на портах 5084-5089/5094-5097. ===
 // === Лимиты Дмитрия: max_qty (штуки, null=∞, 0=запрет), max_value_rub (₽). ===
@@ -175,6 +175,9 @@ function sarSwitchInstance(inst) {
     window._sarPanelTimer = setInterval(() => sarUpdateLiveMetrics(inst), 2000);
     sarUpdateLiveMetrics(inst);
     setTimeout(() => sarLoadJournal(inst), 300);
+    // F-071a: журнал живой — обновление каждые 10с пока попап открыт
+    if (window._sarJournalTimer) clearInterval(window._sarJournalTimer);
+    window._sarJournalTimer = setInterval(() => { if (sarPanelInst && document.getElementById('sarEditPanel')) sarLoadJournal(sarPanelInst); }, 10000);
     setTimeout(() => sarChartLoad(inst), 300);
 }
 
@@ -775,6 +778,7 @@ document.addEventListener('click', function (ev) {
     if (panel) { panel.remove(); sarPanelInst = null; }
     if (window._sarPanelTimer) { clearInterval(window._sarPanelTimer); window._sarPanelTimer = null; }
     if (window._sarChartTimer) { clearInterval(window._sarChartTimer); window._sarChartTimer = null; }
+    if (window._sarJournalTimer) { clearInterval(window._sarJournalTimer); window._sarJournalTimer = null; }
 }, true);
 
 // селектор в шапке вкладки: открыть панель выбранного экземпляра
@@ -804,6 +808,7 @@ function _sarChartDestroy() {
 }
 
 function _sarClosePanelDom() {
+    if (window._sarJournalTimer) { clearInterval(window._sarJournalTimer); window._sarJournalTimer = null; }
     _sarChartDestroy();
     const panel = document.getElementById('sarEditPanel');
     if (panel) panel.remove();
