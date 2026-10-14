@@ -5431,6 +5431,21 @@ async function ofRobotEditPanel() {
                 <div class="metric-card" style="min-width:150px"><div class="metric-label">Гейт сейчас</div><div id="ofTimingVerdict" style="font-size:14px;font-weight:bold;color:#9CA3AF">—</div></div>
             </div>
             <hr style="border-color:#2D2D44;margin:12px 0">
+            <!-- F-067: Фазы рынка (Donchian-трети): низ LONG / верх SHORT / середина both -->
+            <div class="metrics-row" style="flex-wrap:wrap;margin-bottom:16px;align-items:center">
+                <div class="metric-card" style="display:flex;align-items:center;gap:8px">
+                    <label style="display:flex;align-items:center;gap:6px;cursor:pointer" title="Цена в нижней трети канала — только LONG, в верхней трети — только SHORT, в середине — оба">
+                        <input id="editOfUsePhase" type="checkbox" ${(p.phase_filter)?'checked':''} style="width:18px;height:18px;cursor:pointer">
+                        <span style="font-weight:bold;color:#FACC15">◫ Фазы рынка</span>
+                    </label>
+                </div>
+                <div class="metric-card"><div class="metric-label">Окно (баров)</div><input id="editOfPhaseWin" class="input" type="number" min="10" max="2000" value="${p.phase_window||96}" style="width:80px"></div>
+                <div class="metric-card"><div class="metric-label">Низ %</div><input id="editOfPhaseLower" class="input" type="number" step="0.01" min="0.05" max="0.49" value="${p.phase_lower||0.33}" style="width:60px"></div>
+                <div class="metric-card"><div class="metric-label">Верх %</div><input id="editOfPhaseUpper" class="input" type="number" step="0.01" min="0.51" max="0.95" value="${p.phase_upper||0.67}" style="width:60px"></div>
+                <div class="metric-card"><div class="metric-label">Гистерезис %</div><input id="editOfPhaseHyst" class="input" type="number" step="0.01" min="0" max="0.4" value="${p.phase_hysteresis||0.05}" style="width:60px"></div>
+                <div class="metric-card" style="min-width:150px"><div class="metric-label">Фаза сейчас</div><div id="editOfPhaseVerdict" style="font-size:14px;font-weight:bold;color:#9CA3AF">—</div></div>
+            </div>
+            <hr style="border-color:#2D2D44;margin:12px 0">
             <!-- Торговый журнал -->
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
                 <strong>📋 Торговый журнал</strong>
@@ -5599,6 +5614,22 @@ function ofUpdatePanel() {
         else if (s.timingGate) { v.textContent = '⛔ закрыт (вне окна)'; v.style.color = '#F44336'; }
         else { v.textContent = '🟢 открыт — торгуем'; v.style.color = '#4CAF50'; }
     }
+
+    // F-067: фазы рынка
+    if (el('editOfPhaseVerdict')) {
+        const v = el('editOfPhaseVerdict');
+        const ph = s.phase || {};
+        if (!ph.enabled) { v.textContent = 'OFF'; v.style.color = '#6B7280'; }
+        else if (!ph.ready) { v.textContent = '⏳ прогрев канала'; v.style.color = '#9CA3AF'; }
+        else {
+            let txt, color;
+            if (ph.dir === 1) { txt = '🟢 низ канала → LONG only'; color = '#4CAF50'; }
+            else if (ph.dir === -1) { txt = '🔴 верх канала → SHORT only'; color = '#F44336'; }
+            else { txt = '🟡 середина → оба'; color = '#FACC15'; }
+            v.textContent = txt;
+            v.style.color = color;
+        }
+    }
 }
 
 async function ofRobotSaveFromPanel() {
@@ -5652,6 +5683,11 @@ async function ofRobotSaveFromPanel() {
         use_timing: el('editOfUseTiming')?.checked || false,
         timing_start: (el('editOfTimingStart')?.value || '').trim(),
         timing_end: (el('editOfTimingEnd')?.value || '').trim(),
+        phase_filter: el('editOfUsePhase')?.checked || false,
+        phase_window: parseInt(el('editOfPhaseWin')?.value) || 96,
+        phase_lower: parseFloat(el('editOfPhaseLower')?.value) || 0.33,
+        phase_upper: parseFloat(el('editOfPhaseUpper')?.value) || 0.67,
+        phase_hysteresis: parseFloat(el('editOfPhaseHyst')?.value) || 0.05,
     };
     try {
         // F-010: если робот offline — пишем конфиг через сервер (применится при старте)
@@ -6063,6 +6099,21 @@ async function ofPerpRobotEditPanel() {
                 <div class="metric-card" style="min-width:150px"><div class="metric-label">Гейт сейчас</div><div id="ofPerpTimingVerdict" style="font-size:14px;font-weight:bold;color:#9CA3AF">—</div></div>
             </div>
             <hr style="border-color:#2D2D44;margin:12px 0">
+            <!-- F-067: Фазы рынка (Donchian-трети): низ LONG / верх SHORT / середина both -->
+            <div class="metrics-row" style="flex-wrap:wrap;margin-bottom:16px;align-items:center">
+                <div class="metric-card" style="display:flex;align-items:center;gap:8px">
+                    <label style="display:flex;align-items:center;gap:6px;cursor:pointer" title="Цена в нижней трети канала — только LONG, в верхней трети — только SHORT, в середине — оба">
+                        <input id="editOfPerpUsePhase" type="checkbox" ${(p.phase_filter)?'checked':''} style="width:18px;height:18px;cursor:pointer">
+                        <span style="font-weight:bold;color:#FACC15">◫ Фазы рынка</span>
+                    </label>
+                </div>
+                <div class="metric-card"><div class="metric-label">Окно (баров)</div><input id="editOfPerpPhaseWin" class="input" type="number" min="10" max="2000" value="${p.phase_window||96}" style="width:80px"></div>
+                <div class="metric-card"><div class="metric-label">Низ %</div><input id="editOfPerpPhaseLower" class="input" type="number" step="0.01" min="0.05" max="0.49" value="${p.phase_lower||0.33}" style="width:60px"></div>
+                <div class="metric-card"><div class="metric-label">Верх %</div><input id="editOfPerpPhaseUpper" class="input" type="number" step="0.01" min="0.51" max="0.95" value="${p.phase_upper||0.67}" style="width:60px"></div>
+                <div class="metric-card"><div class="metric-label">Гистерезис %</div><input id="editOfPerpPhaseHyst" class="input" type="number" step="0.01" min="0" max="0.4" value="${p.phase_hysteresis||0.05}" style="width:60px"></div>
+                <div class="metric-card" style="min-width:150px"><div class="metric-label">Фаза сейчас</div><div id="editOfPerpPhaseVerdict" style="font-size:14px;font-weight:bold;color:#9CA3AF">—</div></div>
+            </div>
+            <hr style="border-color:#2D2D44;margin:12px 0">
             <!-- Торговый журнал -->
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
                 <strong>📋 Торговый журнал</strong>
@@ -6189,6 +6240,22 @@ function ofPerpUpdateLive() {
         else if (s.timingGate) { v.textContent = '⛔ закрыт (вне окна)'; v.style.color = '#F44336'; }
         else { v.textContent = '🟢 открыт — торгуем'; v.style.color = '#4CAF50'; }
     }
+
+    // F-067: фазы рынка
+    if (el('editOfPerpPhaseVerdict')) {
+        const v = el('editOfPerpPhaseVerdict');
+        const ph = s.phase || {};
+        if (!ph.enabled) { v.textContent = 'OFF'; v.style.color = '#6B7280'; }
+        else if (!ph.ready) { v.textContent = '⏳ прогрев канала'; v.style.color = '#9CA3AF'; }
+        else {
+            let txt, color;
+            if (ph.dir === 1) { txt = '🟢 низ канала → LONG only'; color = '#4CAF50'; }
+            else if (ph.dir === -1) { txt = '🔴 верх канала → SHORT only'; color = '#F44336'; }
+            else { txt = '🟡 середина → оба'; color = '#FACC15'; }
+            v.textContent = txt;
+            v.style.color = color;
+        }
+    }
 }
 
 async function ofPerpRobotSaveFromPanel() {
@@ -6239,6 +6306,11 @@ async function ofPerpRobotSaveFromPanel() {
         use_timing: el('editOfPerpUseTiming')?.checked || false,
         timing_start: (el('editOfPerpTimingStart')?.value || '').trim(),
         timing_end: (el('editOfPerpTimingEnd')?.value || '').trim(),
+        phase_filter: el('editOfPerpUsePhase')?.checked || false,
+        phase_window: parseInt(el('editOfPerpPhaseWin')?.value) || 96,
+        phase_lower: parseFloat(el('editOfPerpPhaseLower')?.value) || 0.33,
+        phase_upper: parseFloat(el('editOfPerpPhaseUpper')?.value) || 0.67,
+        phase_hysteresis: parseFloat(el('editOfPerpPhaseHyst')?.value) || 0.05,
     };
     // Always save to localStorage first
     localStorage.setItem('ofPerpSavedParams', JSON.stringify(body));
@@ -6818,6 +6890,21 @@ async function ofMxRobotEditPanel() {
                 <div class="metric-card" style="min-width:150px"><div class="metric-label">Гейт сейчас</div><div id="ofMxTimingVerdict" style="font-size:14px;font-weight:bold;color:#9CA3AF">—</div></div>
             </div>
             <hr style="border-color:#2D2D44;margin:12px 0">
+            <!-- F-067: Фазы рынка (Donchian-трети): низ LONG / верх SHORT / середина both -->
+            <div class="metrics-row" style="flex-wrap:wrap;margin-bottom:16px;align-items:center">
+                <div class="metric-card" style="display:flex;align-items:center;gap:8px">
+                    <label style="display:flex;align-items:center;gap:6px;cursor:pointer" title="Включено: цена в нижней трети канала — только LONG, в верхней трети — только SHORT, в середине — оба. Гистерезис от дребезга на границах">
+                        <input id="editOfMxUsePhase" type="checkbox" ${(p.phase_filter)?'checked':''} style="width:18px;height:18px;cursor:pointer">
+                        <span style="font-weight:bold;color:#FACC15">◫ Фазы рынка</span>
+                    </label>
+                </div>
+                <div class="metric-card"><div class="metric-label">Окно (баров)</div><input id="editOfMxPhaseWin" class="input" type="number" min="10" max="2000" value="${p.phase_window||96}" style="width:80px"></div>
+                <div class="metric-card"><div class="metric-label">Низ %</div><input id="editOfMxPhaseLower" class="input" type="number" step="0.01" min="0.05" max="0.49" value="${p.phase_lower||0.33}" style="width:60px"></div>
+                <div class="metric-card"><div class="metric-label">Верх %</div><input id="editOfMxPhaseUpper" class="input" type="number" step="0.01" min="0.51" max="0.95" value="${p.phase_upper||0.67}" style="width:60px"></div>
+                <div class="metric-card"><div class="metric-label">Гистерезис %</div><input id="editOfMxPhaseHyst" class="input" type="number" step="0.01" min="0" max="0.4" value="${p.phase_hysteresis||0.05}" style="width:60px"></div>
+                <div class="metric-card" style="min-width:150px"><div class="metric-label">Фаза сейчас</div><div id="editOfMxPhaseVerdict" style="font-size:14px;font-weight:bold;color:#9CA3AF">—</div></div>
+            </div>
+            <hr style="border-color:#2D2D44;margin:12px 0">
             <!-- Торговый журнал -->
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
                 <strong>📋 Торговый журнал</strong>
@@ -6932,6 +7019,23 @@ function ofMxUpdateLive() {
         else if (s.timingGate) { v.textContent = '⛔ закрыт (вне окна)'; v.style.color = '#F44336'; }
         else { v.textContent = '🟢 открыт — торгуем'; v.style.color = '#4CAF50'; }
     }
+
+    // F-067: фазы рынка
+    if (el('editOfMxPhaseVerdict')) {
+        const v = el('editOfMxPhaseVerdict');
+        const ph = s.phase || {};
+        if (!ph.enabled) { v.textContent = 'OFF'; v.style.color = '#6B7280'; }
+        else if (!ph.ready) { v.textContent = '⏳ прогрев канала'; v.style.color = '#9CA3AF'; }
+        else {
+            const px = s.currentPrice || 0;
+            let txt, color;
+            if (ph.dir === 1) { txt = '🟢 низ канала → LONG only'; color = '#4CAF50'; }
+            else if (ph.dir === -1) { txt = '🔴 верх канала → SHORT only'; color = '#F44336'; }
+            else { txt = '🟡 середина → оба'; color = '#FACC15'; }
+            v.textContent = txt + (px ? ' (' + px.toFixed(0) + ')' : '');
+            v.style.color = color;
+        }
+    }
 }
 
 async function ofMxRobotSaveFromPanel() {
@@ -6978,6 +7082,11 @@ async function ofMxRobotSaveFromPanel() {
         use_timing: el('editOfMxUseTiming')?.checked || false,
         timing_start: (el('editOfMxTimingStart')?.value || '').trim(),
         timing_end: (el('editOfMxTimingEnd')?.value || '').trim(),
+        phase_filter: el('editOfMxUsePhase')?.checked || false,
+        phase_window: parseInt(el('editOfMxPhaseWin')?.value) || 96,
+        phase_lower: parseFloat(el('editOfMxPhaseLower')?.value) || 0.33,
+        phase_upper: parseFloat(el('editOfMxPhaseUpper')?.value) || 0.67,
+        phase_hysteresis: parseFloat(el('editOfMxPhaseHyst')?.value) || 0.05,
     };
     // Always save to localStorage first
     localStorage.setItem('ofMxSavedParams', JSON.stringify(body));
@@ -8139,6 +8248,21 @@ function ofBrPanelBodyHtml(inst, p) {
             <div class="metric-card"><div class="metric-label">Выключение</div><input id="editOfBrTimingEnd" class="input" type="time" value="${p.timing_end||''}" style="width:110px"></div>
             <div class="metric-card" style="min-width:150px"><div class="metric-label">Гейт сейчас</div><div id="ofBrTimingVerdict" style="font-size:14px;font-weight:bold;color:#9CA3AF">—</div></div>
         </div>
+            <hr style="border-color:#2D2D44;margin:12px 0">
+            <!-- F-067: Фазы рынка (Donchian-трети): низ LONG / верх SHORT / середина both -->
+            <div class="metrics-row" style="flex-wrap:wrap;margin-bottom:16px;align-items:center">
+                <div class="metric-card" style="display:flex;align-items:center;gap:8px">
+                    <label style="display:flex;align-items:center;gap:6px;cursor:pointer" title="Цена в нижней трети канала — только LONG, в верхней трети — только SHORT, в середине — оба">
+                        <input id="editOfBrUsePhase" type="checkbox" ${(p.phase_filter)?'checked':''} style="width:18px;height:18px;cursor:pointer">
+                        <span style="font-weight:bold;color:#FACC15">◫ Фазы рынка</span>
+                    </label>
+                </div>
+                <div class="metric-card"><div class="metric-label">Окно (баров)</div><input id="editOfBrPhaseWin" class="input" type="number" min="10" max="2000" value="${p.phase_window||96}" style="width:80px"></div>
+                <div class="metric-card"><div class="metric-label">Низ %</div><input id="editOfBrPhaseLower" class="input" type="number" step="0.01" min="0.05" max="0.49" value="${p.phase_lower||0.33}" style="width:60px"></div>
+                <div class="metric-card"><div class="metric-label">Верх %</div><input id="editOfBrPhaseUpper" class="input" type="number" step="0.01" min="0.51" max="0.95" value="${p.phase_upper||0.67}" style="width:60px"></div>
+                <div class="metric-card"><div class="metric-label">Гистерезис %</div><input id="editOfBrPhaseHyst" class="input" type="number" step="0.01" min="0" max="0.4" value="${p.phase_hysteresis||0.05}" style="width:60px"></div>
+                <div class="metric-card" style="min-width:150px"><div class="metric-label">Фаза сейчас</div><div id="editOfBrPhaseVerdict" style="font-size:14px;font-weight:bold;color:#9CA3AF">—</div></div>
+            </div>
         <hr style="border-color:#2D2D44;margin:12px 0">
         <!-- BR-специфика (нет у SiU6): риск-допы + OB + сессия -->
         <div style="font-size:12px;color:#9CA3AF;margin-bottom:6px;font-weight:bold">BR-ДОПОЛНИТЕЛЬНО</div>
@@ -8279,6 +8403,22 @@ function ofBrUpdateLive(inst) {
         else if (s.timingGate) { v.textContent = '⛔ закрыт (вне окна)'; v.style.color = '#F44336'; }
         else { v.textContent = '🟢 открыт — торгуем'; v.style.color = '#4CAF50'; }
     }
+
+    // F-067: фазы рынка
+    if (el('editOfBrPhaseVerdict')) {
+        const v = el('editOfBrPhaseVerdict');
+        const ph = s.phase || {};
+        if (!ph.enabled) { v.textContent = 'OFF'; v.style.color = '#6B7280'; }
+        else if (!ph.ready) { v.textContent = '⏳ прогрев канала'; v.style.color = '#9CA3AF'; }
+        else {
+            let txt, color;
+            if (ph.dir === 1) { txt = '🟢 низ канала → LONG only'; color = '#4CAF50'; }
+            else if (ph.dir === -1) { txt = '🔴 верх канала → SHORT only'; color = '#F44336'; }
+            else { txt = '🟡 середина → оба'; color = '#FACC15'; }
+            v.textContent = txt;
+            v.style.color = color;
+        }
+    }
 }
 
 async function ofBrRobotSaveFromPanel() {
@@ -8350,6 +8490,11 @@ async function ofBrRobotSaveFromPanel() {
         use_timing: el('editOfBrUseTiming')?.checked || false,
         timing_start: (el('editOfBrTimingStart')?.value || '').trim(),
         timing_end: (el('editOfBrTimingEnd')?.value || '').trim(),
+        phase_filter: el('editOfBrUsePhase')?.checked || false,
+        phase_window: parseInt(el('editOfBrPhaseWin')?.value) || 96,
+        phase_lower: parseFloat(el('editOfBrPhaseLower')?.value) || 0.33,
+        phase_upper: parseFloat(el('editOfBrPhaseUpper')?.value) || 0.67,
+        phase_hysteresis: parseFloat(el('editOfBrPhaseHyst')?.value) || 0.05,
     };
     // 1) localStorage (offline-буфер)
     localStorage.setItem('ofBrSavedParams_' + inst, JSON.stringify(body));

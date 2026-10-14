@@ -115,6 +115,16 @@ class OFParams:
     hl_filter: bool = False        # OFF по умолчанию — поведение как раньше
     hl_window: int = 24            # окно в барах (24 × M5 = 2 часа)
     hl_delta: float = 150.0        # «близко к экстремуму» в пунктах
+    # F-067: Phase Zones — зонный фильтр направления (Donchian-канал, трети).
+    # phase_filter ON + окно: цена в нижней трети канала → только LONG,
+    # в верхней трети → только SHORT, в середине (обе границы не задеты) → оба.
+    # off по умолчанию (R-002). Гистерезис phase_hysteresis: выход из зоны происходит
+    # на hysteresis*range дальше границы (против «дребезга» на границе третей).
+    phase_filter: bool = False
+    phase_window: int = 96         # окно канала в барах (96 × M5 = 8 часов)
+    phase_lower: float = 0.33      # граница нижней зоны (доля канала)
+    phase_upper: float = 0.67      # граница верхней зоны (доля канала)
+    phase_hysteresis: float = 0.05 # гистерезис выхода из зоны (доля канала)
 
 
 @dataclass
@@ -356,6 +366,9 @@ class OrderFlowStrategy:
         self._average_levels: int = 0
         self._pyramid_levels: int = 0
         self._avg_va_block_logged: bool = False
+        # F-067: Phase Zones state (гистерезис направления зоны)
+        self._phase_dir: int = 0           # 1 = LONG-зона, -1 = SHORT-зона, 0 = BOTH/не готово
+        self._phase_last_log: str = ""
         self._last_average_price: float = 0.0
         self._last_pyramid_price: float = 0.0
         self._lot_queue: deque[LotEntry] = deque()
@@ -858,6 +871,13 @@ class OrderFlowStrategy:
         if self.p.direction_filter == "short" and direction == LONG:
             log.info("ENTRY BLOCKED by direction_filter=short (signal=LONG)")
             return None
+
+        # F-067: Phase Zones — зонный гейт направления (низ LONG / верх SHORT / середина оба)
+        if self.p.phase_filter:
+            allowed, reason = self._phase_allows(direction, price)
+            if not allowed:
+                log.info(f"ENTRY BLOCKED by phase_filter: {reason} (dir={direction})")
+                return None
 
         # HL filter (only_strict): LONG только у лоу окна, SHORT только у хая окна.
         # Середина диапазона — блок входа. Выкл (hl_filter=False) → как раньше.
@@ -1446,6 +1466,77 @@ class OrderFlowStrategy:
             ))
             log.warning(f"Restored position without lotQueue — single entry: dir={self._dir} lots={self._total_lots}")
 
+    # ---------- F-067: Phase Zones (Donchian thirds) ----------
+
+    def _phase_eval(self, price: float) -> dict:
+        """Оценить фазу рынка по положению цены в Donchian-канале (окно phase_window).
+
+        Вход в зону: price <= lo + range*lower → LONG-зона;
+                     price >= lo + range*upper → SHORT-зона;
+                     иначе BOTH.
+        Выход из зоны с гистерезисом (phase_hysteresis доля канала) — против дребезга.
+        Возвращает слепок для гейта и /status.
+        """
+        win = max(10, int(self.p.phase_window))
+        hl = self.signals.get_hl_window(win)
+        if hl is None:
+            return {"enabled": bool(self.p.phase_filter), "ready": False,
+                    "window": win, "dir": 0}
+        wh, wl = hl
+        rng = wh - wl
+        if rng <= 0:
+            return {"enabled": bool(self.p.phase_filter), "ready": False,
+                    "window": win, "dir": 0}
+        lo_bound = wl + rng * self.p.phase_lower
+        hi_bound = wl + rng * self.p.phase_upper
+        hyst = rng * self.p.phase_hysteresis
+
+        prev = self._phase_dir
+        if price <= lo_bound:
+            self._phase_dir = 1                       # LONG-зона
+        elif price >= hi_bound:
+            self._phase_dir = -1                      # SHORT-зона
+        elif prev == 1 and price <= lo_bound + hyst:
+            self._phase_dir = 1                       # гистерезис: остаёмся в LONG-зоне
+        elif prev == -1 and price >= hi_bound - hyst:
+            self._phase_dir = -1                      # гистерезис: остаёмся в SHORT-зоне
+        else:
+            self._phase_dir = 0                       # BOTH
+
+        if prev != self._phase_dir:
+            names = {1: "LONG", -1: "SHORT", 0: "BOTH"}
+            log.info(f"PHASE ZONE: {names.get(prev, '?')} → {names.get(self._phase_dir, '?')} | "
+                     f"price={fmt_price(price)} канал {fmt_price(wl)}..{fmt_price(wh)} "
+                     f"границы {fmt_price(lo_bound)}/{fmt_price(hi_bound)}")
+        return {"enabled": bool(self.p.phase_filter), "ready": True, "window": win,
+                "chanHigh": round(wh, 2), "chanLow": round(wl, 2),
+                "boundLo": round(lo_bound, 2), "boundHi": round(hi_bound, 2),
+                "pos": round((price - wl) / rng, 3) if rng > 0 else None,
+                "dir": self._phase_dir}
+
+    def _phase_allows(self, direction: int, price: float) -> tuple[bool, str]:
+        """Гейт входа по фазе. Возвращает (allowed, reason)."""
+        if not self.p.phase_filter:
+            return True, "off"
+        st = self._phase_eval(price)
+        if not st.get("ready"):
+            return True, "not_ready"                  # канал не готов — не мешаем
+        d = st.get("dir", 0)
+        if d == 0:
+            return True, "both"
+        if d == 1 and direction == LONG:
+            return True, "long_zone"
+        if d == -1 and direction == SHORT:
+            return True, "short_zone"
+        names = {1: "LONG-зона", -1: "SHORT-зона", 0: "BOTH"}
+        return False, f"фаза {names.get(d)} (канал {st.get('chanLow')}..{st.get('chanHigh')})"
+
+    def _phase_state(self) -> dict:
+        """Слепок для /status (UI-вердикт)."""
+        if not self.p.phase_filter:
+            return {"enabled": False}
+        return self._phase_eval(self._current_price)
+
     # ---------- Status ----------
 
     def _hl_state(self) -> dict:
@@ -1520,5 +1611,6 @@ class OrderFlowStrategy:
             "vp": self.vp.state if self.vp else None,
             "directionFilter": self.p.direction_filter,
             "hl": self._hl_state(),
+            "phase": self._phase_state(),
             "dmWallAgree": self._last_dm_wall,
         }

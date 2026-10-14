@@ -106,12 +106,12 @@ def test_state_roundtrip(tmp_path):
     assert s2.base == pytest.approx(2_500_000)
     assert s2.day_realized_R["2026-10-02"] == -5.0
     assert s2.trades_done == 41
-    # F-059: startup-always-stopped
+    # F-059a (14.10): persist_mode — running переживает рестарт (выключение только Дмитрием)
     s.mode = "running"
     s.save()
     s3 = SaremaState(p)
     s3.load()
-    assert s3.mode == "stopped"
+    assert s3.mode == "running"
 
 
 def test_state_missing_file():
