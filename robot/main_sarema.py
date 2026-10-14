@@ -1,4 +1,4 @@
-"""F-061: main_sarema.py — сервис одноинстансового робота SAR×EMA.
+﻿"""F-061: main_sarema.py — сервис одноинстансового робота SAR×EMA.
 
 Env: SAREMA_TICKER, SAREMA_PORT, SAREMA_CONFIG_FILE, SAREMA_STATE_FILE,
 SAREMA_ACCOUNT_ID, DP_URL, SAREMA_DATA_DIR (прогрев), FINAM_API_KEY.
@@ -331,7 +331,7 @@ def get_params():
 
 @app.post("/params")
 def post_params(patch: ParamsPatch):
-    clean, errors = validate_params(patch.model_dump(exclude_none=True))
+    clean, errors = validate_params(patch.model_dump(exclude_unset=True))  # F-070: null доходит (очистка kill/лимитов)
     if errors:
         raise HTTPException(400, {"errors": errors})
     cfg.update(clean)

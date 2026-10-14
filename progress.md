@@ -596,3 +596,10 @@ BR-edp (b9b48e3) → добавлены те же варианты 60%/70% в в
   4) Server пересобран (dotnet build, SDK 10.0.101), DOTNET_ROOT=C:\Program Files\dotnet нужен для запуска exe (не D:\AutoClaw resources — там runtime 8.0).
 - Проверка CDP :5099: LKOH 300 баров + SAR 299 + EMA 289, SBER 80+79+69, GAZP 80+79+69 — все три попапа, переоткрытие LKOH живое. Скриншоты распознаны: свечи+SAR+EMA везде.
 - ИНЦИДЕНТ (не я): арбы 5090/5091/5092 стартанули 22:26 (логи *f069*, parent 3732 — не мой скрипт), их HTTP API завис (/health молчит), роботы пишут rate-limit backoff. State: GAZP running FLAT, SBER stopped, позиции НЕТ. Перезапуск арбов — R-001, за Дмитрием. Возможная связь с моим DP-рестартом не подтверждена (арбы на Finam REST напрямую).
+
+### 2026-10-14 11:0x — F-070: фикс очистки kill-switch/лимитов в /params (баг Дмитрия)
+- Дмитрий: стираю Kill-switch (-4), жму Сохранить — значение возвращается. 
+- Корень: main_sarema.py /params делал patch.model_dump(exclude_none=True) — null-поля вырезались ДО валидации, в конфиг писалось старое значение. Класс бага бьёт все nullable-поля: day_kill_R, max_long/short_qty, max_value_rub, liq_frac.
+- Фикс: exclude_unset=True (null доходит, незаполненные необязательные не мешают). Frontend шлёт корректно (sarSaveParams уже слал day_kill_R: null).
+- Интеграционный тест на живом 5103: null очистил -4.0 → PASS, восстановление -4.0 → PASS; max_short_qty=0 → PASS. Робот рестартнут дважды (FLAT, safe), сейчас stopped, START — за Дмитрием.
+- Урок: python-«патч» может отрапортовать успех, но не записать файл (проглоченное исключение) — после записи обязательна верификация перечитыванием (patch_f070.py делает assert на перечитанном тексте).

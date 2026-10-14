@@ -1,7 +1,7 @@
 {
   "meta": {
     "version": "1.0",
-    "updated": "2026-10-13",
+    "updated": "2026-10-14",
     "description": "Реестр фич OpenMarketflow: контроль, статусы, история логики. Дополнение к коммитам: фича шире коммита (несколько коммитов, тесты, решения).",
     "rules": {
       "statuses": [
@@ -1139,6 +1139,16 @@
       "date": "2026-10-13",
       "summary": "v3 (полная переделка после ревью Дмитрия): candles по цепочке C# /api/candles -> DP :5060 -> робот /bars; SAR/EMA ВСЕГДА считаются в браузере из фактических свечей (_sarLocalPSAR/_sarLocalEMA) — работают при любом состоянии робота. Попутно: /api/candles исключён из auth (read-only), акции SBER/GAZP/LKOH+7 добавлены в _tickerToFinam (@MISX, был @RTSX -> пустые бары), CORS в DataProvider, восстановлены потерянные декларации MSK_OFFSET_SAR/_sarChartRefreshTimer. Проверка CDP: LKOH 300 свечей + SAR/EMA, SBER 80, GAZP 80, переоткрытие живое, скриншоты подтверждены.",
       "date_updated": "2026-10-13"
+    },
+    {
+      "id": "F-070",
+      "name": "SAREMA: фикс /params — null-поля (очистка kill-switch и лимитов) не применялись",
+      "area": "robots/sarema",
+      "status": "done (интеграционный тест на живом 5103 PASS)",
+      "owner": "main",
+      "date": "2026-10-14",
+      "summary": "Дмитрий: очистил Kill-switch (-4 → пусто), Сохранить — значение возвращалось. Корень: /params делал model_dump(exclude_none=True) — null вырезался до валидации, в конфиг оставалось старое значение. Класс бага бил все nullable-поля (day_kill_R, max_long/short_qty, max_value_rub, liq_frac). Фикс: exclude_unset=True. Тест на живом роботе: null → day_kill_R=None PASS, восстановление PASS, max_short_qty=0 PASS.",
+      "date_updated": "2026-10-14"
     }
   ]
 }
