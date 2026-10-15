@@ -5439,7 +5439,7 @@ async function ofRobotEditPanel() {
                         <span style="font-weight:bold;color:#FACC15">◫ Фазы рынка</span>
                     </label>
                 </div>
-                <div class="metric-card"><div class="metric-label">Окно (баров)</div><input id="editOfPhaseWin" class="input" type="number" min="10" max="2000" value="${p.phase_window||96}" style="width:80px"></div>
+                <div class="metric-card"><div class="metric-label">Окно (баров)</div><input id="editOfPhaseWin" class="input" type="number" min="10" max="2000" value="${p.phase_window||2000}" style="width:80px"></div>
                 <div class="metric-card"><div class="metric-label">Низ %</div><input id="editOfPhaseLower" class="input" type="number" step="0.01" min="0.05" max="0.49" value="${p.phase_lower||0.33}" style="width:60px"></div>
                 <div class="metric-card"><div class="metric-label">Верх %</div><input id="editOfPhaseUpper" class="input" type="number" step="0.01" min="0.51" max="0.95" value="${p.phase_upper||0.67}" style="width:60px"></div>
                 <div class="metric-card"><div class="metric-label">Гистерезис %</div><input id="editOfPhaseHyst" class="input" type="number" step="0.01" min="0" max="0.4" value="${p.phase_hysteresis||0.05}" style="width:60px"></div>
@@ -6107,7 +6107,7 @@ async function ofPerpRobotEditPanel() {
                         <span style="font-weight:bold;color:#FACC15">◫ Фазы рынка</span>
                     </label>
                 </div>
-                <div class="metric-card"><div class="metric-label">Окно (баров)</div><input id="editOfPerpPhaseWin" class="input" type="number" min="10" max="2000" value="${p.phase_window||96}" style="width:80px"></div>
+                <div class="metric-card"><div class="metric-label">Окно (баров)</div><input id="editOfPerpPhaseWin" class="input" type="number" min="10" max="2000" value="${p.phase_window||2000}" style="width:80px"></div>
                 <div class="metric-card"><div class="metric-label">Низ %</div><input id="editOfPerpPhaseLower" class="input" type="number" step="0.01" min="0.05" max="0.49" value="${p.phase_lower||0.33}" style="width:60px"></div>
                 <div class="metric-card"><div class="metric-label">Верх %</div><input id="editOfPerpPhaseUpper" class="input" type="number" step="0.01" min="0.51" max="0.95" value="${p.phase_upper||0.67}" style="width:60px"></div>
                 <div class="metric-card"><div class="metric-label">Гистерезис %</div><input id="editOfPerpPhaseHyst" class="input" type="number" step="0.01" min="0" max="0.4" value="${p.phase_hysteresis||0.05}" style="width:60px"></div>
@@ -6899,7 +6899,7 @@ async function ofMxRobotEditPanel() {
                         <span style="font-weight:bold;color:#FACC15">◫ Фазы рынка</span>
                     </label>
                 </div>
-                <div class="metric-card"><div class="metric-label">Окно (баров)</div><input id="editOfMxPhaseWin" class="input" type="number" min="10" max="2000" value="${p.phase_window||96}" style="width:80px"></div>
+                <div class="metric-card"><div class="metric-label">Окно (баров)</div><input id="editOfMxPhaseWin" class="input" type="number" min="10" max="2000" value="${p.phase_window||2000}" style="width:80px"></div>
                 <div class="metric-card"><div class="metric-label">Низ %</div><input id="editOfMxPhaseLower" class="input" type="number" step="0.01" min="0.05" max="0.49" value="${p.phase_lower||0.33}" style="width:60px"></div>
                 <div class="metric-card"><div class="metric-label">Верх %</div><input id="editOfMxPhaseUpper" class="input" type="number" step="0.01" min="0.51" max="0.95" value="${p.phase_upper||0.67}" style="width:60px"></div>
                 <div class="metric-card"><div class="metric-label">Гистерезис %</div><input id="editOfMxPhaseHyst" class="input" type="number" step="0.01" min="0" max="0.4" value="${p.phase_hysteresis||0.05}" style="width:60px"></div>
@@ -7160,7 +7160,7 @@ async function ofMxRobotSaveFromPanel() {
         timing_start: (el('editOfMxTimingStart')?.value || '').trim(),
         timing_end: (el('editOfMxTimingEnd')?.value || '').trim(),
         phase_filter: el('editOfMxUsePhase')?.checked || false,
-        phase_window: parseInt(el('editOfMxPhaseWin')?.value) || 96,
+        phase_window: parseInt(el('editOfMxPhaseWin')?.value) || 2000,
         phase_lower: parseFloat(el('editOfMxPhaseLower')?.value) || 0.33,
         phase_upper: parseFloat(el('editOfMxPhaseUpper')?.value) || 0.67,
         phase_hysteresis: parseFloat(el('editOfMxPhaseHyst')?.value) || 0.05,
@@ -8334,7 +8334,7 @@ function ofBrPanelBodyHtml(inst, p) {
                         <span style="font-weight:bold;color:#FACC15">◫ Фазы рынка</span>
                     </label>
                 </div>
-                <div class="metric-card"><div class="metric-label">Окно (баров)</div><input id="editOfBrPhaseWin" class="input" type="number" min="10" max="2000" value="${p.phase_window||96}" style="width:80px"></div>
+                <div class="metric-card"><div class="metric-label">Окно (баров)</div><input id="editOfBrPhaseWin" class="input" type="number" min="10" max="2000" value="${p.phase_window||2000}" style="width:80px"></div>
                 <div class="metric-card"><div class="metric-label">Низ %</div><input id="editOfBrPhaseLower" class="input" type="number" step="0.01" min="0.05" max="0.49" value="${p.phase_lower||0.33}" style="width:60px"></div>
                 <div class="metric-card"><div class="metric-label">Верх %</div><input id="editOfBrPhaseUpper" class="input" type="number" step="0.01" min="0.51" max="0.95" value="${p.phase_upper||0.67}" style="width:60px"></div>
                 <div class="metric-card"><div class="metric-label">Гистерезис %</div><input id="editOfBrPhaseHyst" class="input" type="number" step="0.01" min="0" max="0.4" value="${p.phase_hysteresis||0.05}" style="width:60px"></div>

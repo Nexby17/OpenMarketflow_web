@@ -121,7 +121,7 @@ class OFParams:
     # off по умолчанию (R-002). Гистерезис phase_hysteresis: выход из зоны происходит
     # на hysteresis*range дальше границы (против «дребезга» на границе третей).
     phase_filter: bool = False
-    phase_window: int = 96         # окно канала в барах (96 × M5 = 8 часов)
+    phase_window: int = 2000         # окно канала в барах (96 × M5 = 8 часов)
     phase_lower: float = 0.33      # граница нижней зоны (доля канала)
     phase_upper: float = 0.67      # граница верхней зоны (доля канала)
     phase_hysteresis: float = 0.05 # гистерезис выхода из зоны (доля канала)
