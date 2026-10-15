@@ -356,9 +356,28 @@ class SignalEngine:
         self._cvd_trend_last_bar: int = -1  # guard: process EMA once per bar (total bars added)
 
     def add_bar(self, metrics: BarMetrics, bar_high: float, bar_low: float, bar_close: float):
-        """Feed completed bar metrics into the signal engine."""
-        self._phase_highs.append(bar_high)
-        self._phase_lows.append(bar_low)
+        """Feed completed bar metrics into the signal engine.
+
+        F-067 fix: Finam WS BARS пуляет текущий (формирующийся) бар много раз; раньше каждый
+        пуш аппендил в фазовые буферы и ВЫТЕСНЯЛ историю (maxlen 2000) — через 15 минут
+        Donchian(777) превращался в канал последних минут (баг «узкого канала» Дмитрия).
+        Теперь фазовые буферы обновляют ПОСЛЕДНЮЮ запись, пока бар не закрылся (close сменился
+        → бар закрылся → append новой записи).
+        """
+        bar_ts = float(getattr(metrics, "timestamp", 0) or 0)
+        last_ts = getattr(self, "_phase_last_ts", 0.0)
+        if bar_ts and last_ts and abs(bar_ts - last_ts) < 1:
+            # тот же формирующийся бар (повторный пуш WS) — обновить последнюю запись фазовых буферов,
+            # чтобы пуш-спам не вытеснял историю (maxlen 2000)
+            if self._phase_highs:
+                self._phase_highs[-1] = bar_high
+            if self._phase_lows:
+                self._phase_lows[-1] = bar_low
+        else:
+            # новый закрытый бар — append
+            self._phase_highs.append(bar_high)
+            self._phase_lows.append(bar_low)
+            self._phase_last_ts = bar_ts
         self._bar_history.append(metrics)
         self._close_history.append(bar_close)
         self._high_history.append(bar_high)
