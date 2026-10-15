@@ -186,6 +186,17 @@ class SaremaStrategy:
         po = self.orders.place_market(side, qty, tag="sarema-entry")
         if not po:
             return {"event": "entry_error", "error": self.orders.last_error}
+        # F-074: реальная цена исполнения из ленты брокера (короткая пауза на проведение сделки)
+        import time as _t
+        fill_price = None
+        for _ in range(5):
+            _t.sleep(0.6)
+            fi = self.orders.last_fill_by_comment("sarema-entry", symbol=self.orders._symbol)
+            if fi and fi.quantity >= qty:
+                fill_price = fi.price
+                break
+        if fill_price:
+            price_hint = fill_price   # journal/stop считаются от факта
         # начальный стоп строится от фактической цены входа после fill (reconciliation
         # уточняет entry; здесь предварительный стоп от price_hint, дальше /resync)
         stop0 = price_hint - stop_dist if direction == LONG else price_hint + stop_dist
@@ -253,8 +264,16 @@ class SaremaStrategy:
         _entry = self.state.entry_price
         _qty = self.state.lots_qty
         _dir = self.state.direction
-        # цена выхода: факт от брокера недоступен синхронно — используем price_hint последнего бара
-        _exit_px = self.feed.bars["close"].iloc[-1] if (self.feed.bars is not None and len(self.feed.bars)) else _entry
+        # F-074: реальная цена выхода из ленты брокера (по reason-тэгу), fallback — close бара
+        _exit_px = None
+        try:
+            fi = self.orders.last_fill_by_comment(f"sarema-close-{reason}", symbol=self.orders._symbol)
+            if fi and fi.price > 0:
+                _exit_px = fi.price
+        except Exception:
+            pass
+        if _exit_px is None:
+            _exit_px = self.feed.bars["close"].iloc[-1] if (self.feed.bars is not None and len(self.feed.bars)) else _entry
         _commission = round(_qty * 0.90, 2)
         _net = (_exit_px - _entry) * _dir * _qty - _commission
         _risk_total = max(1e-9, self.state.base * self.cfg.get("risk_pct", 0.005))

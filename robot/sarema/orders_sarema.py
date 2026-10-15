@@ -1,4 +1,4 @@
-"""F-061: Order manager для SAR-робота — SDK REST (finam_rest4) с comment=sarema-*.
+﻿"""F-061: Order manager для SAR-робота — SDK REST (finam_rest4) с comment=sarema-*.
 
 Почему не DP-proxy (orders_dp): Finam gRPC PlaceOrder НЕ сохраняет comment ордера —
 у арбитражных роботов (через DP) все сделки в /api/trades идут с пустым comment.
@@ -81,12 +81,13 @@ class SaremaOrders:
     def place_market(self, side: int, quantity: int, tag: str = "") -> PlacedOrder | None:
         if quantity < 1:
             return None
-        side_str = "buy" if side == BUY else "sell"
+        # SDK enum: 'SIDE_BUY' / 'SIDE_SELL' (не 'buy'/'sell' — иначе 'not a valid Side')
+        side_str = "SIDE_BUY" if side == BUY else "SIDE_SELL"
         comment = self._tag(tag)
         try:
             r4 = self._r4()
             resp = r4.place_market(self._account, self._symbol, side_str, int(quantity), comment=comment)
-            oid = str(resp.get("order_id", ""))
+            oid = str(resp.get("order_id", resp.get("orderId", "")))
             if not oid:
                 self.last_error = str(resp)[:200]
                 log.error(f"market failed: {self.last_error}")
@@ -116,6 +117,38 @@ class SaremaOrders:
         except Exception as e:
             log.error(f"cancel {order_id}: {e}")
             return False
+
+    def last_fill_by_comment(self, tag: str, symbol: str | None = None) -> FillInfo | None:
+        """F-074: последняя исполненная сделка с данным comment (sarema-entry/stop-hit/...)
+        из ленты брокера (/api/trades — та же, что на вкладке «Торговля»). Реальная цена."""
+        try:
+            import urllib.request, json
+            with urllib.request.urlopen("http://localhost:5050/api/trades", timeout=10) as r:
+                data = json.loads(r.read().decode())
+            rows = data if isinstance(data, list) else (data.get("trades") or [])
+            want = self._tag(tag)
+            best = None
+            for t in rows:
+                c = str(t.get("comment", ""))
+                if c != want:
+                    continue
+                if symbol and str(t.get("symbol", "")) != symbol:
+                    continue
+                px = t.get("price"); q = t.get("size") or t.get("quantity")
+                fi = FillInfo(
+                    order_id=str(t.get("order_id", "")),
+                    symbol=str(t.get("symbol", "")),
+                    side=str(t.get("side", "")),
+                    price=float(px.get("value") if isinstance(px, dict) else (px or 0)),
+                    quantity=int(float(q.get("value") if isinstance(q, dict) else (q or 0))),
+                    comment=c,
+                    timestamp=0.0)
+                if best is None or fi.order_id >= best.order_id:
+                    best = fi
+            return best
+        except Exception as e:
+            log.error(f"last_fill_by_comment exception: {e}")
+            return None
 
     def recent_fills(self, since_sec: float = 60) -> list[FillInfo]:
         """Сделки счёта (через C# /api/trades proxy) — только с comment sarema-*."""
