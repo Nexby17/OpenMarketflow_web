@@ -1235,7 +1235,9 @@ def _warmup_vwema():
         # F-067 fix (15.10): фазовый канал требует phase_window+10 баров — иначе
         # канал Donchian сідит на куцом буфере и фаза врёт («середина» вместо лонг-зоны)
         bars_needed = max(params.vwema_slow + 20, int(getattr(params, "phase_window", 0) or 0) + 10)
-        lookback_seconds = bars_needed * bar_seconds
+        # F-067 fix (15.10): bars_needed — это ТОРГОВЫЕ бары, а REST режет по календарному времени.
+        # Без запаса Finam возвращал 224 бара вместо 777 → канал фаз врал. Запас x3, минимум 10 дней.
+        lookback_seconds = max(bars_needed * bar_seconds * 3, 10 * 24 * 3600)
 
         now = datetime.now(timezone.utc)
         start = now - timedelta(seconds=lookback_seconds)
