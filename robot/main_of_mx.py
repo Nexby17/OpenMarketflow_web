@@ -1232,7 +1232,9 @@ def _warmup_vwema():
         ws_tf = tf_map.get(params.timeframe, "TIME_FRAME_M1")
 
         bar_seconds = TF_SECONDS.get(params.timeframe, 60)
-        bars_needed = params.vwema_slow + 20
+        # F-067 fix (15.10): фазовый канал требует phase_window+10 баров — иначе
+        # канал Donchian сідит на куцом буфере и фаза врёт («середина» вместо лонг-зоны)
+        bars_needed = max(params.vwema_slow + 20, int(getattr(params, "phase_window", 0) or 0) + 10)
         lookback_seconds = bars_needed * bar_seconds
 
         now = datetime.now(timezone.utc)
