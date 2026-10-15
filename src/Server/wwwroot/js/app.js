@@ -5684,10 +5684,10 @@ async function ofRobotSaveFromPanel() {
         timing_start: (el('editOfTimingStart')?.value || '').trim(),
         timing_end: (el('editOfTimingEnd')?.value || '').trim(),
         phase_filter: el('editOfUsePhase')?.checked || false,
-        phase_window: parseInt(el('editOfPhaseWin')?.value) || 96,
-        phase_lower: parseFloat(el('editOfPhaseLower')?.value) || 0.33,
-        phase_upper: parseFloat(el('editOfPhaseUpper')?.value) || 0.67,
-        phase_hysteresis: parseFloat(el('editOfPhaseHyst')?.value) || 0.05,
+        phase_window: (() => { const v = el('editOfPhaseWin')?.value; if (v == null || v.trim() === '') return undefined; const n = parseInt(v); return isNaN(n) ? undefined : n; })(),
+        phase_lower: (() => { const v = el('editOfPhaseLower')?.value; if (v == null || v.trim() === '') return undefined; const n = parseFloat(String(v).replace(',', '.')); return isNaN(n) ? undefined : n; })(),
+        phase_upper: (() => { const v = el('editOfPhaseUpper')?.value; if (v == null || v.trim() === '') return undefined; const n = parseFloat(String(v).replace(',', '.')); return isNaN(n) ? undefined : n; })(),
+        phase_hysteresis: (() => { const v = el('editOfPhaseHyst')?.value; if (v == null || v.trim() === '') return undefined; const n = parseFloat(String(v).replace(',', '.')); return isNaN(n) ? undefined : n; })(),
     };
     try {
         // F-010: если робот offline — пишем конфиг через сервер (применится при старте)
@@ -6307,10 +6307,10 @@ async function ofPerpRobotSaveFromPanel() {
         timing_start: (el('editOfPerpTimingStart')?.value || '').trim(),
         timing_end: (el('editOfPerpTimingEnd')?.value || '').trim(),
         phase_filter: el('editOfPerpUsePhase')?.checked || false,
-        phase_window: parseInt(el('editOfPerpPhaseWin')?.value) || 96,
-        phase_lower: parseFloat(el('editOfPerpPhaseLower')?.value) || 0.33,
-        phase_upper: parseFloat(el('editOfPerpPhaseUpper')?.value) || 0.67,
-        phase_hysteresis: parseFloat(el('editOfPerpPhaseHyst')?.value) || 0.05,
+        phase_window: (() => { const v = el('editOfPerpPhaseWin')?.value; if (v == null || v.trim() === '') return undefined; const n = parseInt(v); return isNaN(n) ? undefined : n; })(),
+        phase_lower: (() => { const v = el('editOfPerpPhaseLower')?.value; if (v == null || v.trim() === '') return undefined; const n = parseFloat(String(v).replace(',', '.')); return isNaN(n) ? undefined : n; })(),
+        phase_upper: (() => { const v = el('editOfPerpPhaseUpper')?.value; if (v == null || v.trim() === '') return undefined; const n = parseFloat(String(v).replace(',', '.')); return isNaN(n) ? undefined : n; })(),
+        phase_hysteresis: (() => { const v = el('editOfPerpPhaseHyst')?.value; if (v == null || v.trim() === '') return undefined; const n = parseFloat(String(v).replace(',', '.')); return isNaN(n) ? undefined : n; })(),
     };
     // Always save to localStorage first
     localStorage.setItem('ofPerpSavedParams', JSON.stringify(body));
@@ -7160,10 +7160,10 @@ async function ofMxRobotSaveFromPanel() {
         timing_start: (el('editOfMxTimingStart')?.value || '').trim(),
         timing_end: (el('editOfMxTimingEnd')?.value || '').trim(),
         phase_filter: el('editOfMxUsePhase')?.checked || false,
-        phase_window: parseInt(el('editOfMxPhaseWin')?.value) || 2000,
-        phase_lower: parseFloat(el('editOfMxPhaseLower')?.value) || 0.33,
-        phase_upper: parseFloat(el('editOfMxPhaseUpper')?.value) || 0.67,
-        phase_hysteresis: parseFloat(el('editOfMxPhaseHyst')?.value) || 0.05,
+        phase_window: (() => { const v = el('editOfMxPhaseWin')?.value; if (v == null || v.trim() === '') return undefined; const n = parseInt(v); return isNaN(n) ? undefined : n; })(),
+        phase_lower: (() => { const v = el('editOfMxPhaseLower')?.value; if (v == null || v.trim() === '') return undefined; const n = parseFloat(String(v).replace(',', '.')); return isNaN(n) ? undefined : n; })(),
+        phase_upper: (() => { const v = el('editOfMxPhaseUpper')?.value; if (v == null || v.trim() === '') return undefined; const n = parseFloat(String(v).replace(',', '.')); return isNaN(n) ? undefined : n; })(),
+        phase_hysteresis: (() => { const v = el('editOfMxPhaseHyst')?.value; if (v == null || v.trim() === '') return undefined; const n = parseFloat(String(v).replace(',', '.')); return isNaN(n) ? undefined : n; })(),
     };
     // Always save to localStorage first
     localStorage.setItem('ofMxSavedParams', JSON.stringify(body));
@@ -8568,10 +8568,10 @@ async function ofBrRobotSaveFromPanel() {
         timing_start: (el('editOfBrTimingStart')?.value || '').trim(),
         timing_end: (el('editOfBrTimingEnd')?.value || '').trim(),
         phase_filter: el('editOfBrUsePhase')?.checked || false,
-        phase_window: parseInt(el('editOfBrPhaseWin')?.value) || 96,
-        phase_lower: parseFloat(el('editOfBrPhaseLower')?.value) || 0.33,
-        phase_upper: parseFloat(el('editOfBrPhaseUpper')?.value) || 0.67,
-        phase_hysteresis: parseFloat(el('editOfBrPhaseHyst')?.value) || 0.05,
+        phase_window: (() => { const v = el('editOfBrPhaseWin')?.value; if (v == null || v.trim() === '') return undefined; const n = parseInt(v); return isNaN(n) ? undefined : n; })(),
+        phase_lower: (() => { const v = el('editOfBrPhaseLower')?.value; if (v == null || v.trim() === '') return undefined; const n = parseFloat(String(v).replace(',', '.')); return isNaN(n) ? undefined : n; })(),
+        phase_upper: (() => { const v = el('editOfBrPhaseUpper')?.value; if (v == null || v.trim() === '') return undefined; const n = parseFloat(String(v).replace(',', '.')); return isNaN(n) ? undefined : n; })(),
+        phase_hysteresis: (() => { const v = el('editOfBrPhaseHyst')?.value; if (v == null || v.trim() === '') return undefined; const n = parseFloat(String(v).replace(',', '.')); return isNaN(n) ? undefined : n; })(),
     };
     // 1) localStorage (offline-буфер)
     localStorage.setItem('ofBrSavedParams_' + inst, JSON.stringify(body));
