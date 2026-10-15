@@ -1219,6 +1219,16 @@
       "date": "2026-10-15",
       "summary": "Дмитрий: «Напиши робота на Метчел, пропустил, а он был в списках». MTLR прошёл R-тест 09.10 (WR 48%, PF 2.17, WF 5/5, avgR +0.207) и был одобрен как 11-й инстанс, но в списки не попал. Добавлен: config_MTLR.json (база 20000, риск 1.5%), sarema.js SAR_INSTANCES.mtlr порт 5111 (SAR_INSTANCE_ORDER — 11), C# Spec sar_mtlr + valid-list /api/sarema/journal + _tickerToFinam MTLR@MISX. Warmup: скачана 2Y M1 история Finam (541,850 строк). Робот поднят per-instance env, mode=running, фид живой. Старт дан мной после готовности — Dmitri может остановить кнопкой ⏹ (F-059a: stopped теперь только вручную). 16:20: GAZP (уже существующий) после рестартов на новый код вошёл LONG 20 @ 105.72 (сигнал бар 15:00, age 1-2, ретрай сработал). Конфиг GAZP: max_long 20/max_short 10 (лот 10, было 2 → INVALID_ARGUMENT). Все 11 инстансов на новом коде.",
       "date_updated": "2026-10-15"
+    },
+    {
+      "id": "F-076",
+      "name": "SAREMA: авто-старт 24/7 (running переживает любой подъём, ⏹ = единственный способ выключить)",
+      "area": "robots/sarema",
+      "status": "done (все 11 инстансов running после деплоя)",
+      "owner": "main",
+      "date": "2026-10-15",
+      "summary": "Дмитрий: «почему пока не ткнёшь — само не торгуется?». F-059 (startup-always-stopped) ломал 24/7. Добавлен state.auto_start_disabled: ⏹ ставит True (робот ждёт ▶), ▶ сбрасывает; при подъёме процесса если флага нет — робот сам в running (AUTO-START). Деплой на 11 инстансов: все running; позиции пережили (GAZP L20, LKOH S1, NVTK L4, MTLR L208 — сам вошёл по сигналу). SBER сам открыл SHORT 36.",
+      "date_updated": "2026-10-15"
     }
   ]
 }

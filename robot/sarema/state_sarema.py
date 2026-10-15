@@ -1,4 +1,4 @@
-"""F-061: Per-instance state persistence (позиция, стоп, base, лимиты, kill-day).
+﻿"""F-061: Per-instance state persistence (позиция, стоп, base, лимиты, kill-day).
 
 Рестарт без потери состояния; startup-always-stopped (урок F-059).
 """
@@ -28,6 +28,8 @@ class SaremaState:
         self.last_entry_signal_bar: Optional[str] = None
         # F-059a (Дмитрий 14.10: «выключаю только я»): режим running переживает рестарт процесса
         self.persist_mode = True
+        # F-076: авто-старт при подъёме процесса (24/7). ⏹ ставит disabled=True; ▶ сбрасывает.
+        self.auto_start_disabled = False
         # F-061 журнал позиций (логика таблицы Дмитрия): открытые сверху, закрытие дозаписывается
         self.trade_history = []
 
@@ -47,6 +49,7 @@ class SaremaState:
             "total_pnl": self.total_pnl,
             "trades_done": self.trades_done,
             "last_entry_signal_bar": self.last_entry_signal_bar,
+            "auto_start_disabled": self.auto_start_disabled,
             "trade_history": self.trade_history[-500:],
         }
         tmp = self.path + ".tmp"
@@ -74,6 +77,7 @@ class SaremaState:
         self.trade_history = list(data.get("trade_history", []))
         # F-071: последний отработанный сигнал-бар
         self.last_entry_signal_bar = data.get("last_entry_signal_bar")
+        self.auto_start_disabled = bool(data.get("auto_start_disabled", False))
         # F-059a: режим из файла (running переживает рестарт процесса)
         self.mode = data.get("mode", "stopped")
         return True

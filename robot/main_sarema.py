@@ -183,6 +183,7 @@ def start():
     if state.direction != FLAT and not state.stop_price:
         raise HTTPException(409, "position without stop — run /resync first")
     state.mode = "running"
+    state.auto_start_disabled = False   # F-076: явный ▶ возвращает авто-старт
     state.save()
     log.info("START")
     return {"ok": True, "mode": state.mode}
@@ -342,8 +343,9 @@ def stop():
     """Идемпотентный /stop (урок F-060): mutex + re-check под замком."""
     with _stop_lock:
         state.mode = "stopped"
+        state.auto_start_disabled = True   # F-076: после ручного ⏹ робот сам не включится
         state.save()
-    log.info("STOP (idempotent)")
+    log.info("STOP (idempotent, auto-start disabled)")
     return {"ok": True, "mode": state.mode}
 
 
@@ -528,6 +530,13 @@ if __name__ == "__main__":
                 PORT = _p
         except (ValueError, IndexError):
             pass
+    # F-076: авто-старт 24/7 — если ⏹ не ставил флаг, робот сам возвращается в running
+    if not getattr(state, "auto_start_disabled", False):
+        state.mode = "running"
+        state.save()
+        log.info(f"AUTO-START: mode=running (dir={state.direction})")
+    else:
+        log.info("auto-start disabled (был ручной ⏹) — жду ▶")
     warm = feed.warmup_from_csv(TICKER) if DATA_DIR else False
     log.info(f"SAREMA {TICKER} port={PORT} warmup={'ok' if warm else 'SKIPPED (no SAREMA_DATA_DIR)'}")
     t = threading.Thread(target=_main_loop, daemon=True)
