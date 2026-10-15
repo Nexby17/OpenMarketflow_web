@@ -1,4 +1,4 @@
-"""F-061: Strategy orchestrator SAR-робота (сигналы движка → риск-слой → ордера).
+﻿"""F-061: Strategy orchestrator SAR-робота (сигналы движка → риск-слой → ордера).
 
 Одноинстансовый: робот знает только свой тикер. Портфель — зона Дмитрия (D1-D3).
 """
@@ -82,6 +82,27 @@ class SaremaStrategy:
             if abs(new_stop - self.state.stop_price) > 1e-9:
                 self._replace_broker_stop(new_stop)
                 self.state.stop_price = new_stop
+
+            # F-073 (Дмитрий): закрытие по ПРОТИВОПОЛОЖНОМУ кроссу + разворот.
+            # Обратный кросс на закрытом баре против позиции → close, затем вход в новую сторону
+            # (использует тот же max_signal_age-фильтр свежести через entry_sig ниже НЕ нужно —
+            # разворот делаем сразу: кросс сам по себе и есть сигнал).
+            if self.state.direction == LONG and up[i]:
+                events.append(self.close_position(reason="reverse-signal"))
+                self.state.last_entry_signal_bar = str(g2["begin"].iloc[i])  # этот же бар = сигнал шорта
+                ev = self._try_enter(SHORT, float(atr[i]), float(g2["volume"].iloc[i]),
+                                     signal_bar=str(g2["begin"].iloc[i]), signal_age=0)
+                events.append(ev)
+                self.last_stats = {"bars": len(g2), "last_bar": str(g2["begin"].iloc[-1])}
+                return {"events": events, "last_bar": str(g2["begin"].iloc[-1])}
+            if self.state.direction == SHORT and dn[i]:
+                events.append(self.close_position(reason="reverse-signal"))
+                self.state.last_entry_signal_bar = str(g2["begin"].iloc[i])
+                ev = self._try_enter(LONG, float(atr[i]), float(g2["volume"].iloc[i]),
+                                     signal_bar=str(g2["begin"].iloc[i]), signal_age=0)
+                events.append(ev)
+                self.last_stats = {"bars": len(g2), "last_bar": str(g2["begin"].iloc[-1])}
+                return {"events": events, "last_bar": str(g2["begin"].iloc[-1])}
 
         # 2) вход: сигнал на закрытом баре, флэт, входы не заблокированы.
         # F-071 (Дмитрий 14.10: «при включении должен входить, если сигнал 1-3 бара назад»):

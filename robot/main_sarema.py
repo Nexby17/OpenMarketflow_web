@@ -472,6 +472,20 @@ def _main_loop():
 
     while True:
         try:
+            # --- F-073: WATCHDOG СТОПА — работает всегда, пока есть позиция (running/paused) ---
+            if state.mode in ("running", "paused") and state.direction != 0 and state.stop_price:
+                try:
+                    mark, src = _live_mark()
+                    if mark is not None:
+                        breached = (mark <= state.stop_price) if state.direction > 0 else (mark >= state.stop_price)
+                        if breached:
+                            log.warning(f"STOP-HIT: mark={mark} vs stop={state.stop_price} (src={src}) — закрываю маркетом")
+                            ev = strategy.close_position(reason="stop-hit")
+                            log.warning(f"stop-hit close result: {ev}")
+                            # продолжаем цикл (позиция закрыта, stop_order_id обнулён в close_position)
+                except Exception as se:
+                    log.error(f"stop watchdog error: {se}")
+
             if state.mode == "running":
                 try:
                     bars = _fetch_recent_h1()
