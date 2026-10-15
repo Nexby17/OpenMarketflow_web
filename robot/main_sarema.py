@@ -500,6 +500,17 @@ def _main_loop():
                             log.info(f"strategy events: {ev['events']}")
                 except Exception as fe:
                     log.error(f"live feed error: {fe}")
+            # F-075 fix: ретрай входа при FLAT и незакрытом сигнале (entry_error/qty) —
+            # не ждём новый бар: сигнал в окне age остаётся активным до исполнения.
+            if state.mode == "running" and state.direction == 0:
+                try:
+                    ev = strategy.on_closed_bar()
+                    if ev.get("events"):
+                        log.info(f"retry events: {ev['events']}")
+                except Exception as re_:
+                    log.error(f"retry error: {re_}")
+                except Exception as fe:
+                    log.error(f"live feed error: {fe}")
         except Exception as e:
             log.exception(f"loop error: {e}")
         time.sleep(60)
