@@ -267,7 +267,8 @@ var _tickerToFinam = new Dictionary<string, string>(StringComparer.OrdinalIgnore
     ["MXM6"] = "MXM6@RTSX",
     ["RIU6"] = "RIU6@RTSX",
     ["LKOH"] = "LKOH@MISX", ["GMKN"] = "GMKN@MISX", ["NVTK"] = "NVTK@MISX",
-    ["ROSN"] = "ROSN@MISX", ["SNGS"] = "SNGS@MISX", ["YNDX"] = "YNDX@MISX",
+    ["ROSN"] = "ROSN@MISX", ["SNGS"] = "SNGS@MISX",
+    ["MTLR"] = "MTLR@MISX", ["YNDX"] = "YNDX@MISX",
 
     // F-069: акции SAREMA (@MISX TQBR) — иначе дефолт @RTSX давал пустые бары
     ["SBER"] = "SBER@MISX", ["GAZP"] = "GAZP@MISX", ["LKOH"] = "LKOH@MISX",
@@ -464,7 +465,7 @@ app.MapPost("/api/robot/resume", async () => {
 // === F-061/F-071a: SAREMA journal proxy — JsonNode (не disposable-элементы), работает без логина ===
 app.MapGet("/api/sarema/journal/{inst}", (string inst) =>
 {
-    var valid = new[] { "sber", "gazp", "lkoh", "rosn", "tatn", "gmkn", "nvtk", "plzl", "mtss", "sngs" };
+    var valid = new[] { "sber", "gazp", "lkoh", "rosn", "tatn", "gmkn", "nvtk", "plzl", "mtss", "sngs", "mtlr" };
     if (!valid.Contains(inst)) return Results.Json(new { error = "unknown instance" }, statusCode: 400);
     try
     {
@@ -2424,6 +2425,7 @@ public static class RobotProcessManager
         "sar_plzl" => ("main_sarema.py", 5108, ""),
         "sar_mtss" => ("main_sarema.py", 5109, ""),
         "sar_sngs" => ("main_sarema.py", 5110, ""),
+        "sar_mtlr" => ("main_sarema.py", 5111, ""),
         _ => throw new ArgumentException("unknown robot")
     };
 

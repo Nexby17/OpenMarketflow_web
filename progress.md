@@ -647,3 +647,8 @@ BR-edp (b9b48e3) → добавлены те же варианты 60%/70% в в
 - Fix: (1) main_loop — watchdog: live-тик против stop_price каждую минуту (и при paused), пробитие → close_position('stop-hit') маркетом; (2) strategy: обратный кросс на закрытом баре против позиции → close + разворот в новую сторону (бэктест-логика).
 - Живой тест сразу после деплоя: STOP-HIT mark=6021.5 vs 6108.65 → SELL 2 @ 6021 (id 1223108, comment=sarema-close-stop-hit), позиция FLAT, journal: закрытие записано (exit 6042* — оценка по H1 close, сделка −55.8 ₽ = −0.186R).
 - (*exit в журнале — оценка по close H1, фактическая цена исполнения ~6021.5; выверка по ленте брокера — как F-048, отдельной задачей.)
+
+### 2026-10-15 15:30 — F-075: MTLR (Метчел) — 11-й инстанс Sarema (порт 5111)
+- Дмитрий: «пропустил, а он был в списках». 09.10 MTLR прошёл R-тест (WR 48%, PF 2.17, WF 5/5) и был одобрен, но в списки не попал.
+- Добавлено: config_MTLR.json; sarema.js mtlr:5111 + ORDER(11); C# Spec sar_mtlr + valid list + _tickerToFinam MTLR@MISX; warmup CSV 2Y M1 (541,850 строк скачано Finam REST).
+- Робот поднят per-instance env (raise через PYTHONPATH), mode=running, warmup ok, фид живой (12:00 UTC bar). Server пересобран, sarema.js v21.
