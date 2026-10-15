@@ -602,7 +602,8 @@ function sarRenderTable() {
         const p = st.position || {};
         const dirText = p.dir === 1 ? 'LONG' : (p.dir === -1 ? 'SHORT' : 'ФЛЭТ');
         const posText = p.dir ? `${dirText} ${p.qty} шт` : 'ФЛЭТ';
-        const priceText = p.entry ? `${p.entry.toFixed(2)} (${st.position.priceSource || 'n/a'})` : '—';
+        // F-077: объём позиции (шт × цена входа) вместо «Цена (источник)»
+        const volumeText = (p.dir && p.entry) ? `${(p.qty * p.entry).toFixed(0)} ₽` : '—';
         const stopText = p.stop ? p.stop.toFixed(2) : '—';
         const pnl = st.pnl ? st.pnl.total : 0;
         const lim = st.limits || {};
@@ -619,7 +620,7 @@ function sarRenderTable() {
             <td>${posText}</td>
             <td>${p.entry ? p.entry.toFixed(2) : '—'}</td>
             <td>${stopText}</td>
-            <td>${priceText}</td>
+            <td>${volumeText}</td>
             <td>${pnl >= 0 ? '+' : ''}${pnl.toFixed(0)} ₽</td>
             <td style="font-size:12px">${limUsed}<br><span class="text-secondary">${killText} · risk ${(risk.risk_pct * 100).toFixed(1) ?? '?'}%</span></td>
             <td style="font-size:12px">${st.last_bar ? String(st.last_bar).replace('T', ' ').slice(0, 16) : '—'}${st.stale ? ' <span class="red">⚠ stale</span>' : ''}</td>
