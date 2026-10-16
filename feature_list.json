@@ -1249,6 +1249,14 @@
       "date": "2026-10-16",
       "summary": "Запрос Дмитрия 16.10: изменить логику пирамидинга. Правило (флаг pyramid_full_exit, по умолчанию OFF, включается в панели галочкой «Pyr Full Exit»): при позиции ≥3 лота (1 вход + ≥2 пирамиды) выходы ТОЛЬКО два — (1) откат от цены входа в ПОСЛЕДНИЙ пирамид-уровень на 1 pyr-шаг (step_pyramid) → close_all 'pyramid_full_exit'; (2) PnL/лот ≥ min_profit_per_lot → close_all 'tp_full'. LIFO-частичные тейки при активном правиле заблокированы (позиция не усушается — либо откат целиком, либо PnL/лот целиком). Стоп-лосс/VWEMA-avg-exit/reverse/timeout остаются. При 1-2 лотах правило не действует — обычная торговля (усреднение, LIFO-тейки, обычные выходы). Отсчёт обновляется с каждым новым pyr-входом (вошли 4-м по X → закрываем всё при X−step). Для шорта зеркально. Реализация: strategy_of.py общий (OFParams.pyramid_full_exit + _last_pyramid_entry_price + _pyramid_pullback_hit; ветка в process_tick перед partial TP). UI: галочка в Si-панели рядом с Таймингом, save-поле pyramid_full_exit. Тесты: test_of_pyramid_full_exit.py 12/12 (триггер LONG/SHORT, порог 3 лота, блок partial_tp при ≥3, tp_full работает, 2 лота живут по-старому); регресс test_of_timing 11/11, test_of_br_logic PASS. Деплой: рестарт :5080 14:16 (PID 6564, FLAT, stopped, WS OK) — параметр виден в /status; PERP/MX/BR не тронуты (флаг off в их конфигах отсутствует/ложен — включается когда Дмитрий скажет). ДОПОЛНЕНИЕ 16.10 15:22: правило включено и для USDRUBF PERP (:5095, рестарт PID 1752 FLAT/stopped, конфиг-дефолт + галочка в PERP-панели, коммит 7d876a7).",
       "date_updated": "2026-10-16"
+    },    {
+      "id": "F-080",
+      "name": "UI fix - SignalR hub anonymous + duplicate script + mirror 5099",
+      "area": "ui/signalr",
+      "status": "done (HTTP check: negotiate 200, preflight 204; browser check by Dmitry)",
+      "owner": "main",
+      "date": "2026-10-16",
+      "summary": "Dmitry sent screenshot with connection error in header. Causes: 1) [Authorize] on TradingHub - UI is served without login, negotiate without cookie always 401; 2) index.html loaded signalr.min.js twice (head + before app.js); 3) mirror :5099 (SimpleHTTP) does not proxy /trading. Fixes: [AllowAnonymous] on hub; removed duplicate script; app.js routes SignalR directly to :5050 when port==5099 (CORS already allowed). Server rebuilt (0 errors) and restarted with DOTNET_ROOT=C:/Program Files/dotnet. HTTP verified: / 200, /health 200, POST /trading/negotiate 200 + connectionId, OPTIONS preflight 204, negotiate with Origin :5099 200 + ACAO, /api/robot/status offline/stopped (robots untouched)."
     }
   ]
 }

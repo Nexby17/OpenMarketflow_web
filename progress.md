@@ -676,3 +676,22 @@ BR-edp (b9b48e3) → добавлены те же варианты 60%/70% в в
 ### 2026-10-15 16:50 — F-077: колонка «Объём ₽» в таблице роботов (Дмитрий: «замени столбец Цена (источник) на объём позиции»)
 - В таблице «Роботы Акции» колонка «Цена (источник)» (цена входа + n/a) заменена на «Объём ₽» = qty × entry. У LONG GAZP 20 × 105.72 = 2114 ₽ — сходится с «использовано» лимитов.
 - sarema.js v22, node --check OK, bin synced. Проверено CDP :5099: заголовки и строка GAZP содержат «Объём ₽: 2114 ₽».
+
+## 2026-10-16 15:35 — F-080: фикс «Ошибка подключения» (SignalR)
+
+**Симптом** (скриншот Дмитрия): красная точка + «Ошибка подключения» в шапке UI.
+
+**Причины**:
+1. `[Authorize]` на `TradingHub` — UI отдается без логина (allowlist в auth-middleware), поэтому negotiate без куки всегда 401 → `connection.start()` падал → catch ставил «Ошибка подключения». Хаб с [Authorize] жил с августа (a4beeef), но тогда UI открывали после логина с кукой.
+2. `index.html` грузил `signalr.min.js` дважды (head + перед app.js) — вторая загрузка перетирала `window.signalR` после старта соединения.
+3. Зеркало `:5099` (static_5099.py, SimpleHTTP) не проксирует `/trading` — на зеркале SignalR невозможен by design.
+
+**Фиксы**:
+- `Hubs/TradingHub.cs`: `[Authorize]` → `[AllowAnonymous]` (+ комментарий). Статика публична, контроль-эндпоинты защищены отдельно — [Authorize] на хабе ничего не защищал, только ломал индикатор.
+- `wwwroot/index.html`: убран дублирующий `<script src="/js/signalr.min.js">`.
+- `wwwroot/js/app.js`: при `port==5099` SignalR направляется напрямую на `:5050` (CORS для :5099 уже был).
+
+**Деплой**: rebuild (0 ошибок) после taskkill 11200 (держал DLL); рестарт PID 19928 с `DOTNET_ROOT=C:\Program Files\dotnet` (python-env тащит DOTNET_ROOT с runtime 8.0 — без переменной сервер не стартует: «You must install or update .NET»). bin/wwwroot синхронизирован вручную (csproj не копирует).
+
+**Проверка** (HTTP): `/` 200; `/health` 200; `POST /trading/negotiate` 200 + connectionId (было 401); OPTIONS preflight 204; negotiate с `Origin: :5099` 200 + ACAO; served index.html содержит ровно 1 signalr script; `/api/robot/status` = offline/stopped. Python-роботы (SAREMA 5101–5111) не затронуты — независимые процессы, пережили рестарт. Браузерную проверку autoglm не прошёл (extension did not connect) — финальный клик за Дмитрием.
+

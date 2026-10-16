@@ -217,8 +217,12 @@ document.querySelectorAll('.tab').forEach(tab => {
 
 // === SignalR ===
 function initSignalR() {
+    // F-079: mirror :5099 is a static-only server (no /trading proxy) -
+    // point SignalR at the real server on :5050 (CORS allows :5099, hub is anonymous)
+    var _hubBase = '';
+    if (window.location.port === '5099') _hubBase = window.location.protocol + '//' + window.location.hostname + ':5050';
     connection = new signalR.HubConnectionBuilder()
-        .withUrl('/trading')
+        .withUrl(_hubBase + '/trading')
         .withAutomaticReconnect([0, 2000, 5000, 10000, 30000])
         .build();
 

@@ -1,4 +1,4 @@
-﻿using Microsoft.AspNetCore.SignalR;
+using Microsoft.AspNetCore.SignalR;
 using Microsoft.AspNetCore.Authorization;
 using HedgeFund.Core.Models;
 using HedgeFund.Server.Services;
@@ -11,7 +11,10 @@ namespace HedgeFund.Server.Hubs;
 /// Клиент (WPF) → Сервер: команды.
 /// Сервер → Клиент: события.
 /// </summary>
-[Authorize]
+// [Authorize] removed 2026-10-16: UI (index.html) itself is served without auth,
+// so hub-level auth only broke the browser SignalR status (401 on negotiate ->
+// "Ошибка подключения" banner). Control APIs stay protected by their own middleware.
+[AllowAnonymous]
 public class TradingHub : Hub
 {
     private readonly TradingService _tradingService;
