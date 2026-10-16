@@ -1468,6 +1468,42 @@ class OrderFlowStrategy:
 
     # ---------- F-067: Phase Zones (Donchian thirds) ----------
 
+    def _phase_channel_refresh(self, price: float):
+        """Раз в 60с синхронизирует фазовый канал с /api/candles C#-сервера —
+        ЕДИНЫЙ ИСТОЧНИК с графиком UI (F-067, 16.10: «робот пишет лонг, график — другое»).
+        При недоступности сервера — тихо пользуемся внутренним буфером."""
+        import time as _t
+        now = _t.time()
+        if now - getattr(self, "_phase_chan_ts", 0) < 60:
+            return
+        self._phase_chan_ts = now
+        try:
+            import json as _json
+            import urllib.request as _uq
+            symbol = getattr(self.p, "symbol", None) or getattr(self, "symbol", "")
+            ticker = str(symbol).split("@")[0]
+            url = (f"http://localhost:5050/api/candles?ticker={ticker}"
+                   f"&tf={self.p.timeframe.replace('M', '') if str(self.p.timeframe).startswith('M') else 5}&days=10")
+            with _uq.urlopen(url, timeout=5) as r:
+                data = _json.loads(r.read())
+            if not isinstance(data, list) or len(data) < 30:
+                return
+            win = max(10, int(self.p.phase_window))
+            seg = data[-win:]
+            wh = max(b["h"] for b in seg)
+            wl = min(b["l"] for b in seg)
+            # пишем в фазовые буферы: очищаем и заливаем канал целиком (история графика)
+            self.signals._phase_highs.clear()
+            self.signals._phase_lows.clear()
+            for b in seg:
+                self.signals._phase_highs.append(float(b["h"]))
+                self.signals._phase_lows.append(float(b["l"]))
+            self._phase_last_ts = 0  # следующий живой пуш аппендится (новый бар)
+        except Exception:
+            pass  # сервер недоступен — работаем на внутреннем буфере
+
+
+
     def _phase_eval(self, price: float) -> dict:
         """Оценить фазу рынка по положению цены в Donchian-канале (окно phase_window).
 
@@ -1477,6 +1513,7 @@ class OrderFlowStrategy:
         Выход из зоны с гистерезисом (phase_hysteresis доля канала) — против дребезга.
         Возвращает слепок для гейта и /status.
         """
+        self._phase_channel_refresh(price)         # F-067: единый источник с графиком (60с кэш)
         win = max(10, int(self.p.phase_window))
         hl = self.signals.get_phase_channel(win)   # F-067: полный буфер, не 30-барная CVD-история
         if hl is None:
