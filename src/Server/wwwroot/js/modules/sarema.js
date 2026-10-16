@@ -571,6 +571,7 @@ async function sarPollInstance(inst) {
 async function sarPollAll() {
     for (const inst of SAR_INSTANCE_ORDER) await sarPollInstance(inst);
     sarRenderTable();
+    if (typeof sarPollQuotes === 'function') sarPollQuotes();  // F-079: цены после рендера
 }
 
 function sarRenderTable() {
@@ -587,7 +588,7 @@ function sarRenderTable() {
             if (noMsg) noMsg.style.display = 'none';
             rows += `<tr data-inst="${inst}"${activeBg} style="cursor:pointer" title="Двойной клик — панель робота (доступна оффлайн)">
                 <td><strong>${cfg.label}</strong></td>
-                <td class="red">● оффлайн</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td>
+                <td class="red">● оффлайн</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td id="sarLivePrice_off" class="text-secondary">—</td><td>—</td><td>—</td>
                 <td>
                     <button class="btn btn-success btn-sm" onclick="sarRobotApi('${inst}','start')" title="Запустить процесс робота">▶</button>
                     <button class="btn btn-danger btn-sm" onclick="sarRobotApi('${inst}','stop')" title="Остановить процесс (kill по порту)">⏹</button>
@@ -620,6 +621,7 @@ function sarRenderTable() {
             <td>${posText}</td>
             <td>${p.entry ? p.entry.toFixed(2) : '—'}</td>
             <td>${stopText}</td>
+            <td id="sarLivePrice_${inst}" style="font-weight:600">—</td>
             <td>${volumeText}</td>
             <td>${pnl >= 0 ? '+' : ''}${pnl.toFixed(0)} ₽</td>
             <td style="font-size:12px">${limUsed}<br><span class="text-secondary">${killText} · risk ${(risk.risk_pct * 100).toFixed(1) ?? '?'}%</span></td>
@@ -771,6 +773,27 @@ function sarStartPolling() {
     if (_sarTimer) clearInterval(_sarTimer);
     sarPollAll();
     _sarTimer = setInterval(sarPollAll, 5000);
+    // F-079: реал-тайм цена в таблице роботов — опрос тика раз в 5с
+    if (window._sarQuoteTimer) clearInterval(window._sarQuoteTimer);
+    sarPollQuotes();
+    window._sarQuoteTimer = setInterval(sarPollQuotes, 5000);
+}
+
+// F-079: live-цены всех инстансов одним проходом (кэш 4с в C# нет — но Finam отдаёт быстро)
+async function sarPollQuotes() {
+    for (const inst of SAR_INSTANCE_ORDER) {
+        const cfg = sarCfg(inst);
+        try {
+            const r = await fetch('http://' + window.location.hostname + ':5050/api/quote?ticker=' + cfg.ticker, {signal: AbortSignal.timeout(4000)});
+            if (!r.ok) continue;
+            const q = await r.json();
+            const el = document.getElementById('sarLivePrice_' + inst);
+            if (el && q.last > 0) {
+                el.textContent = q.last.toFixed(2);
+                el.style.color = '';
+            }
+        } catch (e) { /* тихо: следующий тик через 5с */ }
+    }
 }
 
 // --- Надёжное переключение на вкладку «Роботы Акции» ---
