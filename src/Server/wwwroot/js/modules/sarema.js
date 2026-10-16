@@ -571,7 +571,6 @@ async function sarPollInstance(inst) {
 async function sarPollAll() {
     for (const inst of SAR_INSTANCE_ORDER) await sarPollInstance(inst);
     sarRenderTable();
-    if (typeof sarPollQuotes === 'function') sarPollQuotes();  // F-079: цены после рендера
 }
 
 function sarRenderTable() {
@@ -621,7 +620,7 @@ function sarRenderTable() {
             <td>${posText}</td>
             <td>${p.entry ? p.entry.toFixed(2) : '—'}</td>
             <td>${stopText}</td>
-            <td id="sarLivePrice_${inst}" style="font-weight:600">—</td>
+            <td id="sarLivePrice_${inst}" style="font-weight:600">${(window._sarLivePrices || {})[inst] || '—'}</td>
             <td>${volumeText}</td>
             <td>${pnl >= 0 ? '+' : ''}${pnl.toFixed(0)} ₽</td>
             <td style="font-size:12px">${limUsed}<br><span class="text-secondary">${killText} · risk ${(risk.risk_pct * 100).toFixed(1) ?? '?'}%</span></td>
@@ -780,6 +779,7 @@ function sarStartPolling() {
 }
 
 // F-079: live-цены всех инстансов одним проходом (кэш 4с в C# нет — но Finam отдаёт быстро)
+window._sarLivePrices = window._sarLivePrices || {};
 async function sarPollQuotes() {
     for (const inst of SAR_INSTANCE_ORDER) {
         const cfg = sarCfg(inst);
@@ -787,10 +787,13 @@ async function sarPollQuotes() {
             const r = await fetch('http://' + window.location.hostname + ':5050/api/quote?ticker=' + cfg.ticker, {signal: AbortSignal.timeout(4000)});
             if (!r.ok) continue;
             const q = await r.json();
-            const el = document.getElementById('sarLivePrice_' + inst);
-            if (el && q.last > 0) {
-                el.textContent = q.last.toFixed(2);
-                el.style.color = '';
+            if (q.last > 0) {
+                window._sarLivePrices[inst] = q.last.toFixed(2);
+                // F-079 fix4: обновляем td только если текст реально меняется (нет мигания)
+                const el = document.getElementById('sarLivePrice_' + inst);
+                if (el && el.textContent !== window._sarLivePrices[inst]) {
+                    el.textContent = window._sarLivePrices[inst];
+                }
             }
         } catch (e) { /* тихо: следующий тик через 5с */ }
     }
