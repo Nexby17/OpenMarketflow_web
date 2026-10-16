@@ -43,6 +43,7 @@
   "use_timing": false,
   "timing_start": "",
   "timing_end": "",
+  "pyramid_full_exit": false,
   "use_cvd": true,
   "use_cvd_accel": true,
   "use_dm_wall": false,
