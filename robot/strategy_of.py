@@ -99,6 +99,13 @@ class OFParams:
     use_timing: bool = False
     timing_start: str = ""        # "09:50"
     timing_end: str = ""          # "17:55"
+    # F-073: Pyramid Full Exit (Дмитрий 16.10.2026, Si-роботы).
+    # При позиции ≥ 3 лотов (1 вход + ≥2 пирамиды) выходы только два:
+    #   (1) откат от цены ПОСЛЕДНЕГО пирамид-входа на 1 pyr-уровень → close_all;
+    #   (2) PnL/лот ≥ min_profit_per_lot → close_all (tp_full, как обычно).
+    # При 1-2 лотах правило не действует — обычная торговля (усреднение, LIFO-тейки).
+    # Выключено по умолчанию; включается в конфиге конкретного робота.
+    pyramid_full_exit: bool = False
     # VAH/VAL Volume Profile filter
     use_vah_val: bool = False      # enable VAH/VAL entry filter
     vah_val_pct: int = 70          # value area percentage (70%)
@@ -628,6 +635,39 @@ class OrderFlowStrategy:
             return False
         return self.pnl_per_lot(price) >= self.p.min_profit_per_lot
 
+    def _last_pyramid_entry_price(self) -> Optional[float]:
+        """F-073: цена входа в ПОСЛЕДНИЙ пирамид-уровень (последний pyr-слой в очереди).
+
+        Очередь LIFO: пирамиды добавляются в конец (как и вход, но pyr-слои —
+        это все слои после первого). Если пирамид-слоёв нет (0 или 1) — None.
+        """
+        if len(self._lot_queue) <= 1:
+            return None
+        # ищем последний слой, добавленный пирамидой: их очередь = [entry, pyr1, pyr2...]
+        # при partial TP LIFO pyr-слои вычищаются с конца, поэтому просто берём
+        # максимальный pyr-индекс: len-1 слоёв всего, последний элемент = последний вход
+        return self._lot_queue[-1].price
+
+    def _pyramid_pullback_hit(self, price: float) -> bool:
+        """F-073: откат от последнего pyr-входа на 1 pyr-уровень (позиция ≥ 3 лотов).
+
+        LONG: цена упала ниже (last_pyr_entry − step_pyramid) → True.
+        SHORT: цена выросла выше (last_pyr_entry + step_pyramid) → True.
+        """
+        if not self.p.pyramid_full_exit:
+            return False
+        if not self.in_position or self._total_lots < 3:
+            return False
+        ref = self._last_pyramid_entry_price()
+        if ref is None or ref <= 0:
+            return False
+        step = self._effective_step(average=False)
+        if step <= 0:
+            return False
+        if self._dir == LONG:
+            return price <= ref - step
+        return price >= ref + step
+
     def _timeout_hit(self, now: datetime) -> bool:
         if self._entry_time is None:
             return False
@@ -718,6 +758,43 @@ class OrderFlowStrategy:
 
             # If in position — partial TP FIRST (scalp priority)
             if self.in_position:
+                # F-073: pyramid full exit — при ≥3 лотах выходы только два:
+                # (1) откат от последнего pyr-входа на 1 pyr-уровень → close_all;
+                # (2) PnL/лот (tp_full, проверяется ниже обычным порядком).
+                # LIFO-частичные тейки при активном правиле НЕ работают (позиция
+                # не усушается — либо откат целиком, либо PnL/лот целиком).
+                if self.p.pyramid_full_exit and self._total_lots >= 3:
+                    if self._pyramid_pullback_hit(current_price):
+                        log.info(f"PYRAMID_FULL_EXIT: pullback 1 pyr-step from last pyr entry "
+                                 f"{fmt_price(self._last_pyramid_entry_price() or 0)} @ {fmt_price(current_price)} | lots={self._total_lots}")
+                        action = self._close_all(current_price, "pyramid_full_exit")
+                        actions.append(action)
+                        self._last_action_time = time.time()
+                        return actions
+                    if self._tp_full_hit(current_price):
+                        action = self._close_all(current_price, "tp_full")
+                        actions.append(action)
+                        self._last_action_time = time.time()
+                        return actions
+                    # стоп-лосс/VWEMA-avg-exit/reverse/timeout остаются доступными
+                    exit_action = self._check_exits(current_price, now)
+                    if exit_action:
+                        actions.append(exit_action)
+                        self._last_action_time = time.time()
+                        return actions
+                    # усреднение при просадке разрешено (это пирамид-логика Дмитрия:
+                    # робот добирает против отката до 3+ лотов, но при активном правиле
+                    # усреднение против позиции — отдельный вопрос; усреднение работает)
+                    avg_actions = self._check_averaging(current_price)
+                    if avg_actions:
+                        actions.extend(avg_actions)
+                        return actions
+                    pyr_action = self._check_pyramiding(current_price)
+                    if pyr_action:
+                        actions.append(pyr_action)
+                        return actions
+                    return []
+
                 # Check partial TP first — scalp by 1 lot (ЗАКОН)
                 tp_actions = self._check_partial_tp(current_price)
                 if tp_actions:

@@ -5429,6 +5429,12 @@ async function ofRobotEditPanel() {
                 <div class="metric-card"><div class="metric-label">Время с</div><input id="editOfTimingStart" class="input" type="time" value="${p.timing_start||''}" style="width:100px"></div>
                 <div class="metric-card"><div class="metric-label">Выключение</div><input id="editOfTimingEnd" class="input" type="time" value="${p.timing_end||''}" style="width:100px"></div>
                 <div class="metric-card" style="min-width:150px"><div class="metric-label">Гейт сейчас</div><div id="ofTimingVerdict" style="font-size:14px;font-weight:bold;color:#9CA3AF">—</div></div>
+                <div class="metric-card" style="display:flex;align-items:center;gap:8px">
+                    <label style="display:flex;align-items:center;gap:6px;cursor:pointer" title="F-073: при позиции ≥3 лота (1 вход + ≥2 пирамиды) выходы только два: откат от последнего пирамид-входа на 1 pyr-шаг → вся позиция закрывается; либо PnL/лот → тоже целиком. При 1-2 лотах обычная торговля">
+                        <input id="editOfPyrFullExit" type="checkbox" ${(p.pyramid_full_exit)?'checked':''} style="width:18px;height:18px;cursor:pointer">
+                        <span style="font-weight:bold;color:#FF7043">🏔 Pyr Full Exit</span>
+                    </label>
+                </div>
             </div>
             <hr style="border-color:#2D2D44;margin:12px 0">
             <!-- F-067: Фазы рынка (Donchian-трети): низ LONG / верх SHORT / середина both -->
@@ -5683,6 +5689,7 @@ async function ofRobotSaveFromPanel() {
         use_timing: el('editOfUseTiming')?.checked || false,
         timing_start: (el('editOfTimingStart')?.value || '').trim(),
         timing_end: (el('editOfTimingEnd')?.value || '').trim(),
+        pyramid_full_exit: el('editOfPyrFullExit')?.checked || false,
         phase_filter: el('editOfUsePhase')?.checked || false,
         phase_window: (() => { const v = el('editOfPhaseWin')?.value; if (v == null || v.trim() === '') return undefined; const n = parseInt(v); return isNaN(n) ? undefined : n; })(),
         phase_lower: (() => { const v = el('editOfPhaseLower')?.value; if (v == null || v.trim() === '') return undefined; const n = parseFloat(String(v).replace(',', '.')); return isNaN(n) ? undefined : n; })(),

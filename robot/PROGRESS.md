@@ -17,6 +17,12 @@
 
 ## Лента изменений
 
+### 2026-10-16 - F-078: Pyramid Full Exit (OF-Si) - откат от последнего pyr-входа закрывает всё
+- strategy_of.py: OFParams.pyramid_full_exit (off по умолчанию); _last_pyramid_entry_price (цена последнего слоя очереди = последний pyr-вход) + _pyramid_pullback_hit (≥3 лота; LONG: price ≤ last_pyr − step_pyramid, SHORT зеркально). Ветка в process_tick перед partial TP: при активном правиле и ≥3 лотах - pullback → close_all 'pyramid_full_exit' ИЛИ tp_full → close_all; LIFO-частичные тейки заблокированы; SL/VWEMA/reverse/timeout, усреднение и пирамида работают. PERP/MX/BR не тронуты.
+- UI: Si-панель - галочка «🏔 Pyr Full Exit» рядом с Таймингом; save-поле pyramid_full_exit; app.js bin sync.
+- Тесты: test_of_pyramid_full_exit.py 12/12 (триггер на шаге LONG/SHORT, порог 3 лота, блок partial при ≥3, tp_full работает, 2 лота по-старому, flag off = старое поведение). Регресс: test_of_timing 11/11, test_of_br_logic PASS.
+- Деплой: рестарт :5080 14:16 (PID 6564, FLAT/stopped, WS OK), /status отдаёт pyramid_full_exit=false. ▶ и галочка - Дмитрием.
+
 ### 2026-10-13 - F-064: тайминг OF (SiU6 + USDRUBF PERP) - додержать позицию после окна
 - strategy_of.py (общий): OFParams += use_timing/timing_start/timing_end; стейтлесс-гейт _timing_gate_closed (МСК, окна через полночь) перед _check_entry - блокирует только НОВЫЕ циклы; открытая позиция додерживается штатно (partial TP/exits/averaging/pyramiding) до закрытия; закрылся после старта следующего дня - торговля продолжается (без флагов, рестартобезопасно). Legacy session_start/end (BR/MX форс-клоуз) не тронут. /status += timingGate.
 - main_of.py / main_of_perp.py: /status отдаёт timingGate.
