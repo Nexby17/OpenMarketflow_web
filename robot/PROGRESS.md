@@ -648,3 +648,7 @@ BR-edp (b9b48e3) → добавлены те же варианты 60%/70% в в
 - Тест со стаб-сервером: канал 1:1 с графиком. Live MXU6: 239325..247275, pos 0.343 BOTH — совпало.
 
 ### 2026-10-16 10:30 — F-079: колонка «Цена» реал-тайм (тик Finam, обновление 5с) в таблице SAREMA. sarema.js v26.
+
+### 2026-10-16 15:22 - F-078: Pyramid Full Exit включён для OF-PERP (USDRUBF)
+- Общий движок strategy_of.py уже содержал правило; добавлен дефолт pyramid_full_exit:false в of_config_perp.json + галочка «🏔 Pyr Full Exit» в PERP-панель (save-поле).
+- Рестарт :5095 15:21 (PID 1752, FLAT/stopped, WS OK), /status отдаёт pyramid_full_exit=false. Коммит 7d876a7.
