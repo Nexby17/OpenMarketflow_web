@@ -86,7 +86,15 @@ class SaremaOrders:
         comment = self._tag(tag)
         try:
             r4 = self._r4()
-            resp = r4.place_market(self._account, self._symbol, side_str, int(quantity), comment=comment)
+            try:
+                resp = r4.place_market(self._account, self._symbol, side_str, int(quantity), comment=comment)
+            except Exception as e1:
+                if self._is_token_error(str(e1)):
+                    log.warning("F-080: Token invalid на market — пере-авторизация + retry")
+                    self._reauth()
+                    resp = r4.place_market(self._account, self._symbol, side_str, int(quantity), comment=comment)
+                else:
+                    raise
             oid = str(resp.get("order_id", resp.get("orderId", "")))
             if not oid:
                 self.last_error = str(resp)[:200]
