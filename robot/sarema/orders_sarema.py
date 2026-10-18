@@ -48,6 +48,22 @@ class SaremaOrders:
         self.last_error: str = ""
         self._rest4 = None
 
+    def _reauth(self):
+        """F-080: принудительная пере-авторизация (новый JWT) при Token is invalid."""
+        try:
+            if self._rest4 and hasattr(self._rest4, '_get_module'):
+                mod = self._rest4._get_module()
+                if hasattr(mod, 'tm') and hasattr(mod.tm, 'ensure_token'):
+                    mod.tm.ensure_token(force=True)
+                    log.info('F-080: JWT re-auth OK')
+                else:
+                    log.warning('F-080: TokenManager.ensure_token not available')
+        except Exception as e:
+            log.error(f'F-080: re-auth failed: {e}')
+
+    def _is_token_error(self, err: str) -> bool:
+        return 'Token is invalid' in err or 'Token expired' in err or 'Unauthorized' in err
+
     def _r4(self):
         """Ленивая инициализация finam_rest4 (нужен FINAM_API_KEY в env или .env робота)."""
         if self._rest4 is None:
