@@ -6700,21 +6700,39 @@ async function ofMxRobotApi(action) {
                 return;
             }
         }
-        if (action === 'start' || action === 'stop') {
+        // F-068 fix (18.10): /stop ДОЛЖЕН уходить первым — раньше перед /stop шёл POST /account,
+        // и если он висел/падал, кнопка ⏹ молча не останавливала робота (жалоба Дмитрия 18.10).
+        if (action === 'stop') {
+            try {
+                const stopResp = await fetch(OF_MX_ROBOT_API + '/stop', {method: 'POST', signal: AbortSignal.timeout(5000)});
+                const stopData = await stopResp.json();
+                addLog(nowTime(), 'INFO', 'OF-MX stop: ' + JSON.stringify(stopData));
+                showToast('⏹ Остановлен: ' + JSON.stringify(stopData), 'ok');
+                setTimeout(async () => { await ofMxRobotPoll(); renderRobots(); }, 500);
+            } catch(se) {
+                addLog(nowTime(), 'ERROR', 'OF-MX stop failed: ' + se.message);
+                showToast('❌ Stop не прошёл: ' + se.message, 'error');
+            }
+            return;   // счёт при стопе не трогаем
+        }
+        if (action === 'start') {
             const acctVal = localStorage.getItem('ofMxRobotAccount') || '1225953';
             if (acctVal) {
-                const acctResp = await fetch(OF_MX_ROBOT_API + '/account', {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({account: acctVal})
-                });
-                const acctData = await acctResp.json();
-                if (acctData.ok) {
-                    addLog(nowTime(), 'INFO', '📊 OF-MX счёт: ' + acctData.account + ' (' + acctData.id + ')');
+                try {
+                    const acctResp = await fetch(OF_MX_ROBOT_API + '/account', {
+                        method: 'POST', headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({account: acctVal}), signal: AbortSignal.timeout(3000)
+                    });
+                    const acctData = await acctResp.json();
+                    if (acctData.ok) {
+                        addLog(nowTime(), 'INFO', '📊 OF-MX счёт: ' + acctData.account + ' (' + acctData.id + ')');
+                    }
+                } catch (ae) {
+                    addLog(nowTime(), 'ERROR', 'OF-MX account sync failed (не критично): ' + ae.message);
                 }
             }
         }
-        const resp = await fetch(OF_MX_ROBOT_API + '/' + action, {method: 'POST'});
+        const resp = await fetch(OF_MX_ROBOT_API + '/' + action, {method: 'POST', signal: AbortSignal.timeout(8000)});
         const data = await resp.json();
         addLog(nowTime(), 'INFO', 'OF-MX ' + action + ': ' + JSON.stringify(data));
         setTimeout(async () => { await ofMxRobotPoll(); renderRobots(); }, 500);

@@ -652,3 +652,9 @@ BR-edp (b9b48e3) → добавлены те же варианты 60%/70% в в
 ### 2026-10-16 15:22 - F-078: Pyramid Full Exit включён для OF-PERP (USDRUBF)
 - Общий движок strategy_of.py уже содержал правило; добавлен дефолт pyramid_full_exit:false в of_config_perp.json + галочка «🏔 Pyr Full Exit» в PERP-панель (save-поле).
 - Рестарт :5095 15:21 (PID 1752, FLAT/stopped, WS OK), /status отдаёт pyramid_full_exit=false. Коммит 7d876a7.
+
+### 18.10 14:0x — F-068: MXU6 кнопка ⏹ не останавливала (stop-first fix v130)
+- ofMxRobotApi: POST /account без обёртки шёл перед /stop; зависание/ошибка account блокировало stop.
+- Фикс: action=stop → /stop немедленно (timeout 5с) + return; start → /account в try/catch timeout 3с.
+- DESYNC 18.10: robot -3 SHORT vs broker +1 (ручные adjusts Дмитрия 13:45 + пирамида робота как LONG) — /stop 13:52 закрыл buy 3; state робота FLAT/0; монитор молчит. Фактический остаток проверить Дмитрию в терминале.
+- CVD Trend: 12+ кроссоверов 18.10, ready — ОК.
