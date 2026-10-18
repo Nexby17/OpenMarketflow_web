@@ -186,17 +186,23 @@ class SaremaStrategy:
         po = self.orders.place_market(side, qty, tag="sarema-entry")
         if not po:
             return {"event": "entry_error", "error": self.orders.last_error}
-        # F-074: реальная цена исполнения из ленты брокера (короткая пауза на проведение сделки)
+        # F-074 + F-083: реальная цена исполнения из ленты брокера.
+        # Если fill не найден за 3 сек — ордер НЕ исполнен (отклонён/нет денег/лимит) —
+        # ОТКАТ state и journal: фантомной позиции быть не должно!
         import time as _t
         fill_price = None
+        fill_qty = 0
         for _ in range(5):
             _t.sleep(0.6)
             fi = self.orders.last_fill_by_comment("sarema-entry", symbol=self.orders._symbol)
-            if fi and fi.quantity >= qty:
+            if fi and fi.quantity > 0:
                 fill_price = fi.price
+                fill_qty = fi.quantity
                 break
-        if fill_price:
-            price_hint = fill_price   # journal/stop считаются от факта
+        if not fill_price or fill_qty < 1:
+            log.error(f"F-083: ENTRY NOT FILLED — откат state (order_id={po.order_id}, qty={qty})")
+            return {"event": "entry_not_filled", "order_id": po.order_id, "qty_requested": qty,
+                    "error": self.orders.last_error or 'no fill in 3s'}
         # начальный стоп строится от фактической цены входа после fill (reconciliation
         # уточняет entry; здесь предварительный стоп от price_hint, дальше /resync)
         stop0 = price_hint - stop_dist if direction == LONG else price_hint + stop_dist
