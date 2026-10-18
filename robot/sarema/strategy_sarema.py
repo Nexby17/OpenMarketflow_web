@@ -110,7 +110,7 @@ class SaremaStrategy:
         # Сигнал недействителен, если: уже отработан (last_entry_signal_bar) или
         # SAR уже вернулся на другую сторону EMA (кросс отменился).
         entry_sig = None                      # (j, dir) — самый свежий сигнал в окне
-        age = max(1, int(self.cfg.get("max_signal_age", 3)))
+        age = max(1, int(self.cfg.get("max_signal_age", 3))) + 1  # F-081: age N = N+1 бара (включая текущий)
         for j in range(i, max(i - age, -1), -1):
             if dn[j] or up[j]:
                 entry_sig = (j, LONG if dn[j] else SHORT)
