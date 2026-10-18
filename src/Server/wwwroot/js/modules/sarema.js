@@ -605,7 +605,9 @@ function sarRenderTable() {
         // F-077: объём позиции (шт × цена входа) вместо «Цена (источник)»
         const volumeText = (p.dir && p.entry) ? `${(p.qty * p.entry).toFixed(0)} ₽` : '—';
         const stopText = p.stop ? p.stop.toFixed(2) : '—';
-        const pnl = st.pnl ? st.pnl.total : 0;
+        // F-082: общий PnL = реализованный + нереализованный (по открытой позиции, тик)
+        const pnlData = st.pnl || {};
+        const pnl = (pnlData.total_with_unrealized != null) ? pnlData.total_with_unrealized : (pnlData.total || 0);
         const lim = st.limits || {};
         const isLong = p.dir === 1;
         const limDir = isLong ? (lim.max_long_qty ?? '∞') : (p.dir === -1 ? (lim.max_short_qty ?? '∞') : (lim.max_long_qty ?? '∞'));
