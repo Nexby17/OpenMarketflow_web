@@ -937,6 +937,10 @@ class OrderFlowStrategy:
         # All signals must agree on direction
         directions = set(s.direction for s in sigs)
         if len(directions) > 1:
+            # F-080: диагностика — конфликт молча съедал сигналы (инцидент 19.10: CVD Trend LONG
+            # в 11:40 не дошёл до входа, вероятный конфликт с dm_wall). Логируем разово на бар.
+            types = ", ".join(f"{s.signal_type}({'LONG' if s.direction == 1 else 'SHORT'})" for s in sigs)
+            log.info(f"ENTRY CONFLICT: signals disagree → skip | {types}")
             return None  # Conflicting signals, skip
 
         direction = sigs[0].direction
