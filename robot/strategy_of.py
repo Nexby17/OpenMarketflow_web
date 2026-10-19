@@ -762,12 +762,14 @@ class OrderFlowStrategy:
 
             # If in position — partial TP FIRST (scalp priority)
             if self.in_position:
-                # F-073: pyramid full exit — при ≥3 лотах выходы только два:
-                # (1) откат от последнего pyr-входа на 1 pyr-уровень → close_all;
-                # (2) PnL/лот (tp_full, проверяется ниже обычным порядком).
-                # LIFO-частичные тейки при активном правиле НЕ работают (позиция
-                # не усушается — либо откат целиком, либо PnL/лот целиком).
-                if self.p.pyramid_full_exit and self._total_lots >= 3:
+                # F-073 (сужено 19.10 по Дмитрию): правило действует ТОЛЬКО если в позиции
+                # есть хотя бы ОДИН реальный пирамид-уровень (_pyramid_levels > 0).
+                # Позиция из входа+усреднений (pyr=0) живёт по ОБЫЧНЫМ правилам:
+                # LIFO-частичные тейки (TP от усреднения), tp_full, SL и т.д.
+                # При ≥3 лотах и наличии пирамиды: выходы только (1) откат от последнего
+                # pyr-входа на 1 pyr-шаг → close_all; (2) PnL/лот → close_all.
+                if (self.p.pyramid_full_exit and self._total_lots >= 3
+                        and self._pyramid_levels > 0):
                     if self._pyramid_pullback_hit(current_price):
                         log.info(f"PYRAMID_FULL_EXIT: pullback 1 pyr-step from last pyr entry "
                                  f"{fmt_price(self._last_pyramid_entry_price() or 0)} @ {fmt_price(current_price)} | lots={self._total_lots}")

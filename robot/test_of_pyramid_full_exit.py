@@ -190,12 +190,20 @@ def t_averaging_is_not_pyramid():
     Усреднение НЕ обновляет last pyr entry → правила отката от pyr нет → не закрывать."""
     s = make_strategy()
     seed_position(s, [(100.0, 'entry'), (65.0, 'avg'), (35.0, 'avg')])
-    # цена 20: откат от последнего AVERAGE (35) на 15 > step 50? нет: 35-20=15 < 50.
-    # Даже глубокий откат: усреднение не пирамида → pyramid_full_exit НЕ срабатывает при 0 пирамид.
     s.p.pyramid_full_exit = True
     assert s._last_pyramid_entry_price() is None, "no pyramids -> no ref"
     assert s._pyramid_pullback_hit(10.0) is False, "averaging must not trigger pullback exit"
     actions = s.process_tick(10.0, msk_dt(12, 0))
+    assert not any(a['action'] == 'close_all' and a.get('reason') == 'pyramid_full_exit' for a in actions), actions
+
+def t_averaging_position_partial_tp_works():
+    """19.10 12:54 Дмитрий: «где TP от усреднения?» — позиция entry+avg (pyr=0)
+    должна торговать ПО ОБЫЧНЫМ правилам, включая LIFO partial TP."""
+    s = make_strategy()
+    seed_position(s, [(100.0, 'entry'), (65.0, 'avg'), (35.0, 'avg')])
+    # последний слой 35, spread 15: цена 52 → pnl лота 17 >= 15 → partial TP должен закрыть
+    actions = s.process_tick(52.0, msk_dt(12, 0))
+    assert any(a['action'] == 'partial_tp' for a in actions), f"partial TP from averaging lot must work: {actions}"
     assert not any(a['action'] == 'close_all' and a.get('reason') == 'pyramid_full_exit' for a in actions), actions
 
 if __name__ == "__main__":
@@ -213,9 +221,11 @@ if __name__ == "__main__":
     check("process_tick_pyramiding_continues", t_process_tick_pyramiding_continues)
     check("t_2lots_after_rule_no_partial_block", t_2lots_after_rule_no_partial_block)
     check("t_averaging_is_not_pyramid", t_averaging_is_not_pyramid)
+    check("t_averaging_position_partial_tp_works", t_averaging_position_partial_tp_works)
     passed = sum(1 for r in RESULTS if r)
     print(f"=== {passed}/{len(RESULTS)} PASS ===")
     sys.exit(0 if passed == len(RESULTS) else 1)
+
 
 
 
