@@ -658,3 +658,8 @@ BR-edp (b9b48e3) → добавлены те же варианты 60%/70% в в
 - Фикс: action=stop → /stop немедленно (timeout 5с) + return; start → /account в try/catch timeout 3с.
 - DESYNC 18.10: robot -3 SHORT vs broker +1 (ручные adjusts Дмитрия 13:45 + пирамида робота как LONG) — /stop 13:52 закрыл buy 3; state робота FLAT/0; монитор молчит. Фактический остаток проверить Дмитрию в терминале.
 - CVD Trend: 12+ кроссоверов 18.10, ready — ОК.
+
+### 2026-10-19 - F-067/UI: popup-график фазовых зон для OF-Si и OF-PERP (как у MXU6)
+- app.js: в Si-панель (ofOpenPhaseChart) и PERP-панель (ofPerpOpenPhaseChart) добавлены кнопка «📈 Открыть график» + inline-chart (Donchian hi/lo + 33%/67%, TF M5-H1, окно/% из блока Фазы рынка). Данные /api/candles (auth-исключение F-069, SiZ6 107KB / USDRUBF 102KB живьём).
+- Проверка: headless-Chrome рендер обоих попапов (свечи + 4 линии, 0 JS ошибок) + автоскан пикселей + распознавание (метки каналов: SiZ6 85490/83700, USDRUBF 84.24/82.77).
+- bin wwwroot синхронизирован. Коммит 24fdae9.
