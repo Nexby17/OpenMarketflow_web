@@ -5454,6 +5454,24 @@ async function ofRobotEditPanel() {
                 <div class="metric-card"><div class="metric-label">Верх %</div><input id="editOfPhaseUpper" class="input" type="number" step="0.01" min="0.51" max="0.95" value="${p.phase_upper||0.67}" style="width:60px"></div>
                 <div class="metric-card"><div class="metric-label">Гистерезис %</div><input id="editOfPhaseHyst" class="input" type="number" step="0.01" min="0" max="0.4" value="${p.phase_hysteresis||0.05}" style="width:60px"></div>
                 <div class="metric-card" style="min-width:150px"><div class="metric-label">Фаза сейчас</div><div id="editOfPhaseVerdict" style="font-size:14px;font-weight:bold;color:#9CA3AF">—</div></div>
+                <button class="btn btn-secondary btn-sm" onclick="ofOpenPhaseChart()" title="График ${((ofRobot||{}).symbol||'SiZ6').split('@')[0]} с зонами фаз">📈 Открыть график</button>
+            </div>
+            <div id="ofPhaseChartWrap" style="display:none;margin:12px 0;border:1px solid #2D2D44;border-radius:8px;overflow:hidden">
+                <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 10px;background:#121826">
+                    <strong style="font-size:13px">📈 <span id="ofPhaseChartTicker"></span> — фазовые зоны (Donchian)</strong>
+                    <div style="display:flex;gap:6px;align-items:center">
+                        <span class="text-secondary" style="font-size:12px">Таймфрейм</span>
+                        <select id="ofPhaseChartTf" class="input" style="width:70px" onchange="ofOpenPhaseChart()">
+                            <option value="5" selected>M5</option>
+                            <option value="15">M15</option>
+                            <option value="30">M30</option>
+                            <option value="60">H1</option>
+                        </select>
+                        <button class="btn btn-secondary btn-sm" onclick="document.getElementById('ofPhaseChartWrap').style.display='none'">✕</button>
+                    </div>
+                </div>
+                <div id="ofPhaseChart" style="width:100%;height:420px;background:#121826"></div>
+                <div id="ofPhaseChartInfo" class="text-secondary" style="font-size:12px;padding:6px 10px"></div>
             </div>
             <hr style="border-color:#2D2D44;margin:12px 0">
             <!-- Торговый журнал -->
@@ -6129,6 +6147,24 @@ async function ofPerpRobotEditPanel() {
                 <div class="metric-card"><div class="metric-label">Верх %</div><input id="editOfPerpPhaseUpper" class="input" type="number" step="0.01" min="0.51" max="0.95" value="${p.phase_upper||0.67}" style="width:60px"></div>
                 <div class="metric-card"><div class="metric-label">Гистерезис %</div><input id="editOfPerpPhaseHyst" class="input" type="number" step="0.01" min="0" max="0.4" value="${p.phase_hysteresis||0.05}" style="width:60px"></div>
                 <div class="metric-card" style="min-width:150px"><div class="metric-label">Фаза сейчас</div><div id="editOfPerpPhaseVerdict" style="font-size:14px;font-weight:bold;color:#9CA3AF">—</div></div>
+                <button class="btn btn-secondary btn-sm" onclick="ofPerpOpenPhaseChart()" title="График ${((ofPerpRobot||{}).symbol||'USDRUBF').split('@')[0]} с зонами фаз">📈 Открыть график</button>
+            </div>
+            <div id="ofPerpPhaseChartWrap" style="display:none;margin:12px 0;border:1px solid #2D2D44;border-radius:8px;overflow:hidden">
+                <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 10px;background:#121826">
+                    <strong style="font-size:13px">📈 <span id="ofPerpPhaseChartTicker"></span> — фазовые зоны (Donchian)</strong>
+                    <div style="display:flex;gap:6px;align-items:center">
+                        <span class="text-secondary" style="font-size:12px">Таймфрейм</span>
+                        <select id="ofPerpPhaseChartTf" class="input" style="width:70px" onchange="ofPerpOpenPhaseChart()">
+                            <option value="5" selected>M5</option>
+                            <option value="15">M15</option>
+                            <option value="30">M30</option>
+                            <option value="60">H1</option>
+                        </select>
+                        <button class="btn btn-secondary btn-sm" onclick="document.getElementById('ofPerpPhaseChartWrap').style.display='none'">✕</button>
+                    </div>
+                </div>
+                <div id="ofPerpPhaseChart" style="width:100%;height:420px;background:#121826"></div>
+                <div id="ofPerpPhaseChartInfo" class="text-secondary" style="font-size:12px;padding:6px 10px"></div>
             </div>
             <hr style="border-color:#2D2D44;margin:12px 0">
             <!-- Торговый журнал -->
@@ -7007,6 +7043,116 @@ async function ofMxRobotEditPanel() {
     ofMxUpdateLive();
     if (window._ofMxVpTimer) clearInterval(window._ofMxVpTimer);
     window._ofMxVpTimer = setInterval(ofMxUpdateLive, 1000);
+}
+
+// F-067: popup-график фазовых зон для OF-Si (SiZ6) — клон ofMxOpenPhaseChart
+async function ofOpenPhaseChart() {
+    const wrap = document.getElementById('ofPhaseChartWrap');
+    if (!wrap) return;
+    const s = ofRobot || {};
+    const ticker = (s.symbol ? s.symbol.split('@')[0] : 'SiZ6');
+    wrap.style.display = 'block';
+    const tf = parseInt(document.getElementById('ofPhaseChartTf')?.value) || 5;
+    const win = parseInt(document.getElementById('editOfPhaseWin')?.value) || 96;
+    const pLo = parseFloat(document.getElementById('editOfPhaseLower')?.value) || 0.33;
+    const pHi = parseFloat(document.getElementById('editOfPhaseUpper')?.value) || 0.67;
+    const tickerEl = document.getElementById('ofPhaseChartTicker');
+    if (tickerEl) tickerEl.textContent = ticker + ' · M' + tf + ' · окно ' + win;
+    const info = document.getElementById('ofPhaseChartInfo');
+    if (info) info.textContent = 'Загрузка свечей...';
+    try {
+        const r = await fetch('/api/candles?ticker=' + encodeURIComponent(ticker) + '&tf=' + tf + '&days=30', {signal: AbortSignal.timeout(15000)});
+        const data = await r.json();
+        if (!Array.isArray(data) || !data.length) { if (info) info.textContent = 'Нет данных'; return; }
+        const MSK = 10800;
+        const candles = data.map(x => ({ time: x.t + MSK, open: x.o, high: x.h, low: x.l, close: x.c }));
+        const hi = new Array(data.length).fill(null), lo = new Array(data.length).fill(null);
+        for (let i = win - 1; i < data.length; i++) {
+            let hh = -Infinity, ll = Infinity;
+            for (let j = i - win + 1; j <= i; j++) {
+                if (data[j].h > hh) hh = data[j].h;
+                if (data[j].l < ll) ll = data[j].l;
+            }
+            hi[i] = hh; lo[i] = ll;
+        }
+        const host = document.getElementById('ofPhaseChart');
+        host.innerHTML = '';
+        const chart = LightweightCharts.createChart(host, {
+            width: host.offsetWidth || 900, height: 420,
+            layout: { background: { color: '#121826' }, textColor: '#9CA3AF' },
+            grid: { vertLines: { color: '#1E2637' }, horzLines: { color: '#1E2637' } },
+            timeScale: { timeVisible: true },
+        });
+        const cs = chart.addCandlestickSeries({ upColor: '#22C55E', downColor: '#EF4444', borderUpColor: '#22C55E', borderDownColor: '#EF4444', wickUpColor: '#22C55E', wickDownColor: '#EF4444' });
+        cs.setData(candles);
+        const mk = (color, title, vals) => {
+            const s2 = chart.addLineSeries({ color, lineWidth: 1, lineStyle: LightweightCharts.LineStyle.Dotted, lastValueVisible: true, title, priceLineVisible: false });
+            s2.setData(vals);
+        };
+        mk('rgba(239,68,68,0.85)', 'верх канала', candles.map((c, i) => ({ time: c.time, value: hi[i] })).filter(p => p.value !== null));
+        mk('rgba(34,197,94,0.85)', 'низ канала', candles.map((c, i) => ({ time: c.time, value: lo[i] })).filter(p => p.value !== null));
+        mk('rgba(250,204,21,0.7)', '33%', candles.map((c, i) => ({ time: c.time, value: hi[i] !== null && lo[i] !== null ? lo[i] + (hi[i] - lo[i]) * pLo : null })).filter(p => p.value !== null));
+        mk('rgba(167,139,250,0.7)', '67%', candles.map((c, i) => ({ time: c.time, value: hi[i] !== null && lo[i] !== null ? lo[i] + (hi[i] - lo[i]) * pHi : null })).filter(p => p.value !== null));
+        chart.timeScale().fitContent();
+        if (info) info.textContent = 'Канал Donchian ' + win + ' баров · 🟢 низ → LONG only · 🟡 середина → оба · 🔴 верх → SHORT only (границы ' + pLo + '/' + pHi + ')';
+    } catch (e) {
+        if (info) info.textContent = 'Ошибка загрузки: ' + e.message;
+    }
+}
+
+// F-067: popup-график фазовых зон для OF-PERP (USDRUBF) — клон ofMxOpenPhaseChart
+async function ofPerpOpenPhaseChart() {
+    const wrap = document.getElementById('ofPerpPhaseChartWrap');
+    if (!wrap) return;
+    const s = ofPerpRobot || {};
+    const ticker = (s.symbol ? s.symbol.split('@')[0] : 'USDRUBF');
+    wrap.style.display = 'block';
+    const tf = parseInt(document.getElementById('ofPerpPhaseChartTf')?.value) || 5;
+    const win = parseInt(document.getElementById('editOfPerpPhaseWin')?.value) || 96;
+    const pLo = parseFloat(document.getElementById('editOfPerpPhaseLower')?.value) || 0.33;
+    const pHi = parseFloat(document.getElementById('editOfPerpPhaseUpper')?.value) || 0.67;
+    const tickerEl = document.getElementById('ofPerpPhaseChartTicker');
+    if (tickerEl) tickerEl.textContent = ticker + ' · M' + tf + ' · окно ' + win;
+    const info = document.getElementById('ofPerpPhaseChartInfo');
+    if (info) info.textContent = 'Загрузка свечей...';
+    try {
+        const r = await fetch('/api/candles?ticker=' + encodeURIComponent(ticker) + '&tf=' + tf + '&days=30', {signal: AbortSignal.timeout(15000)});
+        const data = await r.json();
+        if (!Array.isArray(data) || !data.length) { if (info) info.textContent = 'Нет данных'; return; }
+        const MSK = 10800;
+        const candles = data.map(x => ({ time: x.t + MSK, open: x.o, high: x.h, low: x.l, close: x.c }));
+        const hi = new Array(data.length).fill(null), lo = new Array(data.length).fill(null);
+        for (let i = win - 1; i < data.length; i++) {
+            let hh = -Infinity, ll = Infinity;
+            for (let j = i - win + 1; j <= i; j++) {
+                if (data[j].h > hh) hh = data[j].h;
+                if (data[j].l < ll) ll = data[j].l;
+            }
+            hi[i] = hh; lo[i] = ll;
+        }
+        const host = document.getElementById('ofPerpPhaseChart');
+        host.innerHTML = '';
+        const chart = LightweightCharts.createChart(host, {
+            width: host.offsetWidth || 900, height: 420,
+            layout: { background: { color: '#121826' }, textColor: '#9CA3AF' },
+            grid: { vertLines: { color: '#1E2637' }, horzLines: { color: '#1E2637' } },
+            timeScale: { timeVisible: true },
+        });
+        const cs = chart.addCandlestickSeries({ upColor: '#22C55E', downColor: '#EF4444', borderUpColor: '#22C55E', borderDownColor: '#EF4444', wickUpColor: '#22C55E', wickDownColor: '#EF4444' });
+        cs.setData(candles);
+        const mk = (color, title, vals) => {
+            const s2 = chart.addLineSeries({ color, lineWidth: 1, lineStyle: LightweightCharts.LineStyle.Dotted, lastValueVisible: true, title, priceLineVisible: false });
+            s2.setData(vals);
+        };
+        mk('rgba(239,68,68,0.85)', 'верх канала', candles.map((c, i) => ({ time: c.time, value: hi[i] })).filter(p => p.value !== null));
+        mk('rgba(34,197,94,0.85)', 'низ канала', candles.map((c, i) => ({ time: c.time, value: lo[i] })).filter(p => p.value !== null));
+        mk('rgba(250,204,21,0.7)', '33%', candles.map((c, i) => ({ time: c.time, value: hi[i] !== null && lo[i] !== null ? lo[i] + (hi[i] - lo[i]) * pLo : null })).filter(p => p.value !== null));
+        mk('rgba(167,139,250,0.7)', '67%', candles.map((c, i) => ({ time: c.time, value: hi[i] !== null && lo[i] !== null ? lo[i] + (hi[i] - lo[i]) * pHi : null })).filter(p => p.value !== null));
+        chart.timeScale().fitContent();
+        if (info) info.textContent = 'Канал Donchian ' + win + ' баров · 🟢 низ → LONG only · 🟡 середина → оба · 🔴 верх → SHORT only (границы ' + pLo + '/' + pHi + ')';
+    } catch (e) {
+        if (info) info.textContent = 'Ошибка загрузки: ' + e.message;
+    }
 }
 
 // F-067: popup-график инструмента с фазовыми зонами (Donchian по окну из блока Фазы рынка)
