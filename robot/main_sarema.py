@@ -78,6 +78,7 @@ class ParamsPatch(BaseModel):
     vah_val_bin: float | None = None
     vah_val_pct: float | None = None
     vah_val_lookback: int | float | None = None
+    tp_R: int | float | None = None   # F-084: take-profit по R
 
 
 _CS_PORT = int(os.environ.get("CS_SERVER_PORT", "5050"))  # F-072: C# server for live tick
@@ -474,6 +475,21 @@ def _main_loop():
 
     while True:
         try:
+            # --- F-084: TAKE-PROFIT по R — закрытие при ПнЛ ≥ tp_R × риск ---
+            if state.mode == "running" and state.direction != 0 and cfg.get("tp_R"):
+                try:
+                    mark, src = _live_mark()
+                    if mark is not None:
+                        risk_rub = state.base * cfg.get("risk_pct", 0.015)
+                        pnl_now = (mark - state.entry_price) * state.direction * state.lots_qty
+                        tp_target = risk_rub * float(cfg["tp_R"])
+                        if pnl_now >= tp_target:
+                            log.warning(f"TAKE-PROFIT: pnl={pnl_now:.2f} >= target={tp_target:.2f} (tp_R={cfg['tp_R']}) — закрываю маркетом")
+                            ev = strategy.close_position(reason="take-profit")
+                            log.warning(f"take-profit close result: {ev}")
+                except Exception as te:
+                    log.error(f"TP watchdog error: {te}")
+
             # --- F-073: WATCHDOG СТОПА — работает всегда, пока есть позиция (running/paused) ---
             if state.mode in ("running", "paused") and state.direction != 0 and state.stop_price:
                 try:
