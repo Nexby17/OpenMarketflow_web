@@ -1298,6 +1298,16 @@
       "date": "2026-10-19",
       "summary": "Дмитрий: «проверь сигналы на закрытие позиции при положительном ПнЛ». Аудит: TP отсутствовал — позиция держалась до стопа/реверса. Добавлен watchdog TP по R: при ПнЛ ≥ tp_R × риск (default 2R) — маркет-закрытие reason=take-profit. tp_R редактируемый через /params (null = выключен).",
       "date_updated": "2026-10-19"
+    },
+    {
+      "id": "F-085",
+      "name": "OF: диагностика тихих конфликтов сигналов на входе (ENTRY CONFLICT log)",
+      "area": "robots/of",
+      "status": "done",
+      "owner": "main",
+      "date": "2026-10-19",
+      "summary": "Инцидент 19.10 11:40: CVD Trend CROSSOVER LONG произошёл, сделки нет, в логе ни ENTRY, ни BLOCK. Трассировка: check_cvd_trend печатает CROSSOVER только внутри generate_signals из _check_entry, значит сигнал дошёл до шага подтверждения; все последующие гейты (direction_filter/phase/HL/VWEMA) логируют блок — их в логе нет; accel не срабатывал (нет его лога). Единственная тихая ветка — конфликт направлений (len(directions)>1, return None без лога); главный подозреваемый dm_wall_agree SHORT в тот же тик. Фикс: конфликт логируется ('ENTRY CONFLICT: signals disagree -> skip | cvd_trend(LONG), dm_wall_agree(SHORT)'). Робот :5080 рестартнут 11:51 (PID 19396, FLAT/stopped, WS OK) — следующий кроссовер покажет виновника в логе. Коммит 7e16528.",
+      "date_updated": "2026-10-19"
     }
   ]
 }
