@@ -49,39 +49,19 @@ class SaremaOrders:
         self._rest4 = None
 
     def _reauth(self):
-        """F-080 fix2: реальная пере-авторизация — новый JWT через POST /sessions,
-        затем tm.set_jwt_token(new_jwt). (ensure_token не существует в SDK.)"""
+        """F-080 fix3: официальный путь SDK — client.access_tokens.set_jwt_token()
+        (async, сам делает POST /sessions и tm.set_jwt_token)."""
         try:
-            import urllib.request as _uq
-            import json as _json
-            import os as _os
-            api_key = _os.environ.get('FINAM_API_KEY', '')
-            if not api_key:
-                here = _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__)))
-                for base in (here, _os.path.dirname(here),
-                             _os.path.join(_os.path.dirname(_os.path.dirname(here)), 'src')):
-                    pp = _os.path.join(base, '.env')
-                    if _os.path.exists(pp):
-                        with open(pp) as f:
-                            for line in f:
-                                if line.startswith('FINAM_API_KEY='):
-                                    api_key = line.split('=', 1)[1].strip()
-                                    break
-                        break
-            req = _uq.Request('https://api.finam.ru/v1/sessions',
-                              data=_json.dumps({'secret': api_key}).encode(), method='POST')
-            req.add_header('Content-Type', 'application/json')
-            with _uq.urlopen(req, timeout=10) as r:
-                new_jwt = _json.loads(r.read()).get('token', '')
-            if new_jwt:
-                mod = self._rest4._get_module() if self._rest4 else None
-                if mod and hasattr(mod, 'tm'):
-                    mod.tm.set_jwt_token(new_jwt)
-                    log.info('F-080: JWT re-auth OK (set_jwt_token)')
+            if self._rest4 and hasattr(self._rest4, '_get_module'):
+                mod = self._rest4._get_module()
+                if hasattr(mod, 'client') and hasattr(mod.client, 'access_tokens'):
+                    coro = mod.client.access_tokens.set_jwt_token()
+                    mod.call(coro, timeout=15)
+                    log.info('F-080: JWT re-auth OK (SDK access_tokens.set_jwt_token)')
                 else:
-                    log.warning('F-080: mod.tm not found')
+                    log.warning('F-080: mod.client.access_tokens not found')
             else:
-                log.error('F-080: sessions POST returned empty token')
+                log.warning('F-080: _rest4 not initialized')
         except Exception as e:
             log.error(f'F-080: re-auth failed: {e}')
 
