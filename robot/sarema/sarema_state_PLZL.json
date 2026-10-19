@@ -1,10 +1,10 @@
 {
  "mode": "running",
- "direction": 0,
- "lots_qty": 0,
- "entry_price": 1186.8,
- "stop_price": 1164.8819087999998,
- "entry_time": "2026-10-19T07:22:49.203896",
+ "direction": -1,
+ "lots_qty": 3,
+ "entry_price": 1162.4,
+ "stop_price": 1188.7354076646839,
+ "entry_time": "2026-10-19T13:05:07.751307",
  "base": 20000.0,
  "pending_signal": null,
  "kill_day": null,
@@ -13,7 +13,7 @@
  },
  "total_pnl": 0.0,
  "trades_done": 1,
- "last_entry_signal_bar": "2026-10-19 06:00:00",
+ "last_entry_signal_bar": "2026-10-19 12:00:00",
  "auto_start_disabled": false,
  "trade_history": [
   {
@@ -39,6 +39,22 @@
     "R": -0.94,
     "reason": "stop-hit"
    }
+  },
+  {
+   "tic": "PLZL",
+   "tf": "H1",
+   "date_open": "2026-10-19",
+   "time_open": "13:05:07",
+   "dir": "S",
+   "entry": 1162.4,
+   "qty": 3,
+   "volume": 3487.2,
+   "risk_pct": 0.4,
+   "risk_pts": 26.34,
+   "stop": 1188.74,
+   "vp": "signal",
+   "status": "open",
+   "close": null
   }
  ]
 }

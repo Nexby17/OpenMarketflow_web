@@ -56,10 +56,6 @@ DEFAULTS = {
     # mode: off = как раньше (без фильтра); range = вход только внутри VA;
     # fade/breakout = вход только от краёв VA. Значения None = дефолт подтипа:
     # bin None → авто из размаха окна; pct None → 70; lookback None → 200 баров H1.
-    "vah_val_mode": "off",
-    "vah_val_bin": None,
-    "vah_val_pct": None,
-    "vah_val_lookback": None,
     # F-071 (Дмитрий 14.10): при включении входить, если сигнал не старше N закрытых баров (1-3)
     "max_signal_age": 8,
     # F-084: take-profit по R-мультипликатору (2R = двойной риск). null = выключен.

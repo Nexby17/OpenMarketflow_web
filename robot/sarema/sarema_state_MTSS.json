@@ -1,17 +1,34 @@
 {
  "mode": "running",
- "direction": 0,
- "lots_qty": 0,
- "entry_price": 0.0,
- "stop_price": 0.0,
- "entry_time": null,
+ "direction": -1,
+ "lots_qty": 70,
+ "entry_price": 176.0,
+ "stop_price": 177.4248948062805,
+ "entry_time": "2026-10-19T13:05:07.881820",
  "base": 20000.0,
  "pending_signal": null,
  "kill_day": null,
  "day_realized_R": {},
  "total_pnl": 0.0,
  "trades_done": 0,
- "last_entry_signal_bar": null,
+ "last_entry_signal_bar": "2026-10-19 12:00:00",
  "auto_start_disabled": false,
- "trade_history": []
+ "trade_history": [
+  {
+   "tic": "MTSS",
+   "tf": "H1",
+   "date_open": "2026-10-19",
+   "time_open": "13:05:07",
+   "dir": "S",
+   "entry": 176.0,
+   "qty": 70,
+   "volume": 12320.0,
+   "risk_pct": 0.5,
+   "risk_pts": 1.42,
+   "stop": 177.42,
+   "vp": "signal",
+   "status": "open",
+   "close": null
+  }
+ ]
 }

@@ -1308,6 +1308,16 @@
       "date": "2026-10-19",
       "summary": "Инцидент 19.10 11:40: CVD Trend CROSSOVER LONG произошёл, сделки нет, в логе ни ENTRY, ни BLOCK. Трассировка: check_cvd_trend печатает CROSSOVER только внутри generate_signals из _check_entry, значит сигнал дошёл до шага подтверждения; все последующие гейты (direction_filter/phase/HL/VWEMA) логируют блок — их в логе нет; accel не срабатывал (нет его лога). Единственная тихая ветка — конфликт направлений (len(directions)>1, return None без лога); главный подозреваемый dm_wall_agree SHORT в тот же тик. Фикс: конфликт логируется ('ENTRY CONFLICT: signals disagree -> skip | cvd_trend(LONG), dm_wall_agree(SHORT)'). Робот :5080 рестартнут 11:51 (PID 19396, FLAT/stopped, WS OK) — следующий кроссовер покажет виновника в логе. Коммит 7e16528. 19.10: GMKN тоже не входил — лот Норникеля = 10 (проверено через MOEX ISS LOFSIZE=10), был SAREMA_LOT_SIZE=1. Fix: LOT_SIZE=10 → GMKN SHORT 50 @ 116.34 исполнен.",
       "date_updated": "2026-10-19"
+    },
+    {
+      "id": "F-087",
+      "name": "SAREMA: VP фильтр (Volume Profile) удалён из UI и кода",
+      "area": "robots/sarema",
+      "status": "done (11 running)",
+      "owner": "main",
+      "date": "2026-10-19",
+      "summary": "Дмитрий: «удали это у роботов — из кода и из UI». Удалён VP фильтр (Volume Profile входа): UI блок (Mode/VA%/Bin/Окно/VAH/POC/VAL/вердикт), ParamsPatch поля, config defaults, strategy VP gate, /status vp.state() вызов. vp_sarema.py остаётся на диске (не импортируется). Все 11 инстансов running.",
+      "date_updated": "2026-10-19"
     }
   ]
 }

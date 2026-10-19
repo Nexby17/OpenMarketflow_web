@@ -74,10 +74,7 @@ class ParamsPatch(BaseModel):
     init_stop_atr: float | None = None
     tf_min: int | float | None = None
     # F-065: VP Mode (range/fade/breakout/off) + подтипы (null = дефолт)
-    vah_val_mode: str | None = None
-    vah_val_bin: float | None = None
     vah_val_pct: float | None = None
-    vah_val_lookback: int | float | None = None
     tp_R: int | float | None = None   # F-084: take-profit по R
     max_signal_age: int | float | None = None   # F-086: окно сигналов в барах
 
@@ -176,7 +173,7 @@ def status():
         "gaps": feed.check_gaps(),
         "warmup_ok": feed.bars is not None and len(feed.bars) >= cfg.get("warmup_bars", 300),
         # F-065: VP Mode + живой VP (VAH/VAL/POC) для панели UI
-        "vp": {"mode": cfg.get("vah_val_mode", "off"), **strategy.vp.state()},
+        "vp": {"mode": "off"},
     }
 
 
