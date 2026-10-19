@@ -1,0 +1,110 @@
+{
+ "mode": "running",
+ "direction": -1,
+ "lots_qty": 10,
+ "entry_price": 1152.3,
+ "stop_price": 1166.339821881493,
+ "entry_time": "2026-10-19T07:23:51.206455",
+ "base": 30000.0,
+ "pending_signal": null,
+ "kill_day": null,
+ "day_realized_R": {
+  "2026-10-16": 1.66,
+  "2026-10-18": -1.38,
+  "2026-10-19": -0.496
+ },
+ "total_pnl": 0.0,
+ "trades_done": 3,
+ "last_entry_signal_bar": "2026-10-19 04:00:00",
+ "auto_start_disabled": false,
+ "trade_history": [
+  {
+   "tic": "NVTK",
+   "tf": "H1",
+   "date_open": "2026-10-15",
+   "time_open": "13:36:55",
+   "dir": "L",
+   "entry": 1085.0,
+   "qty": 4,
+   "volume": 4340.0,
+   "risk_pct": 0.46,
+   "risk_pts": 23.02,
+   "stop": 1061.98,
+   "vp": "signal",
+   "status": "closed",
+   "close": {
+    "date_close": "2026-10-16",
+    "time_close": "18:05:40",
+    "exit": 1127.4,
+    "commission": 3.6,
+    "pnl": 166.0,
+    "R": 1.66,
+    "reason": "reverse-signal"
+   }
+  },
+  {
+   "tic": "NVTK",
+   "tf": "H1",
+   "date_open": "2026-10-16",
+   "time_open": "18:05:43",
+   "dir": "S",
+   "entry": 1127.4,
+   "qty": 4,
+   "volume": 4509.6,
+   "risk_pct": 0.48,
+   "risk_pts": 23.98,
+   "stop": 1151.38,
+   "vp": "signal",
+   "status": "closed",
+   "close": {
+    "date_close": "2026-10-18",
+    "time_close": "10:58:01",
+    "exit": 1161.0,
+    "commission": 3.6,
+    "pnl": -138.0,
+    "R": -1.38,
+    "reason": "stop-hit"
+   }
+  },
+  {
+   "tic": "NVTK",
+   "tf": "H1",
+   "date_open": "2026-10-18",
+   "time_open": "10:58:11",
+   "dir": "L",
+   "entry": 1159.8,
+   "qty": 6,
+   "volume": 6958.8,
+   "risk_pct": 0.5,
+   "risk_pts": 16.52,
+   "stop": 1143.28,
+   "vp": "signal",
+   "status": "closed",
+   "close": {
+    "date_close": "2026-10-19",
+    "time_close": "07:23:47",
+    "exit": 1148.3,
+    "commission": 5.4,
+    "pnl": -74.4,
+    "R": -0.496,
+    "reason": "stop-hit"
+   }
+  },
+  {
+   "tic": "NVTK",
+   "tf": "H1",
+   "date_open": "2026-10-19",
+   "time_open": "07:23:51",
+   "dir": "S",
+   "entry": 1152.3,
+   "qty": 10,
+   "volume": 11523.0,
+   "risk_pct": 0.47,
+   "risk_pts": 14.04,
+   "stop": 1166.34,
+   "vp": "signal",
+   "status": "open",
+   "close": null
+  }
+ ]
+}

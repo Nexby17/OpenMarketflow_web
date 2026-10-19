@@ -1,0 +1,84 @@
+{
+ "mode": "running",
+ "direction": -1,
+ "lots_qty": 11,
+ "entry_price": 381.0,
+ "stop_price": 389.8297731162618,
+ "entry_time": "2026-10-19T12:05:43.601348",
+ "base": 20000.0,
+ "pending_signal": null,
+ "kill_day": null,
+ "day_realized_R": {
+  "2026-10-19": -0.864
+ },
+ "total_pnl": 0.0,
+ "trades_done": 2,
+ "last_entry_signal_bar": "2026-10-19 11:00:00",
+ "auto_start_disabled": false,
+ "trade_history": [
+  {
+   "tic": "ROSN",
+   "tf": "H1",
+   "date_open": "2026-10-19",
+   "time_open": "07:22:49",
+   "dir": "S",
+   "entry": 380.25,
+   "qty": 25,
+   "volume": 9506.25,
+   "risk_pct": 0.5,
+   "risk_pts": 3.97,
+   "stop": 384.22,
+   "vp": "signal",
+   "status": "closed",
+   "close": {
+    "date_close": "2026-10-19",
+    "time_close": "07:58:06",
+    "exit": 381.25,
+    "commission": 22.5,
+    "pnl": -47.5,
+    "R": -0.475,
+    "reason": "stop-hit"
+   }
+  },
+  {
+   "tic": "ROSN",
+   "tf": "H1",
+   "date_open": "2026-10-19",
+   "time_open": "08:05:10",
+   "dir": "L",
+   "entry": 381.65,
+   "qty": 19,
+   "volume": 7251.35,
+   "risk_pct": 0.48,
+   "risk_pts": 5.01,
+   "stop": 376.64,
+   "vp": "signal",
+   "status": "closed",
+   "close": {
+    "date_close": "2026-10-19",
+    "time_close": "12:05:40",
+    "exit": 380.5,
+    "commission": 17.1,
+    "pnl": -38.95,
+    "R": -0.389,
+    "reason": "reverse-signal"
+   }
+  },
+  {
+   "tic": "ROSN",
+   "tf": "H1",
+   "date_open": "2026-10-19",
+   "time_open": "12:05:43",
+   "dir": "S",
+   "entry": 381.0,
+   "qty": 11,
+   "volume": 4191.0,
+   "risk_pct": 0.49,
+   "risk_pts": 8.83,
+   "stop": 389.83,
+   "vp": "signal",
+   "status": "open",
+   "close": null
+  }
+ ]
+}

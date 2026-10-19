@@ -3,7 +3,7 @@
  "sar_step": 0.2,
  "sar_max": 0.2,
  "ema_n": 12,
- "init_stop_atr": 3.0,
+ "init_stop_atr": 2.0,
  "tf_min": 60,
  "base": 30000.0,
  "risk_pct": 0.015,
@@ -18,5 +18,6 @@
  "vah_val_bin": null,
  "vah_val_pct": null,
  "vah_val_lookback": null,
- "max_signal_age": 3
+ "max_signal_age": 3,
+ "tp_R": 2.0
 }

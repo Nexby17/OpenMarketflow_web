@@ -1,0 +1,17 @@
+{
+ "mode": "running",
+ "direction": 0,
+ "lots_qty": 0,
+ "entry_price": 0.0,
+ "stop_price": 0.0,
+ "entry_time": null,
+ "base": 20000.0,
+ "pending_signal": null,
+ "kill_day": null,
+ "day_realized_R": {},
+ "total_pnl": 0.0,
+ "trades_done": 0,
+ "last_entry_signal_bar": null,
+ "auto_start_disabled": false,
+ "trade_history": []
+}
