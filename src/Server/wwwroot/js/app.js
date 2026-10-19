@@ -6768,9 +6768,22 @@ async function ofMxRobotApi(action) {
                 }
             }
         }
-        const resp = await fetch(OF_MX_ROBOT_API + '/' + action, {method: 'POST', signal: AbortSignal.timeout(8000)});
-        const data = await resp.json();
-        addLog(nowTime(), 'INFO', 'OF-MX ' + action + ': ' + JSON.stringify(data));
+        // F-068: старт с автоповтором — если после ok-ответа робот всё ещё stopped, повторяем до 3 раз
+        let data = null;
+        for (let attempt = 1; attempt <= 3; attempt++) {
+            const resp = await fetch(OF_MX_ROBOT_API + '/' + action, {method: 'POST', signal: AbortSignal.timeout(8000)});
+            data = await resp.json();
+            addLog(nowTime(), 'INFO', 'OF-MX ' + action + ' (попытка ' + attempt + '): ' + JSON.stringify(data));
+            if (action !== 'start') break;
+            await new Promise(r => setTimeout(r, 700));
+            try {
+                const chk = await fetch(OF_MX_ROBOT_API + '/status', {signal: AbortSignal.timeout(2000)});
+                const st = await chk.json();
+                if (st.mode === 'running') break;
+                if (attempt === 3) showToast('⚠ Робот не перешёл в running после 3 попыток — смотри журнал', 'error');
+            } catch(ce) { /* статус недоступен — считаем ок */ }
+        }
+        showToast((action === 'start' ? '▶ ' : '') + 'MXU6 ' + action + ': ' + JSON.stringify(data), 'ok');
         setTimeout(async () => { await ofMxRobotPoll(); renderRobots(); }, 500);
     } catch(e) {
         addLog(nowTime(), 'ERROR', `Робот MXU6 недоступен (${action} не отправлено: ${e.message})`);
