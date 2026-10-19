@@ -400,6 +400,10 @@ class OrderFlowStrategy:
         # Entry lock
         self._entry_lock_until: float = 0.0
 
+        # F-073 (fix 19.10): цена входа в последний ПИРАМИД-уровень. Обновляется только
+        # в _check_pyramiding; усреднение/manual_adjust её НЕ трогают. 0 = пирамид нет.
+        self._last_pyr_entry_price: float = 0.0
+
         # Last bar processing
         self._last_bar_ts: float = 0.0
 
@@ -636,17 +640,17 @@ class OrderFlowStrategy:
         return self.pnl_per_lot(price) >= self.p.min_profit_per_lot
 
     def _last_pyramid_entry_price(self) -> Optional[float]:
-        """F-073: цена входа в ПОСЛЕДНИЙ пирамид-уровень (последний pyr-слой в очереди).
+        """F-073 (fix 19.10): цена входа в ПОСЛЕДНИЙ ПИРАМИД-уровень.
 
-        Очередь LIFO: пирамиды добавляются в конец (как и вход, но pyr-слои —
-        это все слои после первого). Если пирамид-слоёв нет (0 или 1) — None.
+        ВАЖНО: усреднение и пирамида пишут в lot_queue без маркировки, поэтому
+        брать последний слой очереди НЕЛЬЗЯ — там может быть AVERAGE-слой
+        (инцидент 19.10 12:02: позиция 1 entry + 2 AVERAGE закрылась как
+        pyramid_full_exit). Теперь цена хранится в _last_pyr_entry_price и
+        обновляется ТОЛЬКО в _check_pyramiding.
         """
-        if len(self._lot_queue) <= 1:
+        if self._last_pyr_entry_price <= 0:
             return None
-        # ищем последний слой, добавленный пирамидой: их очередь = [entry, pyr1, pyr2...]
-        # при partial TP LIFO pyr-слои вычищаются с конца, поэтому просто берём
-        # максимальный pyr-индекс: len-1 слоёв всего, последний элемент = последний вход
-        return self._lot_queue[-1].price
+        return self._last_pyr_entry_price
 
     def _pyramid_pullback_hit(self, price: float) -> bool:
         """F-073: откат от последнего pyr-входа на 1 pyr-уровень (позиция ≥ 3 лотов).
@@ -1295,6 +1299,7 @@ class OrderFlowStrategy:
         self._avg_price = (old_cost + price * self.p.lots) / self._total_lots
         self._pyramid_levels += 1
         self._last_pyramid_price = price
+        self._last_pyr_entry_price = price  # F-073: для pullback-закрытия — только пирамиды обновляют
         self._lot_queue.append(LotEntry(price=price, side=self._dir, lots=self.p.lots, added_ts=time.monotonic()))
 
         log.info(f"PYRAMID {side} {self.p.lots} @ {fmt_price(price)} | lvl {self._pyramid_levels}/{self.p.max_pyramid_levels} | avg={fmt_price(self._avg_price)} lots={self._total_lots}")
@@ -1449,6 +1454,7 @@ class OrderFlowStrategy:
         self._pyramid_levels = 0
         self._last_average_price = 0.0
         self._last_pyramid_price = 0.0
+        self._last_pyr_entry_price = 0.0  # F-073
         self._lot_queue.clear()
         self._entry_time = None
         self._signal_type = ""

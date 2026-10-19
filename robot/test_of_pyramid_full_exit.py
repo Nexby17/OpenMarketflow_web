@@ -1,4 +1,4 @@
-# -*- coding: utf-8 -*-
+﻿# -*- coding: utf-8 -*-
 """F-073: unit tests for Pyramid Full Exit (Dmitry 16.10.2026) — no broker needed.
 
 Rule (Si robots):
@@ -74,6 +74,7 @@ def seed_position(s, entries):
     s._average_levels = sum(1 for _, k in entries if k == 'avg')
     last_pyr = [pr for pr, k in entries if k == 'pyr']
     s._last_pyramid_price = last_pyr[-1] if last_pyr else entries[0][0]
+    s._last_pyr_entry_price = last_pyr[-1] if last_pyr else 0.0  # F-073 fix: только пирамиды
     s.update_price(entries[-1][0])
     import time as _t2
     s._last_price_update = _t2.time()
@@ -183,6 +184,20 @@ def t_2lots_after_rule_no_partial_block():
     assert any(a['action'] == 'partial_tp' for a in actions), actions
 
 
+
+def t_averaging_is_not_pyramid():
+    """Инцидент 19.10 12:02: 1 entry + 2 AVERAGE закрылись как pyramid_full_exit.
+    Усреднение НЕ обновляет last pyr entry → правила отката от pyr нет → не закрывать."""
+    s = make_strategy()
+    seed_position(s, [(100.0, 'entry'), (65.0, 'avg'), (35.0, 'avg')])
+    # цена 20: откат от последнего AVERAGE (35) на 15 > step 50? нет: 35-20=15 < 50.
+    # Даже глубокий откат: усреднение не пирамида → pyramid_full_exit НЕ срабатывает при 0 пирамид.
+    s.p.pyramid_full_exit = True
+    assert s._last_pyramid_entry_price() is None, "no pyramids -> no ref"
+    assert s._pyramid_pullback_hit(10.0) is False, "averaging must not trigger pullback exit"
+    actions = s.process_tick(10.0, msk_dt(12, 0))
+    assert not any(a['action'] == 'close_all' and a.get('reason') == 'pyramid_full_exit' for a in actions), actions
+
 if __name__ == "__main__":
     print("=== F-073 pyramid full exit tests ===")
     check("last_pyr_entry", t_last_pyr_entry)
@@ -197,6 +212,10 @@ if __name__ == "__main__":
     check("process_tick_partial_tp_blocked_at_3plus", t_process_tick_partial_tp_blocked_at_3plus)
     check("process_tick_pyramiding_continues", t_process_tick_pyramiding_continues)
     check("t_2lots_after_rule_no_partial_block", t_2lots_after_rule_no_partial_block)
+    check("t_averaging_is_not_pyramid", t_averaging_is_not_pyramid)
     passed = sum(1 for r in RESULTS if r)
     print(f"=== {passed}/{len(RESULTS)} PASS ===")
     sys.exit(0 if passed == len(RESULTS) else 1)
+
+
+
