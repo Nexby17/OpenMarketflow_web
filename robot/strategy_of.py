@@ -860,21 +860,30 @@ class OrderFlowStrategy:
         self._broker_sync_time = time.time()
 
     def update_fill_price(self, fill_price: float, action: str):
-        """Update entry prices with REAL broker fill. Exit trades recorded in main_of."""
+        """Update entry prices with REAL broker fill. Exit trades recorded in main_of.
+
+        F-0xx fix (19.10): средняя пересчитывается СТРОГО от очереди fill-цен.
+        Раньше базой был self._avg_price, который к моменту вызова уже был
+        пересчитан стратегией по СИГНАЛЬНОЙ цене → fill «подмешивался» к
+        сигнальной базе, avg дрейфовал с каждым слоем (инцидент 19.10: журнальный
+        avg 83655.84 против брокерского 83639.75 → фантомный −64₽ на сделке).
+        Теперь: заменяем цену последнего слоя на fill и считаем avg от очереди.
+        """
         if fill_price <= 0:
             return
         if action in ("entry", "average", "pyramid"):
             if action == "entry":
                 self._entry_price = fill_price
-                self._avg_price = fill_price
-                log.info(f"ENTRY price updated from broker: {fmt_price(fill_price)}")
-            else:
-                old_cost = self._avg_price * (self._total_lots - self.p.lots)
-                added = fill_price * self.p.lots
-                self._avg_price = (old_cost + added) / self._total_lots if self._total_lots > 0 else fill_price
-                log.info(f"{action.upper()} price updated from broker: {fmt_price(fill_price)} → avg={fmt_price(self._avg_price)}")
             if self._lot_queue:
+                # заменяем цену последнего слоя на фактический fill брокера
                 self._lot_queue[-1] = LotEntry(price=fill_price, side=self._lot_queue[-1].side, lots=self._lot_queue[-1].lots)
+                total_cost = sum(e.price * e.lots for e in self._lot_queue)
+                total_lots = sum(e.lots for e in self._lot_queue)
+                if total_lots > 0:
+                    self._avg_price = total_cost / total_lots
+            else:
+                self._avg_price = fill_price
+            log.info(f"{action.upper()} price updated from broker: {fmt_price(fill_price)} → avg={fmt_price(self._avg_price)} (from fill queue)")
 
     def _check_entry(self, price: float, now: datetime) -> Optional[dict]:
         """Check for entry signal."""
