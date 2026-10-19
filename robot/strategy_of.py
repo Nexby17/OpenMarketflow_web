@@ -404,6 +404,12 @@ class OrderFlowStrategy:
         # в _check_pyramiding; усреднение/manual_adjust её НЕ трогают. 0 = пирамид нет.
         self._last_pyr_entry_price: float = 0.0
 
+        # F-087 fix: фазовый канал из /api/candles (единый источник с UI-графиком).
+        # Обновляется раз в 60с в _phase_channel_refresh; живые бары его не вытесняют.
+        self._phase_chan_high: float = 0.0
+        self._phase_chan_low: float = 0.0
+        self._phase_chan_ts: float = 0.0
+
         # Last bar processing
         self._last_bar_ts: float = 0.0
 
@@ -1568,8 +1574,12 @@ class OrderFlowStrategy:
 
     def _phase_channel_refresh(self, price: float):
         """Раз в 60с синхронизирует фазовый канал с /api/candles C#-сервера —
-        ЕДИНЫЙ ИСТОЧНИК с графиком UI (F-067, 16.10: «робот пишет лонг, график — другое»).
-        При недоступности сервера — тихо пользуемся внутренним буфером."""
+        ЕДИНЫЙ ИСТОЧНИК с графиком UI (F-067, 16.10: «робот пишет лонг, график — другое»). 
+        F-087 fix (19.10): канал хранится в ОТДЕЛЬНЫХ полях _phase_chan_high/low,
+        а НЕ в общем deque-буфере — живые бары вытесняли 777-барную историю
+        (maxlen 2000 + get(777) от хвоста) → роботский канал сужался до последних
+        ~130 баров (84384) и расходился с графиком UI (85490). При недоступности
+        сервера — тихо пользуемся последним известным каналом."""
         import time as _t
         now = _t.time()
         if now - getattr(self, "_phase_chan_ts", 0) < 60:
@@ -1581,7 +1591,7 @@ class OrderFlowStrategy:
             symbol = getattr(self.p, "symbol", None) or getattr(self, "symbol", "")
             ticker = str(symbol).split("@")[0]
             url = (f"http://localhost:5050/api/candles?ticker={ticker}"
-                   f"&tf={self.p.timeframe.replace('M', '') if str(self.p.timeframe).startswith('M') else 5}&days=10")
+                   f"&tf=5&days=30")  # F-087: фиксированно M5 — как график UI по умолчанию (не зависит от рабочего TF робота)
             with _uq.urlopen(url, timeout=5) as r:
                 data = _json.loads(r.read())
             if not isinstance(data, list) or len(data) < 30:
@@ -1590,15 +1600,11 @@ class OrderFlowStrategy:
             seg = data[-win:]
             wh = max(b["h"] for b in seg)
             wl = min(b["l"] for b in seg)
-            # пишем в фазовые буферы: очищаем и заливаем канал целиком (история графика)
-            self.signals._phase_highs.clear()
-            self.signals._phase_lows.clear()
-            for b in seg:
-                self.signals._phase_highs.append(float(b["h"]))
-                self.signals._phase_lows.append(float(b["l"]))
-            self._phase_last_ts = 0  # следующий живой пуш аппендится (новый бар)
-        except Exception:
-            pass  # сервер недоступен — работаем на внутреннем буфере
+            self._phase_chan_high = float(wh)
+            self._phase_chan_low = float(wl)
+            log.info(f"PHASE CHAN refresh: {len(data)} bars, win={win} → {fmt_price(wl)}..{fmt_price(wh)}")
+        except Exception as _e:
+            log.warning(f"PHASE CHAN refresh FAILED: {_e}")  # держим последний известный канал
 
 
 
@@ -1613,7 +1619,14 @@ class OrderFlowStrategy:
         """
         self._phase_channel_refresh(price)         # F-067: единый источник с графиком (60с кэш)
         win = max(10, int(self.p.phase_window))
-        hl = self.signals.get_phase_channel(win)   # F-067: полный буфер, не 30-барная CVD-история
+        # F-087 fix: канал из полей refresh (единый источник с UI), не из общего deque-буфера,
+        # который живые бары вытесняли → канал робота сужался и расходился с графиком.
+        ch_high = getattr(self, "_phase_chan_high", 0.0)
+        ch_low = getattr(self, "_phase_chan_low", 0.0)
+        if ch_high > 0 and ch_low > 0:
+            hl = (ch_high, ch_low)
+        else:
+            hl = self.signals.get_phase_channel(win)   # fallback: внутренний буфер
         if hl is None:
             return {"enabled": bool(self.p.phase_filter), "ready": False,
                     "window": win, "dir": 0}
@@ -1749,3 +1762,4 @@ class OrderFlowStrategy:
             "phase": self._phase_state(),
             "dmWallAgree": self._last_dm_wall,
         }
+
