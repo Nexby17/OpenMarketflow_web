@@ -117,6 +117,7 @@ def load_params() -> OFParams:
     return p
 
 params = load_params()
+params.symbol = SYMBOL  # F-067 (19.10): phase-channel refresh читает p.symbol для синка с /api/candles. BR не ставил → refresh молча падал (ticker='' → пустой ответ) → робот сидел на внутреннем буфере и фаза расходилась с графиком.
 strategy = OrderFlowStrategy(params)
 
 # Aggression tracking (ticks at improving prices) — module-level for callback access
