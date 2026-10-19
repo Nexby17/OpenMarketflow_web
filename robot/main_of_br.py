@@ -120,6 +120,7 @@ params = load_params()
 params.symbol = SYMBOL  # F-067 (19.10): phase-channel refresh читает p.symbol для синка с /api/candles. BR не ставил → refresh молча падал (ticker='' → пустой ответ) → робот сидел на внутреннем буфере и фаза расходилась с графиком.
 strategy = OrderFlowStrategy(params)
 
+strategy.symbol = SYMBOL   # F-067: тикер для фазового канала
 # Aggression tracking (ticks at improving prices) — module-level for callback access
 _agg_buy_vol = 0
 _agg_sell_vol = 0

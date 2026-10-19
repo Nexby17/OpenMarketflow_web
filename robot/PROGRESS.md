@@ -682,3 +682,8 @@ BR-edp (b9b48e3) → добавлены те же варианты 60%/70% в в
 - Фикс: ветка pyramid_full_exit требует _pyramid_levels>0. Позиция из усреднений (pyr=0) торгует по обычным правилам: LIFO partial TP (TP от усреднения), tp_full, SL. Pullback-exit срабатывает только при наличии реального pyr-входа.
 - Тесты: t_averaging_position_partial_tp_works (LIFO TP у avg-лота срабатывает) + весь набор 14/14. Регресс timing 11/11, br_logic PASS.
 - Деплой 12:56 (PID 24212): позиция LONG 4 @83828 восстановлена из of_state.json, broker sync OK. mode=stopped → ▶ Дмитрия. Коммит 566272f.
+
+### 19.10 16:4x — F-067 fix: phase refresh использовал пустой symbol
+- _phase_channel_refresh брал ticker из self.p.symbol (поля нет у OFParams) → пустой ticker → тихий except → робот на внутреннем буфере → фаза «середина» при SHORT-зоне на графике.
+- Фикс: OrderFlowStrategy.symbol (init ""), main_4 прокидывают SYMBOL при создании и при /instrument; refresh warning при пустом.
+- Live MXU6: канал 240800..248600 (888), pos 69.9% → SHORT-зона = график. Рестарт 10372.

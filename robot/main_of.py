@@ -148,6 +148,7 @@ def load_params() -> OFParams:
 params = load_params()
 strategy = OrderFlowStrategy(params)
 
+strategy.symbol = SYMBOL   # F-067: тикер для фазового канала
 # Aggression tracking (ticks at improving prices) — module-level for callback access
 _agg_buy_vol = 0
 _agg_sell_vol = 0
@@ -1176,6 +1177,7 @@ class APIHandler(BaseHTTPRequestHandler):
                                 except Exception:
                                     pass
                             SYMBOL = new_symbol
+                            strategy.symbol = new_symbol   # F-067
                             TICKER = ticker
                             params.symbol = SYMBOL  # type: ignore[attr-defined]
                             params.ticker = TICKER  # type: ignore[attr-defined]
