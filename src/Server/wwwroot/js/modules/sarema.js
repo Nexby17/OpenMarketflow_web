@@ -93,7 +93,6 @@ function sarSwitchInstance(inst) {
                 <div class="metric-card"><div class="metric-label">SAR Max (0.05–0.5)</div><input id="sarMax" class="input" placeholder="0.2" style="width:80px"></div>
                 <div class="metric-card"><div class="metric-label">EMA период (5–50)</div><input id="sarEmaN" class="input" placeholder="12" style="width:70px"></div>
                 <div class="metric-card"><div class="metric-label">Стоп = N×ATR (1–10)</div><input id="sarStopAtr" class="input" placeholder="3" style="width:70px"></div>
-                <div class="metric-card"><div class="metric-label">TP, R (пусто=выкл)</div><input id="sarTpR" class="input" placeholder="2" style="width:70px"></div>
                 <div class="metric-card"><div class="metric-label">Таймфрейм мин (5–240)</div><input id="sarTfMin" class="input" placeholder="60" style="width:70px"></div>
             </div>
             <div class="text-secondary" style="font-size:11.5px;margin-bottom:4px">Штат бэктеста: AF0 0.02 · Step 0.2 · Max 0.2 · EMA 12 · стоп 3×ATR · H1 · полярность std (не менять — урок WF) · трей
@@ -180,10 +179,8 @@ async function sarLoadPanelData(inst) {
     set('sarMaxLong', ''); set('sarMaxShort', ''); set('sarMaxValue', ''); set('sarBase', 1000000);
     set('sarRiskPct', ''); set('sarDayKill', ''); set('sarLiqFrac', 0.05);
     set('sarAf0', 0.02); set('sarStep', 0.2); set('sarMax', 0.2);
-    set('sarEmaN', 12); set('sarStopAtr', 3); set('sarTpR', 2); set('sarTfMin', 60);
+    set('sarEmaN', 12); set('sarStopAtr', 3); set('sarTfMin', 60);
     // F-065: VP дефолты
-    const sarVpModeEl = document.getElementById('sarVpMode'); if (sarVpModeEl) sarVpModeEl.value = 'off';
-    set('sarVpPct', ''); set('sarVpBin', ''); set('sarVpLookback', '');
     // черновик этого экземпляра (оффлайн-сохранение)
     try {
         const raw = localStorage.getItem('sarSavedParams_' + inst);
@@ -201,13 +198,8 @@ async function sarLoadPanelData(inst) {
             set('sarMax', d.sar_max ?? 0.2);
             set('sarEmaN', d.ema_n ?? 12);
             set('sarStopAtr', d.init_stop_atr ?? 3);
-set('sarTpR', d.tp_R ?? '');
             set('sarTfMin', d.tf_min ?? 60);
             // F-065
-            const mv = document.getElementById('sarVpMode'); if (mv) mv.value = d.vah_val_mode || 'off';
-            set('sarVpPct', d.vah_val_pct ?? '');
-            set('sarVpBin', d.vah_val_bin ?? '');
-            set('sarVpLookback', d.vah_val_lookback ?? '');
         }
     } catch (e) {}
     // живой робот — источник истины (только его /params)
@@ -229,10 +221,6 @@ set('sarTpR', d.tp_R ?? '');
             set('sarStopAtr', p.init_stop_atr ?? 3);
             set('sarTfMin', p.tf_min ?? 60);
             // F-065
-            const mv = document.getElementById('sarVpMode'); if (mv) mv.value = p.vah_val_mode || 'off';
-            set('sarVpPct', p.vah_val_pct ?? '');
-            set('sarVpBin', p.vah_val_bin ?? '');
-            set('sarVpLookback', p.vah_val_lookback ?? '');
             if (msg) msg.textContent = '';
         } else if (msg) {
             msg.textContent = '⚠️ Робот оффлайн — показаны сохранённые значения (применятся при его старте)';
@@ -278,10 +266,236 @@ async function sarUpdateLiveMetrics(inst) {
         <div class="metric-card"><div class="metric-label">PnL (брокер)${priceSrc}</div><div style="font-size:1.05em;font-weight:700;color:${pnlText.startsWith('-') ? 'var(--red)' : 'var(--green)'}">${pnlText}</div></div>
         <div class="metric-card"><div class="metric-label">Последний H1</div><div style="font-size:0.95em;font-weight:600">${lastBar}</div></div>
     `;
-    // F-065: живой VP-блок панели (VAH/VAL/POC + вердикт гейта)
 }
 
-// F-065: VAH/VAL/POC + вердикт VP Mode в панели SAREMA
+
+// ---------- ручная корректировка позиции (как у OF) ----------
+async function sarAdjustPosition() {
+    const inst = sarPanelInst;
+    if (!inst) return;
+    const cfg = sarCfg(inst);
+    const qtyEl = document.getElementById('sarAdjQty');
+    const priceEl = document.getElementById('sarAdjPrice');
+    const resEl = document.getElementById('sarAdjResult');
+    const qty = parseInt(qtyEl.value);
+    const price = parseFloat(priceEl.value);
+    if (isNaN(qty)) { resEl.textContent = '❌ Введите штуки (2 / -1 / 0)'; resEl.style.color = '#ff9800'; return; }
+    if (qty !== 0 && (isNaN(price) || price <= 0)) { resEl.textContent = '❌ При шт != 0 укажите цену > 0'; resEl.style.color = '#ff9800'; return; }
+    const posText = qty === 0 ? 'FLAT' : (qty > 0 ? 'LONG ' + qty : 'SHORT ' + Math.abs(qty));
+    if (!confirm(`Установить позицию ${cfg.label}: ${posText}${qty !== 0 ? ' @ ' + price : ''}?\nОрдера НЕ выставляются — только синхронизация робота с фактом.`)) return;
+    try {
+        const resp = await fetch(sarApi(inst) + '/position/adjust', {
+            method: 'POST', headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({qty: qty, price: qty === 0 ? 0 : price}),
+            signal: AbortSignal.timeout(6000)
+        });
+        const data = await resp.json();
+        if (data.ok) {
+            resEl.textContent = '✓ ' + (qty === 0 ? 'FLAT' : (data.dir === 1 ? 'LONG' : 'SHORT') + ' ' + data.qty + ' @ ' + data.entry + ', стоп ' + data.stop);
+            resEl.style.color = '#4caf50';
+            sarLog('SAREMA[' + cfg.label + ']: ручная корректировка: ' + posText + (qty !== 0 ? ' @ ' + price : ''), 'INFO');
+            setTimeout(() => sarPollAll(), 500);
+        } else {
+            const err = data.error || (data.detail && data.detail.error) || 'ошибка';
+            resEl.textContent = '❌ ' + err;
+            resEl.style.color = '#ef4444';
+            sarLog('SAREMA[' + cfg.label + ']: adjust error: ' + err, 'ERROR');
+        }
+    } catch (e) {
+        resEl.textContent = '❌ Робот недоступен';
+        resEl.style.color = '#ef4444';
+    }
+}
+
+// ---------- сохранение лимитов (только открытый инстанс — урок 22.09) ----------
+async function sarSaveParams() {
+    const inst = sarPanelInst;
+    if (!inst) { return; }
+    const cfg = sarCfg(inst);
+    const sentFor = inst;
+    const numOrNull = (id, integer) => {
+        const e = document.getElementById(id);
+        const raw = (e ? e.value : '').trim();
+        if (raw === '') return null;                       // пусто = без лимита
+        const n = parseFloat(String(raw).replace(',', '.'));
+        if (!isFinite(n) || n < 0) return undefined;       // ошибка валидации
+        return integer ? Math.floor(n) : n;
+    };
+    const maxLong = numOrNull('sarMaxLong', true);
+    const maxShort = numOrNull('sarMaxShort', true);
+    const maxValue = numOrNull('sarMaxValue', false);
+    const baseRaw = (document.getElementById('sarBase')?.value || '').trim();
+    const riskRaw = (document.getElementById('sarRiskPct')?.value || '').trim().replace(',', '.');
+    const killRaw = (document.getElementById('sarDayKill')?.value || '').trim().replace(',', '.');
+    const liqRaw = (document.getElementById('sarLiqFrac')?.value || '').trim().replace(',', '.');
+    const msg = document.getElementById('sarPanelMsg');
+    if (maxLong === undefined || maxShort === undefined || maxValue === undefined) { if (msg) msg.textContent = '❌ Лимиты: число ≥ 0 или пусто (без лимита)'; return; }
+    if (riskRaw !== '' && (!isFinite(parseFloat(riskRaw)) || parseFloat(riskRaw) <= 0 || parseFloat(riskRaw) > 10)) { if (msg) msg.textContent = '❌ Риск %: (0, 10]'; return; }
+    if (killRaw !== '' && !isNaN(parseFloat(killRaw)) && parseFloat(killRaw) >= 0) { if (msg) msg.textContent = '❌ Kill-switch: отрицательный R или пусто (выкл)'; return; }
+    const numField = (id, lo, hi) => {
+        const raw = (document.getElementById(id)?.value || '').trim().replace(',', '.');
+        if (raw === '') return undefined;                     // пусто = дефолт (не отправляем)
+        const n = parseFloat(raw);
+        if (!isFinite(n) || n < lo || n > hi) return 'ERR';
+        return n;
+    };
+    const af0 = numField('sarAf0', 0.005, 0.05);
+    const step = numField('sarStep', 0.002, 0.2);
+    const smax = numField('sarMax', 0.05, 0.5);
+    const emaN = numField('sarEmaN', 5, 50);
+    const stopAtr = numField('sarStopAtr', 1, 10);
+    const tfMin = numField('sarTfMin', 5, 240);
+    if (sigErr.length) { if (msg) msg.textContent = '❌ Вне диапазона: ' + sigErr.join(', '); return; }
+    const patch = {
+        max_long_qty: maxLong,
+        max_short_qty: maxShort,
+        max_value_rub: maxValue,
+        base: baseRaw !== '' ? parseFloat(baseRaw.replace(',', '.')) : undefined,
+        risk_pct: riskRaw !== '' ? parseFloat(riskRaw) / 100 : undefined,
+        day_kill_R: killRaw === '' ? null : parseFloat(killRaw),
+        liq_frac: liqRaw === '' ? null : parseFloat(liqRaw),
+        sar_af0: af0, sar_step: step, sar_max: smax,
+        ema_n: emaN != null ? Math.round(emaN) : undefined,
+        init_stop_atr: stopAtr,
+        tf_min: tfMin != null ? Math.round(tfMin) : undefined,
+    };
+    Object.keys(patch).forEach(k => patch[k] === undefined && delete patch[k]);
+    try {
+        const resp = await fetch(sarApi(inst) + '/params', {
+            method: 'POST', headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(patch), signal: AbortSignal.timeout(4000)
+        });
+        if (!resp.ok) {
+            const e = await resp.json().catch(() => ({}));
+            const errs = e.detail && e.detail.errors ? e.detail.errors.join('; ') : ('HTTP ' + resp.status);
+            if (msg) msg.textContent = '❌ Сервер отклонил: ' + errs;
+            return;
+        }
+        if (sarPanelInst !== sentFor) return;      // панель уже переключили — не пугаем чужим сообщением
+        if (msg) msg.textContent = '✅ Параметры сохранены (' + cfg.label + ')';
+        sarLog('SAREMA[' + cfg.label + ']: параметры обновлены: ' + JSON.stringify(patch), 'INFO');
+    } catch (e) {
+        // робот оффлайн: сохраняем в localStorage ЭТОГО экземпляра, приём при первом /status (паттерн OF-BR)
+        localStorage.setItem('sarSavedParams_' + inst, JSON.stringify(patch));
+        if (sarPanelInst === sentFor && msg) msg.textContent = '⚠️ Робот оффлайн — параметры применятся при его старте';
+    }
+}
+
+// ---------- управление ----------
+// Паттерн OF-роботов (F-012): Старт = запуск процесса через C# proxy (/api/of/process/sar_xxx/start)
+// + /start API; Стоп = /stop API (close FLAT) + stop процесса; Пауза/Резюм — прямые API.
+// Работает даже когда робот был никогда не запущен (proxy порождает процесс).
+const SAR_ACTION_COOLDOWN = {};
+
+async function sarRobotApi(inst, action) {
+    const cfg = sarCfg(inst);
+    const procName = 'sar_' + inst;
+    const now = Date.now();
+    if (SAR_ACTION_COOLDOWN[procName] && now - SAR_ACTION_COOLDOWN[procName] < 5000) {
+        sarLog('SAREMA[' + cfg.label + ']: команда ' + action + ' слишком часто — подождите 5с', 'WARN');
+        return;
+    }
+    SAR_ACTION_COOLDOWN[procName] = now;
+    try {
+        if (action === 'start') {
+            // F-012: старт процесса = spawn через C# RobotProcessManager (probe /health уже внутри)
+            showToast('⏳ Запуск процесса ' + cfg.label + ' (прогрев Finam ~15с)...', 'info');
+            const pr = await fetch('/api/of/process/' + procName + '/start', {method: 'POST', signal: AbortSignal.timeout(40000)});
+            const pd = await pr.json();
+            if (!pd.ok) {
+                showToast('❌ Процесс ' + cfg.label + ' не запустился: ' + (pd.error || '?'), 'error');
+                sarLog('SAREMA[' + cfg.label + ']: process start failed: ' + (pd.error || '?'), 'ERROR');
+                return;
+            }
+            showToast('✅ Процесс ' + cfg.label + ' запущен' + (pd.alreadyRunning ? ' (уже работал)' : '') + (pd.alreadyOnPort ? ' (порт уже занят живым роботом)' : ''), 'ok');
+            sarLog('SAREMA[' + cfg.label + ']: process started (pid=' + (pd.pid || '?') + ')', 'INFO');
+            // F-059: робот стартует в stopped — после spawn переводим в running
+            await new Promise(r => setTimeout(r, 800));
+            await fetch(sarApi(inst) + '/start', {method: 'POST', signal: AbortSignal.timeout(3000)});
+            sarLog('SAREMA[' + cfg.label + ']: trading started (mode=running)', 'INFO');
+        }
+        if (action === 'stop') {
+            // OF-паттерн: сначала /stop API (позиция FLAT, отмена ордеров), затем процесс stop
+            try {
+                await fetch(sarApi(inst) + '/stop', {method: 'POST', signal: AbortSignal.timeout(3000)});
+            } catch (e) { /* робот мог уже умереть — не критично */ }
+            const pr = await fetch('/api/of/process/' + procName + '/stop', {method: 'POST', signal: AbortSignal.timeout(10000)});
+            const pd = await pr.json().catch(() => ({}));
+            sarLog('SAREMA[' + cfg.label + ']: stopped (FLAT check + process kill)', 'INFO');
+            showToast('⏹ ' + cfg.label + ' остановлен' + (pd.killed ? ' (процесс убит)' : ''), 'info');
+        }
+        if (action === 'pause' || action === 'resume') {
+            // прямые API (процесс обязан быть жив; кнопки disabled по mode)
+            await fetch(sarApi(inst) + '/' + action, {method: 'POST', signal: AbortSignal.timeout(3000)});
+            sarLog('SAREMA[' + cfg.label + ']: ' + action + ' OK', 'INFO');
+        }
+    } catch (e) {
+        sarLog('SAREMA[' + cfg.label + ']: ' + action + ' ошибка: ' + e.message, 'ERROR');
+        showToast('❌ ' + cfg.label + ': ' + action + ' — ' + e.message, 'error');
+    }
+    setTimeout(() => sarPollAll(), 1500);
+}
+
+async function sarRobotRestart(inst) {
+    const cfg = sarCfg(inst);
+    // OF-паттерн: restart только из FLAT (робот сам проверит), cooldown 90с
+    if (window['_sarRestarting_' + inst]) return;
+    window['_sarRestarting_' + inst] = true;
+    try {
+        const resp = await fetch(sarApi(inst) + '/restart', {method: 'POST', signal: AbortSignal.timeout(5000)});
+        const data = await resp.json();
+        if (data.ok) {
+            showToast('🔄 ' + cfg.label + ': перезапуск запланирован (~10с)', 'info');
+            sarLog('SAREMA[' + cfg.label + ']: restart scheduled (' + (data.reason || 'manual') + ')', 'INFO');
+        } else {
+            showToast('❌ ' + cfg.label + ': restart отклонён — ' + (data.reason || data.error || '?'), 'error');
+        }
+    } catch (e) {
+        // робот оффлайн: полный process stop + start через proxy
+        try {
+            await fetch('/api/of/process/sar_' + inst + '/stop', {method: 'POST', signal: AbortSignal.timeout(10000)});
+            await fetch('/api/of/process/sar_' + inst + '/start', {method: 'POST', signal: AbortSignal.timeout(40000)});
+            showToast('🔄 ' + cfg.label + ': процесс перезапущен (proxy)', 'info');
+        } catch (e2) {
+            showToast('❌ ' + cfg.label + ': restart failed — ' + e2.message, 'error');
+        }
+    } finally {
+        setTimeout(() => { window['_sarRestarting_' + inst] = false; sarPollAll(); }, 12000);
+    }
+}
+
+async function sarAction(inst, action) {
+    // легаси-обёртка (использовалась до кнопок OF-паттерна)
+    return sarRobotApi(inst, action);
+}
+
+// ---------- polling + строка ----------
+async function sarPollInstance(inst) {
+    const cfg = sarCfg(inst);
+    try {
+        const resp = await fetch(sarApi(inst) + '/status', {signal: AbortSignal.timeout(2000)});
+        window['sarRobot_' + inst] = await resp.json();
+        if (!window['_sarWasOnline_' + inst]) {
+            window['_sarWasOnline_' + inst] = true;
+            const saved = localStorage.getItem('sarSavedParams_' + inst);
+            if (saved) {
+                try {
+                    await fetch(sarApi(inst) + '/params', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: saved});
+                    localStorage.removeItem('sarSavedParams_' + inst);
+                    sarLog('SAREMA[' + cfg.label + ']: параметры из localStorage применены', 'INFO');
+                } catch (e) {}
+            }
+        }
+    } catch (e) {
+        window['sarRobot_' + inst] = null;
+        window['_sarWasOnline_' + inst] = false;
+    }
+}
+
+async function sarPollAll() {
+    for (const inst of SAR_INSTANCE_ORDER) await sarPollInstance(inst);
+    sarRenderTable();
+}
 
 function sarRenderTable() {
     const tbody = document.getElementById('sarRobotsTable');
@@ -315,7 +529,6 @@ function sarRenderTable() {
         // F-077: объём позиции (шт × цена входа) вместо «Цена (источник)»
         const volumeText = (p.dir && p.entry) ? `${(p.qty * p.entry).toFixed(0)} ₽` : '—';
         const stopText = p.stop ? p.stop.toFixed(2) : '—';
-        // F-082: общий PnL = реализованный + нереализованный (по открытой позиции, тик)
         const pnlData = st.pnl || {};
         const pnl = (pnlData.total_with_unrealized != null) ? pnlData.total_with_unrealized : (pnlData.total || 0);
         const lim = st.limits || {};

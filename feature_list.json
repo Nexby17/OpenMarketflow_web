@@ -1316,7 +1316,7 @@
       "status": "done (11 running)",
       "owner": "main",
       "date": "2026-10-19",
-      "summary": "Дмитрий: «удали это у роботов — из кода и из UI». Удалён VP фильтр (Volume Profile входа): UI блок (Mode/VA%/Bin/Окно/VAH/POC/VAL/вердикт), ParamsPatch поля, config defaults, strategy VP gate, /status vp.state() вызов. vp_sarema.py остаётся на диске (не импортируется). Все 11 инстансов running.",
+      "summary": "Дмитрий: «удали это у роботов — из кода и из UI». Удалён VP фильтр (Volume Profile входа): UI блок (Mode/VA%/Bin/Окно/VAH/POC/VAL/вердикт), ParamsPatch поля, config defaults, strategy VP gate, /status vp.state() вызов. vp_sarema.py остаётся на диске (не импортируется). Все 11 инстансов running. fix13 (17:10): окончательная зачистка VP из UI (74 строки), CDP-проверка пройдена.",
       "date_updated": "2026-10-19"
     }
   ]
