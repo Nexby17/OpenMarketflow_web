@@ -376,6 +376,7 @@ class OrderFlowStrategy:
         # F-067: Phase Zones state (гистерезис направления зоны)
         self._phase_dir: int = 0           # 1 = LONG-зона, -1 = SHORT-зона, 0 = BOTH/не готово
         self._phase_last_log: str = ""
+        self._pending_cvd_trend: Optional[dict] = None   # F-067b: сигнал кроссовера, ждущий входа
         self._last_average_price: float = 0.0
         self._last_pyramid_price: float = 0.0
         self._lot_queue: deque[LotEntry] = deque()
@@ -706,10 +707,21 @@ class OrderFlowStrategy:
         # независимо от тайминг-гейта/позиции. Раньше EMA жил только внутри generate_signals
         # (путь входа), который вне окна не вызывался → CVD Trend «замерзал» (ready=False,
         # emaFast=None) и после открытия окна первые 15 баров индикатор был холодным.
-        # Здесь только прогрев состояния: результат сигнала отбрасывается, входы по-прежнему
-        # под полным контролем process_tick (тайминг-гейт/фильтры не затронуты).
+        # F-067b fix (20.10): сигнал кроссовера больше НЕ выбрасывается! Раньше on_bar_close
+        # поглощал его, и если кроссовер случился вне окна/в позиции — вход по CVD Trend
+        # терялся навсегда (баг Дмитрия 20.10: «сигнал есть, входа нет»). Теперь сигнал
+        # сохраняется в pending_cvd_trend и забирается первым же process_tick, где штатно
+        # пройдут все гейты (тайминг/фаза/направление).
         try:
-            self.signals.check_cvd_trend(self._current_price)
+            _sig = self.signals.check_cvd_trend(self._current_price)
+            if _sig is not None:
+                self._pending_cvd_trend = {
+                    "direction": _sig.direction,
+                    "signal_type": _sig.signal_type,
+                    "ts": _t.time() if (_t := __import__("time")) else 0,
+                    "price": _sig.price,
+                }
+                log.info(f"PENDING CVD Trend entry saved: {self._pending_cvd_trend}")
         except Exception:
             pass
 
@@ -951,6 +963,17 @@ class OrderFlowStrategy:
                                               use_cvd=self.p.use_cvd,
                                               use_ob_imbalance=False,
                                               use_cvd_accel=self.p.use_cvd_accel)
+
+        # F-067b: pending-сигнал CVD Trend (сохранён в on_bar_close, если кроссовер случился
+        # вне окна/в позиции). Если обычные сигналы пусты — используем pending как входной сигнал.
+        if not sigs and self._pending_cvd_trend:
+            from orderflow_engine import OFSignal
+            import time as _t
+            pd_ = self._pending_cvd_trend
+            sigs = [OFSignal(signal_type="cvd_trend", direction=pd_["direction"],
+                             strength=0.9, price=price, timestamp=_t.time())]
+            log.info(f"PENDING CVD Trend -> entry signal used: {pd_['direction']}")
+            self._pending_cvd_trend = None
 
         if len(sigs) < self.p.signal_confirm_count:
             return None
