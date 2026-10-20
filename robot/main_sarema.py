@@ -79,6 +79,7 @@ class ParamsPatch(BaseModel):
     vah_val_pct: float | None = None
     vah_val_lookback: int | float | None = None
     tp_R: int | float | None = None   # F-084: take-profit по R
+    max_signal_age: int | float | None = None   # F-086: окно сигналов
 
 
 _CS_PORT = int(os.environ.get("CS_SERVER_PORT", "5050"))  # F-072: C# server for live tick
