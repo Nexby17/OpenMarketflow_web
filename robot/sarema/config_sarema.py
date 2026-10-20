@@ -112,10 +112,18 @@ def validate_params(patch: dict) -> tuple[dict, list[str]]:
         v = patch["max_signal_age"]
         if v is None:
             clean["max_signal_age"] = None
-        elif isinstance(v, (int, float)) and 1 <= v <= 10:
+        elif isinstance(v, (int, float)) and 1 <= v <= 50:
             clean["max_signal_age"] = int(v)
         else:
-            errors.append("max_signal_age must be in [1, 10] or null")
+            errors.append("max_signal_age must be in [1, 50] or null")
+    if "tp_R" in patch:
+        v = patch["tp_R"]
+        if v is None:
+            clean["tp_R"] = None
+        elif isinstance(v, (int, float)) and 0.1 <= v <= 20:
+            clean["tp_R"] = float(v)
+        else:
+            errors.append("tp_R must be in [0.1, 20] or null")
     if "day_kill_R" in patch:
         v = patch["day_kill_R"]
         if v is None:

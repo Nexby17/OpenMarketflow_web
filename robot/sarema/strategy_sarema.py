@@ -10,6 +10,7 @@ from sarema.config_sarema import apply_limits_qty
 from sarema.risk_sarema import (risk_sizing, apply_lot_rounding, apply_liq_cap,
                                 check_kill_switch)
 from sarema.orders_sarema import BUY, SELL
+from sarema.vp_sarema import VolumeProfileSarema, gate_check
 
 log = logging.getLogger("sarema.strategy")
 
@@ -27,6 +28,11 @@ class SaremaStrategy:
         self.stop_order_id: str | None = None
         self.last_stats: dict = {}
         # F-065: Volume Profile (VAH/VAL/POC) — фильтр входа как у OF-роботов
+        self.vp = VolumeProfileSarema(
+            bin_size=cfg.get("vah_val_bin") or 0.0,
+            va_pct=cfg.get("vah_val_pct") or 70.0,
+            lookback=cfg.get("vah_val_lookback") or 200,
+        )
 
     # ---------- F-065: VP helpers ----------
     def _vp_mode(self) -> str:

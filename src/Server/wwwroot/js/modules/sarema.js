@@ -94,7 +94,8 @@ function sarSwitchInstance(inst) {
                 <div class="metric-card"><div class="metric-label">EMA период (5–50)</div><input id="sarEmaN" class="input" placeholder="12" style="width:70px"></div>
                 <div class="metric-card"><div class="metric-label">Стоп = N×ATR (1–10)</div><input id="sarStopAtr" class="input" placeholder="3" style="width:70px"></div>
                 <div class="metric-card"><div class="metric-label">TP, R (пусто=выкл)</div><input id="sarTpR" class="input" placeholder="2" style="width:70px"></div>
-                <div class="metric-card"><div class="metric-label">Таймфрейм мин (5–240)</div><input id="sarTfMin" class="input" placeholder="60" style="width:70px"></div>
+                <div class="metric-card"><div class="metric-label">Таймфрейм мин (5–240)</div>
+                <div class="metric-card"><div class="metric-label">Окно сигн. (бары)</div><input id="sarMaxSigAge" class="input" placeholder="8" style="width:70px"></div><input id="sarTfMin" class="input" placeholder="60" style="width:70px"></div>
             </div>
             <div class="text-secondary" style="font-size:11.5px;margin-bottom:4px">Штат бэктеста: AF0 0.02 · Step 0.2 · Max 0.2 · EMA 12 · стоп 3×ATR · H1 · полярность std (не менять — урок WF) · трей
             <hr style="border-color:#2D2D44;margin:12px 0">
@@ -200,6 +201,7 @@ async function sarLoadPanelData(inst) {
             set('sarEmaN', d.ema_n ?? 12);
             set('sarStopAtr', d.init_stop_atr ?? 3);
         set('sarTpR', d.tp_R ?? '');
+        set('sarMaxSigAge', d.max_signal_age ?? 8);
             set('sarTfMin', d.tf_min ?? 60);
             // F-065
         }
@@ -347,6 +349,7 @@ async function sarSaveParams() {
     const emaN = numField('sarEmaN', 5, 50);
     const stopAtr = numField('sarStopAtr', 1, 10);
     const tpR = numField('sarTpR', 0.1, 20);
+    const maxSigAge = numField('sarMaxSigAge', 1, 50);
     const tfMin = numField('sarTfMin', 5, 240);
     if (sigErr.length) { if (msg) msg.textContent = '❌ Вне диапазона: ' + sigErr.join(', '); return; }
     const patch = {
@@ -361,6 +364,7 @@ async function sarSaveParams() {
         ema_n: emaN != null ? Math.round(emaN) : undefined,
         init_stop_atr: stopAtr,
         tp_R: tpR != null ? tpR : null,
+        max_signal_age: maxSigAge != null ? maxSigAge : null,
         tf_min: tfMin != null ? Math.round(tfMin) : undefined,
     };
     Object.keys(patch).forEach(k => patch[k] === undefined && delete patch[k]);
