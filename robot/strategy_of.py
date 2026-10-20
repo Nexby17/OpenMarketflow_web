@@ -110,7 +110,8 @@ class OFParams:
     use_vah_val: bool = False      # enable VAH/VAL entry filter
     vah_val_pct: int = 70          # value area percentage (70%)
     vah_val_bin_size: int = 5      # VP bin size in points
-    vah_val_mode: str = "fade"     # "fade" = counter-trend at VAH/VAL, "breakout" = trend with VAH/VAL
+    vah_val_mode: str = "range"     # "fade" = counter-trend at VAH/VAL, "breakout" = trend with VAH/VAL
+    vah_val_block_inside: bool = False  # F-091: True = внутри VA торговля запрещена полностью (Range v2)
     # VWEMA regime filter
     use_vwema: bool = False       # enable VWEMA trend filter
     vwema_fast: int = 20          # fast VWEMA period
@@ -929,12 +930,23 @@ class OrderFlowStrategy:
             val = self.vp.val
             if vah > 0 and val > 0:
                 if self.p.vah_val_mode == "range":
-                    # RANGE mode: trade ONLY inside VA, block outside
-                    if val <= price <= vah:
-                        log.info(f"VAH/VAL RANGE: price={fmt_price(price)} inside VA (VAL={fmt_price(val)}..VAH={fmt_price(vah)}) → PASS")
+                    # F-091 RANGE v2 (Дмитрий 20.10): зона-фильтр направления.
+                    # У VAH/выше → только SHORT; у VAL/ниже → только LONG.
+                    # Внутри VA → оба, если vah_val_block_inside=False; при True — блок.
+                    # Сам по себе край вход НЕ даёт: ждём сигнал (CVD Trend/dm_wall/Accel)
+                    # и проверяем его направление на соответствие зоне ниже.
+                    # Усреднение существующей позиции в этот гейт НЕ входит (вариант А).
+                    if price >= vah:
+                        entry_zone = "VAH"
+                        log.info(f"VAH/VAL RANGE v2: price={fmt_price(price)} >= VAH={fmt_price(vah)} → зона SHORT-only (ждём сигнал)")
+                    elif price <= val:
+                        entry_zone = "VAL"
+                        log.info(f"VAH/VAL RANGE v2: price={fmt_price(price)} <= VAL={fmt_price(val)} → зона LONG-only (ждём сигнал)")
                     else:
-                        log.info(f"VAH/VAL RANGE: price={fmt_price(price)} OUTSIDE VA (VAL={fmt_price(val)}..VAH={fmt_price(vah)}) → BLOCK")
-                        return None
+                        if self.p.vah_val_block_inside:
+                            log.info(f"VAH/VAL RANGE v2: inside VA (VAL={fmt_price(val)}..VAH={fmt_price(vah)}) + block_inside → BLOCK")
+                            return None
+                        log.info(f"VAH/VAL RANGE v2: inside VA → оба направления разрешены")
                 else:
                     # FADE / BREAKOUT mode (original logic): entry at VAH/VAL edges
                     if price >= vah:
@@ -942,7 +954,7 @@ class OrderFlowStrategy:
                         log.info(f"VAH/VAL GATE: price={fmt_price(price)} >= VAH={fmt_price(vah)} (VAL={fmt_price(val)}) → zone=VAH → PASS")
                     elif price <= val:
                         entry_zone = "VAL"
-                        log.info(f"VAH/VAL GATE: price={fmt_price(price)} <= VAL={fmt_price(val)} (VAH={fmt_price(vah)}) → zone=VAL → PASS")
+                        log.info(f"VAH/VAL GATE: price={fmt_price(price)} <= VAL={fmt_price(val)} (VAH={fmt_price(val)}) → zone=VAL → PASS")
                     else:
                         log.info(f"VAH/VAL GATE: price={fmt_price(price)} inside VA (VAL={fmt_price(val)}..VAH={fmt_price(vah)}) → BLOCK")
                         return None  # inside Value Area → no entry
@@ -1000,6 +1012,18 @@ class OrderFlowStrategy:
         if self.p.direction_filter == "short" and direction == LONG:
             log.info("ENTRY BLOCKED by direction_filter=short (signal=LONG)")
             return None
+
+        # F-091: VAH/VAL RANGE v2 — зона-фильтр направления (у VAH только SHORT, у VAL только LONG,
+        # внутри VA оба; при vah_val_block_inside — внутри VA входы запрещены полностью).
+        if self.p.use_vah_val and self.vp and self.vp.ready and self.p.vah_val_mode == "range":
+            vah, val = self.vp.vah, self.vp.val
+            if vah > 0 and val > 0:
+                if price >= vah and direction == LONG:
+                    log.info(f"ENTRY BLOCKED by VAH/VAL zone: LONG у VAH запрещён (VAH={fmt_price(vah)}) — только SHORT")
+                    return None
+                if price <= val and direction == SHORT:
+                    log.info(f"ENTRY BLOCKED by VAH/VAL zone: SHORT у VAL запрещён (VAL={fmt_price(val)}) — только LONG")
+                    return None
 
         # F-067: Phase Zones — зонный гейт направления (низ LONG / верх SHORT / середина оба)
         if self.p.phase_filter:
@@ -1119,7 +1143,10 @@ class OrderFlowStrategy:
         # Позиция не закрывается — выход только по обычным правилам (partial TP,
         # Min Profit/Lot, Close % All, дневной SL). При возврате цены внутрь VA
         # штатный catch-up доберёт ВСЕ пропущенные уровни по текущей цене.
-        if self.is_outside_va(price):
+        # F-091 (20.10, вариант А): при RANGE v2 усреднение НЕ гейтится зоной —
+        # Dmitry: «вариант А для усреднения» (усреднение всегда разрешено).
+        range_v2 = self.p.vah_val_mode == "range"
+        if (not range_v2) and self.is_outside_va(price):
             if not self._avg_va_block_logged:
                 log.info(f"AVG VA BLOCK: price={fmt_price(price)} outside VA — averaging paused, missed levels accumulate for catch-up")
                 self._avg_va_block_logged = True

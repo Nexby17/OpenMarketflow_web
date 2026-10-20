@@ -5417,6 +5417,12 @@ async function ofRobotEditPanel() {
                 <div class="metric-card"><div class="metric-label">Value Area %</div><input id="editOfVaPct" class="input" type="number" value="${p.vah_val_pct||70}" style="width:60px"></div>
                 <div class="metric-card"><div class="metric-label">VP Bin Size</div><input id="editOfVpBin" class="input" type="number" value="${p.vah_val_bin_size||50}" style="width:60px"></div>
                 <div class="metric-card"><div class="metric-label">VP Mode</div><select id="editOfVpMode" class="input" style="width:100px"><option value="range" ${(p.vah_val_mode||'range')==='range'?'selected':''}>Range</option><option value="fade" ${p.vah_val_mode==='fade'?'selected':''}>Fade</option><option value="breakout" ${p.vah_val_mode==='breakout'?'selected':''}>Breakout</option></select></div>
+                <div class="metric-card" style="display:flex;align-items:center;gap:8px">
+                    <label style="display:flex;align-items:center;gap:6px;cursor:pointer" title="Range v2: если включено — внутри Value Area торговля полностью запрещена (у VAH только SHORT, у VAL только LONG, внутри — блок). Если выключено — внутри VA разрешены оба направления">
+                        <input id="editOfVahValBlockInside" type="checkbox" ${(p.vah_val_block_inside)?'checked':''} style="width:18px;height:18px;cursor:pointer">
+                        <span style="font-size:13px">Блок внутри VA</span>
+                    </label>
+                </div>
                 <div class="metric-card" style="min-width:60px"><div class="metric-label">VAH</div><div id="ofVpVah" style="font-size:16px;font-weight:bold;color:#F44336">—</div></div>
                 <div class="metric-card" style="min-width:60px"><div class="metric-label">POC</div><div id="ofVpPoc" style="font-size:16px;font-weight:bold;color:#FF9800">—</div></div>
                 <div class="metric-card" style="min-width:60px"><div class="metric-label">VAL</div><div id="ofVpVal" style="font-size:16px;font-weight:bold;color:#4CAF50">—</div></div>
@@ -5702,6 +5708,7 @@ async function ofRobotSaveFromPanel() {
         vah_val_pct: parseInt(el('editOfVaPct')?.value) || 70,
         vah_val_bin_size: parseInt(el('editOfVpBin')?.value) || 50,
         vah_val_mode: el('editOfVpMode')?.value || 'range',
+        vah_val_block_inside: el('editOfVahValBlockInside')?.checked || false,
 
         hl_filter: el('editOfUseHl')?.checked || false,
         hl_window: Math.max(2, Math.min(parseInt(el('editOfHlWindow')?.value) || 24, 30)),
@@ -6110,6 +6117,12 @@ async function ofPerpRobotEditPanel() {
                 <div class="metric-card"><div class="metric-label">Value Area %</div><input id="editOfPerpVahValPct" class="input" type="number" min="50" max="90" value="${p.vah_val_pct||70}" style="width:60px"></div>
                 <div class="metric-card"><div class="metric-label">VP Bin Size</div><input id="editOfPerpVahValBin" class="input" type="number" min="1" max="500" value="${p.vah_val_bin_size||5}" style="width:60px"></div>
                 <div class="metric-card"><div class="metric-label">VP Mode</div><select id="editOfPerpVahValMode" class="input" style="width:90px;font-size:12px;background:transparent;color:#fff;border:1px solid #2D4A6D"><option value="range" ${(p.vah_val_mode||'range')==='range'?'selected':''}>Range</option><option value="fade" ${p.vah_val_mode==='fade'?'selected':''}>Fade</option><option value="breakout" ${p.vah_val_mode==='breakout'?'selected':''}>Breakout</option></select></div>
+                <div class="metric-card" style="display:flex;align-items:center;gap:8px">
+                    <label style="display:flex;align-items:center;gap:6px;cursor:pointer" title="Range v2: если включено — внутри Value Area торговля полностью запрещена (у VAH только SHORT, у VAL только LONG, внутри — блок). Если выключено — внутри VA разрешены оба направления">
+                        <input id="editOfPerpVahValBlockInside" type="checkbox" ${(p.vah_val_block_inside)?'checked':''} style="width:18px;height:18px;cursor:pointer">
+                        <span style="font-size:13px">Блок внутри VA</span>
+                    </label>
+                </div>
                 <div class="metric-card" style="min-width:80px"><div class="metric-label">VAH</div><div id="ofPerpVpVah" style="font-size:16px;font-weight:bold;color:#42A5F5">—</div></div>
                 <div class="metric-card" style="min-width:80px"><div class="metric-label">POC</div><div id="ofPerpVpPoc" style="font-size:16px;font-weight:bold;color:#FFB74D">—</div></div>
                 <div class="metric-card" style="min-width:80px"><div class="metric-label">VAL</div><div id="ofPerpVpVal" style="font-size:16px;font-weight:bold;color:#42A5F5">—</div></div>
@@ -6350,6 +6363,7 @@ async function ofPerpRobotSaveFromPanel() {
         vah_val_pct: parseInt(el('editOfPerpVahValPct')?.value) || 70,
         vah_val_bin_size: parseInt(el('editOfPerpVahValBin')?.value) || 5,
         vah_val_mode: el('editOfPerpVahValMode')?.value || 'range',
+        vah_val_block_inside: el('editOfPerpVahValBlockInside')?.checked || false,
         use_vah_val: el('editOfPerpUseVahVal')?.checked || el('togglePerpVp')?.checked || false,
         hl_filter: el('editOfPerpUseHl')?.checked || false,
         hl_window: Math.max(2, Math.min(parseInt(el('editOfPerpHlWindow')?.value) || 15, 30)),
