@@ -976,6 +976,10 @@ class OrderFlowStrategy:
             self._pending_cvd_trend = None
 
         if len(sigs) < self.p.signal_confirm_count:
+            # F-080b: прозрачность — сигнал(ы) есть, но их меньше confirm-порога
+            if sigs:
+                types = ", ".join(f"{s.signal_type}({'LONG' if s.direction == 1 else 'SHORT'})" for s in sigs)
+                log.info(f"ENTRY SIGNALS below confirm ({len(sigs)}/{self.p.signal_confirm_count}): {types}")
             return None
 
         # All signals must agree on direction
