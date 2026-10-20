@@ -1389,41 +1389,40 @@ class OrderFlowStrategy:
                 else:
                     return []
 
-        actions = []
-
-        while self._lot_queue:
-            last = self._lot_queue[-1]
-
-            # Grace period: don't TP a lot that was just added (2 sec)
-            if last.added_ts > 0 and (time.monotonic() - last.added_ts) < 2.0:
-                break
-
-            pnl_pts = (price - last.price) * last.side
-
-            if pnl_pts < self.p.spread:
-                break
-
-            # Close this lot — SELL if LONG, BUY if SHORT
-            side = "sell" if self._dir == LONG else "buy"
-
-            # Trade and PnL recorded in main_of.py after real broker fill
-            self._total_lots -= last.lots
-            self._lot_queue.pop()  # LIFO — remove from end
-
-            actions.append({
-                'action': 'partial_tp',
-                'side': side,
-                'qty': last.lots,
-                'price': price,
-                'entryPrice': last.price,
-                'entrySide': last.side,
-                'signal': self._signal_type,
-            })
-
-        if not actions:
+        # ЗАКОН Дмитрия (20.10): TP строго ПО ОДНОМУ ЛОТУ за тик. После каждого
+        # закрытия — пересчёт на следующем тике (грейс 2с + цена пересчитается).
+        # Пачечное закрытие всех прибыльных слоёв за один тик запрещено.
+        if not self._lot_queue:
             return []
 
-        # Update state after all closes
+        last = self._lot_queue[-1]
+
+        # Grace period: don't TP a lot that was just added (2 sec)
+        if last.added_ts > 0 and (time.monotonic() - last.added_ts) < 2.0:
+            return []
+
+        pnl_pts = (price - last.price) * last.side
+        if pnl_pts < self.p.spread:
+            return []
+
+        # Close this lot — SELL if LONG, BUY if SHORT
+        side = "sell" if self._dir == LONG else "buy"
+
+        # Trade and PnL recorded in main_of.py after real broker fill
+        self._total_lots -= last.lots
+        self._lot_queue.pop()  # LIFO — remove from end
+
+        actions = [{
+            'action': 'partial_tp',
+            'side': side,
+            'qty': last.lots,
+            'price': price,
+            'entryPrice': last.price,
+            'entrySide': last.side,
+            'signal': self._signal_type,
+        }]
+
+        # Update state after close (recompute avg from remaining queue)
         if self._lot_queue:
             if self._dir == SHORT:
                 self._last_average_price = max(e.price for e in self._lot_queue)
@@ -1439,11 +1438,8 @@ class OrderFlowStrategy:
             self._lock_entry(10.0)
             self._round_trips += 1
 
-        if len(actions) > 1:
-            log.info(f"PARTIAL_TP CATCHUP {len(actions)} lots @ {fmt_price(price)} | remaining={self._total_lots}")
-        else:
-            a = actions[0]
-            log.info(f"PARTIAL_TP {a['side']} {a['qty']} @ {fmt_price(price)} | remaining={self._total_lots}")
+        a = actions[0]
+        log.info(f"PARTIAL_TP {a['side']} {a['qty']} @ {fmt_price(price)} | remaining={self._total_lots}")
 
         return actions
 
