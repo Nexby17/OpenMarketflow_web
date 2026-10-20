@@ -223,6 +223,8 @@ async function sarLoadPanelData(inst) {
             set('sarMax', p.sar_max ?? 0.2);
             set('sarEmaN', p.ema_n ?? 12);
             set('sarStopAtr', p.init_stop_atr ?? 3);
+            set('sarTpR', p.tp_R ?? '');
+            set('sarMaxSigAge', p.max_signal_age ?? 8);
             set('sarTfMin', p.tf_min ?? 60);
             // F-065
             if (msg) msg.textContent = '';
@@ -343,14 +345,16 @@ async function sarSaveParams() {
         if (!isFinite(n) || n < lo || n > hi) return 'ERR';
         return n;
     };
-    const af0 = numField('sarAf0', 0.005, 0.05);
-    const step = numField('sarStep', 0.002, 0.2);
-    const smax = numField('sarMax', 0.05, 0.5);
-    const emaN = numField('sarEmaN', 5, 50);
-    const stopAtr = numField('sarStopAtr', 1, 10);
-    const tpR = numField('sarTpR', 0.1, 20);
-    const maxSigAge = numField('sarMaxSigAge', 1, 50);
-    const tfMin = numField('sarTfMin', 5, 240);
+    const sigErr = [];
+    const checkField = (id, v, label) => { if (v === 'ERR') sigErr.push(label); };
+    const af0 = numField('sarAf0', 0.005, 0.05);   checkField('sarAf0', af0, 'SAR af0');
+    const step = numField('sarStep', 0.002, 0.2);  checkField('sarStep', step, 'SAR step');
+    const smax = numField('sarMax', 0.05, 0.5);    checkField('sarMax', smax, 'SAR max');
+    const emaN = numField('sarEmaN', 5, 50);       checkField('sarEmaN', emaN, 'EMA N');
+    const stopAtr = numField('sarStopAtr', 1, 10); checkField('sarStopAtr', stopAtr, 'Stop ATR');
+    const tpR = numField('sarTpR', 0.1, 20);       checkField('sarTpR', tpR, 'TP R');
+    const maxSigAge = numField('sarMaxSigAge', 1, 50); checkField('sarMaxSigAge', maxSigAge, 'Signal window');
+    const tfMin = numField('sarTfMin', 5, 240);    checkField('sarTfMin', tfMin, 'TF min');
     if (sigErr.length) { if (msg) msg.textContent = '❌ Вне диапазона: ' + sigErr.join(', '); return; }
     const patch = {
         max_long_qty: maxLong,
