@@ -523,7 +523,7 @@ function sarRenderTable() {
             if (noMsg) noMsg.style.display = 'none';
             rows += `<tr data-inst="${inst}"${activeBg} style="cursor:pointer" title="Двойной клик — панель робота (доступна оффлайн)">
                 <td><strong>${cfg.label}</strong></td>
-                <td class="red">● оффлайн</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td id="sarLivePrice_off" class="text-secondary">—</td><td>—</td><td>—</td>
+                <td class="red">● оффлайн</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td id="sarLivePrice_off" class="text-secondary">—</td><td>—</td><td>—</td><td>—</td>
                 <td>
                     <button class="btn btn-success btn-sm" onclick="sarRobotApi('${inst}','start')" title="Запустить процесс робота">▶</button>
                     <button class="btn btn-danger btn-sm" onclick="sarRobotApi('${inst}','stop')" title="Остановить процесс (kill по порту)">⏹</button>
@@ -542,6 +542,7 @@ function sarRenderTable() {
         const volumeText = (p.dir && p.entry) ? `${(p.qty * p.entry).toFixed(0)} ₽` : '—';
         const stopText = p.stop ? p.stop.toFixed(2) : '—';
         const pnlData = st.pnl || {};
+        const jrnl = (typeof st.journal_pnl === 'number') ? st.journal_pnl : 0;   // F-091: Σ закрытых сделок журнала
         const pnl = (pnlData.total_with_unrealized != null) ? pnlData.total_with_unrealized : (pnlData.total || 0);
         const lim = st.limits || {};
         const isLong = p.dir === 1;
@@ -560,6 +561,7 @@ function sarRenderTable() {
             <td id="sarLivePrice_${inst}" style="font-weight:600">${(window._sarLivePrices || {})[inst] || '—'}</td>
             <td>${volumeText}</td>
             <td>${pnl >= 0 ? '+' : ''}${pnl.toFixed(0)} ₽</td>
+            <td id="sarJournalPnl_${inst}" style="font-weight:600">${jrnl >= 0 ? '+' : ''}${jrnl.toFixed(0)} ₽</td>
             <td style="font-size:12px">${limUsed}<br><span class="text-secondary">${killText} · risk ${(risk.risk_pct * 100).toFixed(1) ?? '?'}%</span></td>
             <td style="font-size:12px">${st.last_bar ? String(st.last_bar).replace('T', ' ').slice(0, 16) : '—'}${st.stale ? ' <span class="red">⚠ stale</span>' : ''}</td>
             <td>

@@ -163,10 +163,15 @@ def status():
         "dir": state.direction,
         "value_used": state.lots_qty * state.entry_price if state.entry_price else 0.0,
     }
+    # F-091: общий ПнЛ торгового журнала = Σ pnl закрытых сделок (реальные fill-цены)
+    _hist = state.trade_history or []
+    _journal_pnl = sum((r.get("close") or {}).get("pnl") or 0.0
+                       for r in _hist if r.get("status") == "closed")
     return {
         "robot": "sarema", "ticker": TICKER, "symbol": SYMBOL, "port": PORT,
         "mode": state.mode, "position": pos,
         "pnl": _pnl_block(),
+        "journal_pnl": round(_journal_pnl, 2),
         "risk": {"base": state.base, "risk_pct": cfg.get("risk_pct"),
                  "compound": cfg.get("compound"), "day_kill_R": cfg.get("day_kill_R"),
                  "kill_day": state.kill_day},

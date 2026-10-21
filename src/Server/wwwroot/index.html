@@ -12,7 +12,7 @@
     // BUILD GUARD (F-090a): авто-перезагрузка вкладки при новой сборке сервера.
     // Гарантирует, что UI всегда исполняет актуальный код без ручного Ctrl+F5.
     (function () {
-        var cur = 'v39-20261021';
+        var cur = 'v40-20261021';
         setInterval(function () {
             fetch(location.pathname, { cache: 'no-store', headers: { 'X-Build-Check': '1' } })
                 .then(function (r) { return r.text(); })
@@ -434,7 +434,7 @@
             </div>
             <div class="card-body" style="padding:0">
                 <table class="data-table">
-<thead><tr><th>Тикер</th><th>Режим</th><th>Позиция</th><th>Вход</th><th>Стоп</th><th>Цена</th><th>Объём ₽</th><th>PnL (брокер)</th><th>Лимиты (использование)</th><th>Последний H1</th><th>Управление</th></tr></thead>
+<thead><tr><th>Тикер</th><th>Режим</th><th>Позиция</th><th>Вход</th><th>Стоп</th><th>Цена</th><th>Объём ₽</th><th>PnL (брокер)</th><th>PnL (журнал)</th><th>Лимиты (использование)</th><th>Последний H1</th><th>Управление</th></tr></thead>
                     <tbody id="sarRobotsTable"></tbody>
                 </table>
             </div>
@@ -454,6 +454,6 @@
     <script src="/js/modules/chart.js?v=21"></script>
     <script src="/js/modules/log.js"></script>
     <script src="/js/app.js?v=131"></script>
-    <script src="/js/modules/sarema.js?v=39"></script>
+    <script src="/js/modules/sarema.js?v=40"></script>
 </body>
 </html>
