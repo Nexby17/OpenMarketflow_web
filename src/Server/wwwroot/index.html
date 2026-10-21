@@ -8,6 +8,23 @@
     <script src="/js/lightweight-charts.js"></script>
 </head>
 <body>
+    <script>
+    // BUILD GUARD (F-090a): авто-перезагрузка вкладки при новой сборке сервера.
+    // Гарантирует, что UI всегда исполняет актуальный код без ручного Ctrl+F5.
+    (function () {
+        var cur = 'v39-20261021';
+        setInterval(function () {
+            fetch(location.pathname, { cache: 'no-store', headers: { 'X-Build-Check': '1' } })
+                .then(function (r) { return r.text(); })
+                .then(function (t) {
+                    var m = t.match(/sarema\.js\?v=([a-z0-9-]+)/i);
+                    var srv = m ? m[1] : '';
+                    if (srv && srv !== cur && document.visibilityState === 'visible') location.reload();
+                })
+                .catch(function () {});
+        }, 60000);
+    })();
+    </script>
     <!-- Header -->
     <header>
         <div class="header-left">
