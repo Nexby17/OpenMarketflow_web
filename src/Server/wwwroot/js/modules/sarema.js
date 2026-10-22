@@ -77,8 +77,8 @@ function sarSwitchInstance(inst) {
             <div class="metrics-row" style="flex-wrap:wrap;margin-bottom:8px">
                 <div class="metric-card"><div class="metric-label">Предельн. ЛОНГ (шт, 0=нет)</div><input id="sarMaxLong" class="input" placeholder="без лимита" style="width:90px"></div>
                 <div class="metric-card"><div class="metric-label">Предельн. ШОРТ (шт, 0=нет)</div><input id="sarMaxShort" class="input" placeholder="без лимита" style="width:90px"></div>
-                <div class="metric-card"><div class="metric-label">База R (₽)</div><input id="sarBase" class="input" style="width:110px"></div>
-                <div class="metric-card"><div class="metric-label">Стоп-лосс (% / рубли / пункты, пусто = ATR×N)</div><div style="display:flex;gap:4px"><select id="sarSlUnit" class="select" style="width:76px"><option value="pct">%</option><option value="rub">рубли</option><option value="points">пункты</option></select><input id="sarSlValue" class="input" placeholder="—" style="width:64px"></div></div>
+                <div class="metric-card"><div class="metric-label">Капитал (₽)</div><input id="sarBase" class="input" style="width:110px"></div>
+                <div class="metric-card"><div class="metric-label">Стоп-лосс (% / рубли / пункты, пусто = ATR×N)</div><div style="display:flex;gap:4px"><select id="sarSlUnit" class="select" style="width:76px"><option value="rub_pnl">руб (убыток)</option><option value="pct">%</option><option value="rub">руб (цена)</option><option value="points">пункты</option></select><input id="sarSlValue" class="input" placeholder="—" style="width:64px"></div></div>
                 <div class="metric-card"><div class="metric-label">Kill-switch день (R, пусто = выкл)</div><input id="sarDayKill" class="input" placeholder="выкл" style="width:80px"></div>
                 <div class="metric-card"><div class="metric-label">Лимит участия (доля объёма)</div><input id="sarLiqFrac" class="input" style="width:70px"></div>
             </div>
@@ -178,7 +178,7 @@ async function sarLoadPanelData(inst) {
     const set = (id, v) => { const e = document.getElementById(id); if (e) e.value = v; };
     // дефолты
     set('sarMaxLong', ''); set('sarMaxShort', ''); set('sarBase', 1000000);
-    set('sarSlUnit', 'pct'); set('sarSlValue', '');
+    set('sarSlUnit', 'rub_pnl'); set('sarSlValue', '');
     set('sarDayKill', ''); set('sarLiqFrac', 0.05);
     set('sarAf0', 0.02); set('sarStep', 0.2); set('sarMax', 0.2);
     set('sarEmaN', 12); set('sarStopAtr', 3); set('sarTfMin', 60);
@@ -192,7 +192,7 @@ async function sarLoadPanelData(inst) {
             set('sarMaxShort', d.max_short_qty ?? '');
 
             set('sarBase', d.base ?? 1000000);
-            set('sarSlUnit', d.stop_loss_unit || 'pct');
+            set('sarSlUnit', d.stop_loss_unit || 'rub_pnl');
             set('sarSlValue', d.stop_loss_value ?? '');
             set('sarDayKill', d.day_kill_R ?? '');
             set('sarLiqFrac', d.liq_frac ?? 0.05);
@@ -216,7 +216,7 @@ async function sarLoadPanelData(inst) {
             set('sarMaxShort', p.max_short_qty ?? '');
 
             set('sarBase', p.base ?? 1000000);
-            set('sarSlUnit', p.stop_loss_unit || 'pct');
+            set('sarSlUnit', p.stop_loss_unit || 'rub_pnl');
             set('sarSlValue', p.stop_loss_value ?? '');
             set('sarDayKill', p.day_kill_R ?? '');
             set('sarLiqFrac', p.liq_frac ?? 0.05);
@@ -333,7 +333,7 @@ async function sarSaveParams() {
     const maxShort = numOrNull('sarMaxShort', true);
 
     const baseRaw = (document.getElementById('sarBase')?.value || '').trim();
-    const slUnit = (document.getElementById('sarSlUnit')?.value || 'pct');
+    const slUnit = (document.getElementById('sarSlUnit')?.value || 'rub_pnl');
     const slRaw = (document.getElementById('sarSlValue')?.value || '').trim().replace(',', '.');
     const killRaw = (document.getElementById('sarDayKill')?.value || '').trim().replace(',', '.');
     const liqRaw = (document.getElementById('sarLiqFrac')?.value || '').trim().replace(',', '.');

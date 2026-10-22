@@ -186,18 +186,27 @@ class SaremaStrategy:
             return v
         return None                      # atr / sar / неизвестное — классика
 
-    def _initial_stop_dist(self, direction: int, price_hint: float, atr_signal: float) -> tuple[float, str]:
-        """Дистанция начального стопа: стоп-лосс Дмитрия (если задан) или 3×ATR."""
-        d = self._unit_dist(self.cfg.get("stop_loss_value"), self.cfg.get("stop_loss_unit"),
-                            price_hint, atr_signal)
+    def _initial_stop_dist(self, direction: int, price_hint: float, atr_signal: float,
+                           qty: int | None = None) -> tuple[float, str]:
+        """Дистанция начального стопа: стоп-лосс Дмитрия (если задан) или 3×ATR.
+        F-094: unit 'rub_pnl' — стоп в рублях УБЫТКА: дистанция = стоп_руб / qty."""
+        u = (self.cfg.get("stop_loss_unit") or '').lower()
+        v = self.cfg.get("stop_loss_value")
+        if u == 'rub_pnl' and v is not None and qty and qty >= 1:
+            d = float(v) / qty
+            if d > 0:
+                return d, "stop_loss:rub_pnl"
+        d = self._unit_dist(v, u, price_hint, atr_signal)
         if d is not None and d > 0:
-            return d, f"stop_loss:{self.cfg.get('stop_loss_unit')}"
+            return d, f"stop_loss:{u}"
         return self.cfg.get("init_stop_atr", 3.0) * atr_signal, "atr"
 
     def _try_enter(self, direction: int, atr_signal: float, bar_volume: float,
                    signal_bar: str = "", signal_age: int = 0) -> dict:
         last = self.feed.bars.iloc[-1]
         price_hint = float(last["close"])
+        # F-094: если стоп в рублях убытка — сайзинг всё равно делаем по ATR-дистанции,
+        # финальный стоп пересчитывается от фактического qty ниже.
         stop_dist, stop_basis = self._initial_stop_dist(direction, price_hint, atr_signal)
         if stop_dist <= 0:
             return {"event": "skip", "reason": "bad_atr"}
@@ -214,6 +223,9 @@ class SaremaStrategy:
         if qty < 1:
             self.state.save()
             return {"event": "signal_skipped", "reason": "liq_frac", "risk_sizing": rs}
+        # F-094: стоп в рублях убытка — дистанция = стоп_руб / qty (после финального сайзинга)
+        if (self.cfg.get("stop_loss_unit") or '').lower() == 'rub_pnl' and self.cfg.get("stop_loss_value") is not None:
+            stop_dist, stop_basis = self._initial_stop_dist(direction, price_hint, atr_signal, qty=qty)
         side = BUY if direction == LONG else SELL
         po = self.orders.place_market(side, qty, tag="sarema-entry")
         if not po:

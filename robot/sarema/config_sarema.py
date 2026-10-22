@@ -151,10 +151,10 @@ def validate_params(patch: dict) -> tuple[dict, list[str]]:
             errors.append("stop_loss_value must be > 0 or null")
     if "stop_loss_unit" in patch:
         u = patch["stop_loss_unit"]
-        if u in ("atr", "pct", "rub", "points"):
+        if u in ("atr", "pct", "rub", "points", "rub_pnl"):
             clean["stop_loss_unit"] = u
         else:
-            errors.append("stop_loss_unit must be atr|pct|rub|points")
+            errors.append("stop_loss_unit must be atr|pct|rub|points|rub_pnl")
     if "trail_value" in patch:
         v = patch["trail_value"]
         if v is None:
