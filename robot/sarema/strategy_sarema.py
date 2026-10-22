@@ -75,10 +75,18 @@ class SaremaStrategy:
         # 1) если позиция есть — трейлинг стопа по SAR этого бара + брокер-стоп
         if self.state.direction != 0:
             sar_i = float(g2["sar"].iloc[i])
+            close_i = float(g2["close"].iloc[i])
+            # F-092: трейлинг в единицах — дистанция от close закрытого бара
+            trail_dist = self._unit_dist(self.cfg.get("trail_value"), self.cfg.get("trail_unit"),
+                                         close_i, float(atr[i]))
             if self.state.direction == LONG:
                 new_stop = max(self.state.stop_price, sar_i)
+                if trail_dist is not None and trail_dist > 0:
+                    new_stop = max(new_stop, close_i - trail_dist)
             else:
                 new_stop = min(self.state.stop_price, sar_i)
+                if trail_dist is not None and trail_dist > 0:
+                    new_stop = min(new_stop, close_i + trail_dist)
             if abs(new_stop - self.state.stop_price) > 1e-9:
                 self._replace_broker_stop(new_stop)
                 self.state.stop_price = new_stop
@@ -162,11 +170,35 @@ class SaremaStrategy:
         return {"events": events, "last_bar": str(g2["begin"].iloc[-1])}
 
     # ---------- вход ----------
+    # ---------- F-092: стоп/трейлинг в единицах (%|rub|points; atr/sar = классика) ----------
+    def _unit_dist(self, value, unit, ref_price: float, atr_signal: float) -> float | None:
+        """Дистанция стопа в цене. value=None или unit atr/sar → None (классическое поведение).
+        pct: value% от ref_price; rub: value рублей цены (не ₽-PnL!); points: value пунктов цены."""
+        if value is None or ref_price <= 0:
+            return None
+        u = (unit or '').lower()
+        v = float(value)
+        if u == 'pct':
+            return ref_price * v / 100.0
+        if u == 'rub':
+            return v
+        if u == 'points':
+            return v
+        return None                      # atr / sar / неизвестное — классика
+
+    def _initial_stop_dist(self, direction: int, price_hint: float, atr_signal: float) -> tuple[float, str]:
+        """Дистанция начального стопа: стоп-лосс Дмитрия (если задан) или 3×ATR."""
+        d = self._unit_dist(self.cfg.get("stop_loss_value"), self.cfg.get("stop_loss_unit"),
+                            price_hint, atr_signal)
+        if d is not None and d > 0:
+            return d, f"stop_loss:{self.cfg.get('stop_loss_unit')}"
+        return self.cfg.get("init_stop_atr", 3.0) * atr_signal, "atr"
+
     def _try_enter(self, direction: int, atr_signal: float, bar_volume: float,
                    signal_bar: str = "", signal_age: int = 0) -> dict:
         last = self.feed.bars.iloc[-1]
         price_hint = float(last["close"])
-        stop_dist = self.cfg.get("init_stop_atr", 3.0) * atr_signal
+        stop_dist, stop_basis = self._initial_stop_dist(direction, price_hint, atr_signal)
         if stop_dist <= 0:
             return {"event": "skip", "reason": "bad_atr"}
         rs = risk_sizing(self.state.base, self.cfg.get("risk_pct", 0.005), stop_dist)

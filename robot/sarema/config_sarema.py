@@ -40,6 +40,12 @@ DEFAULTS = {
     "sar_max": 0.2,
     "ema_n": 12,
     "init_stop_atr": 3.0,
+    # F-092: стоп-лосс и трейлинг в выбранных единицах (%|rub|points).
+    # Если value задано — используется оно, иначе ATR-стоп (init_stop_atr) и трейлинг за SAR.
+    "stop_loss_value": None,
+    "stop_loss_unit": "atr",          # atr | pct | rub | points
+    "trail_value": None,
+    "trail_unit": "sar",              # sar | pct | rub | points
     "tf_min": 60,
     "base": 1_000_000.0,
     "risk_pct": 0.005,
@@ -134,6 +140,35 @@ def validate_params(patch: dict) -> tuple[dict, list[str]]:
             errors.append("day_kill_R must be null (off) or negative R")
     if "compound" in patch:
         clean["compound"] = bool(patch["compound"])
+    # F-092: стоп-лосс / трейлинг в единицах
+    if "stop_loss_value" in patch:
+        v = patch["stop_loss_value"]
+        if v is None:
+            clean["stop_loss_value"] = None
+        elif isinstance(v, (int, float)) and 0 < v <= 100000:
+            clean["stop_loss_value"] = float(v)
+        else:
+            errors.append("stop_loss_value must be > 0 or null")
+    if "stop_loss_unit" in patch:
+        u = patch["stop_loss_unit"]
+        if u in ("atr", "pct", "rub", "points"):
+            clean["stop_loss_unit"] = u
+        else:
+            errors.append("stop_loss_unit must be atr|pct|rub|points")
+    if "trail_value" in patch:
+        v = patch["trail_value"]
+        if v is None:
+            clean["trail_value"] = None
+        elif isinstance(v, (int, float)) and 0 < v <= 100000:
+            clean["trail_value"] = float(v)
+        else:
+            errors.append("trail_value must be > 0 or null")
+    if "trail_unit" in patch:
+        u = patch["trail_unit"]
+        if u in ("sar", "pct", "rub", "points"):
+            clean["trail_unit"] = u
+        else:
+            errors.append("trail_unit must be sar|pct|rub|points")
     # Сигнальные SAR/EMA (диапазоны ТЗ: sar_af0 0.02-0.03; sar_step 0.008-0.2;
     # ema_n 12-20; init_stop_atr 3.0 (допуск 1-10 для тюнинга); tf 5-240 мин)
     sig_specs = {
