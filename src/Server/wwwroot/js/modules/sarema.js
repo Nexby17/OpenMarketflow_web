@@ -78,7 +78,7 @@ function sarSwitchInstance(inst) {
                 <div class="metric-card"><div class="metric-label">Предельн. ЛОНГ (шт, 0=нет)</div><input id="sarMaxLong" class="input" placeholder="без лимита" style="width:90px"></div>
                 <div class="metric-card"><div class="metric-label">Предельн. ШОРТ (шт, 0=нет)</div><input id="sarMaxShort" class="input" placeholder="без лимита" style="width:90px"></div>
                 <div class="metric-card"><div class="metric-label">База R (₽)</div><input id="sarBase" class="input" style="width:110px"></div>
-                <div class="metric-card"><div class="metric-label">Риск на сделку %</div><input id="sarRiskPct" class="input" style="width:70px"></div>
+                <div class="metric-card"><div class="metric-label">Стоп-лосс (% / рубли / пункты, пусто = ATR×N)</div><div style="display:flex;gap:4px"><select id="sarSlUnit" class="select" style="width:76px"><option value="pct">%</option><option value="rub">рубли</option><option value="points">пункты</option></select><input id="sarSlValue" class="input" placeholder="—" style="width:64px"></div></div>
                 <div class="metric-card"><div class="metric-label">Kill-switch день (R, пусто = выкл)</div><input id="sarDayKill" class="input" placeholder="выкл" style="width:80px"></div>
                 <div class="metric-card"><div class="metric-label">Лимит участия (доля объёма)</div><input id="sarLiqFrac" class="input" style="width:70px"></div>
             </div>
@@ -178,7 +178,8 @@ async function sarLoadPanelData(inst) {
     const set = (id, v) => { const e = document.getElementById(id); if (e) e.value = v; };
     // дефолты
     set('sarMaxLong', ''); set('sarMaxShort', ''); set('sarBase', 1000000);
-    set('sarRiskPct', ''); set('sarDayKill', ''); set('sarLiqFrac', 0.05);
+    set('sarSlUnit', 'pct'); set('sarSlValue', '');
+    set('sarDayKill', ''); set('sarLiqFrac', 0.05);
     set('sarAf0', 0.02); set('sarStep', 0.2); set('sarMax', 0.2);
     set('sarEmaN', 12); set('sarStopAtr', 3); set('sarTfMin', 60);
     // F-065: VP дефолты
@@ -191,7 +192,8 @@ async function sarLoadPanelData(inst) {
             set('sarMaxShort', d.max_short_qty ?? '');
 
             set('sarBase', d.base ?? 1000000);
-            set('sarRiskPct', d.risk_pct != null ? (d.risk_pct * 100).toFixed(1) : '');
+            set('sarSlUnit', d.stop_loss_unit || 'pct');
+            set('sarSlValue', d.stop_loss_value ?? '');
             set('sarDayKill', d.day_kill_R ?? '');
             set('sarLiqFrac', d.liq_frac ?? 0.05);
             set('sarAf0', d.sar_af0 ?? 0.02);
@@ -214,7 +216,8 @@ async function sarLoadPanelData(inst) {
             set('sarMaxShort', p.max_short_qty ?? '');
 
             set('sarBase', p.base ?? 1000000);
-            set('sarRiskPct', p.risk_pct != null ? (p.risk_pct * 100).toFixed(1) : '');
+            set('sarSlUnit', p.stop_loss_unit || 'pct');
+            set('sarSlValue', p.stop_loss_value ?? '');
             set('sarDayKill', p.day_kill_R ?? '');
             set('sarLiqFrac', p.liq_frac ?? 0.05);
             set('sarAf0', p.sar_af0 ?? 0.02);
@@ -330,12 +333,14 @@ async function sarSaveParams() {
     const maxShort = numOrNull('sarMaxShort', true);
 
     const baseRaw = (document.getElementById('sarBase')?.value || '').trim();
-    const riskRaw = (document.getElementById('sarRiskPct')?.value || '').trim().replace(',', '.');
+    const slUnit = (document.getElementById('sarSlUnit')?.value || 'pct');
+    const slRaw = (document.getElementById('sarSlValue')?.value || '').trim().replace(',', '.');
     const killRaw = (document.getElementById('sarDayKill')?.value || '').trim().replace(',', '.');
     const liqRaw = (document.getElementById('sarLiqFrac')?.value || '').trim().replace(',', '.');
     const msg = document.getElementById('sarPanelMsg');
     if (maxLong === undefined || maxShort === undefined) { if (msg) msg.textContent = '❌ Лимиты: число ≥ 0 или пусто (без лимита)'; return; }
-    if (riskRaw !== '' && (!isFinite(parseFloat(riskRaw)) || parseFloat(riskRaw) <= 0 || parseFloat(riskRaw) > 10)) { if (msg) msg.textContent = '❌ Риск %: (0, 10]'; return; }
+    const slNum = slRaw === '' ? null : parseFloat(slRaw);
+    if (slRaw !== '' && (!isFinite(slNum) || slNum <= 0)) { if (msg) msg.textContent = '❌ Стоп-лосс: число > 0 или пусто (ATR×N)'; return; }
     if (killRaw !== '' && !isNaN(parseFloat(killRaw)) && parseFloat(killRaw) >= 0) { if (msg) msg.textContent = '❌ Kill-switch: отрицательный R или пусто (выкл)'; return; }
     const numField = (id, lo, hi) => {
         const raw = (document.getElementById(id)?.value || '').trim().replace(',', '.');
@@ -360,7 +365,8 @@ async function sarSaveParams() {
         max_short_qty: maxShort,
 
         base: baseRaw !== '' ? parseFloat(baseRaw.replace(',', '.')) : undefined,
-        risk_pct: riskRaw !== '' ? parseFloat(riskRaw) / 100 : undefined,
+        stop_loss_unit: slUnit,
+        stop_loss_value: slNum,
         day_kill_R: killRaw === '' ? null : parseFloat(killRaw),
         liq_frac: liqRaw === '' ? null : parseFloat(liqRaw),
         sar_af0: af0, sar_step: step, sar_max: smax,
