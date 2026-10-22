@@ -82,14 +82,28 @@ class SaremaStrategy:
             trail_dist = self._unit_dist(self.cfg.get("trail_value"), self.cfg.get("trail_unit"),
                                          close_i, float(atr[i]))
             price_trail = trail_dist is not None and trail_dist > 0
-            if self.state.direction == LONG:
-                if price_trail:
-                    new_stop = max(self.state.stop_price, close_i - trail_dist)
+            # F-098 (модель Дмитрия): если задан трейлинг — стоп = первоначальный_стоп + рост цены
+            # от входа; двигаем шагом не меньше trail_dist; назад не откатывается. SAR не участвует.
+            if price_trail and self.state.initial_stop_price > 0 and self.state.entry_price > 0:
+                _rise = max(0.0, close_i - self.state.entry_price) if self.state.direction == LONG \
+                    else max(0.0, self.state.entry_price - close_i)
+                _want = self.state.initial_stop_price + _rise
+                if self.state.direction == LONG:
+                    new_stop = max(self.state.stop_price, _want)
+                    if new_stop - self.state.stop_price < trail_dist - 1e-9:
+                        new_stop = self.state.stop_price
                 else:
+                    new_stop = min(self.state.stop_price, _want)
+                    if self.state.stop_price - new_stop < trail_dist - 1e-9:
+                        new_stop = self.state.stop_price
+            elif price_trail:
+                if self.state.direction == LONG:
                     new_stop = max(self.state.stop_price, sar_i)
+                else:
+                    new_stop = min(self.state.stop_price, sar_i)
             else:
-                if price_trail:
-                    new_stop = min(self.state.stop_price, close_i + trail_dist)
+                if self.state.direction == LONG:
+                    new_stop = max(self.state.stop_price, sar_i)
                 else:
                     new_stop = min(self.state.stop_price, sar_i)
             if abs(new_stop - self.state.stop_price) > 1e-9:
@@ -268,6 +282,7 @@ class SaremaStrategy:
         self.state.lots_qty = qty
         self.state.entry_price = price_hint
         self.state.stop_price = stop0
+        self.state.initial_stop_price = stop0   # F-098: база трейлинга (стоп не двигается ближе этого зазора)
         self.state.entry_time = datetime.utcnow().isoformat()
         self._place_broker_stop(stop0, qty, direction)
         if signal_bar:

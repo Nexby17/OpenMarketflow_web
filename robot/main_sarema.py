@@ -511,10 +511,27 @@ def _main_loop():
                             try:
                                 _dist = strategy._unit_dist(_tv, cfg.get("trail_unit"), float(mark), 0.0)
                                 if _dist is not None and _dist > 0:
-                                    if state.direction > 0:
-                                        _ns = max(state.stop_price, mark - _dist)
+                                    # F-098 (модель Дмитрия): стоп = первоначальный_стоп + рост цены от входа.
+                                    # Пример: вход 1000, стоп 5руб (0,5%)=995; цена +0,1% (1001) → стоп 996 (4руб).
+                                    # trail_value задаёт МИНИМАЛЬНЫЙ шаг сдвига (в % / рублях / пунктах),
+                                    # чтобы не двигать стоп на каждом тике. Назад стоп не откатывается.
+                                    if state.initial_stop_price > 0 and state.entry_price > 0:
+                                        _rise = max(0.0, float(mark) - state.entry_price) if state.direction > 0 \
+                                            else max(0.0, state.entry_price - float(mark))
+                                        _want = state.initial_stop_price + _rise
+                                        if state.direction > 0:
+                                            _ns = max(state.stop_price, _want)
+                                        else:
+                                            _ns = min(state.stop_price, _want)
+                                        # двигаем только если сдвиг ≥ шага трейлинга (антидребезг)
+                                        _delta = (_ns - state.stop_price) if state.direction > 0 else (state.stop_price - _ns)
+                                        if _delta < _dist - 1e-9:
+                                            _ns = state.stop_price   # шаг меньше дистанции — не двигаем
                                     else:
-                                        _ns = min(state.stop_price, mark + _dist)
+                                        if state.direction > 0:
+                                            _ns = max(state.stop_price, mark - _dist)
+                                        else:
+                                            _ns = min(state.stop_price, mark + _dist)
                                     if abs(_ns - state.stop_price) > 1e-9:
                                         strategy._replace_broker_stop(_ns)
                                         state.stop_price = _ns
