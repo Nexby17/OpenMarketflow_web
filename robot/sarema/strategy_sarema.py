@@ -76,17 +76,22 @@ class SaremaStrategy:
         if self.state.direction != 0:
             sar_i = float(g2["sar"].iloc[i])
             close_i = float(g2["close"].iloc[i])
-            # F-092: трейлинг в единицах — дистанция от close закрытого бара
+            # F-096: трейлинг-стоп ОТ ЦЕНЫ (запрос Дмитрия): если trail_value задан
+            # (% / рубли / пункты) — стоп тянется за close закрытого бара на trail-дистанцию,
+            # SAR в трейлинге не участвует. Пусто = классика (трейлинг за SAR).
             trail_dist = self._unit_dist(self.cfg.get("trail_value"), self.cfg.get("trail_unit"),
                                          close_i, float(atr[i]))
+            price_trail = trail_dist is not None and trail_dist > 0
             if self.state.direction == LONG:
-                new_stop = max(self.state.stop_price, sar_i)
-                if trail_dist is not None and trail_dist > 0:
-                    new_stop = max(new_stop, close_i - trail_dist)
+                if price_trail:
+                    new_stop = max(self.state.stop_price, close_i - trail_dist)
+                else:
+                    new_stop = max(self.state.stop_price, sar_i)
             else:
-                new_stop = min(self.state.stop_price, sar_i)
-                if trail_dist is not None and trail_dist > 0:
-                    new_stop = min(new_stop, close_i + trail_dist)
+                if price_trail:
+                    new_stop = min(self.state.stop_price, close_i + trail_dist)
+                else:
+                    new_stop = min(self.state.stop_price, sar_i)
             if abs(new_stop - self.state.stop_price) > 1e-9:
                 self._replace_broker_stop(new_stop)
                 self.state.stop_price = new_stop
