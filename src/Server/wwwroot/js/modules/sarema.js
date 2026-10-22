@@ -94,8 +94,8 @@ function sarSwitchInstance(inst) {
                 <div class="metric-card"><div class="metric-label">Стоп-лосс (ATR× / % / рубли / пункты)</div><div style="display:flex;gap:4px"><select id="sarSlUnit" class="select" style="width:74px"><option value="atr">ATR×</option><option value="pct">%</option><option value="rub">рубли</option><option value="points">пункты</option></select><input id="sarSlValue" class="input" placeholder="3" style="width:64px"></div></div>
                 <div class="metric-card"><div class="metric-label">Трейлинг-стоп (пусто = SAR)</div><div style="display:flex;gap:4px"><select id="sarTrUnit" class="select" style="width:74px"><option value="sar">SAR</option><option value="pct">%</option><option value="rub">рубли</option><option value="points">пункты</option></select><input id="sarTrValue" class="input" placeholder="—" style="width:64px"></div></div>
                 <div class="metric-card"><div class="metric-label">TP, R (пусто=выкл)</div><input id="sarTpR" class="input" placeholder="2" style="width:70px"></div>
-                <div class="metric-card"><div class="metric-label">Таймфрейм мин (5–240)</div>
-                <div class="metric-card"><div class="metric-label">Окно сигн. (бары)</div><input id="sarMaxSigAge" class="input" placeholder="8" style="width:70px"></div><input id="sarTfMin" class="input" placeholder="60" style="width:70px"></div>
+                <div class="metric-card"><div class="metric-label">Таймфрейм мин (5–240)</div><input id="sarTfMin" class="input" placeholder="60" style="width:70px"></div>
+                <div class="metric-card"><div class="metric-label">Окно сигн. (бары)</div><input id="sarMaxSigAge" class="input" placeholder="8" style="width:70px"></div>
             </div>
             <div class="text-secondary" style="font-size:11.5px;margin-bottom:4px">Штат бэктеста: AF0 0.02 · Step 0.2 · Max 0.2 · EMA 12 · стоп 3×ATR · H1 · полярность std (не менять — урок WF) · трей
             <hr style="border-color:#2D2D44;margin:12px 0">
