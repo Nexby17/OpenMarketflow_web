@@ -56,7 +56,6 @@ DEFAULTS = {
     "max_short_qty": None,
     "max_value_rub": None,
     "liq_frac": 0.05,
-    "day_kill_R": None,
     "warmup_bars": 300,
     # === F-065: Volume Profile фильтр входа (как у OF-Si «VP Mode») ===
     # mode: off = как раньше (без фильтра); range = вход только внутри VA;
@@ -130,14 +129,6 @@ def validate_params(patch: dict) -> tuple[dict, list[str]]:
             clean["tp_R"] = float(v)
         else:
             errors.append("tp_R must be in [0.1, 20] or null")
-    if "day_kill_R" in patch:
-        v = patch["day_kill_R"]
-        if v is None:
-            clean["day_kill_R"] = None
-        elif isinstance(v, (int, float)) and v < 0:
-            clean["day_kill_R"] = float(v)
-        else:
-            errors.append("day_kill_R must be null (off) or negative R")
     if "compound" in patch:
         clean["compound"] = bool(patch["compound"])
     # F-092: стоп-лосс / трейлинг в единицах

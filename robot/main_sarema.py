@@ -64,7 +64,6 @@ class ParamsPatch(BaseModel):
     max_short_qty: int | float | None = None
     max_value_rub: float | None = None
     liq_frac: float | None = None
-    day_kill_R: float | None = None
     compound: bool | None = None
     # сигнальные SAR/EMA (редактируемые Дмитрием в popup)
     sar_af0: float | None = None
@@ -178,8 +177,7 @@ def status():
         "pnl": _pnl_block(),
         "journal_pnl": round(_journal_pnl, 2),
         "risk": {"base": state.base, "risk_pct": cfg.get("risk_pct"),
-                 "compound": cfg.get("compound"), "day_kill_R": cfg.get("day_kill_R"),
-                 "kill_day": state.kill_day},
+                 "compound": cfg.get("compound")},
         "limits": limits_used,
         "last_bar": feed.last_bar_begin.isoformat() if feed.last_bar_begin else None,
         "stale": feed.check_stale(),

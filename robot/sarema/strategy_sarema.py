@@ -8,7 +8,7 @@ from datetime import datetime, date
 from sarema import sarema_engine as eng
 from sarema.config_sarema import apply_limits_qty
 from sarema.risk_sarema import (risk_sizing, apply_lot_rounding, apply_liq_cap,
-                                check_kill_switch)
+                                )
 from sarema.orders_sarema import BUY, SELL
 from sarema.vp_sarema import VolumeProfileSarema, gate_check
 
@@ -148,21 +148,11 @@ class SaremaStrategy:
                     return {"events": events, "last_bar": str(g2["begin"].iloc[-1])}
             else:
                 zone = ""
-            today = date.today()
-            if self.state.entries_blocked(today):
-                events.append({"event": "entry_blocked_kill_day"})
-            else:
-                new_kill = check_kill_switch(self.state, today, self.cfg.get("day_kill_R"))
-                if new_kill:
-                    self.state.kill_day = new_kill
-                    self.state.save()
-                    events.append({"event": "kill_switch_on", "kill_day": new_kill})
-                else:
-                    ev = self._try_enter(direction, float(atr[j]),
-                                         float(g2["volume"].iloc[j]),
-                                         signal_bar=str(g2["begin"].iloc[j]),
-                                         signal_age=sig_age)
-                    events.append(ev)
+            ev = self._try_enter(direction, float(atr[j]),
+                                 float(g2["volume"].iloc[j]),
+                                 signal_bar=str(g2["begin"].iloc[j]),
+                                 signal_age=sig_age)
+            events.append(ev)
 
         # 3) pending_signal не используется: вход по рынку сразу после закрытия бара
         #    (в бэктесте вход по open следующего бара; рынок в первые минуты часа ≈ то же)
