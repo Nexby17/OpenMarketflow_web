@@ -2681,9 +2681,12 @@ async function renderRobots() {
     }).join('');
 
     const allRows = [...serverStrategies, ...localRows, pythonRobotRow, ofRobotRow, ofPerpRobotRow, ofMxRobotRow, ofBrRows];
-    if (!allRows.filter(r=>r).length) { tbody.innerHTML = ''; if (noMsg) noMsg.style.display = 'block'; return; }
+    if (!allRows.filter(r=>r).length) { if (tbody._lastHtml !== '') { tbody.innerHTML = ''; tbody._lastHtml = ''; } if (noMsg) noMsg.style.display = 'block'; return; }
     if (noMsg) noMsg.style.display = 'none';
-    tbody.innerHTML = allRows.join('');
+    // F-081: перерисовка только при реальном изменении HTML — иначе DOM перезаписывается каждые 2с
+    // несколькими poll-циклами → таблица моргает, сбрасываются hover/открытые дропдауны.
+    const html = allRows.join('');
+    if (tbody._lastHtml !== html) { tbody._lastHtml = html; tbody.innerHTML = html; }
 }
 
 async function robotStart(i) {
@@ -4319,7 +4322,10 @@ async function pollPythonRobot() {
     } catch(e) {
         // Robot API down — try C# proxy for cached state
         try {
-            const proxyResp = await fetch('/api/robot/status', {signal: AbortSignal.timeout(2000)});
+            // F-081: серверный прокси при мёртвом 5070 отвечает ~2000мс (внутренний HttpClient таймаут).
+            // Клиентский аборт 2000мс гонялся с ответом 50/50 (лог: 241x499 vs 201x200) →
+            // строка робота «моргала» (то данные, то «Не запущен»). Даём 4с — ответ приходит стабильно.
+            const proxyResp = await fetch('/api/robot/status', {signal: AbortSignal.timeout(4000)});
             pythonRobot = await proxyResp.json();
         } catch(e2) {
             pythonRobot = null;

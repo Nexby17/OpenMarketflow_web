@@ -573,7 +573,9 @@ function sarRenderTable() {
             </td>
         </tr>`;
     }
-    tbody.innerHTML = rows;
+    // F-081: перерисовка только при реальном изменении — иначе innerHTML перезаписывается каждые 5с,
+    // таблица моргает (сброс hover, дрожание строк).
+    if (tbody._lastHtml !== rows) { tbody._lastHtml = rows; tbody.innerHTML = rows; }
     // селектор в шапке вкладки (быстрое открытие панели)
     const sel = document.getElementById('sarInstSelect');
     if (sel && (!sel.options || sel.options.length !== SAR_INSTANCE_ORDER.length)) {
