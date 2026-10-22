@@ -878,24 +878,30 @@ class OrderFlowStrategy:
             self._broker_avg_price = broker_avg
         self._broker_sync_time = time.time()
 
-    def update_fill_price(self, fill_price: float, action: str):
+    def update_fill_price(self, fill_price: float, action: str, signal_price: float = 0.0):
         """Update entry prices with REAL broker fill. Exit trades recorded in main_of.
 
         F-0xx fix (19.10): средняя пересчитывается СТРОГО от очереди fill-цен.
-        Раньше базой был self._avg_price, который к моменту вызова уже был
-        пересчитан стратегией по СИГНАЛЬНОЙ цене → fill «подмешивался» к
-        сигнальной базе, avg дрейфовал с каждым слоем (инцидент 19.10: журнальный
-        avg 83655.84 против брокерского 83639.75 → фантомный −64₽ на сделке).
-        Теперь: заменяем цену последнего слоя на fill и считаем avg от очереди.
+        F-093 fix (22.10): при пачке catch-up усреднений fill заменяет слой,
+        соответствующий СИГНАЛЬНОЙ цене действия (а не просто последний) —
+        иначе вся пачка перезаписывает один и тот же слой очереди.
         """
         if fill_price <= 0:
             return
         if action in ("entry", "average", "pyramid"):
             if action == "entry":
                 self._entry_price = fill_price
+            replaced = False
             if self._lot_queue:
-                # заменяем цену последнего слоя на фактический fill брокера
-                self._lot_queue[-1] = LotEntry(price=fill_price, side=self._lot_queue[-1].side, lots=self._lot_queue[-1].lots)
+                # F-093: ищем слой по сигнальной цене (пачка усреднений создаёт слои решётки)
+                target = signal_price if signal_price > 0 else self._lot_queue[-1].price
+                for i in range(len(self._lot_queue) - 1, -1, -1):
+                    if abs(self._lot_queue[i].price - target) < 1e-9:
+                        self._lot_queue[i] = LotEntry(price=fill_price, side=self._lot_queue[i].side, lots=self._lot_queue[i].lots)
+                        replaced = True
+                        break
+                if not replaced:
+                    self._lot_queue[-1] = LotEntry(price=fill_price, side=self._lot_queue[-1].side, lots=self._lot_queue[-1].lots)
                 total_cost = sum(e.price * e.lots for e in self._lot_queue)
                 total_lots = sum(e.lots for e in self._lot_queue)
                 if total_lots > 0:
@@ -1196,22 +1202,28 @@ class OrderFlowStrategy:
         side = "buy" if self._dir == LONG else "sell"
         actions = []
 
-        for _ in range(missed):
+        # F-093 fix (22.10): catch-up раскладывает пропущенные уровни ПО РЕШЁТКЕ
+        # от лучшей цены (каждый следующий слой на step ниже/выше предыдущего),
+        # а не все по текущей цене. Раньше 6-10 слоёв вставали на одну цену →
+        # следующий отскок закрывал их пачкой TP по одной цене → «пила TP→AVG
+        # по одной цене» (жалоба Дмитрия 22.10).
+        for i in range(missed):
+            level_price = (price - step * i) if self._dir == LONG else (price + step * i)
             old_lots = self._total_lots
             old_cost = self._avg_price * old_lots
 
             self._total_lots += self.p.lots
             self._peak_lots = max(self._peak_lots, self._total_lots)
-            self._avg_price = (old_cost + price * self.p.lots) / self._total_lots
+            self._avg_price = (old_cost + level_price * self.p.lots) / self._total_lots
             self._average_levels += 1
-            self._last_average_price = price
-            self._lot_queue.append(LotEntry(price=price, side=self._dir, lots=self.p.lots, added_ts=time.monotonic()))
+            self._last_average_price = level_price
+            self._lot_queue.append(LotEntry(price=level_price, side=self._dir, lots=self.p.lots, added_ts=time.monotonic()))
 
             actions.append({
                 'action': 'average',
                 'side': side,
                 'qty': self.p.lots,
-                'price': price,
+                'price': level_price,
                 'level': self._average_levels,
             })
 

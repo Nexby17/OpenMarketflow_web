@@ -524,7 +524,7 @@ def main_loop():
                 # Update strategy prices with REAL broker fill price
                 fill_price = action.get("fill_price", 0)
                 if fill_price > 0:
-                    strategy.update_fill_price(fill_price, action.get("action", ""))
+                    strategy.update_fill_price(fill_price, action.get("action", ""), action.get("price", 0))
 
             # === VA BREAKOUT STOP: REMOVED (port a6ec3b8 from server-main, утверждено Дмитрием 28.09.2026) ===
             # Позиция НЕ закрывается жёстким стопом при выходе цены из Value Area.
