@@ -504,6 +504,24 @@ def _main_loop():
                 try:
                     mark, src = _live_mark()
                     if mark is not None:
+                        # F-097: трейлинг-стоп в РЕАЛ-ТАЙМЕ — за живым тиком (mark), не только на закрытии H1.
+                        # Работает только если trail_value задан (% / рубли / пункты); пусто = классика (за SAR на закрытии бара).
+                        _tv = cfg.get("trail_value")
+                        if _tv is not None and strategy:
+                            try:
+                                _dist = strategy._unit_dist(_tv, cfg.get("trail_unit"), float(mark), 0.0)
+                                if _dist is not None and _dist > 0:
+                                    if state.direction > 0:
+                                        _ns = max(state.stop_price, mark - _dist)
+                                    else:
+                                        _ns = min(state.stop_price, mark + _dist)
+                                    if abs(_ns - state.stop_price) > 1e-9:
+                                        strategy._replace_broker_stop(_ns)
+                                        state.stop_price = _ns
+                                        state.save()
+                                        log.info(f"LIVE-TRAIL: stop -> {_ns:.4f} (mark={mark:.4f}, src={src})")
+                            except Exception as _te:
+                                log.error(f"live trail error: {_te}")
                         breached = (mark <= state.stop_price) if state.direction > 0 else (mark >= state.stop_price)
                         if breached:
                             log.warning(f"STOP-HIT: mark={mark} vs stop={state.stop_price} (src={src}) — закрываю маркетом")
