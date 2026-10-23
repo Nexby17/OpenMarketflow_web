@@ -91,7 +91,6 @@ function sarSwitchInstance(inst) {
                 <div class="metric-card"><div class="metric-label">SAR Step (0.002–0.2)</div><input id="sarStep" class="input" placeholder="0.2" style="width:80px"></div>
                 <div class="metric-card"><div class="metric-label">SAR Max (0.05–0.5)</div><input id="sarMax" class="input" placeholder="0.2" style="width:80px"></div>
                 <div class="metric-card"><div class="metric-label">EMA период (5–50)</div><input id="sarEmaN" class="input" placeholder="12" style="width:70px"></div>
-                <div class="metric-card"><div class="metric-label">Стоп = N×ATR (1–10)</div><input id="sarStopAtr" class="input" placeholder="3" style="width:70px"></div>
                 <div class="metric-card"><div class="metric-label">TP, R (пусто=выкл)</div><input id="sarTpR" class="input" placeholder="2" style="width:70px"></div>
                 <div class="metric-card"><div class="metric-label">Таймфрейм мин (5–240)</div><input id="sarTfMin" class="input" placeholder="60" style="width:70px"></div>
                 <div class="metric-card"><div class="metric-label">Окно сигн. (бары)</div><input id="sarMaxSigAge" class="input" placeholder="8" style="width:70px"></div>
@@ -182,7 +181,7 @@ async function sarLoadPanelData(inst) {
     set('sarLiqFrac', 0.05);
     set('sarTrUnit', 'pct'); set('sarTrValue', '');
     set('sarAf0', 0.02); set('sarStep', 0.2); set('sarMax', 0.2);
-    set('sarEmaN', 12); set('sarStopAtr', 3); set('sarTfMin', 60);
+    set('sarEmaN', 12); set('sarTfMin', 60);
     // F-065: VP дефолты
     // черновик этого экземпляра (оффлайн-сохранение)
     try {
@@ -202,7 +201,6 @@ async function sarLoadPanelData(inst) {
             set('sarStep', d.sar_step ?? 0.2);
             set('sarMax', d.sar_max ?? 0.2);
             set('sarEmaN', d.ema_n ?? 12);
-            set('sarStopAtr', d.init_stop_atr ?? 3);
         set('sarTpR', d.tp_R ?? '');
         set('sarMaxSigAge', d.max_signal_age ?? 8);
             set('sarTfMin', d.tf_min ?? 60);
@@ -227,7 +225,6 @@ async function sarLoadPanelData(inst) {
             set('sarStep', p.sar_step ?? 0.2);
             set('sarMax', p.sar_max ?? 0.2);
             set('sarEmaN', p.ema_n ?? 12);
-            set('sarStopAtr', p.init_stop_atr ?? 3);
             set('sarTpR', p.tp_R ?? '');
             set('sarMaxSigAge', p.max_signal_age ?? 8);
             set('sarTfMin', p.tf_min ?? 60);
@@ -360,7 +357,6 @@ async function sarSaveParams() {
     const step = numField('sarStep', 0.002, 0.2);  checkField('sarStep', step, 'SAR step');
     const smax = numField('sarMax', 0.05, 0.5);    checkField('sarMax', smax, 'SAR max');
     const emaN = numField('sarEmaN', 5, 50);       checkField('sarEmaN', emaN, 'EMA N');
-    const stopAtr = numField('sarStopAtr', 1, 10); checkField('sarStopAtr', stopAtr, 'Stop ATR');
     const tpR = numField('sarTpR', 0.1, 20);       checkField('sarTpR', tpR, 'TP R');
     const maxSigAge = numField('sarMaxSigAge', 1, 50); checkField('sarMaxSigAge', maxSigAge, 'Signal window');
     const tfMin = numField('sarTfMin', 5, 240);    checkField('sarTfMin', tfMin, 'TF min');
@@ -377,7 +373,6 @@ async function sarSaveParams() {
         liq_frac: liqRaw === '' ? null : parseFloat(liqRaw),
         sar_af0: af0, sar_step: step, sar_max: smax,
         ema_n: emaN != null ? Math.round(emaN) : undefined,
-        init_stop_atr: stopAtr,
         tp_R: tpR != null ? tpR : null,
         max_signal_age: maxSigAge != null ? maxSigAge : null,
         tf_min: tfMin != null ? Math.round(tfMin) : undefined,

@@ -70,7 +70,6 @@ class ParamsPatch(BaseModel):
     sar_step: float | None = None
     sar_max: float | None = None
     ema_n: int | float | None = None
-    init_stop_atr: float | None = None
     tf_min: int | float | None = None
     # F-065: VP Mode (range/fade/breakout/off) + подтипы (null = дефолт)
     vah_val_mode: str | None = None

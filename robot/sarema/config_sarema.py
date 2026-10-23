@@ -167,7 +167,6 @@ def validate_params(patch: dict) -> tuple[dict, list[str]]:
         "sar_step": (0.002, 0.2, float),
         "sar_max": (0.05, 0.5, float),
         "ema_n": (5, 50, int),
-        "init_stop_atr": (1.0, 10.0, float),
         "tf_min": (5, 240, int),
     }
     for k, (lo, hi, typ) in sig_specs.items():
