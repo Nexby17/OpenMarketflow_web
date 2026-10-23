@@ -75,25 +75,25 @@ function sarSwitchInstance(inst) {
             <!-- Параметры -->
             <div style="font-weight:700;margin-bottom:8px">Лимиты и риск</div>
             <div class="metrics-row" style="flex-wrap:wrap;margin-bottom:8px">
-                <div class="metric-card"><div class="metric-label">Предельн. ЛОНГ (шт, 0=нет)</div><input id="sarMaxLong" class="input" placeholder="без лимита" style="width:90px"></div>
-                <div class="metric-card"><div class="metric-label">Предельн. ШОРТ (шт, 0=нет)</div><input id="sarMaxShort" class="input" placeholder="без лимита" style="width:90px"></div>
-                <div class="metric-card"><div class="metric-label">Капитал (₽)</div><input id="sarBase" class="input" style="width:110px"></div>
-                <div class="metric-card"><div class="metric-label">Стоп-лосс</div><div style="display:flex;gap:4px"><select id="sarSlUnit" class="select" style="width:76px"><option value="rub_pnl">руб (убыток)</option><option value="pct">%</option><option value="rub">руб (цена)</option><option value="points">пункты</option></select><input id="sarSlValue" class="input" placeholder="—" style="width:64px"></div></div>
-                <div class="metric-card"><div class="metric-label">Трейлинг-стоп</div><div style="display:flex;gap:4px"><select id="sarTrUnit" class="select" style="width:76px"><option value="pct">%</option><option value="rub">рубли</option><option value="points">пункты</option></select><input id="sarTrValue" class="input" placeholder="—" style="width:64px"></div></div>
-                <div class="metric-card"><div class="metric-label">Лимит участия (доля объёма)</div><input id="sarLiqFrac" class="input" style="width:70px"></div>
+                <div class="metric-card" style="flex:0 0 150px;min-width:150px;min-height:66px;text-align:left"><div class="metric-label">Предельн. ЛОНГ (шт, 0=нет)</div><input id="sarMaxLong" class="input" placeholder="без лимита" style="width:90px"></div>
+                <div class="metric-card" style="flex:0 0 150px;min-width:150px;min-height:66px;text-align:left"><div class="metric-label">Предельн. ШОРТ (шт, 0=нет)</div><input id="sarMaxShort" class="input" placeholder="без лимита" style="width:90px"></div>
+                <div class="metric-card" style="flex:0 0 150px;min-width:150px;min-height:66px;text-align:left"><div class="metric-label">Капитал (₽)</div><input id="sarBase" class="input" style="width:110px"></div>
+                <div class="metric-card" style="flex:0 0 150px;min-width:150px;min-height:66px;text-align:left"><div class="metric-label">Стоп-лосс</div><div style="display:flex;gap:4px"><select id="sarSlUnit" class="select" style="width:auto;flex:0 0 auto"><option value="rub_pnl">руб (убыток)</option><option value="pct">%</option><option value="rub">руб (цена)</option><option value="points">пункты</option></select><input id="sarSlValue" class="input" placeholder="—" style="width:100%;min-width:56px"></div></div>
+                <div class="metric-card" style="flex:0 0 150px;min-width:150px;min-height:66px;text-align:left"><div class="metric-label">Трейлинг-стоп</div><div style="display:flex;gap:4px"><select id="sarTrUnit" class="select" style="width:auto;flex:0 0 auto"><option value="pct">%</option><option value="rub">рубли</option><option value="points">пункты</option></select><input id="sarTrValue" class="input" placeholder="—" style="width:100%;min-width:56px"></div></div>
+                <div class="metric-card" style="flex:0 0 150px;min-width:150px;min-height:66px;text-align:left"><div class="metric-label">Лимит участия (доля объёма)</div><input id="sarLiqFrac" class="input" style="width:70px"></div>
             </div>
             <div id="sarPanelMsg" class="text-secondary" style="font-size:12.5px;min-height:18px"></div>
             <hr style="border-color:#2D2D44;margin:12px 0">
             <!-- Сигнальные параметры SAR/EMA (редактируемые, для обоих роботов) -->
             <div style="font-weight:700;margin-bottom:8px">Стратегия SAR/EMA <span class="text-secondary" style="font-size:11.5px;font-weight:400">(пусто = значение по умолчанию · применяются при пересчёте баров)</span></div>
             <div class="metrics-row" style="flex-wrap:wrap;margin-bottom:6px">
-                <div class="metric-card"><div class="metric-label">SAR AF0 (0.005–0.05)</div><input id="sarAf0" class="input" placeholder="0.02" style="width:80px"></div>
-                <div class="metric-card"><div class="metric-label">SAR Step (0.002–0.2)</div><input id="sarStep" class="input" placeholder="0.2" style="width:80px"></div>
-                <div class="metric-card"><div class="metric-label">SAR Max (0.05–0.5)</div><input id="sarMax" class="input" placeholder="0.2" style="width:80px"></div>
-                <div class="metric-card"><div class="metric-label">EMA период (5–50)</div><input id="sarEmaN" class="input" placeholder="12" style="width:70px"></div>
-                <div class="metric-card"><div class="metric-label">TP, R (пусто=выкл)</div><input id="sarTpR" class="input" placeholder="2" style="width:70px"></div>
-                <div class="metric-card"><div class="metric-label">Таймфрейм мин (5–240)</div><input id="sarTfMin" class="input" placeholder="60" style="width:70px"></div>
-                <div class="metric-card"><div class="metric-label">Окно сигн. (бары)</div><input id="sarMaxSigAge" class="input" placeholder="8" style="width:70px"></div>
+                <div class="metric-card" style="flex:0 0 132px;min-width:132px;min-height:66px;text-align:left"><div class="metric-label">SAR AF0 (0.005–0.05)</div><input id="sarAf0" class="input" placeholder="0.02" style="width:80px"></div>
+                <div class="metric-card" style="flex:0 0 132px;min-width:132px;min-height:66px;text-align:left"><div class="metric-label">SAR Step (0.002–0.2)</div><input id="sarStep" class="input" placeholder="0.2" style="width:80px"></div>
+                <div class="metric-card" style="flex:0 0 132px;min-width:132px;min-height:66px;text-align:left"><div class="metric-label">SAR Max (0.05–0.5)</div><input id="sarMax" class="input" placeholder="0.2" style="width:80px"></div>
+                <div class="metric-card" style="flex:0 0 132px;min-width:132px;min-height:66px;text-align:left"><div class="metric-label">EMA период (5–50)</div><input id="sarEmaN" class="input" placeholder="12" style="width:70px"></div>
+                <div class="metric-card" style="flex:0 0 132px;min-width:132px;min-height:66px;text-align:left"><div class="metric-label">TP, R (пусто=выкл)</div><input id="sarTpR" class="input" placeholder="2" style="width:70px"></div>
+                <div class="metric-card" style="flex:0 0 132px;min-width:132px;min-height:66px;text-align:left"><div class="metric-label">Таймфрейм мин (5–240)</div><input id="sarTfMin" class="input" placeholder="60" style="width:70px"></div>
+                <div class="metric-card" style="flex:0 0 132px;min-width:132px;min-height:66px;text-align:left"><div class="metric-label">Окно сигн. (бары)</div><input id="sarMaxSigAge" class="input" placeholder="8" style="width:70px"></div>
             </div>
             <div class="text-secondary" style="font-size:11.5px;margin-bottom:4px">Штат бэктеста: AF0 0.02 · Step 0.2 · Max 0.2 · EMA 12 · стоп 3×ATR · H1 · полярность std (не менять — урок WF) · трей
             <hr style="border-color:#2D2D44;margin:12px 0">

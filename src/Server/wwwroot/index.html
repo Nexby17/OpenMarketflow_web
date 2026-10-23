@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>OpenMarketflow</title>
-    <link rel="stylesheet" href="/css/style.css?v=21">
+    <link rel="stylesheet" href="/css/style.css?v=23">
     <script src="/js/lightweight-charts.js"></script>
 </head>
 <body>
@@ -12,7 +12,7 @@
     // BUILD GUARD (F-090a): авто-перезагрузка вкладки при новой сборке сервера.
     // Гарантирует, что UI всегда исполняет актуальный код без ручного Ctrl+F5.
     (function () {
-        var cur = 'v48-20261023';
+        var cur = 'v49-20261023';
         setInterval(function () {
             fetch(location.pathname, { cache: 'no-store', headers: { 'X-Build-Check': '1' } })
                 .then(function (r) { return r.text(); })
@@ -454,6 +454,6 @@
     <script src="/js/modules/chart.js?v=21"></script>
     <script src="/js/modules/log.js"></script>
     <script src="/js/app.js?v=131"></script>
-    <script src="/js/modules/sarema.js?v=48"></script>
+    <script src="/js/modules/sarema.js?v=49"></script>
 </body>
 </html>
