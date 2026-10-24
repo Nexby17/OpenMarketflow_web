@@ -78,6 +78,12 @@ class SaremaOrders:
                 log.info('F-101: FINAM_API_KEY обновлён из .env, пересоздаю rest4')
                 self._rest4 = None
                 self._r4()
+            # F-103: /sessions с заголовком Authorization (битый JWT) даёт 400 даже с валидным
+            # секретом — сбрасываем jwt_token перед получением нового.
+            if self._rest4 is not None and hasattr(self._rest4, '_get_module'):
+                mod = self._rest4._get_module()
+                if hasattr(mod, 'tm'):
+                    mod.tm._jwt_token = None
             if self._rest4 and hasattr(self._rest4, '_get_module'):
                 mod = self._rest4._get_module()
                 if hasattr(mod, 'client') and hasattr(mod.client, 'access_tokens'):
