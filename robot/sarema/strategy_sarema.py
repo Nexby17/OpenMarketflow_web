@@ -224,14 +224,15 @@ class SaremaStrategy:
         if qty < 1:
             self.state.save()
             return {"event": "signal_skipped", "reason": reason, "risk_sizing": rs}
-        qty = apply_lot_rounding(qty, self.lot_size)
-        if qty < 1:
-            self.state.save()
-            return {"event": "signal_skipped", "reason": "lot_rounding", "risk_sizing": rs}
+        # F-102: liq_cap ДО лот-округления — иначе liq ломает кратность лоту → 'Invalid quantity'
         qty = apply_liq_cap(qty, bar_volume, self.cfg.get("liq_frac"))
         if qty < 1:
             self.state.save()
             return {"event": "signal_skipped", "reason": "liq_frac", "risk_sizing": rs}
+        qty = apply_lot_rounding(qty, self.lot_size)
+        if qty < 1:
+            self.state.save()
+            return {"event": "signal_skipped", "reason": "lot_rounding", "risk_sizing": rs}
         # F-094: стоп в рублях убытка — дистанция = стоп_руб / qty (после финального сайзинга)
         if (self.cfg.get("stop_loss_unit") or '').lower() == 'rub_pnl' and self.cfg.get("stop_loss_value") is not None:
             stop_dist, stop_basis = self._initial_stop_dist(direction, price_hint, atr_signal, qty=qty)

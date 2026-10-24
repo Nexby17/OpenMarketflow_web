@@ -48,10 +48,36 @@ class SaremaOrders:
         self.last_error: str = ""
         self._rest4 = None
 
+    def _reload_api_key(self) -> bool:
+        """F-101: перечитать FINAM_API_KEY из .env; True если ключ изменился."""
+        import os
+        robot_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        env_key = os.environ.get('FINAM_API_KEY', '')
+        for cand in (os.path.join(robot_dir, '..', 'src', 'Server', 'bin', 'Debug', 'net10.0', '.env'),
+                     os.path.join(robot_dir, '.env')):
+            if os.path.exists(cand):
+                with open(cand, encoding='utf-8-sig') as f:
+                    for line in f:
+                        line = line.strip()
+                        if line.startswith('FINAM_API_KEY='):
+                            disk = line.split('=', 1)[1].strip()
+                            if disk and disk != env_key:
+                                os.environ['FINAM_API_KEY'] = disk
+                                return True
+                            return False
+        return False
+
     def _reauth(self):
         """F-080 fix3: официальный путь SDK — client.access_tokens.set_jwt_token()
-        (async, сам делает POST /sessions и tm.set_jwt_token)."""
+        (async, сам делает POST /sessions и tm.set_jwt_token).
+        F-101: перед re-auth ВСЕГДА сверяем FINAM_API_KEY с .env — процесс мог
+        стартовать с битым унаследованным ключом; если на диске другой ключ,
+        пересоздаём rest4 целиком (TokenManager держит старый секрет)."""
         try:
+            if self._reload_api_key():
+                log.info('F-101: FINAM_API_KEY обновлён из .env, пересоздаю rest4')
+                self._rest4 = None
+                self._r4()
             if self._rest4 and hasattr(self._rest4, '_get_module'):
                 mod = self._rest4._get_module()
                 if hasattr(mod, 'client') and hasattr(mod.client, 'access_tokens'):
