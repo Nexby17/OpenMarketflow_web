@@ -27,6 +27,7 @@ class SaremaStrategy:
         self.ticker = ticker
         self.stop_order_id: str | None = None
         self.last_sar: float | None = None   # F-105: SAR последнего закрытого бара
+        self._last_tp_px: float | None = None   # F-105h: цена текущей TP-лимитки
         self.last_stats: dict = {}
         # F-065: Volume Profile (VAH/VAL/POC) — фильтр входа как у OF-роботов
         self.vp = VolumeProfileSarema(
@@ -111,6 +112,29 @@ class SaremaStrategy:
             if abs(new_stop - self.state.stop_price) > 1e-9:
                 self._replace_broker_stop(new_stop)
                 self.state.stop_price = new_stop
+
+            # F-105h: плавающий TP (sar) — лимитка снимается и перевыставляется за новым SAR.
+            # Также восстанавливаем лимитку, если её нет (исполнилась/снялась брокером).
+            if (self.cfg.get("tp_mode") or "fixed").lower() == "sar" and self.cfg.get("tp_R") and self.state.direction != 0:
+                try:
+                    _tp_new = self.tp_price(self.state.direction, self.state.entry_price, sar_i, float(atr[i]))
+                    if _tp_new and _tp_new > 0:
+                        _need_replace = self.state.tp_order_id is None
+                        if not _need_replace and self._last_tp_px and abs(self._last_tp_px - _tp_new) > 1e-9:
+                            _need_replace = True
+                        if _need_replace:
+                            if self.state.tp_order_id:
+                                try:
+                                    self.orders.cancel(self.state.tp_order_id)
+                                except Exception:
+                                    pass
+                            _close_side = SELL if self.state.direction == LONG else BUY
+                            _tpo = self.orders.place_limit(_close_side, self.state.lots_qty, round(_tp_new, 2), tag="sarema-tp")
+                            self.state.tp_order_id = _tpo.order_id if _tpo else None
+                            self._last_tp_px = _tp_new
+                            log.info(f"TP limit moved (sar) @ {_tp_new:.2f} order={self.state.tp_order_id}")
+                except Exception as _tpe:
+                    log.error(f"TP move error: {_tpe}")
 
             # F-073 (Дмитрий): закрытие по ПРОТИВОПОЛОЖНОМУ кроссу + разворот.
             # Обратный кросс на закрытом баре против позиции → close, затем вход в новую сторону
@@ -315,6 +339,7 @@ class SaremaStrategy:
                 _close_side = SELL if direction == LONG else BUY
                 _tpo = self.orders.place_limit(_close_side, qty, round(_tp_px, 2), tag="sarema-tp")
                 self.state.tp_order_id = _tpo.order_id if _tpo else None
+                self._last_tp_px = _tp_px
                 log.info(f"TP limit @ {_tp_px:.2f} ({self.cfg.get('tp_mode')} mode) order={self.state.tp_order_id}")
         except Exception as _tpe:
             log.error(f"TP limit error: {_tpe}")
