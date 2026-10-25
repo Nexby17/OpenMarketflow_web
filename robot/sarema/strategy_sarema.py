@@ -26,6 +26,7 @@ class SaremaStrategy:
         self.lot_size = lot_size
         self.ticker = ticker
         self.stop_order_id: str | None = None
+        self.last_sar: float | None = None   # F-105: SAR последнего закрытого бара
         self.last_stats: dict = {}
         # F-065: Volume Profile (VAH/VAL/POC) — фильтр входа как у OF-роботов
         self.vp = VolumeProfileSarema(
@@ -73,8 +74,9 @@ class SaremaStrategy:
         events = []
 
         # 1) если позиция есть — трейлинг стопа по SAR этого бара + брокер-стоп
+        sar_i = float(g2["sar"].iloc[i])
+        self.last_sar = sar_i
         if self.state.direction != 0:
-            sar_i = float(g2["sar"].iloc[i])
             close_i = float(g2["close"].iloc[i])
             # F-096: трейлинг-стоп ОТ ЦЕНЫ (запрос Дмитрия): если trail_value задан
             # (% / рубли / пункты) — стоп тянется за close закрытого бара на trail-дистанцию,
@@ -120,7 +122,7 @@ class SaremaStrategy:
                 ev = self._try_enter(SHORT, float(atr[i]), float(g2["volume"].iloc[i]),
                                      signal_bar=str(g2["begin"].iloc[i]), signal_age=0)
                 events.append(ev)
-                self.last_stats = {"bars": len(g2), "last_bar": str(g2["begin"].iloc[-1])}
+                self.last_stats = {"bars": len(g2), "last_bar": str(g2["begin"].iloc[-1]), "atr": float(atr[i])}
                 return {"events": events, "last_bar": str(g2["begin"].iloc[-1])}
             if self.state.direction == SHORT and dn[i]:
                 events.append(self.close_position(reason="reverse-signal"))
@@ -128,7 +130,7 @@ class SaremaStrategy:
                 ev = self._try_enter(LONG, float(atr[i]), float(g2["volume"].iloc[i]),
                                      signal_bar=str(g2["begin"].iloc[i]), signal_age=0)
                 events.append(ev)
-                self.last_stats = {"bars": len(g2), "last_bar": str(g2["begin"].iloc[-1])}
+                self.last_stats = {"bars": len(g2), "last_bar": str(g2["begin"].iloc[-1]), "atr": float(atr[i])}
                 return {"events": events, "last_bar": str(g2["begin"].iloc[-1])}
 
         # 2) вход: сигнал на закрытом баре, флэт, входы не заблокированы.
@@ -175,7 +177,7 @@ class SaremaStrategy:
 
         # 3) pending_signal не используется: вход по рынку сразу после закрытия бара
         #    (в бэктесте вход по open следующего бара; рынок в первые минуты часа ≈ то же)
-        self.last_stats = {"bars": len(g2), "last_bar": str(g2["begin"].iloc[-1])}
+        self.last_stats = {"bars": len(g2), "last_bar": str(g2["begin"].iloc[-1]), "atr": float(atr[i])}
         return {"events": events, "last_bar": str(g2["begin"].iloc[-1])}
 
     # ---------- вход ----------
@@ -194,6 +196,22 @@ class SaremaStrategy:
         if u == 'points':
             return v
         return None                      # atr / sar / неизвестное — классика
+
+    # ---------- F-105: TP по R (fixed от входа | sar — плавает за SAR) ----------
+    def tp_price(self, direction: int, entry: float, sar: float, atr: float) -> float | None:
+        """Цена TP. fixed: entry ± tp_R × риск_руб/qty в цене (через риск в цене входа).
+        sar: sar ± tp_R × 3×ATR (плавает вместе с SAR). None = TP выключен."""
+        tp_r = self.cfg.get("tp_R")
+        if not tp_r:
+            return None
+        mode = (self.cfg.get("tp_mode") or "fixed").lower()
+        stop_dist, _ = self._initial_stop_dist(direction, entry, atr)
+        if mode == "sar":
+            base = sar
+        else:
+            base = entry
+        dist = float(tp_r) * stop_dist
+        return base + dist if direction == LONG else base - dist
 
     def _initial_stop_dist(self, direction: int, price_hint: float, atr_signal: float,
                            qty: int | None = None) -> tuple[float, str]:
@@ -286,6 +304,20 @@ class SaremaStrategy:
         self.state.initial_stop_price = stop0   # F-098: база трейлинга (стоп не двигается ближе этого зазора)
         self.state.entry_time = datetime.utcnow().isoformat()
         self._place_broker_stop(stop0, qty, direction)
+        # F-105: TP-лимитка (fixed: от входа; sar: от SAR последнего бара)
+        try:
+            _sar_last = float(self.feed.sar_last) if hasattr(self.feed, "sar_last") else None
+        except Exception:
+            _sar_last = None
+        try:
+            _tp_px = self.tp_price(direction, price_hint, _sar_last or price_hint, atr_signal)
+            if _tp_px:
+                _close_side = SELL if direction == LONG else BUY
+                _tpo = self.orders.place_limit(_close_side, qty, round(_tp_px, 2), tag="sarema-tp")
+                self.state.tp_order_id = _tpo.order_id if _tpo else None
+                log.info(f"TP limit @ {_tp_px:.2f} ({self.cfg.get('tp_mode')} mode) order={self.state.tp_order_id}")
+        except Exception as _tpe:
+            log.error(f"TP limit error: {_tpe}")
         if signal_bar:
             self.state.last_entry_signal_bar = signal_bar   # F-071: сигнал потрачен
         self.state.save()
@@ -316,6 +348,12 @@ class SaremaStrategy:
         po = self.orders.place_market(side, self.state.lots_qty, tag=f"sarema-close-{reason}")
         if self.stop_order_id:
             self.orders.cancel(self.stop_order_id)
+        if self.state.tp_order_id:                     # F-105: снять TP-лимитку
+            try:
+                self.orders.cancel(self.state.tp_order_id)
+            except Exception:
+                pass
+            self.state.tp_order_id = None
         if not po:
             return {"event": "close_error", "error": self.orders.last_error}
         log.info(f"close reason={reason} qty={self.state.lots_qty}")

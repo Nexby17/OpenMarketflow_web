@@ -65,6 +65,7 @@ DEFAULTS = {
     "max_signal_age": 8,
     # F-084: take-profit по R-мультипликатору (2R = двойной риск). null = выключен.
     "tp_R": 2.0,
+    "tp_mode": "fixed",   # F-105: fixed (от входа) | sar (плавает за SAR)
 }
 
 
@@ -121,6 +122,12 @@ def validate_params(patch: dict) -> tuple[dict, list[str]]:
             clean["max_signal_age"] = int(v)
         else:
             errors.append("max_signal_age must be in [1, 50] or null")
+    if "tp_mode" in patch:
+        m = patch["tp_mode"]
+        if m in ("fixed", "sar"):
+            clean["tp_mode"] = m
+        else:
+            errors.append("tp_mode must be fixed|sar")
     if "tp_R" in patch:
         v = patch["tp_R"]
         if v is None:

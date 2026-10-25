@@ -159,6 +159,27 @@ class SaremaOrders:
             log.error(f"market exception: {e}")
             return None
 
+    def place_limit(self, side: int, quantity: int, price: float, tag: str = "tp") -> PlacedOrder | None:
+        """F-105: лимитный ордер по TP (закрытие позиции по цене цели)."""
+        if quantity < 1 or price <= 0:
+            return None
+        side_str = "SIDE_BUY" if side == BUY else "SIDE_SELL"
+        comment = self._tag(tag)
+        try:
+            r4 = self._r4()
+            resp = r4.place_limit(self._account, self._symbol, side_str, int(quantity), float(price), comment=comment)
+            oid = str(resp.get("order_id", resp.get("orderId", "")))
+            if not oid:
+                self.last_error = str(resp)[:200]
+                log.error(f"limit failed: {self.last_error}")
+                return None
+            log.info(f"limit {side_str} qty={quantity} @ {price} id={oid} comment={comment}")
+            return PlacedOrder(order_id=oid, comment=comment)
+        except Exception as e:
+            self.last_error = str(e)[:200]
+            log.error(f"limit exception: {e}")
+            return None
+
     def place_stop_market(self, side: int, quantity: int, stop_price: float, tag: str = "stop") -> PlacedOrder | None:
         """Stop-market. SDK REST 4.3.3 не даёт stop-ордера напрямую — fallback:
         сторожевой режим робота (программный стоп по тикам) + этот метод оставлен

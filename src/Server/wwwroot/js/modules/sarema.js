@@ -91,7 +91,8 @@ function sarSwitchInstance(inst) {
                 <div class="metric-card" style="flex:0 0 132px;min-width:132px;min-height:66px;text-align:left"><div class="metric-label">SAR Step (0.002–0.2)</div><input id="sarStep" class="input" placeholder="0.2" style="width:80px"></div>
                 <div class="metric-card" style="flex:0 0 132px;min-width:132px;min-height:66px;text-align:left"><div class="metric-label">SAR Max (0.05–0.5)</div><input id="sarMax" class="input" placeholder="0.2" style="width:80px"></div>
                 <div class="metric-card" style="flex:0 0 132px;min-width:132px;min-height:66px;text-align:left"><div class="metric-label">EMA период (5–50)</div><input id="sarEmaN" class="input" placeholder="12" style="width:70px"></div>
-                <div class="metric-card" style="flex:0 0 132px;min-width:132px;min-height:66px;text-align:left"><div class="metric-label">TP, R (пусто=выкл)</div><input id="sarTpR" class="input" placeholder="2" style="width:70px"></div>
+                <div class="metric-card" style="flex:0 0 132px;min-width:132px;min-height:66px;text-align:left"><div class="metric-label">TP режим</div><div style="display:flex;gap:8px;align-items:center"><label style="display:flex;gap:4px;align-items:center"><input type="checkbox" id="sarTpFixed" checked> Fixed</label><label style="display:flex;gap:4px;align-items:center"><input type="checkbox" id="sarTpSar"> SAR</label></div></div>
+                <div class="metric-card" style="flex:0 0 132px;min-width:132px;min-height:66px;text-align:left"><div class="metric-label">TP, R (пусто=выкл)</div><input id="sarTpR" class="input" placeholder="2" style="width:100%"></div>
                 <div class="metric-card" style="flex:0 0 132px;min-width:132px;min-height:66px;text-align:left"><div class="metric-label">Таймфрейм мин (5–240)</div><input id="sarTfMin" class="input" placeholder="60" style="width:70px"></div>
                 <div class="metric-card" style="flex:0 0 132px;min-width:132px;min-height:66px;text-align:left"><div class="metric-label">Окно сигн. (бары)</div><input id="sarMaxSigAge" class="input" placeholder="8" style="width:70px"></div>
             </div>
@@ -159,6 +160,12 @@ function sarSwitchInstance(inst) {
     document.body.appendChild(div);
 
     // загрузка: очистка → черновик → живой /params (только этого робота)
+        // F-105: взаимоисключающие чекбоксы TP режима
+    var _fx0 = document.getElementById('sarTpFixed'), _sr0 = document.getElementById('sarTpSar');
+    if (_fx0 && _sr0) {
+        _fx0.addEventListener('change', function(){ if (_fx0.checked) _sr0.checked = false; });
+        _sr0.addEventListener('change', function(){ if (_sr0.checked) _fx0.checked = false; });
+    }
     sarLoadPanelData(inst);
     // журнал + живые метрики (таймер панели)
     if (window._sarPanelTimer) clearInterval(window._sarPanelTimer);
@@ -226,6 +233,9 @@ async function sarLoadPanelData(inst) {
             set('sarMax', p.sar_max ?? 0.2);
             set('sarEmaN', p.ema_n ?? 12);
             set('sarTpR', p.tp_R ?? '');
+            var _tm = (p.tp_mode || 'fixed');
+            var _fx = document.getElementById('sarTpFixed'), _sr = document.getElementById('sarTpSar');
+            if (_fx && _sr) { _fx.checked = _tm === 'fixed'; _sr.checked = _tm === 'sar'; }
             set('sarMaxSigAge', p.max_signal_age ?? 8);
             set('sarTfMin', p.tf_min ?? 60);
             // F-065
@@ -246,7 +256,10 @@ async function sarUpdateLiveMetrics(inst) {
     const st = window['sarRobot_' + inst];
     let mode = 'оффлайн', modeColor = '#ef6461';
     let dirText = '—', entryText = '—', stopText = '—', pnlText = '—', priceSrc = '', lastBar = '—';
+    var tpText = '—';
     if (st) {
+        var _tp = st.tp || {};
+        if (_tp.price) tpText = _tp.price + ((_tp.mode === 'sar') ? ' · SAR' : '');
         mode = st.mode === 'running' ? '▶ работает' : (st.mode === 'paused' ? '⏸ пауза' : '■ остановлен');
         modeColor = st.mode === 'running' ? '#3ecf8e' : '#9CA3AF';
         const p = st.position || {};
@@ -271,6 +284,7 @@ async function sarUpdateLiveMetrics(inst) {
         <div class="metric-card"><div class="metric-label">Позиция</div><div style="font-size:1.05em;font-weight:700">${dirText}</div></div>
         <div class="metric-card"><div class="metric-label">Вход</div><div style="font-size:1.05em;font-weight:700">${entryText}</div></div>
         <div class="metric-card"><div class="metric-label">Стоп</div><div style="font-size:1.05em;font-weight:700">${stopText}</div></div>
+        <div class="metric-card"><div class="metric-label">TP (цель)</div><div style="font-size:1.05em;font-weight:700;color:#4F8FF7">${tpText}</div></div>
         <div class="metric-card"><div class="metric-label">PnL (брокер)${priceSrc}</div><div style="font-size:1.05em;font-weight:700;color:${pnlText.startsWith('-') ? 'var(--red)' : 'var(--green)'}">${pnlText}</div></div>
         <div class="metric-card"><div class="metric-label">Последний H1</div><div style="font-size:0.95em;font-weight:600">${lastBar}</div></div>
     `;
@@ -373,6 +387,9 @@ async function sarSaveParams() {
         liq_frac: liqRaw === '' ? null : parseFloat(liqRaw),
         sar_af0: af0, sar_step: step, sar_max: smax,
         ema_n: emaN != null ? Math.round(emaN) : undefined,
+        tp_mode: (function(){ var fx = document.getElementById('sarTpFixed'), sr = document.getElementById('sarTpSar');
+                   if (sr && sr.checked) return 'sar';
+                   return 'fixed'; })(),
         tp_R: tpR != null ? tpR : null,
         max_signal_age: maxSigAge != null ? maxSigAge : null,
         tf_min: tfMin != null ? Math.round(tfMin) : undefined,

@@ -77,6 +77,7 @@ class ParamsPatch(BaseModel):
     vah_val_pct: float | None = None
     vah_val_lookback: int | float | None = None
     tp_R: int | float | None = None   # F-084: take-profit по R
+    tp_mode: str | None = None   # F-105: fixed | sar
     # F-092: стоп-лосс и трейлинг в единицах (%|rub|points; atr/sar = старое поведение)
     stop_loss_value: int | float | None = None
     stop_loss_unit: str | None = None
@@ -184,6 +185,12 @@ def status():
         "warmup_ok": feed.bars is not None and len(feed.bars) >= cfg.get("warmup_bars", 300),
         # F-065: VP Mode + живой VP (VAH/VAL/POC) для панели UI
         "vp": {"mode": cfg.get("vah_val_mode", "off"), **strategy.vp.state()},
+        # F-105: живой TP для панели
+        "tp": {"mode": cfg.get("tp_mode", "fixed"), "R": cfg.get("tp_R"),
+               "price": strategy.tp_price(state.direction, state.entry_price,
+                                          strategy.last_sar or (state.entry_price or 0),
+                                          (strategy.last_stats or {}).get("atr") or 0.0) if state.direction != 0 and state.entry_price else None,
+               "order_id": state.tp_order_id},
     }
 
 
