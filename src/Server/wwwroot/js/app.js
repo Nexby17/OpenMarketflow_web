@@ -2681,12 +2681,30 @@ async function renderRobots() {
     }).join('');
 
     const allRows = [...serverStrategies, ...localRows, pythonRobotRow, ofRobotRow, ofPerpRobotRow, ofMxRobotRow, ofBrRows];
-    if (!allRows.filter(r=>r).length) { if (tbody._lastHtml !== '') { tbody.innerHTML = ''; tbody._lastHtml = ''; } if (noMsg) noMsg.style.display = 'block'; return; }
+    if (!allRows.filter(r=>r).length) { if (tbody._lastHtml !== '') { tbody.innerHTML = ''; tbody._lastHtml = ''; } tbody._lastRows = null; if (noMsg) noMsg.style.display = 'block'; return; }
     if (noMsg) noMsg.style.display = 'none';
-    // F-081: перерисовка только при реальном изменении HTML — иначе DOM перезаписывается каждые 2с
-    // несколькими poll-циклами → таблица моргает, сбрасываются hover/открытые дропдауны.
-    const html = allRows.join('');
-    if (tbody._lastHtml !== html) { tbody._lastHtml = html; tbody.innerHTML = html; }
+    // F-081b: ПОСТРОЧНЫЙ диф-рендер. Значения (PnL/цены) меняются каждый тик 2с-циклов,
+    // поэтому сравнение всего HTML почти всегда давало перезапись tbody целиком -> мигание,
+    // сброс hover/скролла. Теперь сравниваем построчно и заменяем только изменившиеся <tr>.
+    const newRows = allRows.filter(r => r !== '' && r != null);
+    const oldRows = tbody._lastRows || [];
+    if (oldRows.length !== newRows.length) {
+        // число строк изменилось — единственный случай честной полной перерисовки
+        tbody.innerHTML = newRows.join('');
+        tbody._lastRows = newRows;
+        return;
+    }
+    const trows = tbody.rows;
+    for (let i = 0; i < newRows.length; i++) {
+        if (oldRows[i] !== newRows[i]) {
+            if (trows[i]) {
+                trows[i].outerHTML = newRows[i];
+            } else {
+                tbody.insertAdjacentHTML('beforeend', newRows[i]);
+            }
+        }
+    }
+    tbody._lastRows = newRows;
 }
 
 async function robotStart(i) {

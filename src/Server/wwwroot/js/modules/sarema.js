@@ -596,9 +596,22 @@ function sarRenderTable() {
             </td>
         </tr>`;
     }
-    // F-081: перерисовка только при реальном изменении — иначе innerHTML перезаписывается каждые 5с,
-    // таблица моргает (сброс hover, дрожание строк).
-    if (tbody._lastHtml !== rows) { tbody._lastHtml = rows; tbody.innerHTML = rows; }
+    // F-081b: ПОСТРОЧНЫЙ диф-рендер — PnL/цены меняются каждый тик, полный innerHTML мигал.
+    const newRows = rows.split('</tr>').filter(s => s.trim()).map(s => s.trim() + '</tr>');
+    const oldRows = tbody._lastRows || [];
+    if (oldRows.length !== newRows.length) {
+        tbody.innerHTML = newRows.join('');
+        tbody._lastRows = newRows;
+        return;
+    }
+    const trows = tbody.rows;
+    for (let i = 0; i < newRows.length; i++) {
+        if (oldRows[i] !== newRows[i]) {
+            if (trows[i]) trows[i].outerHTML = newRows[i];
+            else tbody.insertAdjacentHTML('beforeend', newRows[i]);
+        }
+    }
+    tbody._lastRows = newRows;
     // селектор в шапке вкладки (быстрое открытие панели)
     const sel = document.getElementById('sarInstSelect');
     if (sel && (!sel.options || sel.options.length !== SAR_INSTANCE_ORDER.length)) {
