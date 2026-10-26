@@ -483,12 +483,15 @@ function loadPositions() {
     fetch('/api/positions').then(r => r.json()).then(data => {
         const tbody = el('positionsTable');
         if (!tbody) return;
+        // F-095b: Finam REST иногда отдаёт пусто/ошибку рывками - держим последние данные
+        // ещё 2 опроса подряд, прежде чем показать 'Нет позиций' (иначе таблицы 'пропадают')
         if (!data || data.error || !data.length) {
-            // F-095: не затираем старые данные на ошибке/пустом ответе - иначе таблица мигает
-            if (data && data.error && !tbody.children.length) tbody.innerHTML = '<tr><td colspan="9" style="color:var(--text-muted)">Нет позиций</td></tr>';
-            else if (!data || !data.error) { if (tbody._isEmpty !== true) { tbody.innerHTML = '<tr><td colspan="9" style="color:var(--text-muted)">Нет позиций</td></tr>'; tbody._isEmpty = true; } }
+            tbody._emptyStreak = (tbody._emptyStreak || 0) + 1;
+            if (tbody._lastGoodHtml && tbody._emptyStreak < 3) return; // держим старые строки
+            if (tbody._isEmpty !== true) { tbody.innerHTML = '<tr><td colspan="9" style="color:var(--text-muted)">Нет позиций</td></tr>'; tbody._isEmpty = true; tbody._lastGoodHtml = ''; }
             return;
         }
+        tbody._emptyStreak = 0;
         tbody._isEmpty = false;
         tbody.innerHTML = data.map(p => `<tr>
             <td>1225953</td>
@@ -498,6 +501,7 @@ function loadPositions() {
             <td>${p.avgPrice?.toFixed(2) || '—'}</td>
             <td>${p.qty || 0}</td>
         </tr>`).join('');
+        tbody._lastGoodHtml = tbody.innerHTML;
     }).catch(e => console.error("[ERROR]", e));
 }
 
@@ -583,9 +587,12 @@ function loadTrades() {
         if (!tbody) return;
         const trades = data.trades || data;
         if (!trades || (Array.isArray(trades) && trades.length === 0)) {
-            if (tbody._isEmpty !== true) { tbody.innerHTML = '<tr><td colspan="6" style="color:var(--text-muted)">Нет сделок за сегодня</td></tr>'; tbody._isEmpty = true; }
+            tbody._emptyStreak = (tbody._emptyStreak || 0) + 1;
+            if (tbody._lastGoodHtml && tbody._emptyStreak < 3) return;
+            if (tbody._isEmpty !== true) { tbody.innerHTML = '<tr><td colspan="6" style="color:var(--text-muted)">Нет сделок за сегодня</td></tr>'; tbody._isEmpty = true; tbody._lastGoodHtml = ''; }
             return;
         }
+        tbody._emptyStreak = 0;
         tbody._isEmpty = false;
         tbody.innerHTML = trades.map(t => {
             const ticker = (t.symbol || '').split('@')[0];
@@ -604,6 +611,7 @@ function loadTrades() {
                 <td>${comment}</td>
             </tr>`;
         }).join('');
+        tbody._lastGoodHtml = tbody.innerHTML;
     }).catch(e => console.error("[ERROR]", e));
 }
 
@@ -4353,6 +4361,7 @@ document.addEventListener('DOMContentLoaded', () => {
     el('testTo').value = today;
 
     // Auto-refresh status
+    fetchStatus(); // F-095b: грузим таблицы СРАЗУ при загрузке, а не через 30с
     setInterval(fetchStatus, 30000);
 
     // Автоподключение брокера если есть токен
