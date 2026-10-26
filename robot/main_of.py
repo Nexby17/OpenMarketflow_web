@@ -518,6 +518,20 @@ def main_loop():
             # Process tick
             actions = strategy.process_tick(price, now)
 
+            # F-094: брокерский стоп для пирамид-позиций (pyramid_full_exit).
+            # Держит stop-ордер на last_pyr_entry ± 1 pyr-step; переставляется при
+            # новом pyr-входе, снимается при закрытии позиции. Исполнение стопа
+            # брокером ловится через WS ORDERS (on_my_trade → close_all-синхронизация).
+            if not PAPER_MODE:
+                try:
+                    strategy.sync_pyramid_broker_stop(
+                        price,
+                        place_stop_fn=lambda side, qty, px, tag: orders.place_stop_loss(side, qty, px, tag=tag),
+                        cancel_fn=lambda oid: orders.cancel(oid),
+                    )
+                except Exception as e:
+                    log.warning(f"PYR STOP sync error: {e}")
+
             # Execute actions
             for action in actions:
                 _execute_action(action)
@@ -550,6 +564,23 @@ def main_loop():
                         ok, msg = positions_in_sync(strategy._total_lots, strategy._dir, bd)
                         if not ok:
                             log.warning(f"DESYNC: {msg} avg_robot={strategy._avg_price:.0f} avg_broker={bd.get('avg_price',0):.0f} — manual fix needed")
+                            # F-094: если брокер FLAT, а у робота позиция — стоп-лосс исполнился брокером
+                            # (PYR STOP или ручное закрытие в терминале). Синхронизируем робота в FLAT
+                            # и фиксируем сделку в журнале (PnL по брокерской средней).
+                            b_lots = int(bd.get("lots", 0) or 0)
+                            if b_lots == 0 and strategy.in_position and hasattr(strategy, "_pyr_stop_order_id") \
+                                    and getattr(strategy, "_pyr_stop_order_id", None):
+                                close_px = float(bd.get("current_price", 0) or strategy._current_price or 0)
+                                log.warning(f"PYR STOP FILLED at broker (position closed externally @ ~{close_px:.0f}) — syncing robot to FLAT")
+                                action_rec = {
+                                    "action": "close_all", "reason": "pyr_stop_filled",
+                                    "price": close_px, "qty": strategy._total_lots,
+                                    "layers": [[e.price, e.lots] for e in strategy._lot_queue],
+                                }
+                                _record_broker_trade(action_rec, close_px)
+                                strategy._reset_position()
+                                strategy._pyr_stop_order_id = None
+                                save_state()
                     else:
                         log.debug("Price sync: broker position unavailable (API) — desync check skipped")
                 except Exception as e:

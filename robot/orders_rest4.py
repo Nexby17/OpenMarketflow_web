@@ -128,6 +128,26 @@ class OrderManagerRest4:
             log.error("place_limit REST failed: %s", str(e)[:120])
             return None
 
+    def place_stop_loss(self, side: int, quantity: int, stop_price: float, tag: str = "") -> Optional[PlacedOrder]:
+        """F-094: брокерский STOP-ордер (stop-market) на закрывающую сторону.
+        Исполняется брокером при достижении stop_price — мгновенно, без цикла робота."""
+        if self._paper:
+            oid = self._next_id(tag or "stp")
+            log.info("PAPER STOP %s %d %s @ %.0f (%s)",
+                     "BUY" if side == BUY else "SELL", quantity, self._symbol, stop_price, tag)
+            return PlacedOrder(order_id=oid, side=side, quantity=quantity, price=stop_price, tag=tag)
+        try:
+            resp = self._rest4.place_stop_loss(
+                self._account, self._symbol,
+                "SIDE_BUY" if side == BUY else "SIDE_SELL", quantity, stop_price, comment=tag)
+            oid = str(resp.get("order_id", resp.get("orderId", "")))
+            log.info("REST STOP %s %d %s @ %.0f -> %s",
+                     "BUY" if side == BUY else "SELL", quantity, self._symbol, stop_price, oid)
+            return PlacedOrder(order_id=oid, side=side, quantity=quantity, price=stop_price, tag=tag)
+        except Exception as e:
+            log.error("place_stop_loss REST failed: %s", str(e)[:160])
+            return None
+
     def cancel(self, order_id: str) -> bool:
         if self._paper:
             log.info("PAPER CANCEL %s", order_id)

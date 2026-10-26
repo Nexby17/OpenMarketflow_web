@@ -147,6 +147,30 @@ def place_limit(account_id: str, symbol: str, side: str, quantity: int, price: f
     return resp.model_dump(mode="json") if hasattr(resp, "model_dump") else dict(resp)
 
 
+def place_stop_loss(account_id: str, symbol: str, side: str, quantity: int, stop_price: float,
+                    comment: str = "") -> dict:
+    """F-094: broker-side STOP-ордер (stop-market). Исполняется брокером при
+    достижении stop_price — без участия цикла робота, без задержки тика.
+    side — ЗАКРЫВАЮЩАЯ сторона (для LONG-позиции = sell, для SHORT = buy).
+    stop_condition: LAST_UP (для buy-стопа) / LAST_DOWN (для sell-стопа)."""
+    r4 = _get_module()
+    from finam_trade_api.order.model import Order, OrderType, StopCondition
+    from finam_trade_api.base_client.models import Side, FinamDecimal
+    o = Order(
+        account_id=account_id,
+        symbol=symbol,
+        quantity=FinamDecimal(value=str(quantity)),
+        side=Side(side),
+        type=OrderType("ORDER_TYPE_STOP"),
+        stop_price=FinamDecimal(value=f"{stop_price:.2f}"),
+        stop_condition=StopCondition("STOP_CONDITION_LAST_DOWN" if side == "sell" else "STOP_CONDITION_LAST_UP"),
+    )
+    if comment:
+        o.comment = comment
+    resp = r4.call(r4.client.orders.place_order(o), timeout=10)
+    return resp.model_dump(mode="json") if hasattr(resp, "model_dump") else dict(resp)
+
+
 def cancel_order(account_id: str, order_id: str) -> dict:
     r4 = _get_module()
     from finam_trade_api.order.model import CancelOrderRequest

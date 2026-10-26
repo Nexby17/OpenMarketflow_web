@@ -680,6 +680,65 @@ class OrderFlowStrategy:
             return price <= ref - step
         return price >= ref + step
 
+    def sync_pyramid_broker_stop(self, price: float, place_stop_fn=None, cancel_fn=None) -> None:
+        """F-094: держит у брокера STOP-ордер на закрывающую сторону при активном
+        pyramid_full_exit и позиции ≥3 лота с пирамидами.
+
+        Уровень: last_pyr_entry ± 1 pyr-step (тот же триггер, что pullback).
+        Переставляется при каждом новом pyr-входе; снимается при закрытии позиции,
+        выключении правила или когда пирамид нет (pyr=0 — закон не действует).
+
+        place_stop_fn(side, qty, stop_price, tag) / cancel_fn(order_id) — колбэки
+        main_of (брокерские вызовы), вызываются только при изменении состояния.
+        """
+        if not self.p.pyramid_full_exit:
+            need = False
+        elif not self.in_position or self._total_lots < 3 or self._pyramid_levels <= 0:
+            need = False
+        else:
+            ref = self._last_pyramid_entry_price()
+            need = ref is not None and ref > 0
+
+        stop_id = getattr(self, "_pyr_stop_order_id", None)
+
+        if not need:
+            if stop_id and cancel_fn:
+                try:
+                    cancel_fn(stop_id)
+                    log.info(f"PYR STOP canceled: {stop_id} (rule inactive)")
+                except Exception as e:
+                    log.warning(f"PYR STOP cancel failed: {e}")
+            if stop_id:
+                self._pyr_stop_order_id = None
+            return
+
+        ref = self._last_pyramid_entry_price()
+        step = self._effective_step(average=False)
+        stop_px = (ref - step) if self._dir == LONG else (ref + step)
+        qty = self._total_lots
+        close_side = "sell" if self._dir == LONG else "buy"
+
+        # перестановка нужна если: стопа нет, или уровень/объём изменились
+        prev_px = getattr(self, "_pyr_stop_price", 0.0)
+        prev_qty = getattr(self, "_pyr_stop_qty", 0)
+        if stop_id and abs(prev_px - stop_px) < 1e-9 and prev_qty == qty:
+            return  # актуален
+
+        if stop_id and cancel_fn:
+            try:
+                cancel_fn(stop_id)
+                log.info(f"PYR STOP re-place: cancel {stop_id}")
+            except Exception as e:
+                log.warning(f"PYR STOP re-place cancel failed: {e}")
+
+        if place_stop_fn:
+            placed = place_stop_fn(close_side, qty, stop_px, "pyr_full_exit_stop")
+            new_id = getattr(placed, "order_id", None) if placed else None
+            self._pyr_stop_order_id = new_id
+            self._pyr_stop_price = stop_px
+            self._pyr_stop_qty = qty
+            log.info(f"PYR STOP placed: {close_side} {qty} @ {fmt_price(stop_px)} (ref={fmt_price(ref)} step={fmt_price(step)}) id={new_id}")
+
     def _timeout_hit(self, now: datetime) -> bool:
         if self._entry_time is None:
             return False
@@ -1534,6 +1593,9 @@ class OrderFlowStrategy:
         self._last_average_price = 0.0
         self._last_pyramid_price = 0.0
         self._last_pyr_entry_price = 0.0  # F-073
+        self._pyr_stop_order_id = None  # F-094: брокерский стоп снят/пересчитан при закрытии
+        self._pyr_stop_price = 0.0
+        self._pyr_stop_qty = 0
         self._lot_queue.clear()
         self._entry_time = None
         self._signal_type = ""
