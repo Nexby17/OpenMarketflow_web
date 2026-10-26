@@ -429,7 +429,11 @@ def _main_loop():
     """Цикл робота: раз в минуту проверяет новый закрытый H1-бар; при появлении —
     strategy.on_closed_bar(). Рестарт между итерациями через state."""
     import time
-    log.info("main loop started")
+    # F-107: JWT Finam живёт ~сутки; планируем превентивный само-перезапуск процесса раз в 20 часов,
+    # чтобы токен обновлялся гарантированно и роботы не вставали в entry_error 'Token invalid'.
+    _start_ts = time.time()
+    _RESTART_AFTER = 20 * 3600
+    log.info("main loop started (F-107: auto-restart every 20h)")
     # --- Live H1 feed: Finam REST напрямую (JWT 15 мин, кэшируем) ---
     import urllib.request as _uq
     import json as _json
@@ -581,6 +585,12 @@ def _main_loop():
                     log.error(f"live feed error: {fe}")
         except Exception as e:
             log.exception(f"loop error: {e}")
+        # F-107: превентивный само-перезапуск раз в 20 часов (свежий JWT из .env, свежий код)
+        if time.time() - _start_ts >= _RESTART_AFTER:
+            log.warning("F-107: 20h reached — self-restart for fresh JWT")
+            state.save()
+            _py = _sys.executable
+            _os.execl(_py, _py, "-X", "utf8", _os.path.abspath(__file__), "--port", str(PORT))
         time.sleep(60)
 
 
