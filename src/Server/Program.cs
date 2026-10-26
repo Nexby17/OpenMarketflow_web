@@ -41,7 +41,8 @@ builder.Services.AddCors(options =>
         policy.AllowAnyHeader()
               .AllowAnyMethod()
               .AllowCredentials()
-              .WithOrigins("http://localhost:5050", "http://127.0.0.1:5050", "http://216.57.106.32:5050");
+              .WithOrigins("http://localhost:5050", "http://127.0.0.1:5050", "http://216.57.106.32:5050",
+                                              "http://localhost:5099", "http://127.0.0.1:5099"); // F-079: зеркало
     });
 });
 
@@ -217,6 +218,11 @@ app.Use(async (HttpContext ctx, Func<Task> next) =>
         path.StartsWith("/api/vp-backtest") ||
         path.StartsWith("/api/robot/ticker") ||
         path.StartsWith("/api/trades") ||
+        path.StartsWith("/api/positions") || // F-094: read-only, mirrors trades (tables flashed empty on 401)
+        path.StartsWith("/api/orders") || // F-094: read-only
+        path.StartsWith("/api/quotes") || // F-094: read-only
+        path.StartsWith("/api/accounts") || // F-094: read-only
+        path.StartsWith("/status") || // F-094: read-only server status (fetchStatus 401 kept tables empty)
         path.StartsWith("/api/instance/") ||
         path == "/health" ||
         path == "/test" ||

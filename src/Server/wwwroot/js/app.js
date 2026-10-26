@@ -293,9 +293,20 @@ function initSignalR() {
 
     connection.onclose(() => {
         window._signalRConnected = false;
-        el('statusIndicator').className = 'status-dot red';
-        el('statusText').textContent = 'Disconnected';
-        addLog(nowTime(), 'ERROR', 'SignalR disconnected - REST polling fallback');
+        el('statusIndicator').className = 'status-dot yellow';
+        el('statusText').textContent = 'Переподключение...';
+        addLog(nowTime(), 'WARN', 'SignalR disconnected - restarting (REST polling fallback)');
+        // F-094: авто-reconnect SignalR сдаётся после 5 попыток - таблицы оставались пустыми.
+        // Перезапускаем соединение вручную каждые 10с, пока не поднимется.
+        if (!window._signalRManualRestart) {
+            window._signalRManualRestart = setInterval(() => {
+                if (window._signalRConnected) { clearInterval(window._signalRManualRestart); window._signalRManualRestart = null; return; }
+                addLog(nowTime(), 'INFO', 'SignalR: повторный запуск соединения...');
+                connection.start()
+                    .then(() => { addLog(nowTime(), 'INFO', 'SignalR восстановлен (manual restart)'); })
+                    .catch(e => { addLog(nowTime(), 'WARN', 'SignalR restart failed: ' + e.message); });
+            }, 10000);
+        }
     });
 
     connection.start()
@@ -309,9 +320,11 @@ function initSignalR() {
             if (ticker) { connection.invoke('SubscribeQuotes', ticker).catch(()=>{}); connection.invoke('SubscribeOrderBook', ticker).catch(()=>{}); }
         })
         .catch(err => {
-            el('statusIndicator').className = 'status-dot red';
-            el('statusText').textContent = 'Ошибка подключения';
+            el('statusIndicator').className = 'status-dot yellow';
+            el('statusText').textContent = 'Подключение...';
             addLog(nowTime(), 'ERROR', `SignalR: ${err.message}`);
+            // F-094: не остаёмся в тупике «Ошибка подключения» - ретрай через 5с
+            setTimeout(() => { if (!window._signalRConnected) { addLog(nowTime(), 'INFO', 'SignalR: retry start...'); connection.start().then(() => addLog(nowTime(), 'INFO', 'SignalR подключён (retry)')).catch(()=>{}); } }, 5000);
         });
 }
 
@@ -430,17 +443,19 @@ async function emergencyStop() {
 }
 
 async function fetchStatus() {
+    // F-094: /status и загрузчики таблиц независимы - падение /status больше не оставляет
+    // Позиции/Сделки/Заявки/Котировки пустыми до следующего цикла.
     try {
         const resp = await fetch('/status');
         const status = await resp.json();
         updateStatus(status);
-        loadPositions();
-        updateChartLines();
-        loadOrders();
-        loadTrades();
-        loadQuotes();
-        loadAccounts();
     } catch (e) { }
+    updateChartLines();
+    loadPositions();
+    loadOrders();
+    loadTrades();
+    loadQuotes();
+    loadAccounts();
 }
 
 function loadPositions() {
@@ -3257,6 +3272,15 @@ async function updateRobotData() {
 // Начальный рендер
 loadFinamAccounts().then(() => renderRobots());
 loadAccounts();
+// F-094: сразу показываем «Загрузка...», чтобы таблицы не выглядели пустыми,
+// пока идёт первый fetchStatus (Finam REST может отвечать 2-8с)
+(function initPlaceholders() {
+    const ph = (cols) => `<tr><td colspan="${cols}" style="text-align:center;padding:10px;color:var(--text-muted)">Загрузка...</td></tr>`;
+    const put = (id, cols) => { const tb = el(id); if (tb && !tb.children.length) tb.innerHTML = ph(cols); };
+    put('positionsTable', 6);
+    put('ordersTable', 7);
+    put('tradesTable', 6);
+})();
 // Автообновление активных стратегий каждые 5 сек
 setInterval(renderRobots, 30000);
 // Обновление данных роботов при необходимости (fallback)

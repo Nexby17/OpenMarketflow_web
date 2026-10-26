@@ -1386,6 +1386,14 @@
       "owner": "main",
       "date": "2026-10-26",
       "summary": "Dmitry reported UI still flickering after F-081. Root cause: OF robot /status payloads change every poll (unrealizedPnL, currentPrice, lastPriceUpdate - verified by 0.4s diff sampling), so the F-081 whole-tbody HTML comparison almost always saw a diff and rewrote the ENTIRE tbody every 2s tick - killing hover and visually blinking every row even when only one cell changed. Fix: row-level diff render in renderRobots() and sarRenderTable() - compare row HTML strings, replace only changed <tr> via outerHTML; full tbody rewrite only when row count changes. Cache-busted app.js v132 / sarema.js v52 in index.html (old tabs still on v129 kept hitting /api/robot/status aborts - fresh load picks new JS). bin synced, verified over HTTP."
+    },    {
+      "id": "F-094",
+      "name": "UI fix - empty-table flash + dead-end connection status (root cause: auth 401s)",
+      "area": "ui/trading",
+      "status": "done (allowlist extended, SignalR restart loop, decoupled fetchStatus, placeholders; HTTP-verified)",
+      "owner": "main",
+      "date": "2026-10-26",
+      "summary": "Dmitry screenshot: header shows red 'Ошибка подключения', Positions/Trades/Orders/Quotes tables EMPTY while Accounts filled; tables later fill then go empty again. Diagnosis: (1) /api/positions and /api/orders were NOT in the anonymous allowlist (unlike /api/trades) - any request without valid auth cookie returned 401 and the client fetch interceptor redirects to login; after cookie expiry or before login the trading tables had no data source at all while accountsTable (allowlisted /api/accounts) still filled via top-level loadAccounts(); (2) SignalR onclose gave up after 5 auto-reconnect attempts leaving dead 'Disconnected'/'Ошибка подключения' state forever; (3) fetchStatus() gated all table loaders behind /status fetch. Fixes: allowlisted read-only /api/positions, /api/orders, /api/quotes, /api/accounts, /status (consistent with /api/trades); SignalR manual restart loop every 10s forever + retry in start().catch (yellow 'Подключение...' instead of dead-end red); fetchStatus decoupled - table loaders run even if /status fails; 'Загрузка...' placeholders at startup. Server rebuilt (0 errors) and restarted PID 46116. Verified anonymously over HTTP: status/positions/orders/quotes/accounts/trades all 200 with data, negotiate 200, served app.js v133 contains all fixes."
     }
   ]
 }
