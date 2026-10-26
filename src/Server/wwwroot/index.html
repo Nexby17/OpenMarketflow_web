@@ -12,7 +12,7 @@
     // BUILD GUARD (F-090a): авто-перезагрузка вкладки при новой сборке сервера.
     // Гарантирует, что UI всегда исполняет актуальный код без ручного Ctrl+F5.
     (function () {
-        var cur = 'v51-20261025';
+        var cur = 'v52-20261026';
         setInterval(function () {
             fetch(location.pathname, { cache: 'no-store', headers: { 'X-Build-Check': '1' } })
                 .then(function (r) { return r.text(); })

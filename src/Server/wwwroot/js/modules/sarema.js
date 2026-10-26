@@ -566,7 +566,8 @@ function sarRenderTable() {
         const stopText = p.stop ? p.stop.toFixed(2) : '—';
         const pnlData = st.pnl || {};
         const jrnl = (typeof st.journal_pnl === 'number') ? st.journal_pnl : 0;   // F-091: Σ закрытых сделок журнала
-        const pnl = (pnlData.total_with_unrealized != null) ? pnlData.total_with_unrealized : (pnlData.total || 0);
+        // F-109: PnL колонки = ПнЛ ТЕКУЩЕЙ позиции. FLAT → 0 (не накопленный lifetime).
+        const pnl = p.dir ? ((pnlData.unrealized != null) ? pnlData.unrealized : (pnlData.total_with_unrealized || 0)) : 0;
         const lim = st.limits || {};
         const isLong = p.dir === 1;
         const limDir = isLong ? (lim.max_long_qty ?? '∞') : (p.dir === -1 ? (lim.max_short_qty ?? '∞') : (lim.max_long_qty ?? '∞'));
