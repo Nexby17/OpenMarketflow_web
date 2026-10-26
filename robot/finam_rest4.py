@@ -152,17 +152,23 @@ def place_stop_loss(account_id: str, symbol: str, side: str, quantity: int, stop
     """F-094: broker-side STOP-ордер (stop-market). Исполняется брокером при
     достижении stop_price — без участия цикла робота, без задержки тика.
     side — ЗАКРЫВАЮЩАЯ сторона (для LONG-позиции = sell, для SHORT = buy).
-    stop_condition: LAST_UP (для buy-стопа) / LAST_DOWN (для sell-стопа)."""
+    stop_condition: LAST_UP (для buy-стопа) / LAST_DOWN (для sell-стопа).
+    Цена округляется к шагу инструмента (Si — целые): брокер отвергает дробные
+    (INVALID_ARGUMENT: Invalid value for field: ConditionValuePrice)."""
     r4 = _get_module()
     from finam_trade_api.order.model import Order, OrderType, StopCondition
     from finam_trade_api.base_client.models import Side, FinamDecimal
+    # Si/MX — целочисленный шаг цены: стоп ВСЕГДА округляется к целому (брокер
+    # отвергает дробные: INVALID_ARGUMENT Invalid value for field: ConditionValuePrice).
+    px = float(round(stop_price))
+    px_str = f"{px:.0f}"
     o = Order(
         account_id=account_id,
         symbol=symbol,
         quantity=FinamDecimal(value=str(quantity)),
         side=Side(side),
         type=OrderType("ORDER_TYPE_STOP"),
-        stop_price=FinamDecimal(value=f"{stop_price:.2f}"),
+        stop_price=FinamDecimal(value=px_str),
         stop_condition=StopCondition("STOP_CONDITION_LAST_DOWN" if side == "sell" else "STOP_CONDITION_LAST_UP"),
     )
     if comment:
