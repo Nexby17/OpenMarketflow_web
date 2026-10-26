@@ -96,7 +96,7 @@ def _live_mark() -> tuple[float | None, str]:
     import time as _t
     import urllib.request as _uq
     import json as _json
-    if _QUOTE_CACHE["mark"] is not None and _t.time() - _QUOTE_CACHE["ts"] < 10:
+    if _QUOTE_CACHE["mark"] is not None and _t.time() - _QUOTE_CACHE["ts"] < 5:
         return _QUOTE_CACHE["mark"], _QUOTE_CACHE["src"]
     # 1) C# сервер (тот же тик, что показывает брокерский ПнЛ)
     try:
@@ -591,7 +591,7 @@ def _main_loop():
             state.save()
             _py = _sys.executable
             _os.execl(_py, _py, "-X", "utf8", _os.path.abspath(__file__), "--port", str(PORT))
-        time.sleep(60)
+        time.sleep(20)
 
 
 if __name__ == "__main__":
