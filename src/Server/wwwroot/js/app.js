@@ -276,13 +276,21 @@ function initSignalR() {
 
     connection.onreconnecting(() => {
         window._signalRConnected = false;
-        el('statusIndicator').className = 'status-dot yellow';
-        el('statusText').textContent = 'Reconnecting...';
+        // F-095: WS рвётся каждые ~60с (внешний killer) - не мигаем жёлтым на каждом реконнекте.
+        // Жёлтый показываем только если переподключение длится дольше 15с.
+        if (!window._sigDownSince) window._sigDownSince = Date.now();
+        setTimeout(() => {
+            if (!window._signalRConnected && window._sigDownSince && Date.now() - window._sigDownSince >= 15000) {
+                el('statusIndicator').className = 'status-dot yellow';
+                el('statusText').textContent = 'Переподключение...';
+            }
+        }, 15000);
         addLog(nowTime(), 'WARN', 'SignalR reconnecting - REST fallback active');
     });
 
     connection.onreconnected(() => {
         window._signalRConnected = true;
+        window._sigDownSince = null;
         el('statusIndicator').className = 'status-dot green';
         el('statusText').textContent = 'Connected';
         addLog(nowTime(), 'INFO', 'SignalR restored - push active');
@@ -293,8 +301,14 @@ function initSignalR() {
 
     connection.onclose(() => {
         window._signalRConnected = false;
-        el('statusIndicator').className = 'status-dot yellow';
-        el('statusText').textContent = 'Переподключение...';
+        if (!window._sigDownSince) window._sigDownSince = Date.now();
+        // F-095: жёлтый - только после 15с простоя (WS рвётся каждые ~60с, не мигаем)
+        setTimeout(() => {
+            if (!window._signalRConnected && window._sigDownSince && Date.now() - window._sigDownSince >= 15000) {
+                el('statusIndicator').className = 'status-dot yellow';
+                el('statusText').textContent = 'Переподключение...';
+            }
+        }, 15500);
         addLog(nowTime(), 'WARN', 'SignalR disconnected - restarting (REST polling fallback)');
         // F-094: авто-reconnect SignalR сдаётся после 5 попыток - таблицы оставались пустыми.
         // Перезапускаем соединение вручную каждые 10с, пока не поднимется.
@@ -312,6 +326,7 @@ function initSignalR() {
     connection.start()
         .then(() => {
             window._signalRConnected = true;
+            window._sigDownSince = null;
             el('statusIndicator').className = 'status-dot green';
             el('statusText').textContent = 'Connected to server';
             addLog(nowTime(), 'INFO', 'SignalR connected - push active');
@@ -320,8 +335,14 @@ function initSignalR() {
             if (ticker) { connection.invoke('SubscribeQuotes', ticker).catch(()=>{}); connection.invoke('SubscribeOrderBook', ticker).catch(()=>{}); }
         })
         .catch(err => {
-            el('statusIndicator').className = 'status-dot yellow';
-            el('statusText').textContent = 'Подключение...';
+            if (!window._sigDownSince) window._sigDownSince = Date.now();
+            // F-095: тихий ретрай; жёлтый статус только если не подключились за 15с
+            setTimeout(() => {
+                if (!window._signalRConnected && window._sigDownSince && Date.now() - window._sigDownSince >= 15000) {
+                    el('statusIndicator').className = 'status-dot yellow';
+                    el('statusText').textContent = 'Подключение...';
+                }
+            }, 15500);
             addLog(nowTime(), 'ERROR', `SignalR: ${err.message}`);
             // F-094: не остаёмся в тупике «Ошибка подключения» - ретрай через 5с
             setTimeout(() => { if (!window._signalRConnected) { addLog(nowTime(), 'INFO', 'SignalR: retry start...'); connection.start().then(() => addLog(nowTime(), 'INFO', 'SignalR подключён (retry)')).catch(()=>{}); } }, 5000);
@@ -462,7 +483,13 @@ function loadPositions() {
     fetch('/api/positions').then(r => r.json()).then(data => {
         const tbody = el('positionsTable');
         if (!tbody) return;
-        if (!data || data.error || !data.length) { tbody.innerHTML = '<tr><td colspan="9" style="color:var(--text-muted)">Нет позиций</td></tr>'; return; }
+        if (!data || data.error || !data.length) {
+            // F-095: не затираем старые данные на ошибке/пустом ответе - иначе таблица мигает
+            if (data && data.error && !tbody.children.length) tbody.innerHTML = '<tr><td colspan="9" style="color:var(--text-muted)">Нет позиций</td></tr>';
+            else if (!data || !data.error) { if (tbody._isEmpty !== true) { tbody.innerHTML = '<tr><td colspan="9" style="color:var(--text-muted)">Нет позиций</td></tr>'; tbody._isEmpty = true; } }
+            return;
+        }
+        tbody._isEmpty = false;
         tbody.innerHTML = data.map(p => `<tr>
             <td>1225953</td>
             <td><b>${p.ticker}</b></td>
@@ -556,9 +583,10 @@ function loadTrades() {
         if (!tbody) return;
         const trades = data.trades || data;
         if (!trades || (Array.isArray(trades) && trades.length === 0)) {
-            tbody.innerHTML = '<tr><td colspan="6" style="color:var(--text-muted)">Нет сделок за сегодня</td></tr>';
+            if (tbody._isEmpty !== true) { tbody.innerHTML = '<tr><td colspan="6" style="color:var(--text-muted)">Нет сделок за сегодня</td></tr>'; tbody._isEmpty = true; }
             return;
         }
+        tbody._isEmpty = false;
         tbody.innerHTML = trades.map(t => {
             const ticker = (t.symbol || '').split('@')[0];
             const side = t.side || '';

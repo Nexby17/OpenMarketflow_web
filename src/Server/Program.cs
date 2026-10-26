@@ -303,7 +303,8 @@ async Task<string> GetFinamJwt()
         var apiKey = !string.IsNullOrEmpty(_finamApiKey) ? _finamApiKey : Environment.GetEnvironmentVariable("FINAM_API_KEY") ?? "";
         Console.WriteLine($"[DEBUG] GetFinamJwt: apiKey={(!string.IsNullOrEmpty(apiKey) ? "SET("+apiKey.Length+")" : "EMPTY")}");
         if (string.IsNullOrEmpty(apiKey)) return "";
-        var resp = await new HttpClient().PostAsync("https://api.finam.ru/v1/sessions",
+        using var jwtClient = new System.Net.Http.HttpClient { Timeout = TimeSpan.FromSeconds(10) }; // F-095: default 100s hang -> 'Загрузка...' на минуты
+        var resp = await jwtClient.PostAsync("https://api.finam.ru/v1/sessions",
             new StringContent($"{{\"secret\": \"{apiKey}\"}}", System.Text.Encoding.UTF8, "application/json"));
         var json = await resp.Content.ReadAsStringAsync();
         Console.WriteLine($"[DEBUG] Sessions response: status={resp.StatusCode} body={json.Substring(0, Math.Min(json.Length, 100))}");
@@ -980,7 +981,8 @@ app.MapGet("/api/accounts", async () =>
 
         var accList = new List<object>();
         // Account IDs: 1225953 (FORTS/Main), 2049688 (UNION/EDP)
-        var accountIds = new[] { _finamAccountId, "2049688" };
+        // F-095: .env FINAM_ACCOUNT_ID=2049688 + hardcoded "2049688" давали две одинаковые строки
+        var accountIds = new[] { _finamAccountId, "2049688" }.Distinct().ToArray();
         foreach (var accId in accountIds)
         {
             try
