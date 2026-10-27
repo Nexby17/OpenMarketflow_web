@@ -563,7 +563,7 @@ function sarRenderTable() {
         const posText = p.dir ? `${dirText} ${p.qty} шт` : 'ФЛЭТ';
         // F-077: объём позиции (шт × цена входа) вместо «Цена (источник)»
         const volumeText = (p.dir && p.entry) ? `${(p.qty * p.entry).toFixed(0)} ₽` : '—';
-        const stopText = p.stop ? p.stop.toFixed(2) : '—';
+        const stopText = (p.dir && p.stop) ? p.stop.toFixed(2) : '—';   // F-111: FLAT → «—»
         const pnlData = st.pnl || {};
         const jrnl = (typeof st.journal_pnl === 'number') ? st.journal_pnl : 0;   // F-091: Σ закрытых сделок журнала
         // F-109: PnL колонки = ПнЛ ТЕКУЩЕЙ позиции. FLAT → 0 (не накопленный lifetime).
@@ -580,7 +580,7 @@ function sarRenderTable() {
             <td><strong>${cfg.label}</strong> <span class="badge" style="background:#2e7d32">SAR</span></td>
             <td class="${modeCls}">${modeText}</td>
             <td>${posText}</td>
-            <td>${p.entry ? p.entry.toFixed(2) : '—'}</td>
+            <td>${p.dir && p.entry ? p.entry.toFixed(2) : '—'}</td>
             <td>${stopText}</td>
             <td id="sarLivePrice_${inst}" style="font-weight:600">${(window._sarLivePrices || {})[inst] || '—'}</td>
             <td>${volumeText}</td>
