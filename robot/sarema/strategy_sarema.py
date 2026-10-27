@@ -88,9 +88,10 @@ class SaremaStrategy:
             # F-098 (модель Дмитрия): если задан трейлинг — стоп = первоначальный_стоп + рост цены
             # от входа; двигаем шагом не меньше trail_dist; назад не откатывается. SAR не участвует.
             if price_trail and self.state.initial_stop_price > 0 and self.state.entry_price > 0:
-                _rise = max(0.0, close_i - self.state.entry_price) if self.state.direction == LONG \
-                    else max(0.0, self.state.entry_price - close_i)
-                _want = self.state.initial_stop_price + _rise
+                # F-110: SHORT — стоп едет вниз: want = initial − (entry − close)
+                _sign = 1 if self.state.direction == LONG else -1
+                _rise = max(0.0, (close_i - self.state.entry_price) * _sign)
+                _want = self.state.initial_stop_price + _sign * _rise
                 if self.state.direction == LONG:
                     new_stop = max(self.state.stop_price, _want)
                     if new_stop - self.state.stop_price < trail_dist - 1e-9:

@@ -526,9 +526,11 @@ def _main_loop():
                                     # trail_value задаёт МИНИМАЛЬНЫЙ шаг сдвига (в % / рублях / пунктах),
                                     # чтобы не двигать стоп на каждом тике. Назад стоп не откатывается.
                                     if state.initial_stop_price > 0 and state.entry_price > 0:
-                                        _rise = max(0.0, float(mark) - state.entry_price) if state.direction > 0 \
-                                            else max(0.0, state.entry_price - float(mark))
-                                        _want = state.initial_stop_price + _rise
+                                        # F-110: направление трейлинга = знак позиции.
+                                        # LONG: стоп вверх (initial + рост). SHORT: стоп вниз (initial − падение).
+                                        _sign = 1 if state.direction > 0 else -1
+                                        _rise = max(0.0, (float(mark) - state.entry_price) * _sign)
+                                        _want = state.initial_stop_price + _sign * _rise
                                         if state.direction > 0:
                                             _ns = max(state.stop_price, _want)
                                         else:
