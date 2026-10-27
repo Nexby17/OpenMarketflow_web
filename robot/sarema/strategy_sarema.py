@@ -73,6 +73,13 @@ class SaremaStrategy:
         i = len(g2) - 1                      # индекс последнего ЗАКРЫТОГО бара
         atr = g2["atr"].values
         events = []
+        # F-112: диагностический лог последнего закрытого бара (сверка сигналов)
+        try:
+            log.info(f"BAR {g2['begin'].iloc[i]} close={float(g2['close'].iloc[i]):.2f} "
+                     f"sar={float(g2['sar'].iloc[i]):.2f} ema={float(g2['ema'].iloc[i]):.2f} "
+                     f"up={bool(up[i])} dn={bool(dn[i])} pos={self.state.direction}")
+        except Exception:
+            pass
 
         # 1) если позиция есть — трейлинг стопа по SAR этого бара + брокер-стоп
         sar_i = float(g2["sar"].iloc[i])

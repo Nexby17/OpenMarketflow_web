@@ -482,6 +482,9 @@ def _main_loop():
             g = lambda k: b.get(k, {}).get("value", b.get(k))
             try:
                 bt = _dt.strptime(ts, "%Y-%m-%dT%H:%M:%S")
+                # F-112: Finam отдаёт UTC; история робота (M1-кэш warmup) в МСК-naive.
+                # Приводим live-бары к МСК-naive (+3ч), иначе смешение поясов ломает хронологию фида и SAR.
+                bt = bt + _td(hours=3)
             except Exception:
                 continue
 # F-071 fix2: session-фильтр удалён — вечерняя/утренняя сессии MOEX реальны;
