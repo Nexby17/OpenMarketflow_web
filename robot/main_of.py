@@ -564,27 +564,34 @@ def main_loop():
                         ok, msg = positions_in_sync(strategy._total_lots, strategy._dir, bd)
                         if not ok:
                             log.warning(f"DESYNC: {msg} avg_robot={strategy._avg_price:.0f} avg_broker={bd.get('avg_price',0):.0f} — manual fix needed")
-                            # F-094: если брокер FLAT, а у робота позиция — стоп-лосс исполнился брокером
-                            # (PYR STOP или ручное закрытие в терминале). Синхронизируем робота в FLAT
-                            # и фиксируем сделку в журнале (PnL по брокерской средней).
-                            b_lots = int(bd.get("lots", 0) or 0)
-                            # F-094 guard: FLAT-синк только если стоп висит у брокера >= 60с
-                            # (сразу после placement DP может вернуть кэш-ноль — инцидент 27.10 10:30:
-                            # ложный "PYR STOP FILLED" через 6с после placement, робот бросил живую позицию)
+                            # F-095 (27.10, решение Дмитрия «раскорреляции больше не должно быть»):
+                            # РОБОТ = ПОЗИЦИЯ СЧЁТА. Любое расхождение (ручные сделки в терминале,
+                            # исполнение чужих ордеров, дрейф) ГАСИТСЯ автосинком: робот принимает
+                            # фактическую позицию счёта как свою (qty+avg) и пересчитывает свои
+                            # стопы под неё. Журнал сделок при этом дополняется записью о синке.
+                            # Пирамид-стоп старой позиции снимается (пересчитается sync_pyramid_broker_stop
+                            # на следующем тике под новую позицию).
                             _pyr_stop_age = time.time() - getattr(strategy, "_pyr_stop_placed_ts", 0)
-                            if b_lots == 0 and strategy.in_position and hasattr(strategy, "_pyr_stop_order_id") \
-                                    and getattr(strategy, "_pyr_stop_order_id", None) and _pyr_stop_age > 60:
+                            _stop_id_alive = getattr(strategy, "_pyr_stop_order_id", None)
+                            if _stop_id_alive and _pyr_stop_age > 15:
+                                try:
+                                    orders.cancel(_stop_id_alive)
+                                    log.info(f"PYR STOP canceled on resync: {_stop_id_alive}")
+                                except Exception as ce:
+                                    log.warning(f"PYR STOP cancel on resync failed: {ce}")
+                                strategy._pyr_stop_order_id = None
+                            # фиксируем факт синка в журнале сделок (закрытие старой позиции)
+                            if strategy.in_position:
                                 close_px = float(bd.get("current_price", 0) or strategy._current_price or 0)
-                                log.warning(f"PYR STOP FILLED at broker (position closed externally @ ~{close_px:.0f}) — syncing robot to FLAT")
                                 action_rec = {
-                                    "action": "close_all", "reason": "pyr_stop_filled",
+                                    "action": "close_all", "reason": "broker_resync",
                                     "price": close_px, "qty": strategy._total_lots,
                                     "layers": [[e.price, e.lots] for e in strategy._lot_queue],
                                 }
                                 _record_broker_trade(action_rec, close_px)
-                                strategy._reset_position()
-                                strategy._pyr_stop_order_id = None
-                                save_state()
+                            strategy.sync_from_broker(bd, full=True)
+                            save_state()
+                            log.warning(f"BROKER RESYNC done: robot now dir={strategy._dir} lots={strategy._total_lots} avg={strategy._avg_price:.0f}")
                     else:
                         log.debug("Price sync: broker position unavailable (API) — desync check skipped")
                 except Exception as e:

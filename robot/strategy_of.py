@@ -737,6 +737,8 @@ class OrderFlowStrategy:
             self._pyr_stop_order_id = new_id
             self._pyr_stop_price = stop_px
             self._pyr_stop_qty = qty
+            import time as _t
+            self._pyr_stop_placed_ts = _t.time()  # F-094 guard: возраст стопа для FLAT-синка
             log.info(f"PYR STOP placed: {close_side} {qty} @ {fmt_price(stop_px)} (ref={fmt_price(ref)} step={fmt_price(step)}) id={new_id}")
 
     def _timeout_hit(self, now: datetime) -> bool:
@@ -922,20 +924,47 @@ class OrderFlowStrategy:
                 self._last_action_time = time.time()
             return []
 
-    def sync_from_broker(self, broker_data: dict):
-        """Sync ONLY prices from broker for PnL display.
+    def sync_from_broker(self, broker_data: dict, full: bool = False):
+        """Sync state from broker.
 
-        NEVER touches lots, dir, lot_queue — position is tracked internally.
-        Updates _avg_price to match broker for accurate PnL.
+        full=False (default): ONLY prices for PnL display — lots/dir/queue не трогаются.
+        full=True (F-095 «робот = позиция счёта»): робот ПРИНИМАЕТ фактическую позицию
+        счёта как свою (dir/lots/avg), очередь очищается и заполняется одним слоем
+        по брокерской средней. Вызывается из десинк-монитора при любом расхождении.
         """
         broker_avg = broker_data.get('avg_price', 0.0)
         broker_cur = broker_data.get('current_price', 0.0)
+        broker_lots = int(broker_data.get('lots', 0) or 0)
 
         if broker_cur > 0:
             self._broker_current_price = broker_cur
         if broker_avg > 0:
             self._broker_avg_price = broker_avg
         self._broker_sync_time = time.time()
+
+        if full:
+            old_lots = self._total_lots * (1 if self._dir == LONG else -1)
+            old_avg = self._avg_price
+            self._lot_queue.clear()
+            self._pyramid_levels = 0
+            self._average_levels = 0
+            self._last_pyr_entry_price = 0.0
+            self._pyr_stop_order_id = None
+            self._pyr_stop_price = 0.0
+            self._pyr_stop_qty = 0
+            if broker_lots == 0:
+                self._dir = FLAT
+                self._total_lots = 0
+                self._avg_price = 0.0
+                self._entry_price = 0.0
+            else:
+                self._dir = LONG if broker_lots > 0 else SHORT
+                self._total_lots = abs(broker_lots)
+                self._avg_price = broker_avg
+                self._entry_price = broker_avg
+                self._lot_queue.append(LotEntry(price=broker_avg, side=self._dir, lots=self._total_lots, added_ts=time.monotonic()))
+            self._peak_lots = max(self._peak_lots, self._total_lots)
+            log.info(f"BROKER FULL SYNC: was {old_lots:+d}@{old_avg:.1f} → now {broker_lots:+d}@{broker_avg:.1f}")
 
     def update_fill_price(self, fill_price: float, action: str, signal_price: float = 0.0):
         """Update entry prices with REAL broker fill. Exit trades recorded in main_of.
