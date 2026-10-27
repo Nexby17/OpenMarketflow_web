@@ -128,9 +128,12 @@ class OrderManagerRest4:
             log.error("place_limit REST failed: %s", str(e)[:120])
             return None
 
-    def place_stop_loss(self, side: int, quantity: int, stop_price: float, tag: str = "") -> Optional[PlacedOrder]:
+    def place_stop_loss(self, side, quantity: int, stop_price: float, tag: str = "") -> Optional[PlacedOrder]:
         """F-094: брокерский STOP-ордер (stop-market) на закрывающую сторону.
-        Исполняется брокером при достижении stop_price — мгновенно, без цикла робота."""
+        Исполняется брокером при достижении stop_price — мгновенно, без цикла робота.
+        side принимает int (BUY=1/SELL=2) или str ('buy'/'sell')."""
+        if isinstance(side, str):
+            side = BUY if side.lower() == "buy" else SELL
         if self._paper:
             oid = self._next_id(tag or "stp")
             log.info("PAPER STOP %s %d %s @ %.0f (%s)",

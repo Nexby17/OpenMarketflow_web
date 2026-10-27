@@ -568,8 +568,12 @@ def main_loop():
                             # (PYR STOP или ручное закрытие в терминале). Синхронизируем робота в FLAT
                             # и фиксируем сделку в журнале (PnL по брокерской средней).
                             b_lots = int(bd.get("lots", 0) or 0)
+                            # F-094 guard: FLAT-синк только если стоп висит у брокера >= 60с
+                            # (сразу после placement DP может вернуть кэш-ноль — инцидент 27.10 10:30:
+                            # ложный "PYR STOP FILLED" через 6с после placement, робот бросил живую позицию)
+                            _pyr_stop_age = time.time() - getattr(strategy, "_pyr_stop_placed_ts", 0)
                             if b_lots == 0 and strategy.in_position and hasattr(strategy, "_pyr_stop_order_id") \
-                                    and getattr(strategy, "_pyr_stop_order_id", None):
+                                    and getattr(strategy, "_pyr_stop_order_id", None) and _pyr_stop_age > 60:
                                 close_px = float(bd.get("current_price", 0) or strategy._current_price or 0)
                                 log.warning(f"PYR STOP FILLED at broker (position closed externally @ ~{close_px:.0f}) — syncing robot to FLAT")
                                 action_rec = {
