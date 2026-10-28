@@ -362,9 +362,11 @@ class SaremaStrategy:
 
     # ---------- брокер-стоп ----------
     def _place_broker_stop(self, stop: float, qty: int, direction: int) -> None:
-        close_side = SELL if direction == LONG else BUY
-        po = self.orders.place_stop_market(close_side, qty, stop, tag="sarema-stop")
+        """F-113: брокерский STOP-ордер (place_stop_loss) — реальная заявка у брокера,
+        исполняется мгновенно при пробитии, не зависит от цикла робота."""
+        po = self.orders.place_stop_loss(direction, qty, stop, tag="sarema-stop")
         self.stop_order_id = po.order_id if po else None
+        self.state.stop_order_id = self.stop_order_id
         if not po:
             log.error("BROKER STOP NOT PLACED — позиция без защиты! Алерт.")
 
@@ -381,6 +383,7 @@ class SaremaStrategy:
         po = self.orders.place_market(side, self.state.lots_qty, tag=f"sarema-close-{reason}")
         if self.stop_order_id:
             self.orders.cancel(self.stop_order_id)
+        self.state.stop_order_id = None
         if self.state.tp_order_id:                     # F-105: снять TP-лимитку
             try:
                 self.orders.cancel(self.state.tp_order_id)

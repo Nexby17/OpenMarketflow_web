@@ -19,6 +19,7 @@ class SaremaState:
         self.stop_price = 0.0
         self.initial_stop_price = 0.0   # F-098: первоначальный стоп (база трейлинга)
         self.tp_order_id: str | None = None   # F-105: лимитка по TP
+        self.stop_order_id: str | None = None   # F-113: ID брокерского стопа (персист для перевыставления)
         self.entry_time: Optional[str] = None
         self.base = 1_000_000.0
         self.pending_signal = None     # {'dir': ±1, 'signal_bar_close': ts} на вход в начале часа
@@ -45,6 +46,7 @@ class SaremaState:
             "stop_price": self.stop_price,
             "initial_stop_price": self.initial_stop_price,
             "tp_order_id": self.tp_order_id,
+            "stop_order_id": self.stop_order_id,
             "entry_time": self.entry_time,
             "base": self.base,
             "pending_signal": self.pending_signal,
@@ -73,6 +75,7 @@ class SaremaState:
         self.stop_price = float(data.get("stop_price", 0.0))
         self.initial_stop_price = float(data.get("initial_stop_price", 0.0))
         self.tp_order_id = data.get("tp_order_id")
+        self.stop_order_id = data.get("stop_order_id")
         self.entry_time = data.get("entry_time")
         self.base = float(data.get("base", 1_000_000.0))
         self.pending_signal = data.get("pending_signal")

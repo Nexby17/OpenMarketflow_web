@@ -554,6 +554,29 @@ def _main_loop():
                                         log.info(f"LIVE-TRAIL: stop -> {_ns:.4f} (mark={mark:.4f}, src={src})")
                             except Exception as _te:
                                 log.error(f"live trail error: {_te}")
+                        # F-113: брокер снимает заявки в конце торгового дня — проверяем и перевыставляем
+                        try:
+                            if orders and strategy:
+                                # F-113: None (не ставился/после рестарта) или снят брокером → ставим/перевыставляем
+                                need_stop = (not state.stop_order_id) or orders.is_dead_order(state.stop_order_id)
+                                if need_stop:
+                                    log.warning('F-113: стоп-заявка отсутствует/снята — ставлю брокерский стоп')
+                                    strategy._place_broker_stop(state.stop_price, state.lots_qty, state.direction)
+                                    state.save()
+                            if state.tp_order_id and orders:
+                                if orders.is_dead_order(state.tp_order_id) and cfg.get('tp_R'):
+                                    _tp_px = strategy.tp_price(state.direction, state.entry_price,
+                                                               strategy.last_sar or state.entry_price,
+                                                               (strategy.last_stats or {}).get('atr') or 0.0)
+                                    if _tp_px:
+                                        _close_side = 'sell' if state.direction > 0 else 'buy'
+                                        _tpo = orders.place_limit(state.direction, state.lots_qty, round(_tp_px, 2), tag='sarema-tp')
+                                        state.tp_order_id = _tpo.order_id if _tpo else None
+                                        state.save()
+                                        log.info(f'F-113: TP-лимитка перевыставлена @ {_tp_px:.2f}')
+                        except Exception as _re_:
+                            log.error(f'F-113 re-place error: {_re_}')
+
                         breached = (mark <= state.stop_price) if state.direction > 0 else (mark >= state.stop_price)
                         if breached:
                             log.warning(f"STOP-HIT: mark={mark} vs stop={state.stop_price} (src={src}) — закрываю маркетом")

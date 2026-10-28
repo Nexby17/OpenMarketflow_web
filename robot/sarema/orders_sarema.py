@@ -180,6 +180,65 @@ class SaremaOrders:
             log.error(f"limit exception: {e}")
             return None
 
+    DEAD_STATUSES = ('ORDER_STATUS_DONE_FOR_DAY', 'ORDER_STATUS_CANCELED', 'ORDER_STATUS_REJECTED',
+                     'ORDER_STATUS_UNSPECIFIED')
+
+    def get_order_status(self, order_id: str) -> str | None:
+        """F-113: статус заявки у брокера (ORDER_STATUS_*) или None если недоступен."""
+        if not order_id:
+            return None
+        try:
+            r4 = self._r4()
+            d = r4.get_order(self._account, order_id)
+            st = d.get('status') or d.get('orderStatus') or ''
+            return str(st)
+        except Exception as e:
+            # F-113: 'Order not found' = заявки больше нет (снята/сгорела/исполнена) → dead
+            if 'not found' in str(e):
+                return 'ORDER_STATUS_CANCELED'
+            if self._is_token_error(str(e)):
+                self._reauth()
+                try:
+                    r4 = self._r4()
+                    d = r4.get_order(self._account, order_id)
+                    st = d.get('status') or d.get('orderStatus') or ''
+                    return str(st)
+                except Exception as e2:
+                    if 'not found' in str(e2):
+                        return 'ORDER_STATUS_CANCELED'
+                    log.error(f'get_order_status retry err: {e2}')
+            else:
+                log.error(f'get_order_status err: {e}')
+            return None
+
+    def is_dead_order(self, order_id: str) -> bool:
+        """F-113: True если заявка снята брокером (конец дня/cancel/reject). None (нет связи) → False (не паникуем)."""
+        st = self.get_order_status(order_id)
+        if st is None:
+            return False
+        return any(dead in st for dead in self.DEAD_STATUSES)
+
+    def place_stop_loss(self, side: int, quantity: int, stop_price: float, tag: str = "stop") -> PlacedOrder | None:
+        """F-113: брокерский STOP-ордер (stop-market) через finam_rest4.place_stop_loss."""
+        if quantity < 1 or stop_price <= 0:
+            return None
+        close_side = 'sell' if (side == BUY or side == 'sell') else 'buy'
+        comment = self._tag(tag)
+        try:
+            r4 = self._r4()
+            resp = r4.place_stop_loss(self._account, self._symbol, close_side, int(quantity), float(stop_price), comment=comment)
+            oid = str(resp.get('order_id', resp.get('orderId', '')))
+            if not oid:
+                self.last_error = str(resp)[:200]
+                log.error(f'stop_loss failed: {self.last_error}')
+                return None
+            log.info(f'stop_loss {close_side} qty={quantity} @ {stop_price} id={oid}')
+            return PlacedOrder(order_id=oid, comment=comment)
+        except Exception as e:
+            self.last_error = str(e)[:200]
+            log.error(f'stop_loss exception: {e}')
+            return None
+
     def place_stop_market(self, side: int, quantity: int, stop_price: float, tag: str = "stop") -> PlacedOrder | None:
         """Stop-market. SDK REST 4.3.3 не даёт stop-ордера напрямую — fallback:
         сторожевой режим робота (программный стоп по тикам) + этот метод оставлен
