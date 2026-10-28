@@ -641,8 +641,28 @@ if __name__ == "__main__":
         log.info(f"AUTO-START: mode=running (dir={state.direction})")
     else:
         log.info("auto-start disabled (был ручной ⏹) — жду ▶")
-    warm = feed.warmup_from_csv(TICKER) if DATA_DIR else False
-    log.info(f"SAREMA {TICKER} port={PORT} warmup={'ok' if warm else 'SKIPPED (no SAREMA_DATA_DIR)'}")
+    # F-114: warmup из /api/candles (Finam H1 — тот же источник, что график Дмитрия).
+    # Старый M1-кэш давал SAR-траекторию, не совпадающую с графиком → «пропуски сигналов».
+    warm = False
+    try:
+        import urllib.request as _uw
+        import json as _uj
+        from datetime import datetime as _dtu, timedelta as _tdd
+        _url = f"http://127.0.0.1:5050/api/candles?ticker={TICKER}&tf=60&days=30"
+        with _uw.urlopen(_url, timeout=20) as _r:
+            _candles = _uj.loads(_r.read())
+        _n = 0
+        for _c in _candles:
+            _bt = _dtu.utcfromtimestamp(int(_c["t"])) + _tdd(hours=3)   # UTC → МСК-naive (как F-112)
+            if feed.append_closed_bar(_bt, float(_c["o"]), float(_c["h"]), float(_c["l"]),
+                                      float(_c["c"]), float(_c["v"] or 0)):
+                _n += 1
+        warm = feed.bars is not None and len(feed.bars) >= 100
+        log.info(f"F-114: warmup from /api/candles: +{_n} H1 bars")
+    except Exception as _we:
+        log.error(f"F-114 warmup candles failed: {_we} — fallback to csv")
+        warm = feed.warmup_from_csv(TICKER) if DATA_DIR else False
+    log.info(f"SAREMA {TICKER} port={PORT} warmup={'ok' if warm else 'SKIPPED'}")
     t = threading.Thread(target=_main_loop, daemon=True)
     t.start()
     uvicorn.run(app, host="0.0.0.0", port=PORT, log_level="info")

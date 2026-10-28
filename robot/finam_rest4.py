@@ -1,4 +1,4 @@
-"""PAPER LAB: finam_rest4 — тонкий синхронный мост на Finam Trade API SDK 4.x (REST).
+﻿"""PAPER LAB: finam_rest4 — тонкий синхронный мост на Finam Trade API SDK 4.x (REST).
 
 Этап 3 миграции (PC-004): аккаунты/ордера/бары/квоты через официальный SDK
 finam-trade-api 4.3.3 (TokenManager + автопродление JWT).
@@ -166,7 +166,7 @@ def place_stop_loss(account_id: str, symbol: str, side: str, quantity: int, stop
         account_id=account_id,
         symbol=symbol,
         quantity=FinamDecimal(value=str(quantity)),
-        side=Side(side),
+        side=Side('SIDE_SELL' if str(side).lower() in ('sell','-1') else 'SIDE_BUY'),
         type=OrderType("ORDER_TYPE_STOP"),
         stop_price=FinamDecimal(value=px_str),
         stop_condition=StopCondition("STOP_CONDITION_LAST_DOWN" if side == "sell" else "STOP_CONDITION_LAST_UP"),

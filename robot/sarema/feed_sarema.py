@@ -1,4 +1,4 @@
-"""F-061: H1 bar feed для SAR-робота — Finam REST через DataProvider/напрямую.
+﻿"""F-061: H1 bar feed для SAR-робота — Finam REST через DataProvider/напрямую.
 
 Прогрев ≥300 баров (чанки), QC дыр/дублей, алерт просрочки >2 баров.
 Незакрытый бар не используется (сигнал только по завершённому H1).
@@ -76,9 +76,11 @@ class H1Feed:
         if len(self.bars) and begin <= self.bars["begin"].iloc[-1]:
             log.warning(f"duplicate/late bar {begin} ignored")
             return False
-        row = pd.DataFrame([{"date": begin.date(), "begin": begin, "open": o,
+        row = pd.DataFrame([{"date": begin.date(), "begin": pd.Timestamp(begin), "open": o,
                              "high": h, "low": l, "close": c, "volume": volume}])
         self.bars = pd.concat([self.bars, row], ignore_index=True)
+        # F-114 fix: держим типы колонок жёстко (object → datetime ломает tf_bars .dt.floor)
+        self.bars["begin"] = pd.to_datetime(self.bars["begin"])
         self.last_bar_begin = begin
         return True
 
