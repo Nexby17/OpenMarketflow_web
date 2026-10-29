@@ -513,7 +513,7 @@ def _main_loop():
                     log.error(f"TP watchdog error: {te}")
 
             # --- F-073: WATCHDOG СТОПА — работает всегда, пока есть позиция (running/paused) ---
-            if state.mode in ("running", "paused") and state.direction != 0 and state.stop_price:
+            if state.mode in ("running", "paused"):
                 try:
                     mark, src = _live_mark()
                     # F-116: РЕАЛ-ТАЙМ reconciliation с брокером (каждые 20с).
@@ -526,34 +526,49 @@ def _main_loop():
                         _broker_dir = int(_dp.get('dir', 0) or 0)
                         _broker_lots = int(_dp.get('lots', 0) or 0)
                         _broker_sign = _broker_dir if _broker_dir == -1 else (1 if _broker_dir == 1 else 0)
-                        if _broker_sign != state.direction:
-                            # Расхождение! (учитываем: 0 vs 0 — ок; расхождение только если одно из них не 0)
-                            if _broker_sign != 0 or state.direction != 0:
-                                log.warning(f'F-116: RECONCILIATION — брокер dir={_broker_sign} lots={_broker_lots}, '
-                                            f'робот dir={state.direction} qty={state.lots_qty} → синхронизируюсь')
-                                # закрыть журнальную запись робота по его (фантомной) позиции
-                                if state.direction != 0 and state.entry_price:
-                                    try:
-                                        strategy.close_position(reason='broker-reconcile')
-                                    except Exception as _ce:
-                                        log.error(f'F-116 close phantom: {_ce}')
-                                # принять позицию брокера как свою (если у брокера есть)
-                                state.direction = _broker_sign
-                                state.lots_qty = _broker_lots
-                                state.entry_price = float(_dp.get('avg_price', 0) or 0)
-                                state.stop_price = 0.0
-                                state.initial_stop_price = 0.0
-                                state.stop_order_id = None
-                                state.tp_order_id = None
-                                state.save()
-                                log.info('F-116: state синхронизирован с брокером')
+                        # F-116 v4: reconciliation ТОЛЬКО закрытие фантомов:
+                        # робот в позиции, а у брокера 0 → стоп-заявка исполнилась у брокера → принять флэт.
+                        # Случаи 'у брокера позиция есть, робот флэт/другой объём' НЕ трогаем —
+                        # на счёте 2049688 есть ручная торговля, DP /position агрегирует весь счёт.
+                        _my_sign = int(state.direction)
+                        if _my_sign != 0 and _broker_sign == 0:
+                            log.warning(f'F-116: RECONCILIATION — брокер dir={_broker_sign} lots={_broker_lots}, '
+                                        f'робот dir={state.direction} qty={state.lots_qty} → синхронизируюсь')
+                            if state.direction != 0 and state.entry_price:
+                                try:
+                                    strategy.close_position(reason='broker-reconcile')
+                                except Exception as _ce:
+                                    log.error(f'F-116 close phantom: {_ce}')
+                            state.direction = _broker_sign
+                            state.lots_qty = _broker_lots
+                            state.entry_price = float(_dp.get('avg_price', 0) or 0)
+                            state.stop_price = 0.0
+                            state.initial_stop_price = 0.0
+                            state.stop_order_id = None
+                            state.tp_order_id = None
+                            state.save()
+                            log.info('F-116: state синхронизирован с брокером')
+                            if state.direction != 0:
+                                try:
+                                    strategy._place_broker_stop(state.entry_price * (1 + 0.01 * (-state.direction)),
+                                                                state.lots_qty, state.direction)
+                                    _tp_new = strategy.tp_price(state.direction, state.entry_price,
+                                                                strategy.last_sar or state.entry_price,
+                                                                (strategy.last_stats or {}).get('atr') or 0.0)
+                                    if _tp_new:
+                                        _close_side = 'sell' if state.direction == 1 else 'buy'
+                                        _tpo = orders.place_limit(_close_side, state.lots_qty, round(_tp_new, 2), tag='sarema-tp')
+                                        state.tp_order_id = _tpo.order_id if _tpo else None
+                                    state.save()
+                                except Exception as _pe:
+                                    log.error(f'F-116 stop/tp for broker pos: {_pe}')
                     except Exception as _re2:
                         log.error(f'F-116 reconciliation error: {_re2}')
                     if mark is not None:
                         # F-097: трейлинг-стоп в РЕАЛ-ТАЙМЕ — за живым тиком (mark), не только на закрытии H1.
                         # Работает только если trail_value задан (% / рубли / пункты); пусто = классика (за SAR на закрытии бара).
                         _tv = cfg.get("trail_value")
-                        if _tv is not None and strategy:
+                        if _tv is not None and strategy and state.stop_price > 0:
                             try:
                                 _dist = strategy._unit_dist(_tv, cfg.get("trail_unit"), float(mark), 0.0)
                                 if _dist is not None and _dist > 0:
@@ -610,7 +625,7 @@ def _main_loop():
                         except Exception as _re_:
                             log.error(f'F-113 re-place error: {_re_}')
 
-                        breached = (mark <= state.stop_price) if state.direction > 0 else (mark >= state.stop_price)
+                        breached = bool(state.stop_price) and ((mark <= state.stop_price) if state.direction > 0 else (mark >= state.stop_price))
                         if breached:
                             log.warning(f"STOP-HIT: mark={mark} vs stop={state.stop_price} (src={src}) — закрываю маркетом")
                             ev = strategy.close_position(reason="stop-hit")

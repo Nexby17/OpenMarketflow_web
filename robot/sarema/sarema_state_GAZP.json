@@ -1,20 +1,27 @@
 {
- "mode": "running",
+ "mode": "stopped",
  "direction": 0,
  "lots_qty": 0,
  "entry_price": 0.0,
  "stop_price": 0.0,
- "entry_time": null,
+ "initial_stop_price": 0.0,
+ "tp_order_id": null,
+ "stop_order_id": null,
+ "entry_time": "2026-10-28T19:05:05.011200",
  "base": 30000.0,
  "pending_signal": null,
  "kill_day": null,
  "day_realized_R": {
-  "2026-10-16": 0.064
+  "2026-10-16": 0.064,
+  "2026-10-21": -1.236,
+  "2026-10-23": -0.433,
+  "2026-10-28": -1.2,
+  "2026-10-29": -0.083
  },
  "total_pnl": 298.7,
- "trades_done": 3,
- "last_entry_signal_bar": "2026-10-19 07:00:00",
- "auto_start_disabled": false,
+ "trades_done": 7,
+ "last_entry_signal_bar": "2026-10-28 18:00:00",
+ "auto_start_disabled": true,
  "trade_history": [
   {
    "tic": "GAZP",
@@ -86,6 +93,102 @@
     "pnl": 279.5,
     "R": 1.24,
     "reason": "manual-close (short-limit exhausted at broker)"
+   }
+  },
+  {
+   "tic": "GAZP",
+   "tf": "H1",
+   "date_open": "2026-10-20",
+   "time_open": "15:05:55",
+   "dir": "S",
+   "entry": 110.89,
+   "qty": 270,
+   "volume": 29940.3,
+   "risk_pct": 1.45,
+   "risk_pts": 1.61,
+   "stop": 112.5,
+   "vp": "signal",
+   "status": "closed",
+   "close": {
+    "date_close": "2026-10-21",
+    "time_close": "10:49:27",
+    "exit": 112.05,
+    "commission": 243.0,
+    "pnl": -556.2,
+    "R": -1.236,
+    "reason": "stop-hit"
+   }
+  },
+  {
+   "tic": "GAZP",
+   "tf": "H1",
+   "date_open": "2026-10-21",
+   "time_open": "10:49:31",
+   "dir": "S",
+   "entry": 111.32,
+   "qty": 250,
+   "volume": 27830.0,
+   "risk_pct": 1.5,
+   "risk_pts": 1.8,
+   "stop": 113.12,
+   "vp": "signal",
+   "status": "closed",
+   "close": {
+    "date_close": "2026-10-23",
+    "time_close": "11:12:58",
+    "exit": 111.2,
+    "commission": 225.0,
+    "pnl": -195.0,
+    "R": -0.433,
+    "reason": "stop-hit"
+   }
+  },
+  {
+   "tic": "GAZP",
+   "tf": "H1",
+   "date_open": "2026-10-28",
+   "time_open": "10:05:22",
+   "dir": "L",
+   "entry": 118.15,
+   "qty": 250,
+   "volume": 29537.5,
+   "risk_pct": 0.98,
+   "risk_pts": 1.18,
+   "stop": 116.97,
+   "vp": "signal",
+   "status": "closed",
+   "close": {
+    "date_close": "2026-10-28",
+    "time_close": "10:44:14",
+    "exit": 116.89,
+    "commission": 225.0,
+    "pnl": -540.0,
+    "R": -1.2,
+    "reason": "stop-hit"
+   }
+  },
+  {
+   "tic": "GAZP",
+   "tf": "H1",
+   "date_open": "2026-10-28",
+   "time_open": "19:05:05",
+   "dir": "S",
+   "entry": 117.21,
+   "qty": 250,
+   "volume": 29302.5,
+   "risk_pct": 0.98,
+   "risk_pts": 1.17,
+   "stop": 118.38,
+   "vp": "signal",
+   "status": "closed",
+   "close": {
+    "date_close": "2026-10-29",
+    "time_close": "07:58:48",
+    "exit": 116.46,
+    "commission": 225.0,
+    "pnl": -37.5,
+    "R": -0.083,
+    "reason": "broker-reconcile"
    }
   }
  ]
