@@ -188,6 +188,41 @@ function brCalEditPanel() { arbInstancePanel('br'); }
     };
 })();
 
+
+// === F-096b: глобальный диф-рендер для любых таблиц (без мигания) ===
+function setTableHtml(tbody, html) {
+    if (!tbody) return;
+    if (tbody._lastHtml === html) return; // ничего не изменилось - не трогаем DOM
+    const newRows = html.split('</tr>').filter(s => s.trim()).map(s => s.trim() + '</tr>');
+    const oldRows = tbody._lastRows || null;
+    // полная перерисовка только если число строк изменилось или прошлого снимка нет
+    if (!oldRows || oldRows.length !== newRows.length || tbody.rows.length !== newRows.length) {
+        tbody.innerHTML = html;
+        tbody._lastHtml = html;
+        tbody._lastRows = newRows;
+        return;
+    }
+    const trows = tbody.rows;
+    for (let i = 0; i < newRows.length; i++) {
+        if (oldRows[i] === newRows[i]) continue;
+        const tmp = document.createElement('tbody');
+        tmp.innerHTML = newRows[i];
+        const newRow = tmp.firstElementChild;
+        const oldRow = trows[i];
+        if (newRow && oldRow && newRow.children.length === oldRow.children.length) {
+            for (let c = 0; c < newRow.children.length; c++) {
+                if (oldRow.children[c] && oldRow.children[c].innerHTML !== newRow.children[c].innerHTML) {
+                    oldRow.children[c].innerHTML = newRow.children[c].innerHTML;
+                }
+            }
+        } else if (oldRow) {
+            oldRow.outerHTML = newRows[i];
+        }
+    }
+    tbody._lastHtml = html;
+    tbody._lastRows = newRows;
+}
+
 // === OpenMarketflow Web UI ===
 
 let connection = null;
@@ -488,19 +523,19 @@ function loadPositions() {
         if (!data || data.error || !data.length) {
             tbody._emptyStreak = (tbody._emptyStreak || 0) + 1;
             if (tbody._lastGoodHtml && tbody._emptyStreak < 3) return; // держим старые строки
-            if (tbody._isEmpty !== true) { tbody.innerHTML = '<tr><td colspan="9" style="color:var(--text-muted)">Нет позиций</td></tr>'; tbody._isEmpty = true; tbody._lastGoodHtml = ''; }
+            if (tbody._isEmpty !== true) { setTableHtml(tbody, '<tr><td colspan="9" style="color:var(--text-muted)">Нет позиций</td></tr>'); tbody._isEmpty = true; tbody._lastGoodHtml = ''; }
             return;
         }
         tbody._emptyStreak = 0;
         tbody._isEmpty = false;
-        tbody.innerHTML = data.map(p => `<tr>
+        setTableHtml(tbody, data.map(p => `<tr>
             <td>1225953</td>
             <td><b>${p.ticker}</b></td>
             <td class="${p.dir === 'Buy' ? 'green' : 'red'}">${p.dir === 'Buy' ? 'Лонг' : 'Шорт'}</td>
             <td>${p.qty || 0}</td>
             <td>${p.avgPrice?.toFixed(2) || '—'}</td>
             <td>${p.qty || 0}</td>
-        </tr>`).join('');
+        </tr>`).join(''));
         tbody._lastGoodHtml = tbody.innerHTML;
     }).catch(e => console.error("[ERROR]", e));
 }
@@ -550,10 +585,10 @@ function loadOrders() {
         // Finam REST format: { orders: [{ order: { symbol, side, quantity, limit_price }, status, ... }] }
         const orders = data.orders || data;
         if (!orders || (Array.isArray(orders) && orders.length === 0) || (orders.length === 0)) {
-            tbody.innerHTML = '<tr><td colspan="7" style="color:var(--text-muted)">Нет заявок</td></tr>';
+            setTableHtml(tbody, '<tr><td colspan="7" style="color:var(--text-muted)">Нет заявок</td></tr>');
             return;
         }
-        tbody.innerHTML = orders.map(o => {
+        setTableHtml(tbody, orders.map(o => {
             const ord = o.order || o;
             const ticker = (ord.symbol || o.ticker || '').split('@')[0];
             const side = ord.side || o.dir || '';
@@ -571,7 +606,7 @@ function loadOrders() {
                 <td>${parseFloat(filled)}/${parseFloat(qty)}</td>
                 <td>${status.replace('ORDER_STATUS_','')}</td>
             </tr>`;
-        }).join('');
+        }).join(''));
     }).catch(e => console.error("[ERROR]", e));
 }
 
@@ -589,12 +624,12 @@ function loadTrades() {
         if (!trades || (Array.isArray(trades) && trades.length === 0)) {
             tbody._emptyStreak = (tbody._emptyStreak || 0) + 1;
             if (tbody._lastGoodHtml && tbody._emptyStreak < 3) return;
-            if (tbody._isEmpty !== true) { tbody.innerHTML = '<tr><td colspan="6" style="color:var(--text-muted)">Нет сделок за сегодня</td></tr>'; tbody._isEmpty = true; tbody._lastGoodHtml = ''; }
+            if (tbody._isEmpty !== true) { setTableHtml(tbody, '<tr><td colspan="6" style="color:var(--text-muted)">Нет сделок за сегодня</td></tr>'); tbody._isEmpty = true; tbody._lastGoodHtml = ''; }
             return;
         }
         tbody._emptyStreak = 0;
         tbody._isEmpty = false;
-        tbody.innerHTML = trades.map(t => {
+        setTableHtml(tbody, trades.map(t => {
             const ticker = (t.symbol || '').split('@')[0];
             const side = t.side || '';
             const price = t.price?.value || t.price || 0;
@@ -610,7 +645,7 @@ function loadTrades() {
                 <td>${fmtPriceDyn(parseFloat(price))}</td>
                 <td>${comment}</td>
             </tr>`;
-        }).join('');
+        }).join(''));
         tbody._lastGoodHtml = tbody.innerHTML;
     }).catch(e => console.error("[ERROR]", e));
 }
@@ -665,7 +700,7 @@ function _renderAccountsTable(accounts) {
     const tbody = el('accountsTable');
     if (!tbody) return;
     const fmt2 = v => v != null ? v.toLocaleString('ru-RU',{maximumFractionDigits:2}) : '—';
-    tbody.innerHTML = accounts.map(a => {
+    setTableHtml(tbody, accounts.map(a => {
         const balance = a.balance || 0;
         const free = a.free || 0;
         const margin = a.margin || (balance && free ? balance - free : 0);
@@ -681,7 +716,7 @@ function _renderAccountsTable(accounts) {
             <td class="${pnlToday >= 0 ? 'green' : 'red'}">${pnlToday >= 0 ? '+' : ''}${fmt2(pnlToday)} ₽</td>
             <td class="${pnlTotal >= 0 ? 'green' : 'red'}">${pnlTotal >= 0 ? '+' : ''}${fmt2(pnlTotal)} ₽</td>
         </tr>`;
-    }).join('');
+    }).join(''));
 }
 
 function updateStatus(s) {
