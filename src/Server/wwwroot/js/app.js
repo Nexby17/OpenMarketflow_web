@@ -211,9 +211,10 @@ function setTableHtml(tbody, html) {
         const oldRow = trows[i];
         if (newRow && oldRow && newRow.children.length === oldRow.children.length) {
             for (let c = 0; c < newRow.children.length; c++) {
-                if (oldRow.children[c] && oldRow.children[c].innerHTML !== newRow.children[c].innerHTML) {
-                    oldRow.children[c].innerHTML = newRow.children[c].innerHTML;
-                }
+                const oc = oldRow.children[c], nc = newRow.children[c];
+                if (!oc) continue;
+                if (oc.className !== nc.className) oc.className = nc.className; // F-096c
+                if (oc.innerHTML !== nc.innerHTML) oc.innerHTML = nc.innerHTML;
             }
         } else if (oldRow) {
             oldRow.outerHTML = newRows[i];
@@ -2792,10 +2793,11 @@ async function renderRobots() {
                 const oldRow = trows[i];
                 if (newRow && oldRow && newRow.children.length === oldRow.children.length) {
                     for (let c = 0; c < newRow.children.length; c++) {
-                        if (oldRow.children[c].innerHTML !== newRow.children[c].innerHTML) {
-                            oldRow.children[c].innerHTML = newRow.children[c].innerHTML;
-                        }
+                        const oc = oldRow.children[c], nc = newRow.children[c];
+                        if (oc.className !== nc.className) oc.className = nc.className; // F-096c: цвет green/red
+                        if (oc.innerHTML !== nc.innerHTML) oc.innerHTML = nc.innerHTML;
                     }
+                    if (oldRow.getAttribute('style') !== newRow.getAttribute('style')) oldRow.setAttribute('style', newRow.getAttribute('style') || '');
                 } else if (oldRow) {
                     oldRow.outerHTML = newRows[i];
                 }
@@ -4434,7 +4436,7 @@ document.addEventListener('DOMContentLoaded', () => {
     setInterval(checkHealth, 30000);
 
     // === Python Robot Polling ===
-    setInterval(async () => { await pollPythonRobot(); renderRobots(); }, 2000);
+    setInterval(async () => { await pollPythonRobot(); renderRobots(); }, 3000); // F-096c: 2с->3с меньше дёрганья
     pollPythonRobot();
 
 });
@@ -6974,7 +6976,7 @@ async function ofRobotPoll() {
 
 // Auto-poll MX + Si
 (function() {
-    setInterval(async () => { await ofMxRobotPoll(); await ofRobotPoll(); await ofPerpRobotPoll(); renderRobots(); }, 2000);
+    setInterval(async () => { await ofMxRobotPoll(); await ofRobotPoll(); await ofPerpRobotPoll(); renderRobots(); }, 3000); // F-096c
 })();
 
 // === ORDER FLOW MX EDIT PANEL ===
@@ -9039,5 +9041,5 @@ setTimeout(async () => { await ofPerpRobotPoll(); renderRobots(); }, 700);
     setInterval(async () => {
         for (const k of OF_BR_INSTANCE_ORDER) await ofBrRobotPoll(k);
         renderRobots();
-    }, 2000);
+    }, 3000); // F-096c
 })();

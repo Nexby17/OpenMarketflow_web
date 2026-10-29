@@ -616,9 +616,9 @@ function sarRenderTable() {
                 const oldRow = trows[i];
                 if (newRow && oldRow && newRow.children.length === oldRow.children.length) {
                     for (let c = 0; c < newRow.children.length; c++) {
-                        if (oldRow.children[c].innerHTML !== newRow.children[c].innerHTML) {
-                            oldRow.children[c].innerHTML = newRow.children[c].innerHTML;
-                        }
+                        const oc = oldRow.children[c], nc = newRow.children[c];
+                        if (oc.className !== nc.className) oc.className = nc.className; // F-096c
+                        if (oc.innerHTML !== nc.innerHTML) oc.innerHTML = nc.innerHTML;
                     }
                 } else if (oldRow) {
                     oldRow.outerHTML = newRows[i];

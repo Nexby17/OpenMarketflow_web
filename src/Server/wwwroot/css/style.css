@@ -396,3 +396,6 @@ label { font-size: 12px; color: var(--text2); margin-bottom: 2px; display: block
         transition-duration: 0.01ms !important;
     }
 }
+
+/* === F-096c: anti-flicker for live tables - no transitions on cells/rows === */
+td, tr, tbody, table, .metric-value, .badge { transition: none !important; animation: none !important; }

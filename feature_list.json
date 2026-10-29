@@ -1421,6 +1421,14 @@
       "owner": "main",
       "date": "2026-10-29",
       "summary": "Dmitry: 'continues to blink'. F-096 fixed only robots tables; Trading-tab tables (Позиции/Заявки/Сделки/Счета) were still fully rewritten by loadPositions/loadOrders/loadTrades/loadAccounts on every 30s fetchStatus cycle and every SignalR updateStatus -> renderRobots call. Added global setTableHtml(tbody, html) helper: identical html -> no-op; same row count -> cell-level <td> updates; row count changed -> full rewrite. Routed all four loaders through it. app.js v137, bin synced, node --check pass, served verified."
+    },    {
+      "id": "F-098",
+      "name": "UI anti-flicker hardening: className sync in diffs, CSS transition kill, poll backoff",
+      "area": "ui/trading",
+      "status": "done (node --check pass, v138 served)",
+      "owner": "main",
+      "date": "2026-10-29",
+      "summary": "Dmitry demanded final fix of any flicker. Found remaining sources: (1) cell-diff updated only innerHTML but NOT className - green/red PnL classes went stale and color flips caused visual jumping; now className synced when differs in renderRobots, sarRenderTable and setTableHtml; (2) CSS transitions/animations on td/tr fired on every class change - killed with !important guard for td/tr/tbody/table/.metric-value/.badge; (3) three parallel 2s renderRobots poll loops created constant DOM churn - backed off to 3s. app.js v138, bin synced, node --check pass."
     }
   ]
 }
