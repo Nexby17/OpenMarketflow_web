@@ -9,20 +9,33 @@
 </head>
 <body>
     <script>
-    // BUILD GUARD (F-090a): авто-перезагрузка вкладки при новой сборке сервера.
-    // Гарантирует, что UI всегда исполняет актуальный код без ручного Ctrl+F5.
+    // BUILD GUARD (F-090a, переписан F-099b): авто-перезагрузка при НОВОЙ сборке.
+    // БЫЛО: hardcoded cur='v53-20261027' !== реальный '53' -> location.reload() КАЖДЫЕ 60с,
+    // страница перезагружала сама себя бесконечно ("UI мигает раз в несколько секунд").
+    // СТАЛО: cur берётся из СОБСТВЕННОГО DOM при загрузке (sarema.js?v= в текущем документе),
+    // reload только если сервер начал отдавать ДРУГУЮ версию, и не чаще раза в 5 минут.
     (function () {
-        var cur = 'v53-20261027';
+        var m0 = (document.querySelector('script[src*="sarema.js"]') || {}).src || '';
+        var mm0 = m0.match(/v=([a-z0-9-]+)/i);
+        var cur = mm0 ? mm0[1] : null;
+        if (!cur) return; // не нашли маркер - guard выключен, никакой перезагрузки
+        var lastReload = 0;
         setInterval(function () {
-            fetch(location.pathname, { cache: 'no-store', headers: { 'X-Build-Check': '1' } })
+            fetch(location.pathname, { cache: 'no-store' })
                 .then(function (r) { return r.text(); })
                 .then(function (t) {
                     var m = t.match(/sarema\.js\?v=([a-z0-9-]+)/i);
                     var srv = m ? m[1] : '';
-                    if (srv && srv !== cur && document.visibilityState === 'visible') location.reload();
+                    if (srv && cur && srv !== cur && document.visibilityState === 'visible') {
+                        var now = Date.now();
+                        if (now - lastReload > 300000) { // не чаще раза в 5 минут
+                            lastReload = now;
+                            location.reload();
+                        }
+                    }
                 })
                 .catch(function () {});
-        }, 60000);
+        }, 120000); // проверка раз в 2 минуты вместо 60с
     })();
     </script>
     <!-- Header -->
