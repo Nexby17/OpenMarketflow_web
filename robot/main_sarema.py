@@ -516,6 +516,39 @@ def _main_loop():
             if state.mode in ("running", "paused") and state.direction != 0 and state.stop_price:
                 try:
                     mark, src = _live_mark()
+                    # F-116: РЕАЛ-ТАЙМ reconciliation с брокером (каждые 20с).
+                    # Если брокер закрыл позицию (стоп-заявка исполнилась / ручная сделка) — робот синхронизируется.
+                    try:
+                        import urllib.request as _ur2
+                        _dp_req = _ur2.Request(f"http://localhost:5060/position?account={ACCOUNT_ID}&ticker={TICKER}")
+                        with _ur2.urlopen(_dp_req, timeout=6) as _rp:
+                            _dp = _json.loads(_rp.read())
+                        _broker_dir = int(_dp.get('dir', 0) or 0)
+                        _broker_lots = int(_dp.get('lots', 0) or 0)
+                        _broker_sign = _broker_dir if _broker_dir == -1 else (1 if _broker_dir == 1 else 0)
+                        if _broker_sign != state.direction:
+                            # Расхождение! (учитываем: 0 vs 0 — ок; расхождение только если одно из них не 0)
+                            if _broker_sign != 0 or state.direction != 0:
+                                log.warning(f'F-116: RECONCILIATION — брокер dir={_broker_sign} lots={_broker_lots}, '
+                                            f'робот dir={state.direction} qty={state.lots_qty} → синхронизируюсь')
+                                # закрыть журнальную запись робота по его (фантомной) позиции
+                                if state.direction != 0 and state.entry_price:
+                                    try:
+                                        strategy.close_position(reason='broker-reconcile')
+                                    except Exception as _ce:
+                                        log.error(f'F-116 close phantom: {_ce}')
+                                # принять позицию брокера как свою (если у брокера есть)
+                                state.direction = _broker_sign
+                                state.lots_qty = _broker_lots
+                                state.entry_price = float(_dp.get('avg_price', 0) or 0)
+                                state.stop_price = 0.0
+                                state.initial_stop_price = 0.0
+                                state.stop_order_id = None
+                                state.tp_order_id = None
+                                state.save()
+                                log.info('F-116: state синхронизирован с брокером')
+                    except Exception as _re2:
+                        log.error(f'F-116 reconciliation error: {_re2}')
                     if mark is not None:
                         # F-097: трейлинг-стоп в РЕАЛ-ТАЙМЕ — за живым тиком (mark), не только на закрытии H1.
                         # Работает только если trail_value задан (% / рубли / пункты); пусто = классика (за SAR на закрытии бара).
