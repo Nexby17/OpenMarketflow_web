@@ -434,6 +434,13 @@ def _main_loop():
     _start_ts = time.time()
     _RESTART_AFTER = 20 * 3600
     log.info("main loop started (F-107: auto-restart every 20h)")
+    # F-117: убрать накопленные дубли стоп-заявок (после рестартов stop_order_id терялся)
+    try:
+        _cancelled = strategy.cleanup_duplicate_stops()
+        if _cancelled:
+            log.info(f'F-117: cleanup removed {_cancelled} duplicate stop orders')
+    except Exception as _ce2:
+        log.error(f'F-117 cleanup err: {_ce2}')
     # --- Live H1 feed: Finam REST напрямую (JWT 15 мин, кэшируем) ---
     import urllib.request as _uq
     import json as _json

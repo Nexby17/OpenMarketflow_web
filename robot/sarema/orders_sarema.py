@@ -183,6 +183,59 @@ class SaremaOrders:
     DEAD_STATUSES = ('ORDER_STATUS_DONE_FOR_DAY', 'ORDER_STATUS_CANCELED', 'ORDER_STATUS_REJECTED',
                      'ORDER_STATUS_UNSPECIFIED')
 
+    def list_active_stop_orders(self) -> list:
+        """F-117: активные STOP-заявки робота по его тикеру (symbol+comment=sarema-stop).
+        Возвращает [{order_id, stop_price, quantity, side}]."""
+        try:
+            import urllib.request as _uw
+            env = os.environ.get('FINAM_API_KEY', '')
+            if not env:
+                robot_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+                for cand in (os.path.join(robot_dir, '..', 'src', 'Server', 'bin', 'Debug', 'net10.0', '.env'),
+                             os.path.join(robot_dir, '.env')):
+                    if os.path.exists(cand):
+                        with open(cand, encoding='utf-8-sig') as f:
+                            for line in f:
+                                line = line.strip()
+                                if line.startswith('FINAM_API_KEY='):
+                                    env = line.split('=', 1)[1].strip()
+                                    break
+                    if env:
+                        break
+            if not env:
+                return []
+            import json as _j
+            req = _uw.Request('https://api.finam.ru/v1/sessions',
+                              data=_j.dumps({'secret': env}).encode(), method='POST')
+            req.add_header('Content-Type', 'application/json')
+            with _uw.urlopen(req, timeout=15) as r:
+                jwt = _j.loads(r.read())['token']
+            req2 = _uw.Request(f'https://api.finam.ru/v1/accounts/{self._account}/orders', method='GET')
+            req2.add_header('Authorization', jwt)
+            with _uw.urlopen(req2, timeout=15) as r:
+                data = _j.loads(r.read())
+            orders = data.get('orders', [])
+            out = []
+            for o in orders:
+                order = o.get('order', o)
+                sym = str(order.get('symbol', ''))
+                typ = str(order.get('type', ''))
+                status = str(o.get('status', order.get('status', '')))
+                comment = str(order.get('comment', ''))
+                if self._symbol.split('@')[0] in sym and 'STOP' in typ and 'sarema-stop' in comment                         and 'WATCHING' in status or 'ORDER_STATUS_NEW' in status:
+                    stop_price = order.get('stop_price', {})
+                    qty = order.get('quantity', {})
+                    out.append(dict(
+                        order_id=str(o.get('order_id', '')),
+                        stop_price=float(stop_price.get('value', 0)) if isinstance(stop_price, dict) else float(stop_price or 0),
+                        quantity=int(float(qty.get('value', 0))) if isinstance(qty, dict) else int(float(qty or 0)),
+                        side=str(order.get('side', '')),
+                    ))
+            return out
+        except Exception as e:
+            log.error(f'list_active_stop_orders err: {e}')
+            return []
+
     def get_order_status(self, order_id: str) -> str | None:
         """F-113: статус заявки у брокера (ORDER_STATUS_*) или None если недоступен."""
         if not order_id:

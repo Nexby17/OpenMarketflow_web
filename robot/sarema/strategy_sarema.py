@@ -361,6 +361,34 @@ class SaremaStrategy:
                 "signal_age": signal_age, "signal_bar": signal_bar}
 
     # ---------- брокер-стоп ----------
+    def cleanup_duplicate_stops(self) -> int:
+        """F-117: удалить дублирующиеся стоп-заявки у брокера (накопились после рестартов,
+        когда stop_order_id терялся). Оставляем ту, чей stop_price ближе к state.stop_price.
+        Возвращает число отменённых."""
+        try:
+            actives = self.orders.list_active_stop_orders()
+            if len(actives) <= 1:
+                return 0
+            target = float(self.state.stop_price or 0)
+            if target > 0:
+                actives.sort(key=lambda x: abs(float(x['stop_price']) - target))
+            keep = actives[0]
+            cancelled = 0
+            for o in actives[1:]:
+                try:
+                    self.orders.cancel(o['order_id'])
+                    cancelled += 1
+                except Exception:
+                    pass
+            self.stop_order_id = keep['order_id']
+            self.state.stop_order_id = keep['order_id']
+            self.state.save()
+            log.info(f'F-117: дубли стопов удалены ({cancelled}), оставлена заявка {keep["order_id"]} @ {keep["stop_price"]}')
+            return cancelled
+        except Exception as e:
+            log.error(f'cleanup_duplicate_stops err: {e}')
+            return 0
+
     def _place_broker_stop(self, stop: float, qty: int, direction: int) -> None:
         """F-113: брокерский STOP-ордер (place_stop_loss) — реальная заявка у брокера,
         исполняется мгновенно при пробитии, не зависит от цикла робота."""
