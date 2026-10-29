@@ -226,7 +226,15 @@ class SaremaOrders:
         comment = self._tag(tag)
         try:
             r4 = self._r4()
-            resp = r4.place_stop_loss(self._account, self._symbol, close_side, int(quantity), float(stop_price), comment=comment)
+            try:
+                resp = r4.place_stop_loss(self._account, self._symbol, close_side, int(quantity), float(stop_price), comment=comment)
+            except Exception as _e1:
+                if self._is_token_error(str(_e1)):
+                    log.warning('F-101: Token invalid на stop_loss — re-auth + retry')
+                    self._reauth()
+                    resp = r4.place_stop_loss(self._account, self._symbol, close_side, int(quantity), float(stop_price), comment=comment)
+                else:
+                    raise
             oid = str(resp.get('order_id', resp.get('orderId', '')))
             if not oid:
                 self.last_error = str(resp)[:200]
