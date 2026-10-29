@@ -608,8 +608,24 @@ function sarRenderTable() {
     const trows = tbody.rows;
     for (let i = 0; i < newRows.length; i++) {
         if (oldRows[i] !== newRows[i]) {
-            if (trows[i]) trows[i].outerHTML = newRows[i];
-            else tbody.insertAdjacentHTML('beforeend', newRows[i]);
+            if (trows[i]) {
+                // F-096: ячейковый диф - без замены всей строки (мигание + сброс hover)
+                const tmp = document.createElement('tbody');
+                tmp.innerHTML = newRows[i];
+                const newRow = tmp.firstElementChild;
+                const oldRow = trows[i];
+                if (newRow && oldRow && newRow.children.length === oldRow.children.length) {
+                    for (let c = 0; c < newRow.children.length; c++) {
+                        if (oldRow.children[c].innerHTML !== newRow.children[c].innerHTML) {
+                            oldRow.children[c].innerHTML = newRow.children[c].innerHTML;
+                        }
+                    }
+                } else if (oldRow) {
+                    oldRow.outerHTML = newRows[i];
+                }
+            } else {
+                tbody.insertAdjacentHTML('beforeend', newRows[i]);
+            }
         }
     }
     tbody._lastRows = newRows;

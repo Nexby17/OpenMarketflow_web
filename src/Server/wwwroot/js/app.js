@@ -2749,7 +2749,21 @@ async function renderRobots() {
     for (let i = 0; i < newRows.length; i++) {
         if (oldRows[i] !== newRows[i]) {
             if (trows[i]) {
-                trows[i].outerHTML = newRows[i];
+                // F-096: ЯЧЕЙКОВЫЙ диф - outerHTML-замена строки мигает и сбрасывает hover/дропдауны.
+                // Меняем только те <td>, чей HTML реально изменился (число ячеек совпадает у тех же строк).
+                const tmp = document.createElement('tbody');
+                tmp.innerHTML = newRows[i];
+                const newRow = tmp.firstElementChild;
+                const oldRow = trows[i];
+                if (newRow && oldRow && newRow.children.length === oldRow.children.length) {
+                    for (let c = 0; c < newRow.children.length; c++) {
+                        if (oldRow.children[c].innerHTML !== newRow.children[c].innerHTML) {
+                            oldRow.children[c].innerHTML = newRow.children[c].innerHTML;
+                        }
+                    }
+                } else if (oldRow) {
+                    oldRow.outerHTML = newRows[i];
+                }
             } else {
                 tbody.insertAdjacentHTML('beforeend', newRows[i]);
             }
@@ -5959,6 +5973,8 @@ function ofRenderJournalSummary(total, wins, losses, totalPnl) {
 }
 
 // === P3: Connection Error Banner ===
+// F-096: баннер показываем только после 15с НЕПРЕРЫВНОГО дисконнекта; краткие реконнекты
+// (WS рвётся каждые ~60с внешним killer'ом) не должны мигать баннером.
 function showConnError(msg) {
     var b = el('connErrorBanner'); var m = el('connErrorMsg');
     if (b) b.classList.add('visible');
@@ -5967,9 +5983,17 @@ function showConnError(msg) {
 function hideConnError() {
     var b = el('connErrorBanner'); if (b) b.classList.remove('visible');
 }
+var _connBadSince = null;
 setInterval(function() {
-    if (typeof window._signalRConnected !== 'undefined') {
-        if (window._signalRConnected) hideConnError(); else showConnError('SignalR disconnected - REST polling fallback');
+    if (typeof window._signalRConnected === 'undefined') return;
+    if (window._signalRConnected) {
+        _connBadSince = null;
+        hideConnError();
+        return;
+    }
+    if (_connBadSince === null) _connBadSince = Date.now();
+    if (Date.now() - _connBadSince >= 15000) {
+        showConnError('SignalR disconnected - REST polling fallback (данные обновляются)');
     }
 }, 5000);
 
