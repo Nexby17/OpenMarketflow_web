@@ -1429,6 +1429,14 @@
       "owner": "main",
       "date": "2026-10-29",
       "summary": "Dmitry demanded final fix of any flicker. Found remaining sources: (1) cell-diff updated only innerHTML but NOT className - green/red PnL classes went stale and color flips caused visual jumping; now className synced when differs in renderRobots, sarRenderTable and setTableHtml; (2) CSS transitions/animations on td/tr fired on every class change - killed with !important guard for td/tr/tbody/table/.metric-value/.badge; (3) three parallel 2s renderRobots poll loops created constant DOM churn - backed off to 3s. app.js v138, bin synced, node --check pass."
+    },    {
+      "id": "F-099",
+      "name": "UI fix - kill 401 page navigation (full-page reset) + stable column widths",
+      "area": "ui/trading",
+      "status": "done (node --check pass, served v139 verified)",
+      "owner": "main",
+      "date": "2026-10-29",
+      "summary": "Dmitry: 'UI must not blink, not reset tables, work stable'. Found the LAST full-reset mechanism: the client 401 interceptor did window.location.href='/login.html' on ANY 401 - when the auth cookie expires (7d), the ENTIRE page navigated away/reloaded repeatedly, wiping all tables - that is the 'сбрасывается' he kept seeing. Since F-094 made all read endpoints anonymous, data flows without login; now 401 only shows a single toast warning ('session expired') and NEVER navigates. Also fixed column jumping: numbers changing width re-sized columns every tick - added table-layout:fixed + tabular-nums + ellipsis for data tables. app.js v139, css guard, bin synced, node --check pass, served verified."
     }
   ]
 }

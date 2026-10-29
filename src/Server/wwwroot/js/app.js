@@ -171,19 +171,27 @@ function sberEditPanel() { arbInstancePanel('sber'); }
 function brCalEditPanel() { arbInstancePanel('br'); }
 
 (function() {
-    // Check if authenticated
+    // F-099: 401 больше НЕ навигирует страницу. Полный сброс UI («таблицы пропали,
+    // страница улетела на логин») был именно отсюда: истекла кука -> любой 401 ->
+    // window.location='/login.html' -> вся страница пересоздавалась.
+    // Теперь: read-эндпоинты анонимны (allowlist), данные текут без логина.
+    // О потерянной сессии предупреждаем один раз тихим тостом, страницу не трогаем.
     fetch('/api/me', { credentials: 'include' })
-        .then(r => { if (r.status === 401) window.location.href = '/login.html'; });
-    
-    // Intercept all fetch calls — redirect to login on 401
+        .then(r => {
+            if (r.status === 401) {
+                window._sessionExpired = true;
+                try { showToast('⚠️ Сессия истекла — управляющие кнопки требуют повторного входа (/login.html). Данные продолжают обновляться.', 'warn'); } catch(e) {}
+            }
+        });
+
     const origFetch = window.fetch;
     window.fetch = function(...args) {
         return origFetch.apply(this, args).then(res => {
-            if (res.status === 401) {
-                window.location.href = '/login.html';
-                return new Promise(() => {});
+            if (res.status === 401 && !window._sessionExpired) {
+                window._sessionExpired = true;
+                try { showToast('⚠️ Сессия истекла — повторите вход для управления (данные обновляются).', 'warn'); } catch(e) {}
             }
-            return res;
+            return res; // НИКАКОЙ навигации: отдаём ответ как есть
         });
     };
 })();

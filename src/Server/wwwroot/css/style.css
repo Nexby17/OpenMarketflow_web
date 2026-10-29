@@ -399,3 +399,7 @@ label { font-size: 12px; color: var(--text2); margin-bottom: 2px; display: block
 
 /* === F-096c: anti-flicker for live tables - no transitions on cells/rows === */
 td, tr, tbody, table, .metric-value, .badge { transition: none !important; animation: none !important; }
+
+/* === F-099: стабильные колонки - числа меняют ширину, колонки не должны прыгать === */
+table { table-layout: fixed; width: 100%; }
+td, th { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-variant-numeric: tabular-nums; }
