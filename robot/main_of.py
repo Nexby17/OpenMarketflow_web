@@ -733,13 +733,13 @@ def _execute_action(action: dict):
             log.info(f"CLOSE_ALL skipped — already flat (partial_tp closed in same tick)")
             return
 
-        # First cancel all orders
+        # First cancel all orders (PORT F-019-B: batch cancel, rate-limited)
         active = orders.get_active_orders(symbol=SYMBOL)
         if active:
-            for o in active:
-                oid = o.get("order_id", "") if isinstance(o, dict) else str(o)
-                orders.cancel(oid)
-            time.sleep(0.5)
+            ids = [o.get("order_id", "") if isinstance(o, dict) else str(o) for o in active]
+            ok_n, failed_ids = orders.cancel_many([i for i in ids if i])
+            log.info(f"cancel_many: {ok_n} cancelled, {len(failed_ids)} failed")
+            time.sleep(0.2)
 
         # Save avgPrice BEFORE strategy modifies it
         avg_for_record = strategy._avg_price
@@ -750,8 +750,7 @@ def _execute_action(action: dict):
         _last_fill_time = 0.0
         result = orders.place_market(side_int, qty, tag=f"of_close_{action.get('reason', '')}")
         if result:
-            time.sleep(0.3)  # wait for fill callback
-            fill_price = _consume_fill_price()
+            fill_price = _wait_fill_price(1.2)  # PORT F-019-B: early exit on gRPC fill event
             if fill_price > 0:
                 action["fill_price"] = fill_price
                 action['avgPrice'] = avg_for_record
@@ -783,7 +782,7 @@ def _execute_action(action: dict):
         lots_before = strategy._total_lots - qty  # lots BEFORE this action added them
         result = orders.place_market(side_int, qty, tag=tag)
         if result:
-            fill_price = _consume_fill_price()
+            fill_price = _wait_fill_price(1.2)  # PORT F-019-B: real entry price from broker
             if fill_price > 0:
                 action["fill_price"] = fill_price
                 log.info(f"Executed {act.upper()}: {side_str} {qty} @ {fill_price:.0f}")
@@ -805,8 +804,7 @@ def _execute_action(action: dict):
         _last_fill_time = 0.0
         result = orders.place_market(side_int, qty, tag="of_partial_tp")
         if result:
-            time.sleep(0.3)  # wait for fill callback
-            fill_price = _consume_fill_price()
+            fill_price = _wait_fill_price(1.2)  # PORT F-019-B: early exit on gRPC fill event
             if fill_price > 0:
                 action["fill_price"] = fill_price
                 log.info(f"Executed PARTIAL_TP: {side_str} {qty} @ {fill_price:.0f}")
@@ -981,9 +979,9 @@ class APIHandler(BaseHTTPRequestHandler):
             if not PAPER_MODE:
                 active = orders.get_active_orders(symbol=SYMBOL)
                 if active:
-                    for o in active:
-                        oid = o.get("order_id", "") if isinstance(o, dict) else str(o)
-                        orders.cancel(oid)
+                    ids = [o.get("order_id", "") if isinstance(o, dict) else str(o) for o in active]
+                    ok_n, failed_ids = orders.cancel_many([i for i in ids if i])
+                    log.info(f"cancel_many(/stop): {ok_n} cancelled, {len(failed_ids)} failed")
             # Close position if any
             if strategy.in_position:
                 with _price_lock:
@@ -1004,9 +1002,9 @@ class APIHandler(BaseHTTPRequestHandler):
             if not PAPER_MODE:
                 active = orders.get_active_orders(symbol=SYMBOL)
                 if active:
-                    for o in active:
-                        oid = o.get("order_id", "") if isinstance(o, dict) else str(o)
-                        orders.cancel(oid)
+                    ids = [o.get("order_id", "") if isinstance(o, dict) else str(o) for o in active]
+                    ok_n, failed_ids = orders.cancel_many([i for i in ids if i])
+                    log.info(f"cancel_many(/pause): {ok_n} cancelled, {len(failed_ids)} failed")
             save_state()
             self._json(200, {"ok": True, "mode": _mode, "paper": PAPER_MODE})
 

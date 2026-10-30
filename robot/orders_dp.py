@@ -105,6 +105,33 @@ class OrderManager:
             log.error(f"Cancel exception: {e}")
             return False
 
+    def cancel_many(self, order_ids: list, max_per_min: int = 180) -> tuple:
+        """PORT F-019-B: пакетная отмена без фиксированных пауз между ордерами,
+        с rate-limit окном (Finam ~200 rpm через общий DP).
+        Возвращает (ok_count, failed_ids)."""
+        ok = 0
+        failed = []
+        window_start = time.time()
+        sent_in_window = 0
+        for oid in order_ids:
+            if sent_in_window >= max_per_min:
+                elapsed = time.time() - window_start
+                if elapsed < 60.0:
+                    log.info(f"cancel_many: rate window {max_per_min}/min reached — sleeping {60.0 - elapsed:.1f}s")
+                    time.sleep(60.0 - elapsed)
+                window_start = time.time()
+                sent_in_window = 0
+            try:
+                if self.cancel(oid):
+                    ok += 1
+                else:
+                    failed.append(oid)
+            except Exception as e:
+                log.warning(f"cancel_many {oid}: {str(e)[:80]}")
+                failed.append(oid)
+            sent_in_window += 1
+        return ok, failed
+
     def cancel_all(self, orders: list):
         for o in orders:
             self.cancel(o.order_id if hasattr(o, 'order_id') else str(o))
