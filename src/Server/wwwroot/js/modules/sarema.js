@@ -175,7 +175,6 @@ async function sarLoadPanelData(inst) {
     // дефолты
     set('sarMaxLong', ''); set('sarMaxShort', ''); set('sarBase', 1000000);
     set('sarSlUnit', 'rub_pnl'); set('sarSlValue', '');
-    set('sarLiqFrac', 0.05);
     set('sarTrUnit', 'pct'); set('sarTrValue', '');
     set('sarAf0', 0.02); set('sarStep', 0.2); set('sarMax', 0.2);
     set('sarEmaN', 12); set('sarTfMin', 60);
@@ -193,7 +192,6 @@ async function sarLoadPanelData(inst) {
             set('sarSlValue', d.stop_loss_value ?? '');
             set('sarTrUnit', d.trail_unit || 'pct');
             set('sarTrValue', d.trail_value ?? '');
-            set('sarLiqFrac', d.liq_frac ?? 0.05);
             set('sarAf0', d.sar_af0 ?? 0.02);
             set('sarStep', d.sar_step ?? 0.2);
             set('sarMax', d.sar_max ?? 0.2);
@@ -376,7 +374,6 @@ async function sarSaveParams() {
         stop_loss_value: slNum,
         trail_unit: trUnit,
         trail_value: trNum,
-        liq_frac: liqRaw === '' ? null : parseFloat(liqRaw),
         sar_af0: af0, sar_step: step, sar_max: smax,
         ema_n: emaN != null ? Math.round(emaN) : undefined,
         tp_mode: (function(){ var fx = document.getElementById('sarTpFixed'), sr = document.getElementById('sarTpSar');
