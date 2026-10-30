@@ -440,6 +440,14 @@ def _main_loop():
             log.info(f'F-117: cleanup removed {_cancelled} duplicate stop orders')
     except Exception as _ce2:
         log.error(f'F-117 cleanup err: {_ce2}')
+    # F-127: если робот во флэте — снять ВСЕ его заявки у брокера (мусор прошлых запусков)
+    try:
+        if state.direction == 0:
+            _n = orders.cancel_all_robot_orders()
+            if _n:
+                log.warning(f'F-127: снято {_n} заявок при флэте (мусор прошлых запусков)')
+    except Exception as _ce3:
+        log.error(f'F-127 flat-cleanup err: {_ce3}')
     # --- Live H1 feed: Finam REST напрямую (JWT 15 мин, кэшируем) ---
     import urllib.request as _uq
     import json as _json

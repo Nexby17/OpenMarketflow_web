@@ -414,6 +414,14 @@ class SaremaStrategy:
             except Exception:
                 pass
             self.state.tp_order_id = None
+        # F-127: ГАРАНТИЯ — снять ВСЕ остальные активные заявки робота у брокера
+        # (дубли стопов после рестартов, старые лимитки, всё что могло остаться)
+        try:
+            _n = self.orders.cancel_all_robot_orders()
+            if _n:
+                log.warning(f'F-127: снято {_n} оставшихся заявок робота')
+        except Exception as _ce2:
+            log.error(f'F-127 cancel-all err: {_ce2}')
         if not po:
             return {"event": "close_error", "error": self.orders.last_error}
         log.info(f"close reason={reason} qty={self.state.lots_qty}")

@@ -167,7 +167,15 @@ class SaremaOrders:
         comment = self._tag(tag)
         try:
             r4 = self._r4()
-            resp = r4.place_limit(self._account, self._symbol, side_str, int(quantity), float(price), comment=comment)
+            try:
+                resp = r4.place_limit(self._account, self._symbol, side_str, int(quantity), float(price), comment=comment)
+            except Exception as _e1:
+                if self._is_token_error(str(_e1)):
+                    log.warning("F-101: Token invalid на limit — re-auth + retry")
+                    self._reauth()
+                    resp = r4.place_limit(self._account, self._symbol, side_str, int(quantity), float(price), comment=comment)
+                else:
+                    raise
             oid = str(resp.get("order_id", resp.get("orderId", "")))
             if not oid:
                 self.last_error = str(resp)[:200]
@@ -235,6 +243,52 @@ class SaremaOrders:
         except Exception as e:
             log.error(f'list_active_stop_orders err: {e}')
             return []
+
+    def cancel_all_robot_orders(self) -> int:
+        """F-127: снять ВСЕ активные заявки робота (стопы + лимитки) по тикеру и тегу sarema-*.
+        Гарантия: после вызова у брокера не останется ни одной нашей заявки."""
+        cancelled = 0
+        try:
+            for o in self.list_active_stop_orders():
+                try:
+                    self.cancel(o['order_id'])
+                    cancelled += 1
+                except Exception:
+                    pass
+            # TP-лимитки (список активных лимиток с тегом sarema-tp)
+            try:
+                import urllib.request as _uw
+                _env_key = os.environ.get('FINAM_API_KEY', '')
+                if _env_key:
+                    import json as _j
+                    req = _uw.Request('https://api.finam.ru/v1/sessions',
+                                      data=_j.dumps({'secret': _env_key}).encode(), method='POST')
+                    req.add_header('Content-Type', 'application/json')
+                    with _uw.urlopen(req, timeout=15) as r:
+                        jwt = _j.loads(r.read())['token']
+                    req2 = _uw.Request(f'https://api.finam.ru/v1/accounts/{self._account}/orders', method='GET')
+                    req2.add_header('Authorization', jwt)
+                    with _uw.urlopen(req2, timeout=15) as r:
+                        data = _j.loads(r.read())
+                    for o in data.get('orders', []):
+                        order = o.get('order', o)
+                        sym = str(order.get('symbol', ''))
+                        cmt = str(order.get('comment', ''))
+                        status = str(o.get('status', ''))
+                        if self._symbol.split('@')[0] in sym and 'sarema-' in cmt and \
+                           ('ORDER_STATUS_WATCHING' in status or 'ORDER_STATUS_NEW' in status or
+                            'ORDER_STATUS_PARTIALLY_FILLED' in status):
+                            oid = str(o.get('order_id', ''))
+                            try:
+                                self.cancel(oid)
+                                cancelled += 1
+                            except Exception:
+                                pass
+            except Exception:
+                pass
+        except Exception as e:
+            log.error(f'cancel_all_robot_orders err: {e}')
+        return cancelled
 
     def get_order_status(self, order_id: str) -> str | None:
         """F-113: статус заявки у брокера (ORDER_STATUS_*) или None если недоступен."""
