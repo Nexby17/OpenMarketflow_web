@@ -78,6 +78,7 @@ class ParamsPatch(BaseModel):
     vah_val_lookback: int | float | None = None
     tp_R: int | float | None = None   # F-084: take-profit по R
     tp_mode: str | None = None   # F-105: fixed | sar
+    size_mode: str | None = None   # F-118: risk | capital
     # F-092: стоп-лосс и трейлинг в единицах (%|rub|points; atr/sar = старое поведение)
     stop_loss_value: int | float | None = None
     stop_loss_unit: str | None = None

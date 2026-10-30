@@ -66,6 +66,7 @@ DEFAULTS = {
     # F-084: take-profit по R-мультипликатору (2R = двойной риск). null = выключен.
     "tp_R": 2.0,
     "tp_mode": "fixed",   # F-105: fixed (от входа) | sar (плавает за SAR)
+    "size_mode": "risk",   # F-118: risk (риск% на сделку) | capital (весь Капитал / цена)
 }
 
 
@@ -122,6 +123,12 @@ def validate_params(patch: dict) -> tuple[dict, list[str]]:
             clean["max_signal_age"] = int(v)
         else:
             errors.append("max_signal_age must be in [1, 50] or null")
+    if "size_mode" in patch:
+        m = patch["size_mode"]
+        if m in ("risk", "capital"):
+            clean["size_mode"] = m
+        else:
+            errors.append("size_mode must be risk|capital")
     if "tp_mode" in patch:
         m = patch["tp_mode"]
         if m in ("fixed", "sar"):

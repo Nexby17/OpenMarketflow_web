@@ -269,7 +269,16 @@ class SaremaStrategy:
         stop_dist, stop_basis = self._initial_stop_dist(direction, price_hint, atr_signal)
         if stop_dist <= 0:
             return {"event": "skip", "reason": "bad_atr"}
-        rs = risk_sizing(self.state.base, self.cfg.get("risk_pct", 0.005), stop_dist)
+        # F-118: режим сайзинга. capital = позиция на ВЕСЬ Капитал (Дмитрий: «торговать на указанный капитал»).
+        # risk = классический риск-сайзинг (риск₽ / стоп-дистанция).
+        if (self.cfg.get("size_mode") or "risk").lower() == "capital":
+            _sd = self._initial_stop_dist(direction, price_hint, atr_signal)[0]
+            _sd = _sd if _sd > 0 else price_hint * 0.01
+            rs = int((self.state.base / price_hint) if price_hint > 0 else 0)   # весь капитал в штуки
+            reason = "capital-sizing"
+        else:
+            rs = risk_sizing(self.state.base, self.cfg.get("risk_pct", 0.005), stop_dist)
+            reason = "risk_sizing"
         qty, reason = apply_limits_qty(rs, price_hint, self.cfg, direction)
         if qty < 1:
             self.state.save()

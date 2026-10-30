@@ -78,6 +78,7 @@ function sarSwitchInstance(inst) {
                 <div class="metric-card" style="flex:0 0 150px;min-width:150px;min-height:66px;text-align:left"><div class="metric-label">Предельн. ЛОНГ (шт, 0=нет)</div><input id="sarMaxLong" class="input" placeholder="без лимита" style="width:90px"></div>
                 <div class="metric-card" style="flex:0 0 150px;min-width:150px;min-height:66px;text-align:left"><div class="metric-label">Предельн. ШОРТ (шт, 0=нет)</div><input id="sarMaxShort" class="input" placeholder="без лимита" style="width:90px"></div>
                 <div class="metric-card" style="flex:0 0 150px;min-width:150px;min-height:66px;text-align:left"><div class="metric-label">Капитал (₽)</div><input id="sarBase" class="input" style="width:110px"></div>
+                <div class="metric-card" style="flex:0 0 150px;min-width:150px;min-height:66px;text-align:left"><div class="metric-label">Сайзинг</div><select id="sarSizeMode" class="select" style="width:100%"><option value="capital">Весь капитал</option><option value="risk">Риск %</option></select></div>
                 <div class="metric-card" style="flex:0 0 150px;min-width:150px;min-height:66px;text-align:left"><div class="metric-label">Стоп-лосс</div><div style="display:flex;gap:4px"><select id="sarSlUnit" class="select" style="flex:0 0 64px;width:64px;min-width:64px;padding-left:4px;padding-right:2px"><option value="rub_pnl">руб уб</option><option value="pct">%</option><option value="rub">руб</option><option value="points">пт</option></select><input id="sarSlValue" class="input" placeholder="—" style="flex:1 1 auto;width:auto;min-width:60px"></div></div>
                 <div class="metric-card" style="flex:0 0 150px;min-width:150px;min-height:66px;text-align:left"><div class="metric-label">Трейлинг-стоп</div><div style="display:flex;gap:4px"><select id="sarTrUnit" class="select" style="width:auto;flex:0 0 auto"><option value="pct">%</option><option value="rub">рубли</option><option value="points">пункты</option></select><input id="sarTrValue" class="input" placeholder="—" style="width:100%;min-width:56px"></div></div>
                 <div class="metric-card" style="flex:0 0 150px;min-width:150px;min-height:66px;text-align:left"><div class="metric-label">Лимит участия (доля объёма)</div><input id="sarLiqFrac" class="input" style="width:70px"></div>
@@ -223,6 +224,8 @@ async function sarLoadPanelData(inst) {
             set('sarMaxShort', p.max_short_qty ?? '');
 
             set('sarBase', p.base ?? 1000000);
+            var _szm = document.getElementById('sarSizeMode');
+            if (_szm) _szm.value = p.size_mode || 'capital';
             set('sarSlUnit', p.stop_loss_unit || 'rub_pnl');
             set('sarSlValue', p.stop_loss_value ?? '');
             set('sarTrUnit', p.trail_unit || 'pct');
@@ -380,6 +383,7 @@ async function sarSaveParams() {
         max_short_qty: maxShort,
 
         base: baseRaw !== '' ? parseFloat(baseRaw.replace(',', '.')) : undefined,
+        size_mode: (function(){ var e = document.getElementById('sarSizeMode'); return e ? e.value : 'capital'; })(),
         stop_loss_unit: slUnit,
         stop_loss_value: slNum,
         trail_unit: trUnit,
