@@ -269,25 +269,12 @@ class SaremaStrategy:
         stop_dist, stop_basis = self._initial_stop_dist(direction, price_hint, atr_signal)
         if stop_dist <= 0:
             return {"event": "skip", "reason": "bad_atr"}
-        # F-118: режим сайзинга. capital = позиция на ВЕСЬ Капитал (Дмитрий: «торговать на указанный капитал»).
-        # risk = классический риск-сайзинг (риск₽ / стоп-дистанция).
-        if (self.cfg.get("size_mode") or "risk").lower() == "capital":
-            _sd = self._initial_stop_dist(direction, price_hint, atr_signal)[0]
-            _sd = _sd if _sd > 0 else price_hint * 0.01
-            rs = int((self.state.base / price_hint) if price_hint > 0 else 0)   # весь капитал в штуки
-            reason = "capital-sizing"
-        else:
-            rs = risk_sizing(self.state.base, self.cfg.get("risk_pct", 0.005), stop_dist)
-            reason = "risk_sizing"
+        rs = risk_sizing(self.state.base, self.cfg.get("risk_pct", 0.005), stop_dist)
         qty, reason = apply_limits_qty(rs, price_hint, self.cfg, direction)
         if qty < 1:
             self.state.save()
             return {"event": "signal_skipped", "reason": reason, "risk_sizing": rs}
-        # F-102: liq_cap ДО лот-округления — иначе liq ломает кратность лоту → 'Invalid quantity'
-        qty = apply_liq_cap(qty, bar_volume, self.cfg.get("liq_frac"))
-        if qty < 1:
-            self.state.save()
-            return {"event": "signal_skipped", "reason": "liq_frac", "risk_sizing": rs}
+        # F-124: Лимит участия удалён (Дмитрий) — сайзинг идёт напрямую к лот-округлению
         qty = apply_lot_rounding(qty, self.lot_size)
         if qty < 1:
             self.state.save()
@@ -318,7 +305,7 @@ class SaremaStrategy:
                     "error": self.orders.last_error or 'no fill in 3s'}
         # начальный стоп строится от фактической цены входа после fill (reconciliation
         # уточняет entry; здесь предварительный стоп от price_hint, дальше /resync)
-        stop0 = price_hint - stop_dist if direction == LONG else price_hint + stop_dist
+        stop0 = fill_price - stop_dist if direction == LONG else fill_price + stop_dist   # F-121: от РЕАЛЬНОЙ цены
         # запись в журнал позиций (логика таблицы Дмитрия): открытие — сразу при входе
         from datetime import date as _date
         _now = datetime.utcnow()
@@ -330,9 +317,9 @@ class SaremaStrategy:
             "date_open": _now.strftime("%Y-%m-%d"),
             "time_open": _now.strftime("%H:%M:%S"),
             "dir": "L" if direction == LONG else "S",
-            "entry": price_hint,
+            "entry": round(fill_price, 2),   # F-121: РЕАЛЬНАЯ цена исполнения от брокера
             "qty": qty,
-            "volume": round(qty * price_hint, 2),
+            "volume": round(qty * fill_price, 2),
             "risk_pct": round(qty * stop_dist / max(1e-9, self.state.base) * 100, 2),
             "risk_pts": round(risk_pts, 2),
             "stop": round(stop0, 2),
@@ -340,7 +327,7 @@ class SaremaStrategy:
         })
         self.state.direction = direction
         self.state.lots_qty = qty
-        self.state.entry_price = price_hint
+        self.state.entry_price = fill_price   # F-121: РЕАЛЬНАЯ цена исполнения
         self.state.stop_price = stop0
         self.state.initial_stop_price = stop0   # F-098: база трейлинга (стоп не двигается ближе этого зазора)
         self.state.entry_time = datetime.utcnow().isoformat()

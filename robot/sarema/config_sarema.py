@@ -55,7 +55,6 @@ DEFAULTS = {
     "max_long_qty": None,
     "max_short_qty": None,
     "max_value_rub": None,
-    "liq_frac": 0.05,
     "warmup_bars": 300,
     # === F-065: Volume Profile фильтр входа (как у OF-Si «VP Mode») ===
     # mode: off = как раньше (без фильтра); range = вход только внутри VA;
@@ -66,7 +65,6 @@ DEFAULTS = {
     # F-084: take-profit по R-мультипликатору (2R = двойной риск). null = выключен.
     "tp_R": 2.0,
     "tp_mode": "fixed",   # F-105: fixed (от входа) | sar (плавает за SAR)
-    "size_mode": "risk",   # F-118: risk (риск% на сделку) | capital (весь Капитал / цена)
 }
 
 
@@ -107,14 +105,7 @@ def validate_params(patch: dict) -> tuple[dict, list[str]]:
                 clean[k] = int(v) if k != "max_value_rub" else float(v)
             else:
                 errors.append(f"{k} must be null (no limit) or >= 0")
-    if "liq_frac" in patch:
-        v = patch["liq_frac"]
-        if v is None:
-            clean["liq_frac"] = None
-        elif isinstance(v, (int, float)) and 0 < v <= 1:
-            clean["liq_frac"] = float(v)
-        else:
-            errors.append("liq_frac must be in (0, 1] or null")
+
     if "max_signal_age" in patch:
         v = patch["max_signal_age"]
         if v is None:
@@ -123,12 +114,7 @@ def validate_params(patch: dict) -> tuple[dict, list[str]]:
             clean["max_signal_age"] = int(v)
         else:
             errors.append("max_signal_age must be in [1, 50] or null")
-    if "size_mode" in patch:
-        m = patch["size_mode"]
-        if m in ("risk", "capital"):
-            clean["size_mode"] = m
-        else:
-            errors.append("size_mode must be risk|capital")
+
     if "tp_mode" in patch:
         m = patch["tp_mode"]
         if m in ("fixed", "sar"):

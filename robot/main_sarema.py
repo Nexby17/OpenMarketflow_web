@@ -63,7 +63,6 @@ class ParamsPatch(BaseModel):
     max_long_qty: int | float | None = None
     max_short_qty: int | float | None = None
     max_value_rub: float | None = None
-    liq_frac: float | None = None
     compound: bool | None = None
     # сигнальные SAR/EMA (редактируемые Дмитрием в popup)
     sar_af0: float | None = None
@@ -78,7 +77,6 @@ class ParamsPatch(BaseModel):
     vah_val_lookback: int | float | None = None
     tp_R: int | float | None = None   # F-084: take-profit по R
     tp_mode: str | None = None   # F-105: fixed | sar
-    size_mode: str | None = None   # F-118: risk | capital
     # F-092: стоп-лосс и трейлинг в единицах (%|rub|points; atr/sar = старое поведение)
     stop_loss_value: int | float | None = None
     stop_loss_unit: str | None = None
@@ -524,54 +522,6 @@ def _main_loop():
             if state.mode in ("running", "paused"):
                 try:
                     mark, src = _live_mark()
-                    # F-116: РЕАЛ-ТАЙМ reconciliation с брокером (каждые 20с).
-                    # Если брокер закрыл позицию (стоп-заявка исполнилась / ручная сделка) — робот синхронизируется.
-                    try:
-                        import urllib.request as _ur2
-                        _dp_req = _ur2.Request(f"http://localhost:5060/position?account={ACCOUNT_ID}&ticker={TICKER}")
-                        with _ur2.urlopen(_dp_req, timeout=6) as _rp:
-                            _dp = _json.loads(_rp.read())
-                        _broker_dir = int(_dp.get('dir', 0) or 0)
-                        _broker_lots = int(_dp.get('lots', 0) or 0)
-                        _broker_sign = _broker_dir if _broker_dir == -1 else (1 if _broker_dir == 1 else 0)
-                        # F-116 v4: reconciliation ТОЛЬКО закрытие фантомов:
-                        # робот в позиции, а у брокера 0 → стоп-заявка исполнилась у брокера → принять флэт.
-                        # Случаи 'у брокера позиция есть, робот флэт/другой объём' НЕ трогаем —
-                        # на счёте 2049688 есть ручная торговля, DP /position агрегирует весь счёт.
-                        _my_sign = int(state.direction)
-                        if _my_sign != 0 and _broker_sign == 0:
-                            log.warning(f'F-116: RECONCILIATION — брокер dir={_broker_sign} lots={_broker_lots}, '
-                                        f'робот dir={state.direction} qty={state.lots_qty} → синхронизируюсь')
-                            if state.direction != 0 and state.entry_price:
-                                try:
-                                    strategy.close_position(reason='broker-reconcile')
-                                except Exception as _ce:
-                                    log.error(f'F-116 close phantom: {_ce}')
-                            state.direction = _broker_sign
-                            state.lots_qty = _broker_lots
-                            state.entry_price = float(_dp.get('avg_price', 0) or 0)
-                            state.stop_price = 0.0
-                            state.initial_stop_price = 0.0
-                            state.stop_order_id = None
-                            state.tp_order_id = None
-                            state.save()
-                            log.info('F-116: state синхронизирован с брокером')
-                            if state.direction != 0:
-                                try:
-                                    strategy._place_broker_stop(state.entry_price * (1 + 0.01 * (-state.direction)),
-                                                                state.lots_qty, state.direction)
-                                    _tp_new = strategy.tp_price(state.direction, state.entry_price,
-                                                                strategy.last_sar or state.entry_price,
-                                                                (strategy.last_stats or {}).get('atr') or 0.0)
-                                    if _tp_new:
-                                        _close_side = 'sell' if state.direction == 1 else 'buy'
-                                        _tpo = orders.place_limit(_close_side, state.lots_qty, round(_tp_new, 2), tag='sarema-tp')
-                                        state.tp_order_id = _tpo.order_id if _tpo else None
-                                    state.save()
-                                except Exception as _pe:
-                                    log.error(f'F-116 stop/tp for broker pos: {_pe}')
-                    except Exception as _re2:
-                        log.error(f'F-116 reconciliation error: {_re2}')
                     if mark is not None:
                         # F-097: трейлинг-стоп в РЕАЛ-ТАЙМЕ — за живым тиком (mark), не только на закрытии H1.
                         # Работает только если trail_value задан (% / рубли / пункты); пусто = классика (за SAR на закрытии бара).
