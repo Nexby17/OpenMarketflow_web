@@ -8,19 +8,9 @@
 
 // Регистр экземпляров: добавляется строкой при подъёме нового робота.
 const SAR_INSTANCES = {
-    sber: { port: 5101, ticker: 'SBER', label: 'SBER' },
-    gazp: { port: 5102, ticker: 'GAZP', label: 'GAZP' },
-    lkoh: { port: 5103, ticker: 'LKOH', label: 'LKOH' },
-    rosn: { port: 5104, ticker: 'ROSN', label: 'ROSN' },
-    tatn: { port: 5105, ticker: 'TATN', label: 'TATN' },
-    gmkn: { port: 5106, ticker: 'GMKN', label: 'GMKN' },
-    nvtk: { port: 5107, ticker: 'NVTK', label: 'NVTK' },
-    plzl: { port: 5108, ticker: 'PLZL', label: 'PLZL' },
-    mtss: { port: 5109, ticker: 'MTSS', label: 'MTSS' },
-    sngs: { port: 5110, ticker: 'SNGS', label: 'SNGS' },
     mtlr: { port: 5111, ticker: 'MTLR', label: 'MTLR' },
 };
-const SAR_INSTANCE_ORDER = ['sber', 'gazp', 'lkoh', 'rosn', 'tatn', 'gmkn', 'nvtk', 'plzl', 'mtss', 'sngs', 'mtlr'];   // все 10 (Дмитрий 09.10)
+const SAR_INSTANCE_ORDER = ['mtlr'];   // все 10 (Дмитрий 09.10)
 SAR_INSTANCE_ORDER.forEach(k => { window['sarRobot_' + k] = null; window['_sarWasOnline_' + k] = false; });
 let sarPanelInst = null;            // экземпляр, чей popup открыт (null = закрыт)
 let _sarTimer = null;
