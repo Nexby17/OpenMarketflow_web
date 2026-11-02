@@ -190,6 +190,7 @@ class SaremaStrategy:
             sig_age = i - j
             # F-065: VA-гейт (VP Mode) — ДО лимитов/сайзинга; сигнал не расходуется
             vp_mode = self._vp_mode()
+            zone = ""
             if vp_mode != "off":
                 price_ref = float(g2["close"].iloc[i])
                 allowed, reason, zone = gate_check(vp_mode, price_ref,
@@ -199,8 +200,6 @@ class SaremaStrategy:
                                    "reason": reason, "price": round(price_ref, 4),
                                    "vah": round(self.vp.vah, 4), "val": round(self.vp.val, 4)})
                     return {"events": events, "last_bar": str(g2["begin"].iloc[-1])}
-            else:
-                zone = ""
             ev = self._try_enter(direction, float(atr[j]),
                                  float(g2["volume"].iloc[j]),
                                  signal_bar=str(g2["begin"].iloc[j]),
@@ -269,7 +268,13 @@ class SaremaStrategy:
         stop_dist, stop_basis = self._initial_stop_dist(direction, price_hint, atr_signal)
         if stop_dist <= 0:
             return {"event": "skip", "reason": "bad_atr"}
-        rs = risk_sizing(self.state.base, self.cfg.get("risk_pct", 0.005), stop_dist)
+        # F-131: size_mode=capital — объём = ВЕСЬ Капитал / цена (команда Дмитрия)
+        if (self.cfg.get("size_mode") or "risk").lower() == "capital":
+            rs = int((self.state.base / price_hint) if price_hint > 0 else 0)
+            reason = "capital-sizing"
+        else:
+            rs = risk_sizing(self.state.base, self.cfg.get("risk_pct", 0.005), stop_dist)
+            reason = "risk_sizing"
         qty, reason = apply_limits_qty(rs, price_hint, self.cfg, direction)
         if qty < 1:
             self.state.save()
@@ -323,7 +328,7 @@ class SaremaStrategy:
             "risk_pct": round(qty * stop_dist / max(1e-9, self.state.base) * 100, 2),
             "risk_pts": round(risk_pts, 2),
             "stop": round(stop0, 2),
-            "vp": (f"{vp_mode}:{zone}" if vp_mode != "off" and zone else (vp_mode if vp_mode != "off" else "signal")),
+            "vp": (f"{vp_mode}:{getattr(self, '_last_zone', '')}" if vp_mode != "off" else "signal"),
         })
         self.state.direction = direction
         self.state.lots_qty = qty
