@@ -13,6 +13,7 @@ import logging
 import time
 from dataclasses import dataclass
 
+import os
 log = logging.getLogger("sarema.orders")
 
 BUY = 1
@@ -317,6 +318,13 @@ class SaremaOrders:
             else:
                 log.error(f'get_order_status err: {e}')
             return None
+
+    def is_order_filled(self, order_id: str) -> bool:
+        """F-129: True если заявка ИСПОЛНЕНА брокером (позиция ею закрыта/открыта)."""
+        st = self.get_order_status(order_id)
+        if st is None:
+            return False
+        return 'ORDER_STATUS_FILLED' in st
 
     def is_dead_order(self, order_id: str) -> bool:
         """F-113: True если заявка снята брокером (конец дня/cancel/reject). None (нет связи) → False (не паникуем)."""

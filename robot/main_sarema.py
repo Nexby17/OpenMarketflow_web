@@ -571,6 +571,19 @@ def _main_loop():
                         # F-113: брокер снимает заявки в конце торгового дня — проверяем и перевыставляем
                         try:
                             if orders and strategy:
+                                # F-129: стоп-заявка ИСПОЛНЕНА брокером → позиция закрыта → FLAT sync
+                                if state.stop_order_id and orders.is_order_filled(state.stop_order_id):
+                                    _pnl = (state.stop_price - state.entry_price) * (-1 if state.direction < 0 else 1) * state.lots_qty
+                                    log.warning(f'F-129: стоп ИСПОЛНЕН брокером (PnL≈{_pnl:.0f}₽) — синхронизирую FLAT')
+                                    state.direction = 0
+                                    state.lots_qty = 0
+                                    state.entry_price = 0.0
+                                    state.stop_price = 0.0
+                                    state.initial_stop_price = 0.0
+                                    state.stop_order_id = None
+                                    state.tp_order_id = None
+                                    state.save()
+                                    continue
                                 # F-113: None (не ставился/после рестарта) или снят брокером → ставим/перевыставляем
                                 need_stop = (not state.stop_order_id) or orders.is_dead_order(state.stop_order_id)
                                 if need_stop:
@@ -578,6 +591,18 @@ def _main_loop():
                                     strategy._place_broker_stop(state.stop_price, state.lots_qty, state.direction)
                                     state.save()
                             if state.tp_order_id and orders:
+                                # F-129: TP-лимитка ИСПОЛНЕНА = тейк сработал → позиция закрыта → FLAT sync
+                                if orders.is_order_filled(state.tp_order_id):
+                                    log.warning('F-129: TP-лимитка ИСПОЛНЕНА брокером (тейк) — синхронизирую FLAT')
+                                    state.direction = 0
+                                    state.lots_qty = 0
+                                    state.entry_price = 0.0
+                                    state.stop_price = 0.0
+                                    state.initial_stop_price = 0.0
+                                    state.stop_order_id = None
+                                    state.tp_order_id = None
+                                    state.save()
+                                    continue
                                 if orders.is_dead_order(state.tp_order_id) and cfg.get('tp_R'):
                                     _tp_px = strategy.tp_price(state.direction, state.entry_price,
                                                                strategy.last_sar or state.entry_price,
