@@ -7,7 +7,7 @@
  "initial_stop_price": 0.0,
  "tp_order_id": null,
  "stop_order_id": null,
- "entry_time": "2026-11-02T08:45:48.141747",
+ "entry_time": "2026-11-02T09:38:38.347717",
  "base": 20000.0,
  "pending_signal": null,
  "kill_day": null,
@@ -22,24 +22,19 @@
   "2026-10-28": -0.631,
   "2026-10-30": -2.9859999999999998
  },
- "total_pnl": -96.28,
+ "total_pnl": -87.32,
  "trades_done": 13,
  "last_entry_signal_bar": "2026-11-02 10:00:00",
  "auto_start_disabled": false,
  "trade_history": [
   {
-   "tic": "MTLR",
-   "tf": "H1",
    "date_open": "2026-11-02",
-   "time_open": "07:44:54",
+   "time_open": "07:44:52",
    "dir": "L",
    "entry": 44.78,
    "qty": 332,
    "volume": 14866.96,
-   "risk_pct": 1.5,
-   "risk_pts": 0.9,
-   "stop": 43.88,
-   "vp": "signal",
+   "stop": 0.0,
    "status": "closed",
    "close": {
     "date_close": "2026-11-02",
@@ -48,31 +43,45 @@
     "commission": 298.8,
     "pnl": -96.28,
     "R": 0.0,
-    "reason": "take-profit (TP-лимитка исполнена брокером, F-132 sync)"
+    "reason": "take-profit (TP-лимитка исполнена брокером)"
    }
   },
   {
-   "tic": "MTLR",
-   "tf": "H1",
    "date_open": "2026-11-02",
-   "time_open": "08:45:48",
+   "time_open": "08:45:45",
    "dir": "S",
    "entry": 44.47,
    "qty": 448,
    "volume": 19922.56,
-   "risk_pct": 2.0,
-   "risk_pts": 0.89,
-   "stop": 45.37,
-   "vp": "signal",
+   "stop": 0.0,
    "status": "closed",
    "close": {
     "date_close": "2026-11-02",
-    "time_close": "12:31:41",
+    "time_close": "09:31:18",
     "exit": 44.45,
     "commission": 403.2,
-    "pnl": -394.24,
+    "pnl": 8.96,
     "R": 0.0,
-    "reason": "take-profit-broker"
+    "reason": "take-profit (TP-лимитка исполнена брокером — реверс в лонг)"
+   }
+  },
+  {
+   "date_open": "2026-11-02",
+   "time_open": "09:40:47",
+   "dir": "S",
+   "entry": 44.4,
+   "qty": 232,
+   "volume": 10300.8,
+   "stop": 45.09,
+   "status": "closed",
+   "close": {
+    "date_close": "2026-11-02",
+    "time_close": "13:05:00",
+    "exit": 44.62,
+    "commission": 208.8,
+    "pnl": -51.04,
+    "R": 0.0,
+    "reason": "closed by Dmitry (manual, F-131 sync)"
    }
   }
  ]
