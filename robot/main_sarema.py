@@ -574,6 +574,14 @@ def _main_loop():
                             if orders and strategy:
                                 # F-129: стоп-заявка ИСПОЛНЕНА брокером → позиция закрыта → FLAT sync
                                 if state.stop_order_id and orders.is_order_filled(state.stop_order_id):
+                                    # F-133: стоп реален если mark прошёл стоп-уровень (breached).
+                                    # Если mark до стопа — фантомный статус чужой/старой заявки, игнор.
+                                    _stop_hit = (mark <= state.stop_price) if state.direction > 0 else (mark >= state.stop_price)
+                                    if not _stop_hit:
+                                        log.error('F-133: стоп FILLED но mark не дошёл до стопа — фантом, игнорирую')
+                                        state.stop_order_id = None
+                                        state.save()
+                                        continue
                                     _pnl = (state.stop_price - state.entry_price) * (-1 if state.direction < 0 else 1) * state.lots_qty
                                     log.warning(f'F-129: стоп ИСПОЛНЕН брокером (PnL≈{_pnl:.0f}₽) — синхронизирую FLAT')
                                     try:
@@ -599,6 +607,14 @@ def _main_loop():
                             if state.tp_order_id and orders:
                                 # F-129: TP-лимитка ИСПОЛНЕНА = тейк сработал → позиция закрыта → FLAT sync
                                 if orders.is_order_filled(state.tp_order_id):
+                                    # F-133: подтверждение по цене — тейк реален только если mark
+                                    # прошёл TP-уровень (иначе фантомный статус чужой заявки)
+                                    _tp_ok = ((mark >= state.tp_price) if state.direction > 0 else (mark <= state.tp_price and state.tp_price > 0)) if state.tp_price else True
+                                    if not _tp_ok:
+                                        log.error('F-133: TP FILLED но mark не дошёл до TP — фантомный статус, игнорирую')
+                                        state.tp_order_id = None
+                                        state.save()
+                                        continue
                                     log.warning('F-129: TP-лимитка ИСПОЛНЕНА брокером (тейк) — синхронизирую FLAT')
                                     # F-132: закрыть запись в торговом журнале по реальной цене TP-лимитки
                                     try:

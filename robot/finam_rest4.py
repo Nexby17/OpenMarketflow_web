@@ -158,10 +158,13 @@ def place_stop_loss(account_id: str, symbol: str, side: str, quantity: int, stop
     r4 = _get_module()
     from finam_trade_api.order.model import Order, OrderType, StopCondition
     from finam_trade_api.base_client.models import Side, FinamDecimal
-    # Si/MX — целочисленный шаг цены: стоп ВСЕГДА округляется к целому (брокер
-    # отвергает дробные: INVALID_ARGUMENT Invalid value for field: ConditionValuePrice).
-    px = float(round(stop_price))
-    px_str = f"{px:.0f}"
+    # F-136: округление стопа к шагу инструмента.
+    # Фьючерсы (@RTSX/@SPBX: Si, MX, BR и т.д.) — целочисленный шаг (брокер отвергает дробные).
+    # Акции (@MISX: SBER, MTLR, ...) — шаг 0.01-0.05, округляем до 2 знаков.
+    if '@MISX' in symbol and 'RTSX' not in symbol:
+        px_str = f"{stop_price:.2f}"   # акции: 2 знака (MTLR 45.37 → "45.37")
+    else:
+        px_str = f"{float(round(stop_price)):.0f}"   # фьючерсы: целое
     o = Order(
         account_id=account_id,
         symbol=symbol,
