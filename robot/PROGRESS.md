@@ -761,3 +761,15 @@ BR-edp (b9b48e3) → добавлены те же варианты 60%/70% в в
 - Ручные сделки Дмитрия 29.10 добавлены в журнал: buy 1 @253967→252750 (−1218.3), buy 9 @252750→252750 (−11.7 comm); дубль batch-close 9L помечен duplicate_close PnL=0.
 - НАЙДЕН БАГ: get_state писал realizedPnL, load_state читал realizedPnl — realized не восстанавливался после рестартов (исторически). load_state исправлен (фолбэк).
 - realizedPnL восстановлен: 44153.72. Backup стейта сделан. Журнал 202 записи.
+
+## 2026-11-02 11:20 — F-131: BR rollover BRX6→BRZ6 (OF-BR edp)
+
+**Запрос Дмитрия.** BRX6 (BR-11.26) истёк 30.10; OF-BR edp (:5083) переведён на следующий фронт **BRZ6** (BR-12.26, декабрь — ближний активный, был leg B арба).
+
+**Пред-проверки:** счёт edp 2049688: BRX6=0, BRZ6=0, активных заявок нет (DP /position, /active-orders); стейт edp stopped/FLAT (последняя сделка 27.10, realizedPnL 434.67 сохранён); robot/.env без BR-переопределений → правится дефолт config_of_br.py.
+
+**Изменения:** config_of_br.py SYMBOL/TICKER defaults → BRZ6@RTSX/BRZ6; DataProvider/config.json BRX6@RTSX→BRZ6@RTSX (DP НЕ рестартовал — на нём живой OF-MX; подписки BRZ6 добавлены динамически POST /subscribe, бары пошли; quote-стрима у BRX6 тоже не было); UI: OF_BR_INSTANCES.edp symbol/label → BRZ6 (бэдж таблицы роботов теперь из cfg.symbol), арб-бэдж br помечен «leg A истёк», app.js v140; test_of_br_params ожидания → BRZ6 (PASS); robots.md + RULES.md (R-021) обновлены.
+
+**Рестарт:** ручной процесс 5083 (PID 18480 от 19.10) убит taskkill, инстанс поднят сервером /api/of/process/of_br_edp/start → mode=stopped (R-001: старт торговли — только Дмитрием), FLAT, журнал сохранён.
+
+**Не тронуто:** OF-BR main :5082 (вне UI с F-122; дефолт конфига теперь BRZ6 — подхватит при следующем ручном старте), ARB-BR :5092 календарь BRX6/BRZ6 — leg A истёк 30.10, отдельное решение Дмитрия.

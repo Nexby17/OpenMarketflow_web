@@ -11,8 +11,8 @@
 |---|---|---|---|---|---|---|
 | **OF-Si** | main_of.py | 5080 | SiZ6@RTSX | из `activeAccount` стейта (main 1225953 / edp 2049688) | of_state.json | of_config.json |
 | **OF-MX (MXU6)** | main_of_mx.py | 5081 | MXZ6@RTSX (env ROBOT_SYMBOL_MX) | из `activeAccount` стейта | of_state_mx.json | of_config_mx.json |
-| **OF-BR main** | main_of_br.py | 5082 | BRX6@RTSX | main 1225953 | of_state_br.json | of_config_br.json |
-| **OF-BR edp** | main_of_br.py | 5083 | BRX6@RTSX | edp 2049688 (env ROBOT_ACTIVE_ACCOUNT_BR=edp) | of_state_br_edp.json | of_config_br_edp.json |
+| **OF-BR main** | main_of_br.py | 5082 | BRZ6@RTSX (F-131, было BRX6) | main 1225953 | of_state_br.json | of_config_br.json |
+| **OF-BR edp** | main_of_br.py | 5083 | BRZ6@RTSX (F-131, было BRX6) | edp 2049688 (env ROBOT_ACTIVE_ACCOUNT_BR=edp) | of_state_br_edp.json | of_config_br_edp.json |
 | **ARB-GAZP** | main_arb.py | 5090 | GAZP@MISX × GZZ6@RTSX | edp 2049688 | arb_state_gazp.json | arb_config_gazp.json |
 | **ARB-SBER** | main_arb.py | 5091 | SBER@MISX × SRZ6@RTSX | edp 2049688 | arb_state_sber.json | arb_config_sber.json |
 | **ARB-BR** | main_arb.py | 5092 | BRV6@RTSX × BRZ6@RTSX | edp 2049688 | arb_state_br.json | arb_config_br.json |
@@ -25,7 +25,7 @@ DataProvider (main.py, :5060) и C# Server (:5050) — инфраструкту�
 ордеров/сделок конкретного робота (REST GetTrades + лог робота):
 
 - MXZ6 → только OF-MX
-- BRX6 → OF-BR main ИЛИ OF-BR edp (уточнять по портам/логам!)
+- BRZ6 → OF-BR main ИЛИ OF-BR edp (уточнять по портам/логам!); BRX6 — истёкший контракт (до 30.10)
 - GZZ6 → ARB-GAZP (leg B)
 - SRZ6 → ARB-SBER (leg B), BRZ6 → ARB-BR (leg B)
 - SBER/GAZP/ROSN/... спот → арб-роботы leg A или ручные позиции Дмитрия

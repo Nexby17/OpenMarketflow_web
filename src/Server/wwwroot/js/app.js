@@ -34,7 +34,7 @@ const ARB_INSTANCE_MAP = {
             sufA: '@MISX', sufB: '@RTSX', logId: 'arbPyLogContainer' },
     sber: { port: 5091, procName: 'arb_sber', label: 'SBER/SRZ6', symA: 'SBER', symB: 'SRZ6',
             sufA: '@MISX', sufB: '@RTSX', logId: 'arbPyLogContainer' },
-    br:   { port: 5092, procName: 'arb_br', label: 'BRX6/BRZ6', symA: 'BRX6', symB: 'BRZ6',
+    br:   { port: 5092, procName: 'arb_br', label: 'BRX6/BRZ6 (leg A истёк)', symA: 'BRX6', symB: 'BRZ6',
             sufA: '@RTSX', sufB: '@RTSX', logId: 'arbPyLogContainer' },
 };
 let arbPanelInstance = null;
@@ -2721,7 +2721,7 @@ async function renderRobots() {
     }
 
     // Order Flow BR robot rows (два инстанса: main :5082 счёт 1225953, edp :5083 счёт 2049688)
-    // Инструмент — READ-ONLY бэдж BRX6 (переключение инструмента для BR не поддерживается: символ из env сервиса)
+    // Инструмент — READ-ONLY бэдж (значение из cfg.symbol, F-131: BRZ6; переключение инструмента для BR не поддерживается: символ из env сервиса)
     // OF_BR_INSTANCE_ORDER/OF_BR_INSTANCES определены в BR-блоке внизу файла (renderRobots вызывается только после полной загрузки скрипта — TDZ не задеваем)
     const ofBrRows = OF_BR_INSTANCE_ORDER.map(inst => {
         const cfg = OF_BR_INSTANCES[inst];
@@ -8163,7 +8163,7 @@ async function arbAdjustApply(inst) {
 // ============================================================================
 // === ORDER FLOW BR (Brent) — два инстанса: main :5082 (счёт 1225953), edp :5083 (счёт 2049688)
 // === Счёт жёстко привязан к инстансу (env), POST /account НЕ используется (защита от двойной торговли).
-// === Инструмент BRX6 — read-only (символ задаётся env сервиса, переключение из UI не поддерживается).
+// === Инструмент BRZ6 — read-only (символ задаётся env сервиса, переключение из UI не поддерживается). F-131 rollover BRX6->BRZ6 (BR-11.26 истёк 30.10).
 // === Цены BR дробные (шаг 0.01) — все ценовые поля toFixed(2), инпуты step="0.01".
 // ============================================================================
 
@@ -8171,8 +8171,8 @@ async function arbAdjustApply(inst) {
 // Код main_of_br.py и C# spec of_br сохранены: инстанс возвращается добавлением строки в карту.
 const OF_BR_INSTANCES = {
     edp:  { port: 5083, api: () => 'http://' + window.location.hostname + ':5083',
-            account: '2049688', symbol: 'BRX6', badge: 'BR-edp', badgeColor: '#007ACC',
-            stateKey: 'ofBrRobot_edp', cfgName: 'of_br_edp', label: 'BRX6 edp', procName: 'of_br_edp' }
+            account: '2049688', symbol: 'BRZ6', badge: 'BR-edp', badgeColor: '#007ACC',
+            stateKey: 'ofBrRobot_edp', cfgName: 'of_br_edp', label: 'BRZ6 edp', procName: 'of_br_edp' }
 };
 const OF_BR_INSTANCE_ORDER = ['edp'];
 OF_BR_INSTANCE_ORDER.forEach(k => { window['ofBrRobot_' + k] = null; window['_ofBrWasOnline_' + k] = false; });
@@ -8702,7 +8702,7 @@ function ofBrPanelBodyHtml(inst, p) {
                 <div class="metric-card"><div class="metric-label">Верх %</div><input id="editOfBrPhaseUpper" class="input" type="number" step="0.01" min="0.51" max="0.95" value="${p.phase_upper||0.67}" style="width:60px"></div>
                 <div class="metric-card"><div class="metric-label">Гистерезис %</div><input id="editOfBrPhaseHyst" class="input" type="number" step="0.01" min="0" max="0.4" value="${p.phase_hysteresis||0.05}" style="width:60px"></div>
                 <div class="metric-card" style="min-width:150px"><div class="metric-label">Фаза сейчас</div><div id="editOfBrPhaseVerdict" style="font-size:14px;font-weight:bold;color:#9CA3AF">—</div></div>
-                <button class="btn btn-secondary btn-sm" onclick="ofBrOpenPhaseChart()" title="График BRX6 с зонами фаз">📈 Открыть график</button>
+                <button class="btn btn-secondary btn-sm" onclick="ofBrOpenPhaseChart()" title="График BRZ6 с зонами фаз">📈 Открыть график</button>
             </div>
             <div id="ofBrPhaseChartWrap" style="display:none;margin:12px 0;border:1px solid #2D2D44;border-radius:8px;overflow:hidden">
                 <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 10px;background:#121826">
@@ -8879,13 +8879,13 @@ function ofBrUpdateLive(inst) {
     }
 }
 
-// F-067 BR: график фазовых зон (порт ofMxOpenPhaseChart, инструмент BRX6)
+// F-067 BR: график фазовых зон (порт ofMxOpenPhaseChart, инструмент с F-131 = BRZ6)
 async function ofBrOpenPhaseChart() {
     const wrap = document.getElementById('ofBrPhaseChartWrap');
     if (!wrap) return;
     const inst = _ofBrPanelInst || 'edp';
     const s = window['ofBrRobot_' + inst] || {};
-    const ticker = (s.symbol ? s.symbol.split('@')[0] : 'BRX6');
+    const ticker = (s.symbol ? s.symbol.split('@')[0] : 'BRZ6');
     wrap.style.display = 'block';
     const tf = parseInt(document.getElementById('ofBrPhaseChartTf')?.value) || 5;
     const win = parseInt(document.getElementById('editOfBrPhaseWin')?.value) || 2000;

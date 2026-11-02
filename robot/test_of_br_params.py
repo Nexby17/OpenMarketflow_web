@@ -3,7 +3,7 @@
 
 Checks of_config_br.json (BR main, port 5082) and of_config_br_edp.json
 (BR edp, port 5083) field-by-field against the documented production
-parameters, plus config_of_br.py symbol (BRV6@RTSX), merged strategy_of.py
+parameters, plus config_of_br.py symbol (BRZ6@RTSX), merged strategy_of.py
 defaults needed by the BR robot (fmt_price, session window, max_average_levels)
 and load_params() override semantics.
 
@@ -122,8 +122,8 @@ check("configs differ ONLY in documented overrides",
 
 print("=== config_of_br.py ===")
 import config_of_br as config  # noqa: E402
-check("config.SYMBOL == BRV6@RTSX", config.SYMBOL == "BRV6@RTSX", f"got {config.SYMBOL!r}")
-check("config.TICKER == BRU6", config.TICKER == "BRU6", f"got {config.TICKER!r}")
+check("config.SYMBOL == BRZ6@RTSX", config.SYMBOL == "BRZ6@RTSX", f"got {config.SYMBOL!r}")
+check("config.TICKER == BRZ6", config.TICKER == "BRZ6", f"got {config.TICKER!r}")
 
 print("=== strategy_of.py merged defaults needed by BR robot ===")
 from strategy_of import OFParams, fmt_price  # noqa: E402
@@ -145,7 +145,7 @@ check("load_params: direction_filter from json = short", lp.direction_filter == 
 check("load_params: max_average_levels from json = 5", lp.max_average_levels == 5,
       f"got {lp.max_average_levels}")
 check("load_params: spread from json = 0.15", lp.spread == 0.15, f"got {lp.spread}")
-check("load_params: symbol = BRV6@RTSX", main_of_br.SYMBOL == "BRV6@RTSX",
+check("load_params: symbol = BRZ6@RTSX", main_of_br.SYMBOL == "BRZ6@RTSX",
       f"got {main_of_br.SYMBOL!r}")
 
 print(f"\n===== RESULTS: PASS={PASS} FAIL={FAIL} =====")

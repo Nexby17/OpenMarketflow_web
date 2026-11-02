@@ -1,9 +1,9 @@
-"""Config for Order Flow Robot — BRX6 (Brent, front month BR-11.26)."""
+"""Config for Order Flow Robot — BRZ6 (Brent, front month BR-12.26)."""
 import os
 
 # === Broker ===
-SYMBOL = os.environ.get("ROBOT_SYMBOL_BR", "BRX6@RTSX")
-TICKER = os.environ.get("ROBOT_TICKER_BR", "BRX6")
+SYMBOL = os.environ.get("ROBOT_SYMBOL_BR", "BRZ6@RTSX")
+TICKER = os.environ.get("ROBOT_TICKER_BR", "BRZ6")
 ACCOUNT_ID = os.environ.get("FINAM_ACCOUNT", "1225953")
 DP_URL = os.environ.get("DP_URL", "http://localhost:5060")
 

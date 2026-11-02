@@ -1405,7 +1405,8 @@
       "date": "2026-10-26",
       "summary": "Dmitry screenshots: header stuck yellow 'Подключение...', Состояние счёта shows TWO identical rows, Позиции/Сделки/Заявки stuck on 'Загрузка...'. Causes: (1) /api/accounts iterated [_finamAccountId, '2049688'] but .env FINAM_ACCOUNT_ID=2049688 - same account twice; (2) GetFinamJwt used new HttpClient() without timeout (default 100s) - Finam API slowness left table loaders pending for minutes, placeholders 'Загрузка...' never replaced because loader catch does nothing on error; (3) WS connections die every ~60s (external killer on host, server itself proven healthy - python WS survived 92.8s with pings every 15s), each drop flashed the yellow reconnect state. Fixes: Distinct() account ids; 10s timeout on JWT client; loaders keep last good data and only show 'Нет позиций'/'Нет сделок' once (no flapping); debounced status indicator - yellow state shown only after 15s of persistent disconnect; app.js v134. Rebuilt (0 errors), restarted PID 48140. Verified: /api/accounts returns exactly 1 account, all read endpoints 200, served files contain fixes. ФИКС-2 27.10 (коммит c53d9ff): (1) КРИТИЧНО — place_stop_loss получал side СТРОКОЙ (buy/sell) из стратегии, а OrderManagerRest4 сравнивал с int BUY(1) → всегда SIDE_SELL: на SHORT-позиции ставился SELL-стоп (удвоение шорта вместо закрытия) → DESYNC robot=-2/broker=-6 всё утро. Фикс: side принимает str или int. (2) Ложный «PYR STOP FILLED» через 6с после placement (DP кэш вернул 0) — робот бросил живую позицию (10:30 инцидент). Фикс: FLAT-синк только при возрасте стопа >60с (_pyr_stop_placed_ts). Деплой :5080 11:5x (LONG 5 восстановлен, running).",
       "date_updated": "2026-10-27"
-    },    {
+    },
+    {
       "id": "F-096",
       "name": "UI fix - cell-level diff render + debounced banner (no row blink, no status flash)",
       "area": "ui/robots",
@@ -1413,7 +1414,8 @@
       "owner": "main",
       "date": "2026-10-29",
       "summary": "Dmitry: 'UI not blinking and not resetting'. Last flicker source: F-081b replaced whole <tr> via outerHTML whenever any value changed (PnL/prices every 2s) - the row itself blinked, hover and open dropdowns reset ('сбрасывается'). Also the red connection banner appeared/disappeared on every ~60s WS drop. Fixes: cell-level diff in renderRobots() and sarRenderTable() - compare old/new row HTML, update only changed <td> innerHTML, whole-row outerHTML only as fallback when cell counts differ; connection banner shown only after 15s of PERSISTENT disconnect (F-096b: brief reconnects are invisible). app.js v136, sarema.js v53, bin synced, node --check pass, served files verified."
-    },    {
+    },
+    {
       "id": "F-097",
       "name": "UI fix - global setTableHtml diff renderer for Trading-tab tables",
       "area": "ui/trading",
@@ -1421,7 +1423,8 @@
       "owner": "main",
       "date": "2026-10-29",
       "summary": "Dmitry: 'continues to blink'. F-096 fixed only robots tables; Trading-tab tables (Позиции/Заявки/Сделки/Счета) were still fully rewritten by loadPositions/loadOrders/loadTrades/loadAccounts on every 30s fetchStatus cycle and every SignalR updateStatus -> renderRobots call. Added global setTableHtml(tbody, html) helper: identical html -> no-op; same row count -> cell-level <td> updates; row count changed -> full rewrite. Routed all four loaders through it. app.js v137, bin synced, node --check pass, served verified."
-    },    {
+    },
+    {
       "id": "F-098",
       "name": "UI anti-flicker hardening: className sync in diffs, CSS transition kill, poll backoff",
       "area": "ui/trading",
@@ -1429,7 +1432,8 @@
       "owner": "main",
       "date": "2026-10-29",
       "summary": "Dmitry demanded final fix of any flicker. Found remaining sources: (1) cell-diff updated only innerHTML but NOT className - green/red PnL classes went stale and color flips caused visual jumping; now className synced when differs in renderRobots, sarRenderTable and setTableHtml; (2) CSS transitions/animations on td/tr fired on every class change - killed with !important guard for td/tr/tbody/table/.metric-value/.badge; (3) three parallel 2s renderRobots poll loops created constant DOM churn - backed off to 3s. app.js v138, bin synced, node --check pass."
-    },    {
+    },
+    {
       "id": "F-099",
       "name": "UI fix - kill 401 page navigation (full-page reset) + stable column widths",
       "area": "ui/trading",
@@ -1437,7 +1441,8 @@
       "owner": "main",
       "date": "2026-10-29",
       "summary": "Dmitry: 'UI must not blink, not reset tables, work stable'. Found the LAST full-reset mechanism: the client 401 interceptor did window.location.href='/login.html' on ANY 401 - when the auth cookie expires (7d), the ENTIRE page navigated away/reloaded repeatedly, wiping all tables - that is the 'сбрасывается' he kept seeing. Since F-094 made all read endpoints anonymous, data flows without login; now 401 only shows a single toast warning ('session expired') and NEVER navigates. Also fixed column jumping: numbers changing width re-sized columns every tick - added table-layout:fixed + tabular-nums + ellipsis for data tables. app.js v139, css guard, bin synced, node --check pass, served verified."
-    },    {
+    },
+    {
       "id": "F-100",
       "name": "ROOT CAUSE fixed - BUILD GUARD self-reloaded the page every 60s",
       "area": "ui/global",
@@ -1445,6 +1450,15 @@
       "owner": "main",
       "date": "2026-10-29",
       "summary": "Dmitry: 'app UI blinks every few seconds, you fixed nothing'. THE actual root cause of full-page blinking: index.html contained BUILD GUARD (F-090a) - script fetching the page every 60s, extracting sarema.js?v=... and comparing to HARDCODED cur='v53-20261027'. Real marker was '53', so srv!==cur was ALWAYS true -> location.reload() every 60s whenever the tab was visible. The whole app self-reloaded non-stop, wiping state - every render fix was moot under it. Fixed: cur is now read from the page's own DOM (script tag src), reload happens only when the server genuinely serves a DIFFERENT version, rate-limited to once per 5 minutes, check interval 120s. Verified: stale marker remains only inside a comment, extracted guard passes node --check, served HTML contains the new guard."
+    },
+    {
+      "id": "F-131",
+      "name": "BR contract rollover BRX6->BRZ6 (OF-BR edp :5083)",
+      "area": "robot/of-br",
+      "status": "done (5083 restarted mode=stopped, BRZ6 streams live, tests pass)",
+      "owner": "main",
+      "date": "2026-11-02",
+      "summary": "Dmitry request 02.11: BRX6 (BR-11.26) expired 30.10, OF-BR edp rolled to next front month BRZ6 (BR-12.26). config_of_br.py SYMBOL/TICKER defaults -> BRZ6@RTSX/BRZ6 (env ROBOT_SYMBOL_BR/ROBOT_TICKER_BR still override, revert possible); DataProvider config.json BRX6@RTSX->BRZ6@RTSX (DP NOT restarted - live OF-MX on it; BRZ6 subs added dynamically via POST /subscribe, bars verified flowing; BRX6 had no quote stream either); UI OF_BR_INSTANCES.edp symbol/label -> BRZ6 (robots-table badge renders cfg.symbol), arb br badge marked 'leg A expired', app.js v140; test_of_br_params expectations -> BRZ6; robots.md + RULES.md R-021 identity tables updated. Pre-checks: edp account BRX6=0/BRZ6=0, no active orders, state stopped/FLAT (last trade 27.10) -> clean rollover, journal kept. Restart: manual PID 18480 killed, instance started via /api/of/process/of_br_edp/start, mode=stopped per R-001 (trading start is Dmitry's call). Untouched: OF-BR main :5082 (config default now BRZ6, picks up on next manual start), ARB-BR :5092 calendar BRX6/BRZ6 - leg A expired, separate Dmitry decision."
     }
   ]
 }
