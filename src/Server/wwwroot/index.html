@@ -9,16 +9,22 @@
 </head>
 <body>
     <script>
-    // BUILD GUARD (F-090a, переписан F-099b): авто-перезагрузка при НОВОЙ сборке.
+    // BUILD GUARD (F-090a, переписан F-099b; F-131a: следит и за app.js?v=).
     // БЫЛО: hardcoded cur='v53-20261027' !== реальный '53' -> location.reload() КАЖДЫЕ 60с,
     // страница перезагружала сама себя бесконечно ("UI мигает раз в несколько секунд").
-    // СТАЛО: cur берётся из СОБСТВЕННОГО DOM при загрузке (sarema.js?v= в текущем документе),
+    // СТАЛО: cur берётся из СОБСТВЕННОГО DOM при загрузке (маркеры в текущем документе),
     // reload только если сервер начал отдавать ДРУГУЮ версию, и не чаще раза в 5 минут.
+    // F-131a: раньше guard смотрел только sarema.js?v= — JS-деплой одного app.js
+    // (например rollover BRX6->BRZ6, v139->v140) не перезагружал открытые вкладки,
+    // и в них часами жили старые лейблы. Теперь следим за обоими маркерами.
     (function () {
         var m0 = (document.querySelector('script[src*="sarema.js"]') || {}).src || '';
         var mm0 = m0.match(/v=([a-z0-9-]+)/i);
         var cur = mm0 ? mm0[1] : null;
-        if (!cur) return; // не нашли маркер - guard выключен, никакой перезагрузки
+        var m0a = (document.querySelector('script[src*="app.js"]') || {}).src || '';
+        var ma0 = m0a.match(/app\.js\?v=([a-z0-9-]+)/i);
+        var curApp = ma0 ? ma0[1] : null;
+        if (!cur && !curApp) return; // не нашли ни одного маркера - guard выключен
         var lastReload = 0;
         setInterval(function () {
             fetch(location.pathname, { cache: 'no-store' })
@@ -26,7 +32,10 @@
                 .then(function (t) {
                     var m = t.match(/sarema\.js\?v=([a-z0-9-]+)/i);
                     var srv = m ? m[1] : '';
-                    if (srv && cur && srv !== cur && document.visibilityState === 'visible') {
+                    var ma = t.match(/app\.js\?v=([a-z0-9-]+)/i);
+                    var srvApp = ma ? ma[1] : '';
+                    var changed = (srv && cur && srv !== cur) || (srvApp && curApp && srvApp !== curApp);
+                    if (changed && document.visibilityState === 'visible') {
                         var now = Date.now();
                         if (now - lastReload > 300000) { // не чаще раза в 5 минут
                             lastReload = now;
@@ -417,7 +426,7 @@
                         <td id="sberRbStatus">⚪</td>
                     </tr>
                     <tr ondblclick="brCalEditPanel()" style="cursor:pointer" title="Двойной клик — настройки робота">
-                        <td id="brCalRbPair">BRV6 / BRZ6</td>
+                        <td id="brCalRbPair">BRX6 / BRZ6</td>
                         <td id="brCalRbMode">—</td>
                         <td id="brCalRbPos">—</td>
                         <td id="brCalRbPnl">0 ₽</td>
