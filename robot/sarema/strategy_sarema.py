@@ -405,6 +405,34 @@ class SaremaStrategy:
         self._place_broker_stop(new_stop, self.state.lots_qty, self.state.direction)
 
     # ---------- выход/переворот (по сигналу противоположного кросса) ----------
+    def journal_close_manual(self, reason: str, exit_px: float) -> dict | None:
+        """F-132: закрыть последнюю open запись журнала (когда позицию закрыл БРОКЕР,
+        а не робот: исполнение стоп/TP заявки). Ручной sync журнал-цикла."""
+        rec = next((r for r in reversed(self.state.trade_history) if r.get("status") == "open"), None)
+        if not rec:
+            return None
+        from datetime import datetime as _dt
+        _now = _dt.now()
+        _entry = float(rec.get("entry", 0))
+        _qty = int(float(rec.get("qty", 0)))
+        _dir = 1 if rec.get("dir") == "L" else -1
+        _commission = round(_qty * 0.90, 2)
+        _net = (exit_px - _entry) * _dir * _qty - _commission
+        close_rec = {
+            "date_close": _now.strftime("%Y-%m-%d"),
+            "time_close": _now.strftime("%H:%M:%S"),
+            "exit": round(float(exit_px), 2),
+            "commission": _commission,
+            "pnl": round(_net, 2),
+            "R": 0.0,
+            "reason": reason,
+        }
+        closed = self.state.journal_close(close_rec)
+        if closed:
+            self.state.save()
+            log.info(f'F-132: журнал закрыт вручную (broker close): exit={exit_px} PnL={round(_net,2)} reason={reason}')
+        return closed
+
     def close_position(self, reason: str = "signal") -> dict:
         if self.state.direction == FLAT:
             return {"event": "close_skip_flat"}

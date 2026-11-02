@@ -576,6 +576,11 @@ def _main_loop():
                                 if state.stop_order_id and orders.is_order_filled(state.stop_order_id):
                                     _pnl = (state.stop_price - state.entry_price) * (-1 if state.direction < 0 else 1) * state.lots_qty
                                     log.warning(f'F-129: стоп ИСПОЛНЕН брокером (PnL≈{_pnl:.0f}₽) — синхронизирую FLAT')
+                                    try:
+                                        strategy.journal_close_manual(reason='stop-filled-broker',
+                                                                      exit_px=state.stop_price)
+                                    except Exception as _je:
+                                        log.error(f'F-129 journal close err: {_je}')
                                     state.direction = 0
                                     state.lots_qty = 0
                                     state.entry_price = 0.0
@@ -595,6 +600,17 @@ def _main_loop():
                                 # F-129: TP-лимитка ИСПОЛНЕНА = тейк сработал → позиция закрыта → FLAT sync
                                 if orders.is_order_filled(state.tp_order_id):
                                     log.warning('F-129: TP-лимитка ИСПОЛНЕНА брокером (тейк) — синхронизирую FLAT')
+                                    # F-132: закрыть запись в торговом журнале по реальной цене TP-лимитки
+                                    try:
+                                        _jfl = orders.last_fill_by_comment('sarema-tp', symbol=orders._symbol)
+                                        _jexit = float(_jfl.price) if (_jfl and _jfl.price > 0) else (mark or state.entry_price)
+                                    except Exception:
+                                        _jexit = mark or state.entry_price
+                                    try:
+                                        strategy.journal_close_manual(reason='take-profit-broker',
+                                                                      exit_px=_jexit)
+                                    except Exception as _je:
+                                        log.error(f'F-129 journal close err: {_je}')
                                     state.direction = 0
                                     state.lots_qty = 0
                                     state.entry_price = 0.0
