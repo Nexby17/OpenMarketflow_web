@@ -6,19 +6,19 @@ DP_URL = os.environ.get("DP_URL", "http://localhost:5060")
 ACCOUNT_ID = os.environ.get("FINAM_ACCOUNT", "1225953")
 
 # === Pair ===
-SYMBOL_A = os.environ.get("ARB_SYMBOL_A", "LKOH@RTSX")   # spot (TQBR)
+SYMBOL_A = os.environ.get("ARB_SYMBOL_A", "LKOH@MISX")   # spot (MOEX board, mic=MISX for Finam)
 TICKER_A = os.environ.get("ARB_TICKER_A", "LKOH")
-SYMBOL_B = os.environ.get("ARB_SYMBOL_B", "LKU6@RTSX")   # futures (RTSSTD)
-TICKER_B = os.environ.get("ARB_TICKER_B", "LKU6")
+SYMBOL_B = os.environ.get("ARB_SYMBOL_B", "LKZ6@RTSX")   # futures (FORTS, mic=RTSX for Finam)
+TICKER_B = os.environ.get("ARB_TICKER_B", "LKZ6")
 
 # Board codes for FinamPy subscriptions
 BOARD_A = os.environ.get("ARB_BOARD_A", "TQBR")    # TQBR for stocks
 BOARD_B = os.environ.get("ARB_BOARD_B", "RTSSTD")  # RTSSTD for futures
 
 # === Strategy Defaults (override in arb_config.json) ===
-LOTS_A = 10         # lots for instrument A (LKOH: 10 lots × 1 share = 10)
-LOTS_B = 1          # lots for instrument B (LKU6: 1 contract × 10 shares = 10)
-HEDGE_RATIO = 10.0  # price_A × ratio = comparable price_B (LKOH×10 = LKU6)
+LOTS_A = 10         # lots for instrument A (LKOH lot=1: 10 lots = 10 shares = 1 contract)
+LOTS_B = 1          # lots for instrument B (LKZ6: 1 contract × 10 shares = 10)
+HEDGE_RATIO = 10.0  # futures pts per 1₽ of spot (LKZ6 ≈ 10 × LKOH price incl. dividend discount)
 
 # Z-score
 ENTRY_Z = 1.5

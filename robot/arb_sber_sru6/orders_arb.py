@@ -17,6 +17,7 @@ Trade subscription:
 """
 import logging
 import os
+import json
 import time
 import threading
 import requests
@@ -37,6 +38,10 @@ except ImportError:
 
 BUY = "buy"
 SELL = "sell"
+
+# Shared lock for ALL FinamPy gRPC calls — FinamPy channel is NOT thread-safe.
+# main_arb.py imports this same lock for OB polling / broker sync.
+grpc_lock = threading.RLock()
 
 
 @dataclass
@@ -63,14 +68,18 @@ class ArbOrderManager:
         self._fut_mic = "RTSX"   # MIC for futures orders
 
         # MOEX stocks: gRPC requires quantity in SHARES, not lots.
+        # Fallback table = MOEX TQBR LOTSIZE snapshot 2026-11-02 (GAZP/SBER lots change over time!).
+        # Primary source: dynamic fetch from MOEX ISS (get_lot_size) — this table is ONLY a fallback.
         self._lot_sizes: dict[str, int] = {
-            'GAZP': 10, 'SBER': 10, 'LKOH': 10, 'ROSN': 10, 'TATN': 10,
-            'GMKN': 10, 'ALRS': 10, 'VTBR': 10, 'MTSS': 10, 'NVTK': 10,
-            'MOEX': 10, 'SNGS': 10, 'CHMF': 10, 'NLMK': 10, 'MAGN': 10,
-            'POLY': 10, 'YNDX': 1, 'FIVE': 10, 'OZON': 10, 'PLZL': 10,
-            'FLOT': 10, 'PHOR': 10, 'RUAL': 10, 'MGNT': 10, 'SMLT': 10,
+            'GAZP': 10, 'GMKN': 10, 'ALRS': 10, 'MTSS': 10, 'MOEX': 10,
+            'NLMK': 10, 'MAGN': 10, 'RUAL': 10, 'FLOT': 10,
+            'LKOH': 1, 'SBER': 1, 'ROSN': 1, 'TATN': 1, 'NVTK': 1,
+            'CHMF': 1, 'MGNT': 1, 'OZON': 1, 'PHOR': 1, 'PLZL': 1,
+            'SMLT': 1, 'VTBR': 1, 'SNGS': 100,
         }
         self._default_lot_size = 10
+        self._lot_size_cache: dict[str, int] = {}   # base → lot size (verified via MOEX ISS)
+        self._lot_size_fetched: float = 0.0         # ts of last MOEX ISS lot refresh
 
         # === Trade subscription: real fill price tracking ===
         self._trade_sub_thread = None
@@ -84,6 +93,39 @@ class ArbOrderManager:
     def set_finam_py(self, fp):
         """Attach FinamPy instance for direct gRPC order placement."""
         self._fp = fp
+
+    # === Lot sizes ===
+
+    def get_lot_size(self, symbol: str) -> int:
+        """Lot size for a STOCK symbol (shares per lot).
+        Futures always return 1 (quantity == contracts).
+        Primary: MOEX ISS LOTSIZE (cached for the process lifetime, refreshed 1h).
+        Fallback: hardcoded table (2026-11-02 snapshot), then default 10."""
+        base = symbol.split('@')[0]
+        if any(c.isdigit() for c in base):  # futures code like SRZ6, LKZ6
+            return 1
+        now = time.time()
+        if base in self._lot_size_cache:
+            return self._lot_size_cache[base]
+        if now - self._lot_size_fetched > 3600:
+            self._lot_size_fetched = now
+            try:
+                import urllib.request
+                url = (f"https://iss.moex.com/iss/engines/stock/markets/shares/boards/TQBR/"
+                       f"securities/{base}.json?iss.meta=off&iss.only=securities&securities.columns=SECID,LOTSIZE")
+                with urllib.request.urlopen(url, timeout=5) as resp:
+                    data = json.loads(resp.read())
+                rows = data.get("securities", {}).get("data") or []
+                if rows and rows[0][1]:
+                    lot = int(rows[0][1])
+                    self._lot_size_cache[base] = lot
+                    log.info(f"Lot size {base}: {lot} (MOEX ISS)")
+                    return lot
+            except Exception as e:
+                log.warning(f"Lot size fetch {base} failed ({e}) — using fallback table")
+        lot = self._lot_sizes.get(base, self._default_lot_size)
+        self._lot_size_cache[base] = lot
+        return lot
 
     # === Trade subscription for real fill prices ===
 
@@ -148,9 +190,10 @@ class ArbOrderManager:
             try:
                 from FinamPy.grpc.orders_service_pb2 import GetOrderRequest
                 for acc in [self._account, self._stock_account]:
-                    resp, _ = self._fp.orders_stub.GetOrder.with_call(
-                        request=GetOrderRequest(account_id=acc, order_id=order_id),
-                        timeout=3, metadata=(self._fp.metadata,))
+                    with grpc_lock:
+                        resp, _ = self._fp.orders_stub.GetOrder.with_call(
+                            request=GetOrderRequest(account_id=acc, order_id=order_id),
+                            timeout=3, metadata=(self._fp.metadata,))
                     if resp.HasField('order'):
                         o = resp.order
                         avg = float(o.average_price.value) if hasattr(o, 'average_price') and o.average_price.value else 0
@@ -231,14 +274,14 @@ class ArbOrderManager:
         try:
             from FinamPy.grpc.orders_service_pb2 import Order as GrpcOrder
             # Determine account and MIC based on instrument type
-            # Futures (GZ*, SR*, Si*, etc) → FORTS account + RTSX mic
-            # Stocks (GAZP, SBER, etc) → MICEX account + MISX mic
-            is_stock = not any(symbol.startswith(p) for p in ['GZ', 'SR', 'Si', 'RI', 'MX', 'GD', 'BR', 'LK', 'TT', 'RN', 'Eu', 'ED'])
+            # Futures (code ends with digit: GZZ6, SRZ6, SiZ6...) → FORTS account + RTSX mic
+            # Stocks (LKOH, SBER...) → stock account + MISX mic
+            is_stock = self._is_stock(symbol)
             if is_stock:
                 acc = self._stock_account
                 base = symbol.split('@')[0]
                 order_symbol = f"{base}@{self._stock_mic}"
-                lot_size = self._lot_sizes.get(base, self._default_lot_size)
+                lot_size = self.get_lot_size(base)
                 grpc_qty = quantity * lot_size
             else:
                 acc = self._account
@@ -260,8 +303,9 @@ class ArbOrderManager:
                 o.time_in_force = 1  # DAY
 
             log.info(f"gRPC sending: {order_type} {side} {grpc_qty} {order_symbol} acc={acc} @ {price or 'MKT'}")
-            resp, _ = self._fp.orders_stub.PlaceOrder.with_call(
-                request=o, timeout=10, metadata=(self._fp.metadata,))
+            with grpc_lock:
+                resp, _ = self._fp.orders_stub.PlaceOrder.with_call(
+                    request=o, timeout=10, metadata=(self._fp.metadata,))
             oid = resp.order_id if hasattr(resp, 'order_id') else str(resp)
             log.info(f"gRPC {order_type} placed: {side} {grpc_qty} {order_symbol} acc={acc} @ {price or 'MKT'} id={oid}")
             return {"order_id": oid, "raw": resp}
@@ -281,7 +325,8 @@ class ArbOrderManager:
         for acc in [self._stock_account, self._account]:
             try:
                 req = GrpcCancel(account_id=acc, order_id=order_id)
-                self._fp.orders_stub.CancelOrder(request=req, timeout=5, metadata=(self._fp.metadata,))
+                with grpc_lock:
+                    self._fp.orders_stub.CancelOrder(request=req, timeout=5, metadata=(self._fp.metadata,))
                 return (True, False)  # cancel sent
             except Exception as e:
                 err_str = str(e)
@@ -295,8 +340,12 @@ class ArbOrderManager:
         return (False, False)  # real error
 
     def _is_stock(self, symbol: str) -> bool:
-        """Check if symbol is a stock (not a future)."""
-        return not any(symbol.startswith(p) for p in ['GZ', 'SR', 'Si', 'RI', 'MX', 'GD', 'BR', 'LK', 'TT', 'RN', 'Eu', 'ED'])
+        """Check if symbol is a stock (not a future).
+        Futures codes end with a digit (LKZ6, SRZ6, GZM6, SiZ6...); stocks never do.
+        NB: prefix matching is FORBIDDEN here — 'LK' prefix matched LKOH as a future
+        and misrouted stock orders to the FORTS account (bug fixed 2026-11-02)."""
+        base = symbol.split('@')[0]
+        return not any(c.isdigit() for c in base)
 
     def _order_account(self, symbol: str) -> str:
         """Return correct account for the symbol."""
@@ -371,27 +420,43 @@ class ArbOrderManager:
         """Cancel order. Returns 'cancelled', 'not_found' (already done), or 'error'."""
         if not order_id:
             return 'error'
-        # Try gRPC first (tries both accounts internally)
+        # Try gRPC (tries both accounts internally)
         if self._fp and _HAS_GRPC:
             sent, not_found = self._grpc_cancel(order_id)
             if sent:
                 return 'cancelled'
             if not_found:
                 return 'not_found'
-        # DP server fallback — cancel via gRPC connector
-        try:
-            r = requests.post(
-                f"{self._dp_url}/api/orders/cancel-all",
-                timeout=self._timeout,
-            )
-            data = r.json()
-            if data.get("status") == "ok":
-                return 'cancelled'
-        except Exception as e:
-            log.warning(f"DP cancel-all fallback failed: {e}")
         return 'error'
-        # Both accounts returned NOT_FOUND — order is done
-        return 'not_found'
+
+    def cancel_open_orders(self, symbols: list) -> int:
+        """Cancel ALL active orders for the given symbols (both accounts).
+        Targeted replacement for the old blanket cancel-all which could kill
+        OTHER robots' orders on shared accounts/DP.
+        Returns number of cancel requests sent."""
+        if not self._fp or not _HAS_GRPC or not symbols:
+            return 0
+        bases = {s.split('@')[0] for s in symbols}
+        cancelled = 0
+        for acc in {self._stock_account, self._account}:
+            try:
+                with grpc_lock:
+                    resp, _ = self._fp.orders_stub.GetOrders.with_call(
+                        request=OrdersRequest(account_id=acc),
+                        timeout=5, metadata=(self._fp.metadata,))
+                for st in getattr(resp, 'orders', []):
+                    oid = getattr(st, 'order_id', '')
+                    osym = getattr(getattr(st, 'order', None), 'symbol', '') or ''
+                    status = int(getattr(st, 'status', 0) or 0)  # 1=active, 2=partial
+                    sym_base = osym.split('@')[0]
+                    if oid and status in (1, 2) and sym_base in bases:
+                        sent, _nf = self._grpc_cancel(oid)
+                        if sent:
+                            cancelled += 1
+                            log.info(f"Startup cancel: {osym} order {oid} cancelled (acc={acc})")
+            except Exception as e:
+                log.warning(f"GetOrders acc={acc}: {str(e)[:80]}")
+        return cancelled
 
     def _grpc_get_order_status(self, order_id: str, account: str = None) -> Optional[dict]:
         """Get order status via gRPC. Returns state + filled_qty + actual avg_fill_price from broker."""
@@ -400,9 +465,10 @@ class ArbOrderManager:
         acc = account or self._account
         try:
             from FinamPy.grpc.orders_service_pb2 import GetOrderRequest
-            resp, _ = self._fp.orders_stub.GetOrder.with_call(
-                request=GetOrderRequest(account_id=acc, order_id=order_id),
-                timeout=5, metadata=(self._fp.metadata,))
+            with grpc_lock:
+                resp, _ = self._fp.orders_stub.GetOrder.with_call(
+                    request=GetOrderRequest(account_id=acc, order_id=order_id),
+                    timeout=5, metadata=(self._fp.metadata,))
             state = resp.status if hasattr(resp, 'status') else 0
             executed = 0
             if hasattr(resp, 'executed_quantity') and resp.executed_quantity.value:

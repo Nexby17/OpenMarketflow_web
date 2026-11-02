@@ -6,19 +6,19 @@ DP_URL = os.environ.get("DP_URL", "http://localhost:5060")
 ACCOUNT_ID = os.environ.get("FINAM_ACCOUNT", "1225953")
 
 # === Pair ===
-SYMBOL_A = os.environ.get("ARB_SYMBOL_A", "GAZP@RTSX")   # spot (TQBR)
-TICKER_A = os.environ.get("ARB_TICKER_A", "GAZP")
-SYMBOL_B = os.environ.get("ARB_SYMBOL_B", "GZM6@RTSX")   # futures (RTSSTD)
-TICKER_B = os.environ.get("ARB_TICKER_B", "GZM6")
+SYMBOL_A = os.environ.get("ARB_SYMBOL_A", "SBER@MISX")   # spot (MOEX board, mic=MISX for Finam)
+TICKER_A = os.environ.get("ARB_TICKER_A", "SBER")
+SYMBOL_B = os.environ.get("ARB_SYMBOL_B", "SRZ6@RTSX")   # futures (FORTS, mic=RTSX for Finam)
+TICKER_B = os.environ.get("ARB_TICKER_B", "SRZ6")
 
 # Board codes for FinamPy subscriptions
 BOARD_A = os.environ.get("ARB_BOARD_A", "TQBR")    # TQBR for stocks
 BOARD_B = os.environ.get("ARB_BOARD_B", "RTSSTD")  # RTSSTD for futures
 
 # === Strategy Defaults (override in arb_config.json) ===
-LOTS_A = 10         # lots for instrument A (GAZP: 10 lots × 10 shares = 100)
-LOTS_B = 1          # lots for instrument B (GZM6: 1 contract × 100 shares = 100)
-HEDGE_RATIO = 10.0  # price_A × ratio = comparable price_B (GAZP×10 = GZ)
+LOTS_A = 100        # lots for instrument A (SBER lot=1 since 2026: 100 lots = 100 shares = 1 contract)
+LOTS_B = 1          # lots for instrument B (SRZ6: 1 contract × 100 shares = 100)
+HEDGE_RATIO = 100.0  # futures pts per 1₽ of spot (SRZ6 ≈ 100 × SBER price)
 
 # Z-score
 ENTRY_Z = 1.5

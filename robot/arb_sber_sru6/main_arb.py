@@ -8,7 +8,7 @@ Usage: python3 main_arb.py [--paper] [--port 5090]
 import sys, os, json, argparse, logging, signal as sig_module, threading, time
 from pathlib import Path
 from datetime import datetime, timezone, timedelta
-from http.server import HTTPServer, BaseHTTPRequestHandler
+from http.server import HTTPServer, ThreadingHTTPServer, BaseHTTPRequestHandler
 import socket
 
 from FinamPy import FinamPy
@@ -17,6 +17,7 @@ from FinamPy.grpc.accounts_service_pb2 import GetAccountRequest
 import config_arb as config
 from strategy_arb import ArbitrageStrategy, ArbParams, LONG_BASIS, SHORT_BASIS, FLAT
 from orders_arb import ArbOrderManager, BUY, SELL
+import orders_arb as _orders_mod
 from arb_engine import BasisCalculator, OrderBookTracker
 
 log = logging.getLogger("robot_arb")
@@ -79,7 +80,7 @@ PORT = args.port
 strategy = ArbitrageStrategy(params)
 orders_mgr = ArbOrderManager(dp_url=DP_URL, account=ACCOUNT)
 execution_lock = threading.Lock()  # prevents concurrent entry/exit from different threads
-grpc_lock = threading.Lock()  # FinamPy gRPC is NOT thread-safe
+grpc_lock = _orders_mod.grpc_lock  # SINGLE shared lock for ALL FinamPy gRPC calls (FinamPy is not thread-safe)
 
 def _attach_finam_to_orders():
     global fp
@@ -87,6 +88,8 @@ def _attach_finam_to_orders():
         orders_mgr.set_finam_py(fp)
         orders_mgr.start_trade_subscription()
         log.info("Orders manager linked to FinamPy gRPC + trade subscription")
+
+fp = None  # early init: account-override block below may reference it via _attach_finam_to_orders()
 
 # Active account (can be changed via API)
 _active_account = ACCOUNT
@@ -152,7 +155,7 @@ def save_config():
     try:
         with open(cfg_path) as f:
             existing = json.load(f)
-        for key in ('capital', 'lookback', 'hedge_ratio'):
+        for key in ('capital', 'lookback', 'hedge_ratio', 'active_account'):
             if key in existing:
                 data[key] = existing[key]
     except Exception:
@@ -206,6 +209,7 @@ def _ob_poller():
     Uses concurrent.futures to prevent gRPC hangs from blocking the poller."""
     from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
     _stale_count = 0
+    _err_last_log = {}  # name → (msg_prefix, ts) — throttle repeated identical errors
     while _running:
         try:
             if not fp:
@@ -243,7 +247,12 @@ def _ob_poller():
                             _reconnect_finam()
                             _stale_count = 0
                     else:
-                        log.warning(f"OB poll {name} error: {err}")
+                        # Throttle: log identical error at most once per 60s (journald spam protection)
+                        msg_key = err_str[:120]
+                        last = _err_last_log.get(name, ("", 0.0))
+                        if msg_key != last[0] or time.time() - last[1] > 60:
+                            log.warning(f"OB poll {name} error: {err}")
+                            _err_last_log[name] = (msg_key, time.time())
                 elif rows:
                     ob_tracker.update(rows)
                     _push_market()
@@ -479,9 +488,10 @@ def _sync_broker():
     """Sync PnL and positions from FinamPy broker for active account."""
     try:
         acc_id = _active_account
-        resp, _ = fp.accounts_stub.GetAccount.with_call(
-            request=GetAccountRequest(account_id=acc_id),
-            timeout=10, metadata=(fp.metadata,))
+        with grpc_lock:
+            resp, _ = fp.accounts_stub.GetAccount.with_call(
+                request=GetAccountRequest(account_id=acc_id),
+                timeout=10, metadata=(fp.metadata,))
 
         eq_val = resp.equity.value if hasattr(resp.equity, 'value') else '0'
         equity = float(str(eq_val)) if eq_val else 0.0
@@ -582,7 +592,10 @@ def main_loop():
                     strategy.clear_entry_active()
                     strategy._set_lock(2.0)  # cooldown after any entry attempt
             elif z_now > params.entry_z - 0.2:
-                log.info(f"Z={z_now:.2f} (threshold={params.entry_z}) - no signal (dup_check={strategy._is_duplicate_entry('short_basis', z_now) if not strategy.entry_lock else 'LOCKED'})")
+                _now = time.time()
+                if _now - getattr(main_loop, '_z_log_ts', 0) > 10:
+                    main_loop._z_log_ts = _now
+                    log.info(f"Z={z_now:.2f} (threshold={params.entry_z}) - no signal (dup_check={strategy._is_duplicate_entry('short_basis', z_now) if not strategy.entry_lock else 'LOCKED'})")
 
             # Check exit (per-layer or all)
             exit_signal = strategy.check_exit()
@@ -725,10 +738,14 @@ def _execute_entry(signal: dict):
         fill_a = result["leg_a"]
         fill_b = result["leg_b"]
         side_int = LONG_BASIS if side == "long_basis" else SHORT_BASIS
-        # fill_a.quantity is in SHARES (from gRPC), convert to LOTS for internal tracking
-        # fill_b.quantity is always 1 (1 futures contract = 1 lot)
-        actual_lots_a = params.lots_a  # use configured lots, not raw fill quantity
-        actual_lots_b = params.lots_b
+        # fill_a.quantity is in SHARES (from gRPC) for stocks / contracts for futures —
+        # convert to LOTS for internal tracking so robot books match broker exactly.
+        lot_size_a = orders_mgr.get_lot_size(params.symbol_a)
+        actual_lots_a = max(1, round(fill_a.quantity / lot_size_a)) if fill_a.quantity else params.lots_a
+        actual_lots_a = min(actual_lots_a, params.lots_a)  # can't fill more than requested
+        actual_lots_b = fill_b.quantity if fill_b.quantity else params.lots_b
+        if actual_lots_a != params.lots_a or actual_lots_b != params.lots_b:
+            log.warning(f"Partial fill booked: A {actual_lots_a}/{params.lots_a} lots, B {actual_lots_b}/{params.lots_b}")
         strategy.open_layer(
             side=side_int,
             price_a=fill_a.price,
@@ -912,9 +929,10 @@ class APIHandler(BaseHTTPRequestHandler):
                     accounts = []
                     for aid in account_ids:
                         try:
-                            resp, _ = fp.accounts_stub.GetAccount.with_call(
-                                request=GetAccountRequest(account_id=aid),
-                                timeout=10, metadata=(fp.metadata,))
+                            with grpc_lock:
+                                resp, _ = fp.accounts_stub.GetAccount.with_call(
+                                    request=GetAccountRequest(account_id=aid),
+                                    timeout=10, metadata=(fp.metadata,))
                             eq_val = resp.equity.value if hasattr(resp.equity, 'value') else str(resp.equity or '')
                             if not eq_val:
                                 continue
@@ -1030,10 +1048,10 @@ class APIHandler(BaseHTTPRequestHandler):
                 body = self.rfile.read(length)
                 data = json.loads(body)
                 log.warning(f"POST /account received: {data}")
-                new_acc = data.get("account", "")
-                # BR Calendar: both legs are FORTS futures - allow 1225953 and EDP
-                if new_acc != "1225953":
-                    log.warning(f"Account change to {new_acc} BLOCKED")
+                new_acc = str(data.get("account", ""))
+                allowed = list(fp.account_ids) if (fp and hasattr(fp, 'account_ids')) else [ACCOUNT]
+                if new_acc and new_acc not in allowed:
+                    log.warning(f"Account change to {new_acc} BLOCKED (not in {allowed})")
                     self._json(200, {"ok": True, "account": _active_account, "warning": f"Account locked to {_active_account}"})
                     return
                 if new_acc:
@@ -1101,9 +1119,12 @@ class APIHandler(BaseHTTPRequestHandler):
                 with open(cfg_path) as cf:
                     new_config = json.load(cf)
             new_config["ticker_a"] = new_ticker_a
-            new_config["symbol_a"] = new_ticker_a + "@RTSX"
+            # Stocks live on MOEX (MISX), futures on FORTS (RTSX) — pick MIC by digits
+            mic_a = "RTSX" if any(c.isdigit() for c in new_ticker_a) else "MISX"
+            mic_b = "RTSX" if any(c.isdigit() for c in new_ticker_b) else "MISX"
+            new_config["symbol_a"] = new_ticker_a + "@" + mic_a
             new_config["ticker_b"] = new_ticker_b
-            new_config["symbol_b"] = new_ticker_b + "@RTSX"
+            new_config["symbol_b"] = new_ticker_b + "@" + mic_b
             with open(os.path.join(new_dir, "arb_config.json"), "w") as cf:
                 json.dump(new_config, cf, indent=2)
 
@@ -1165,16 +1186,15 @@ if __name__ == "__main__":
     time.sleep(10)
     log.info(f"Warmup done. OB_A: {strategy.ob_a.has_data} OB_B: {strategy.ob_b.has_data}")
 
-    # Cancel any pending orders from previous run
+    # Cancel leftover orders from previous run — TARGETED (own symbols only,
+    # old blanket DP cancel-all never worked and could kill other robots' orders)
     if not PAPER_MODE:
-        log.info("Cancelling leftover orders from previous run...")
+        log.info("Cancelling leftover orders for own symbols...")
         try:
-            import requests as _req
-            r = _req.post(f"{DP_URL}/api/orders/cancel-all", timeout=10)
-            res = r.json()
-            log.info(f"Cancel leftover: {res}")
+            n = orders_mgr.cancel_open_orders([params.symbol_a, params.symbol_b])
+            log.info(f"Startup cancel: {n} order(s) cancelled")
         except Exception as e:
-            log.warning(f"Cancel leftover failed: {e}")
+            log.warning(f"Startup cancel failed: {e}")
 
     # Start MOEX ISS fallback poller for stock prices
     t_moex = threading.Thread(target=_moex_poller, daemon=True, name="moex-poller")
@@ -1184,7 +1204,7 @@ if __name__ == "__main__":
     t_main = threading.Thread(target=main_loop, daemon=True, name="main-loop")
     t_main.start()
 
-    class ReusableHTTPServer(HTTPServer):
+    class ReusableHTTPServer(ThreadingHTTPServer):
         allow_reuse_address = True
 
     server = ReusableHTTPServer(("0.0.0.0", PORT), APIHandler)

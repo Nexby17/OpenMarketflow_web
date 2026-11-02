@@ -318,12 +318,18 @@ class ArbitrageStrategy:
             return None
 
         if not self.basis_calc.has_enough_data:
-            log.warning(f"Entry blocked: insufficient data ({self.basis_calc.data_points}/{self.basis_calc.lookback})")
+            now = time.time()
+            if now - getattr(self, '_warmup_log_ts', 0) > 30:
+                self._warmup_log_ts = now
+                log.warning(f"Entry blocked: insufficient data ({self.basis_calc.data_points}/{self.basis_calc.lookback})")
             return None
 
         # Capital check — stop adding layers if we can't afford another
         if not self._can_open_layer():
-            log.warning(f"Entry blocked: capital (used={self._used_capital():.0f} + layer={self._layer_cost():.0f} > capital={self.p.capital})")
+            now = time.time()
+            if now - getattr(self, '_capital_log_ts', 0) > 30:
+                self._capital_log_ts = now
+                log.warning(f"Entry blocked: capital (used={self._used_capital():.0f} + layer={self._layer_cost():.0f} > capital={self.p.capital})")
             return None
 
         if self.p.entry_mode == "spread_rub":
@@ -498,7 +504,7 @@ class ArbitrageStrategy:
             if not layer:
                 return False
             cost = abs(layer.entry_price_a * layer.lots_a * self.p.mult_a) + \
-                   abs(layer.entry_price_b * layer.lots_b * self.p.go_per_contract_b())
+                   abs(layer.entry_price_b * layer.lots_b * self.p.go_per_contract_b)
             if cost > 0:
                 return (unrealized / cost * 100) >= v
             return False
