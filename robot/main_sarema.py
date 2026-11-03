@@ -572,20 +572,34 @@ def _main_loop():
                                     # Пример: вход 1000, стоп 5руб (0,5%)=995; цена +0,1% (1001) → стоп 996 (4руб).
                                     # trail_value задаёт МИНИМАЛЬНЫЙ шаг сдвига (в % / рублях / пунктах),
                                     # чтобы не двигать стоп на каждом тике. Назад стоп не откатывается.
-                                    # F-144: КЛАССИЧЕСКИЙ трейлинг "за ценой на trail_value" без отката.
-                                    # LONG: want = mark − dist; SHORT: want = mark + dist.
-                                    # Стоп двигается ТОЛЬКО в сторону прибыли (LONG вверх / SHORT вниз),
-                                    # назад не откатывается никогда (модель Дмитрия F-096).
+                                    # F-145: ЛЕСТНИЦА от ПЕРВОНАЧАЛЬНОГО стопа (модель Дмитрия):
+                                    # пример SHORT: initial 45.07, шаг 0.2% (0.09). Цена ушла ниже на 0.2%
+                                    # → стоп 45.07−0.09=44.98; ещё на шаг → 44.89; и т.д. Ступени по шагу,
+                                    # никогда не откатываются, выше initial (шорт) не поднимается.
+                                    _init = float(state.initial_stop_price or 0) or float(state.stop_price or 0)
+                                    if _init <= 0:
+                                        _init = float(mark)
+                                    _unit = (cfg.get("trail_unit") or "pct")
+                                    if _unit == "pct":
+                                        _step = _init * float(_tv) / 100.0
+                                    elif _unit == "rub":
+                                        _step = float(_tv)
+                                    else:  # points: 1 пункт = 0.01 ₽ (акции MOEX)
+                                        _step = float(_tv) * 0.01
+                                    if _step <= 0:
+                                        _step = _dist
+                                    _eps = 0.005  # допуск полтикера (цены 2 знака) — ступень на границе
                                     if state.direction > 0:
-                                        _want = float(mark) - _dist
+                                        _n = max(0, int((float(mark) - _init + _eps) / _step))
+                                        _want = _init + _n * _step
                                         _ns = max(state.stop_price, _want)
-                                        _delta = _ns - state.stop_price
                                     else:
-                                        _want = float(mark) + _dist
+                                        _n = max(0, int((_init - float(mark) + _eps) / _step))
+                                        _want = _init - _n * _step
                                         _ns = min(state.stop_price, _want)
-                                        _delta = state.stop_price - _ns
-                                    # антидребезг: сдвиг меньше 10% шага трейлинга — не переставляем заявку
-                                    if _delta < _dist * 0.1 - 1e-9:
+                                    # антидребезг: двигаем только при смене ступени (Δ ≥ шага)
+                                    _delta = (_ns - state.stop_price) if state.direction > 0 else (state.stop_price - _ns)
+                                    if _delta < _step - 1e-9:
                                         _ns = state.stop_price
                                     if abs(_ns - state.stop_price) > 1e-9:
                                         strategy._replace_broker_stop(_ns)

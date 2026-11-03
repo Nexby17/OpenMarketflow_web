@@ -345,7 +345,7 @@ class SaremaStrategy:
         try:
             _tp_px = self.tp_price(direction, price_hint, _sar_last or price_hint, atr_signal)
             if _tp_px:
-                _close_side = SELL if direction == LONG else BUY
+                _close_side = SELL if direction == LONG else BUY   # F-139 revert: закрытие LONG=SELL, SHORT=BUY   # F-139 fix: закрывающая сторона (LONG→SELL, SHORT→BUY)
                 _tpo = self.orders.place_limit(_close_side, qty, round(_tp_px, 2), tag="sarema-tp")
                 self.state.tp_order_id = _tpo.order_id if _tpo else None
                 self._last_tp_px = _tp_px
@@ -370,12 +370,25 @@ class SaremaStrategy:
             actives = self.orders.list_active_stop_orders()
             if len(actives) <= 1:
                 return 0
-            target = float(self.state.stop_price or 0)
-            if target > 0:
-                actives.sort(key=lambda x: abs(float(x['stop_price']) - target))
-            keep = actives[0]
+            # F-145: приоритет — заявка из state.stop_order_id (её поставил трейлинг последним),
+            # иначе ближайшая к state.stop_price.
+            sid = str(self.state.stop_order_id or '')
+            keep = None
+            if sid:
+                for a in actives:
+                    if str(a.get('order_id')) == sid:
+                        keep = a
+                        break
+            if keep is None:
+                target = float(self.state.stop_price or 0)
+                if target > 0:
+                    actives.sort(key=lambda x: abs(float(x['stop_price']) - target))
+                keep = actives[0]
             cancelled = 0
-            for o in actives[1:]:
+            keep_id = str(keep.get('order_id'))
+            for o in actives:
+                if str(o.get('order_id')) == keep_id:
+                    continue
                 try:
                     self.orders.cancel(o['order_id'])
                     cancelled += 1
@@ -403,6 +416,19 @@ class SaremaStrategy:
         if self.stop_order_id:
             self.orders.cancel(self.stop_order_id)
         self._place_broker_stop(new_stop, self.state.lots_qty, self.state.direction)
+        # F-145: после постановки новой стоп-заявки снять ВСЕ оставшиеся активные стопы робота
+        # (старая могла не сняться: сеть/статус/листинг-задержка). Дубли = каскад (урок 03.11).
+        try:
+            for o in self.orders.list_active_stop_orders():
+                oid = str(o.get('order_id', ''))
+                if oid and oid != str(self.stop_order_id):
+                    try:
+                        self.orders.cancel(oid)
+                        log.info(f'F-145: снят висячий дубликат стоп-заявки {oid}')
+                    except Exception:
+                        pass
+        except Exception:
+            pass
 
     # ---------- выход/переворот (по сигналу противоположного кросса) ----------
     def journal_close_manual(self, reason: str, exit_px: float) -> dict | None:
