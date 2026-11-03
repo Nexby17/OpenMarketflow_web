@@ -1,13 +1,13 @@
 {
  "mode": "running",
- "direction": 1,
- "lots_qty": 100,
- "entry_price": 45.66,
- "stop_price": 45.369080000000004,
- "initial_stop_price": 0.0,
- "tp_order_id": null,
- "stop_order_id": null,
- "entry_time": "2026-11-02T12:42:07.056144",
+ "direction": -1,
+ "lots_qty": 452,
+ "entry_price": 44.19,
+ "stop_price": 45.074,
+ "initial_stop_price": 45.074,
+ "tp_order_id": "86217037590",
+ "stop_order_id": "48275488",
+ "entry_time": "2026-11-03T10:37:22.875879",
  "base": 20000.0,
  "pending_signal": null,
  "kill_day": null,
@@ -24,7 +24,7 @@
  },
  "total_pnl": -87.32,
  "trades_done": 13,
- "last_entry_signal_bar": "2026-11-02 10:00:00",
+ "last_entry_signal_bar": "2026-11-03 12:00:00",
  "auto_start_disabled": false,
  "trade_history": [
   {
@@ -83,6 +83,22 @@
     "R": 0.0,
     "reason": "closed by Dmitry (manual, F-131 sync)"
    }
+  },
+  {
+   "tic": "MTLR",
+   "tf": "H1",
+   "date_open": "2026-11-03",
+   "time_open": "10:37:22",
+   "dir": "S",
+   "entry": 44.19,
+   "qty": 452,
+   "volume": 19973.88,
+   "risk_pct": 2.0,
+   "risk_pts": 0.88,
+   "stop": 45.07,
+   "vp": "signal",
+   "status": "open",
+   "close": null
   }
  ]
 }
