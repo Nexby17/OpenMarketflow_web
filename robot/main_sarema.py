@@ -407,6 +407,14 @@ def resync():
 
 @app.get("/params")
 
+
+
+def get_params():
+    return cfg
+
+
+
+
 @app.get("/feed_dump")
 def feed_dump():
     """F-143: диагностический дамп последних 30 баров фида робота."""
@@ -431,12 +439,6 @@ def feed_dump():
         return {"robot": TICKER, "bars_total": n, "last_30": out}
     except Exception as e:
         return {"error": str(e)}
-
-
-def get_params():
-    return cfg
-
-
 @app.post("/params")
 def post_params(patch: ParamsPatch):
     clean, errors = validate_params(patch.model_dump(exclude_unset=True))  # F-070: null доходит (очистка kill/лимитов)
@@ -570,25 +572,21 @@ def _main_loop():
                                     # Пример: вход 1000, стоп 5руб (0,5%)=995; цена +0,1% (1001) → стоп 996 (4руб).
                                     # trail_value задаёт МИНИМАЛЬНЫЙ шаг сдвига (в % / рублях / пунктах),
                                     # чтобы не двигать стоп на каждом тике. Назад стоп не откатывается.
-                                    if state.initial_stop_price > 0 and state.entry_price > 0:
-                                        # F-110: направление трейлинга = знак позиции.
-                                        # LONG: стоп вверх (initial + рост). SHORT: стоп вниз (initial − падение).
-                                        _sign = 1 if state.direction > 0 else -1
-                                        _rise = max(0.0, (float(mark) - state.entry_price) * _sign)
-                                        _want = state.initial_stop_price + _sign * _rise
-                                        if state.direction > 0:
-                                            _ns = max(state.stop_price, _want)
-                                        else:
-                                            _ns = min(state.stop_price, _want)
-                                        # двигаем только если сдвиг ≥ шага трейлинга (антидребезг)
-                                        _delta = (_ns - state.stop_price) if state.direction > 0 else (state.stop_price - _ns)
-                                        if _delta < _dist - 1e-9:
-                                            _ns = state.stop_price   # шаг меньше дистанции — не двигаем
+                                    # F-144: КЛАССИЧЕСКИЙ трейлинг "за ценой на trail_value" без отката.
+                                    # LONG: want = mark − dist; SHORT: want = mark + dist.
+                                    # Стоп двигается ТОЛЬКО в сторону прибыли (LONG вверх / SHORT вниз),
+                                    # назад не откатывается никогда (модель Дмитрия F-096).
+                                    if state.direction > 0:
+                                        _want = float(mark) - _dist
+                                        _ns = max(state.stop_price, _want)
+                                        _delta = _ns - state.stop_price
                                     else:
-                                        if state.direction > 0:
-                                            _ns = max(state.stop_price, mark - _dist)
-                                        else:
-                                            _ns = min(state.stop_price, mark + _dist)
+                                        _want = float(mark) + _dist
+                                        _ns = min(state.stop_price, _want)
+                                        _delta = state.stop_price - _ns
+                                    # антидребезг: сдвиг меньше 10% шага трейлинга — не переставляем заявку
+                                    if _delta < _dist * 0.1 - 1e-9:
+                                        _ns = state.stop_price
                                     if abs(_ns - state.stop_price) > 1e-9:
                                         strategy._replace_broker_stop(_ns)
                                         state.stop_price = _ns
