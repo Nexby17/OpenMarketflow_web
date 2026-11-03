@@ -43,8 +43,9 @@ class FillInfo:
 class SaremaOrders:
     """Рыночные входы/выходы + брокер-стоп stop-market, все ордера с comment=sarema-*."""
 
-    def __init__(self, account_id: str, symbol: str):
+    def __init__(self, account_id: str, symbol: str, state_ref=None):
         self._account = account_id
+        self._state_ref = state_ref   # F-140: ссылка на state для защиты объёма
         self._symbol = symbol
         self.last_error: str = ""
         self._rest4 = None
@@ -165,6 +166,16 @@ class SaremaOrders:
         if quantity < 1 or price <= 0:
             return None
         side_str = "SIDE_BUY" if side == BUY else "SIDE_SELL"
+        # F-140: ЗАЩИТА — TP-лимитка должна ЗАКРЫВАТЬ позицию:
+        # шорт → BUY (закрытие), лонг → SELL (закрытие). Обратная сторона = открытие объёма = БЛОК.
+        if self._state_ref is not None:
+            _d = int(self._state_ref.direction or 0)
+            if _d == -1 and side_str == "SIDE_SELL":
+                log.critical("F-140 BLOCK: place_limit SELL при шорте — откроет объём вместо закрытия")
+                return None
+            if _d == 1 and side_str == "SIDE_BUY":
+                log.critical("F-140 BLOCK: place_limit BUY при лонге — откроет объём вместо закрытия")
+                return None
         comment = self._tag(tag)
         try:
             r4 = self._r4()
@@ -338,6 +349,16 @@ class SaremaOrders:
         if quantity < 1 or stop_price <= 0:
             return None
         close_side = 'sell' if (side == BUY or side == 'sell') else 'buy'
+        # F-140: ЗАЩИТА — стоп-заявка должна ЗАКРЫВАТЬ позицию:
+        # шорт → BUY-стоп (закрытие при росте), лонг → SELL-стоп (закрытие при падении).
+        if self._state_ref is not None:
+            _d = int(self._state_ref.direction or 0)
+            if _d == -1 and close_side == 'sell':
+                log.critical("F-140 BLOCK: стоп SELL при шорте — откроет объём вместо закрытия")
+                return None
+            if _d == 1 and close_side == 'buy':
+                log.critical("F-140 BLOCK: стоп BUY при лонге — откроет объём вместо закрытия")
+                return None
         comment = self._tag(tag)
         try:
             r4 = self._r4()

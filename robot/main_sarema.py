@@ -38,7 +38,7 @@ cfg = load_config()
 state = SaremaState(STATE_FILE or f"sarema_state_{TICKER}.json", ticker=TICKER)
 state.load()                              # восстановление; mode всё равно stopped
 feed = H1Feed(DATA_DIR or None)
-orders = SaremaOrders(ACCOUNT_ID, SYMBOL)
+orders = SaremaOrders(ACCOUNT_ID, SYMBOL, state_ref=state)
 strategy = SaremaStrategy(cfg, state, orders, feed, lot_size=LOT_SIZE, ticker=TICKER)
 
 app = FastAPI(title=f"SAREMA {TICKER}", version="1.0")
@@ -406,6 +406,33 @@ def resync():
 
 
 @app.get("/params")
+
+@app.get("/feed_dump")
+def feed_dump():
+    """F-143: диагностический дамп последних 30 баров фида робота."""
+    try:
+        from sarema import sarema_engine as _eng_local
+        _df = feed.bars.copy()
+        _df['t'] = _df['begin']
+        g2, up, dn = _eng_local.build(_df, f"{int(cfg.get('tf_min', 60))}min",
+                                cfg.get("sar_af0", 0.02), cfg.get("sar_step", 0.2),
+                                int(cfg.get("ema_n", 34)), cfg.get("sar_max", 0.2))
+        n = len(g2)
+        out = []
+        for i in range(max(0, n - 30), n):
+            out.append({
+                "begin": str(g2["begin"].iloc[i])[:16],
+                "close": round(float(g2["close"].iloc[i]), 2),
+                "sar": round(float(g2["sar"].iloc[i]), 2),
+                "ema": round(float(g2["ema"].iloc[i]), 2),
+                "up": bool(up[i]),
+                "dn": bool(dn[i]),
+            })
+        return {"robot": TICKER, "bars_total": n, "last_30": out}
+    except Exception as e:
+        return {"error": str(e)}
+
+
 def get_params():
     return cfg
 
