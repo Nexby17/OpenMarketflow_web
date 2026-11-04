@@ -588,13 +588,17 @@ def _main_loop():
                                         _step = float(_tv) * 0.01
                                     if _step <= 0:
                                         _step = _dist
+                                    # F-146: число ступеней считается от ВХОДА (mark vs entry),
+                                    # а стоп-уровни отсчитываются от initial. Иначе при initial
+                                    # в 2% от входа лестница мгновенно перепрыгивала к цене
+                                    # (MTLR 04.11: вход 44.58, стоп уехал на 44.56 и сработал через 23с).
                                     _eps = 0.005  # допуск полтикера (цены 2 знака) — ступень на границе
                                     if state.direction > 0:
-                                        _n = max(0, int((float(mark) - _init + _eps) / _step))
+                                        _n = max(0, int((float(mark) - state.entry_price + _eps) / _step))
                                         _want = _init + _n * _step
                                         _ns = max(state.stop_price, _want)
                                     else:
-                                        _n = max(0, int((_init - float(mark) + _eps) / _step))
+                                        _n = max(0, int((state.entry_price - float(mark) + _eps) / _step))
                                         _want = _init - _n * _step
                                         _ns = min(state.stop_price, _want)
                                     # антидребезг: двигаем только при смене ступени (Δ ≥ шага)
