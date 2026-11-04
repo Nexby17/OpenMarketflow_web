@@ -350,6 +350,21 @@ def journal():
     }
 
 
+@app.delete("/journal")
+def journal_clear():
+    """F-149: очистить торговый журнал (trade_history в state и на диске).
+    Только при ФЛЭТ — при открытой позиции журнал ведёт запись входа."""
+    if state.direction != 0 or state.lots_qty:
+        raise HTTPException(400, "очистка журнала только при ФЛЭТ (закрой позицию)")
+    state.trade_history = []
+    if CONFIG_FILE:
+        pass  # журнал живёт в state-файле, не в config
+    # перезаписать state-файл на диске с пустой историей
+    state.save()
+    log.info("F-149: торговый журнал очищен (trade_history=[])")
+    return {"ok": True, "open": 0, "closed": 0}
+
+
 @app.get("/health")
 def health():
     """Liveness probe для RobotProcessManager (C#) и UI — быстрый, без обращения к брокеру."""

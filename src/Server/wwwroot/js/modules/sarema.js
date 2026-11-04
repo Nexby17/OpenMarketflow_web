@@ -111,7 +111,10 @@ function sarSwitchInstance(inst) {
             <!-- Торговый журнал: логика таблицы Дмитрия — открытые позиции сверху, закрытие дозаписывается справа -->
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
                 <strong>Журнал торговых операций</strong>
-                <span class="text-secondary" style="font-size:12px">открытые сверху · закрытие в той же строке</span>
+                <span style="display:flex;gap:10px;align-items:center">
+                    <span class="text-secondary" style="font-size:12px">открытые сверху · закрытие в той же строке</span>
+                    <button id="sarJournalClear" class="btn btn-danger btn-sm" style="padding:2px 10px;font-size:12px" title="Очистить журнал (только при ФЛЭТ)">Очистить</button>
+                </span>
             </div>
             <div id="sarJournalSummary" class="metrics-row" style="flex-wrap:wrap;margin-bottom:12px"></div>
             <div style="max-height:360px;overflow-y:auto;border:1px solid var(--border-color);border-radius:8px">
@@ -1055,3 +1058,31 @@ async function sarChartLoad(inst) {
         if (info) info.textContent = 'Ошибка графика: ' + e.message;
     }
 }
+
+// F-149: кнопка очистки торгового журнала (делегированный обработчик — панель перерисовывается)
+document.addEventListener('click', async (ev) => {
+    const btn = ev.target.closest('#sarJournalClear');
+    if (!btn) return;
+    ev.preventDefault();
+    if (!confirm('Очистить торговый журнал? Все записи будут удалены безвозвратно.')) return;
+    try {
+        const instSel = document.getElementById('sarInstSelect');
+        const inst = instSel ? instSel.value : 'mtlr';
+        let ok = false, errTxt = '';
+        try { const r = await fetch('/api/sarema/journal/' + inst, { method: 'DELETE' }); ok = r.ok; if (!ok) errTxt = r.status; }
+        catch (e1) {
+            try { const r2 = await fetch(sarApi(inst) + '/journal', { method: 'DELETE' }); ok = r2.ok; if (!ok) errTxt = r2.status; }
+            catch (e2) { errTxt = e2.message; }
+        }
+        if (!ok) { alert('Не удалось очистить: ' + errTxt); return; }
+        if (typeof window.sarRenderJournal === 'function') { try { window.sarRenderJournal(); } catch (e3) {} }
+        if (typeof sarLoadJournal === 'function') { try { sarLoadJournal(); } catch (e4) {} }
+        const d = await r.json().catch(() => ({}));
+        if (!r.ok) { alert('Не удалось очистить: ' + (d.detail || r.status)); return; }
+        // перерисовать журнал
+        if (typeof window.sarRenderJournal === 'function') window.sarRenderJournal();
+        else location.reload();
+    } catch (e) {
+        alert('Ошибка: ' + e.message);
+    }
+});
