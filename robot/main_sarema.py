@@ -154,9 +154,11 @@ def status():
     pos = {
         "dir": state.direction,
         "qty": state.lots_qty,
-        "entry": state.entry_price,
-        "stop": state.stop_price,
-        "entry_time": state.entry_time,
+        # F-147: при ФЛЭТ вход/стоп пустые (null) — UI показывает «—»,
+        # а не устаревшие значения последней сделки.
+        "entry": state.entry_price if state.direction else None,
+        "stop": state.stop_price if state.direction else None,
+        "entry_time": state.entry_time if state.direction else None,
         "stop_order_id": strategy.stop_order_id,
     }
     limits_used = {

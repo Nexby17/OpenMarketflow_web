@@ -263,8 +263,10 @@ async function sarUpdateLiveMetrics(inst) {
         if (pUnreal != null && st.position && st.position.dir) {
             pnlText = (pUnreal >= 0 ? '+' : '') + pUnreal.toFixed(0) + ' ₽ (тек.) · Σ ' +
                       ((pTotal + pUnreal) >= 0 ? '+' : '') + (pTotal + pUnreal).toFixed(0) + ' ₽';
-        } else {
+        } else if (p.dir) {
             pnlText = (pTotal >= 0 ? '+' : '') + pTotal.toFixed(0) + ' ₽';
+        } else {
+            pnlText = '—'; // F-147: ФЛЭТ → PnL пустой
         }
         lastBar = st.last_bar ? String(st.last_bar).replace('T', ' ').slice(0, 16) : '—';
     }
