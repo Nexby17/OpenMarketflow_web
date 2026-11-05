@@ -53,7 +53,7 @@ def _get_module():
     class _Rest4:
         def __init__(self):
             self.tm = TokenManager(api_key)
-            self.client = Client(self.tm, auto_refresh_tokens=True)
+            self.client = Client(self.tm, auto_refresh_tokens=False)  # F-152: SDK auto-refresh шлёт POST /sessions с Authorization и всегда получает 400 → весь вызов падает "Token invalid"; JWT обновляет orders_sarema._reauth напрямую
             self.loop = asyncio.new_event_loop()
             self._lock = threading.Lock()
             threading.Thread(target=self._loop_thread, name="finam-rest4", daemon=True).start()

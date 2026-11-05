@@ -88,12 +88,29 @@ class SaremaOrders:
                     mod.tm._jwt_token = None
             if self._rest4 and hasattr(self._rest4, '_get_module'):
                 mod = self._rest4._get_module()
-                if hasattr(mod, 'client') and hasattr(mod.client, 'access_tokens'):
-                    coro = mod.client.access_tokens.set_jwt_token()
-                    mod.call(coro, timeout=15)
-                    log.info('F-080: JWT re-auth OK (SDK access_tokens.set_jwt_token)')
+                # F-152: SDK set_jwt_token шлёт POST /sessions с Authorization=битый JWT → 400,
+                # старый битый токен остаётся в tm → retry вечно invalid. Надёжный путь:
+                # POST /sessions {"secret"} БЕЗ Authorization → новый JWT → прямо в tm.
+                import urllib.request as _uw
+                import json as _j
+                _key = os.environ.get('FINAM_API_KEY', '')
+                if not _key:
+                    self._reload_api_key()
+                    _key = os.environ.get('FINAM_API_KEY', '')
+                if not _key:
+                    raise RuntimeError('FINAM_API_KEY пуст — re-auth невозможен')
+                _req = _uw.Request('https://api.finam.ru/v1/sessions',
+                                   data=_j.dumps({'secret': _key}).encode(), method='POST')
+                _req.add_header('Content-Type', 'application/json')
+                with _uw.urlopen(_req, timeout=15) as _r:
+                    _tok = _j.loads(_r.read()).get('token')
+                if not _tok:
+                    raise RuntimeError('POST /sessions не вернул token')
+                if hasattr(mod, 'tm'):
+                    mod.tm._jwt_token = _tok
+                    log.info('F-152: JWT обновлён напрямую (POST /sessions, без Authorization)')
                 else:
-                    log.warning('F-080: mod.client.access_tokens not found')
+                    log.warning('F-152: mod.tm не найден — JWT некуда записать')
             else:
                 log.warning('F-080: _rest4 not initialized')
         except Exception as e:
@@ -141,12 +158,12 @@ class SaremaOrders:
         try:
             r4 = self._r4()
             try:
-                resp = r4.place_market(self._account, self._symbol, side_str, int(quantity), comment=comment)
+                resp = self._r4().place_market(self._account, self._symbol, side_str, int(quantity), comment=comment)
             except Exception as e1:
                 if self._is_token_error(str(e1)):
                     log.warning("F-080: Token invalid на market — пере-авторизация + retry")
                     self._reauth()
-                    resp = r4.place_market(self._account, self._symbol, side_str, int(quantity), comment=comment)
+                    resp = self._r4().place_market(self._account, self._symbol, side_str, int(quantity), comment=comment)
                 else:
                     raise
             oid = str(resp.get("order_id", resp.get("orderId", "")))
@@ -180,12 +197,12 @@ class SaremaOrders:
         try:
             r4 = self._r4()
             try:
-                resp = r4.place_limit(self._account, self._symbol, side_str, int(quantity), float(price), comment=comment)
+                resp = self._r4().place_limit(self._account, self._symbol, side_str, int(quantity), float(price), comment=comment)
             except Exception as _e1:
                 if self._is_token_error(str(_e1)):
                     log.warning("F-101: Token invalid на limit — re-auth + retry")
                     self._reauth()
-                    resp = r4.place_limit(self._account, self._symbol, side_str, int(quantity), float(price), comment=comment)
+                    resp = self._r4().place_limit(self._account, self._symbol, side_str, int(quantity), float(price), comment=comment)
                 else:
                     raise
             oid = str(resp.get("order_id", resp.get("orderId", "")))
@@ -363,12 +380,12 @@ class SaremaOrders:
         try:
             r4 = self._r4()
             try:
-                resp = r4.place_stop_loss(self._account, self._symbol, close_side, int(quantity), float(stop_price), comment=comment)
+                resp = self._r4().place_stop_loss(self._account, self._symbol, close_side, int(quantity), float(stop_price), comment=comment)
             except Exception as _e1:
                 if self._is_token_error(str(_e1)):
                     log.warning('F-101: Token invalid на stop_loss — re-auth + retry')
                     self._reauth()
-                    resp = r4.place_stop_loss(self._account, self._symbol, close_side, int(quantity), float(stop_price), comment=comment)
+                    resp = self._r4().place_stop_loss(self._account, self._symbol, close_side, int(quantity), float(stop_price), comment=comment)
                 else:
                     raise
             oid = str(resp.get('order_id', resp.get('orderId', '')))
