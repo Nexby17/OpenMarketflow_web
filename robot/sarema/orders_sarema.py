@@ -120,7 +120,7 @@ class SaremaOrders:
         # F-155: 'Missing auth token' (code=16) = JWT в SDK нет (после auto_refresh=False
         # SDK сам токен не получает) — тоже повод для re-auth.
         return ('Token is invalid' in err or 'Token expired' in err or 'Unauthorized' in err
-                or 'Missing auth token' in err or 'auth token' in err.lower())
+                or 'Missing auth token' in err or 'Invalid access key' in err or 'auth token' in err.lower())
 
     def _r4(self):
         """Ленивая инициализация finam_rest4 (нужен FINAM_API_KEY в env или .env робота)."""
@@ -156,7 +156,7 @@ class SaremaOrders:
         if quantity < 1:
             return None
         # SDK enum: 'SIDE_BUY' / 'SIDE_SELL' (не 'buy'/'sell' — иначе 'not a valid Side')
-        side_str = "SIDE_BUY" if side == BUY else "SIDE_SELL"
+        side_str = "SIDE_BUY" if (side == BUY or str(side).lower() == "buy") else "SIDE_SELL"  # F-156: понимаем и строку buy/sell
         comment = self._tag(tag)
         try:
             r4 = self._r4()
@@ -185,7 +185,7 @@ class SaremaOrders:
         """F-105: лимитный ордер по TP (закрытие позиции по цене цели)."""
         if quantity < 1 or price <= 0:
             return None
-        side_str = "SIDE_BUY" if side == BUY else "SIDE_SELL"
+        side_str = "SIDE_BUY" if (side == BUY or str(side).lower() == "buy") else "SIDE_SELL"  # F-156: понимаем и строку buy/sell
         # F-140: ЗАЩИТА — TP-лимитка должна ЗАКРЫВАТЬ позицию:
         # шорт → BUY (закрытие), лонг → SELL (закрытие). Обратная сторона = открытие объёма = БЛОК.
         if self._state_ref is not None:
@@ -262,7 +262,7 @@ class SaremaOrders:
                 typ = str(order.get('type', ''))
                 status = str(o.get('status', order.get('status', '')))
                 comment = str(order.get('comment', ''))
-                if self._symbol.split('@')[0] in sym and 'STOP' in typ and 'sarema-stop' in comment                         and 'WATCHING' in status or 'ORDER_STATUS_NEW' in status:
+                if self._symbol.split('@')[0] in sym and 'STOP' in typ and 'sarema-stop' in comment and ('WATCHING' in status or 'ORDER_STATUS_NEW' in status):  # F-156: скобки — or раньше матчил ЛЮБУЮ NEW-заявку:
                     stop_price = order.get('stop_price', {})
                     qty = order.get('quantity', {})
                     out.append(dict(

@@ -680,9 +680,9 @@ def _main_loop():
                                     log.warning('F-113: стоп-заявка отсутствует/снята — ставлю брокерский стоп')
                                     strategy._place_broker_stop(state.stop_price, state.lots_qty, state.direction)
                                     state.save()
-                            if state.tp_order_id and orders:
+                            if orders and (state.tp_order_id or cfg.get('tp_R')):  # F-156: TP нужен и при None (перевыставить)
                                 # F-129: TP-лимитка ИСПОЛНЕНА = тейк сработал → позиция закрыта → FLAT sync
-                                if orders.is_order_filled(state.tp_order_id):
+                                if state.tp_order_id and orders.is_order_filled(state.tp_order_id):  # F-156: FILLED только при живом id
                                     # F-133: подтверждение по цене — тейк реален только если mark
                                     # прошёл TP-уровень (иначе фантомный статус чужой заявки)
                                     _tp_ok = ((mark >= state.tp_price) if state.direction > 0 else (mark <= state.tp_price and state.tp_price > 0)) if state.tp_price else True
@@ -712,13 +712,16 @@ def _main_loop():
                                     state.tp_order_id = None
                                     state.save()
                                     continue
-                                if orders.is_dead_order(state.tp_order_id) and cfg.get('tp_R'):
+                                need_tp = (not state.tp_order_id) or orders.is_dead_order(state.tp_order_id)  # F-156: None тоже перевыставляем
+                                if need_tp and cfg.get('tp_R'):
                                     _tp_px = strategy.tp_price(state.direction, state.entry_price,
                                                                strategy.last_sar or state.entry_price,
                                                                (strategy.last_stats or {}).get('atr') or 0.0)
                                     if _tp_px:
                                         _close_side = 'sell' if state.direction > 0 else 'buy'
-                                        _tpo = orders.place_limit(state.direction, state.lots_qty, round(_tp_px, 2), tag='sarema-tp')
+                                        # F-156: side=_close_side (строка buy/sell), а не direction (int) —
+                                        # иначе place_limit трактовал -1 как SELL и F-140 блокировал TP шорта.
+                                        _tpo = orders.place_limit(_close_side, state.lots_qty, round(_tp_px, 2), tag='sarema-tp')
                                         state.tp_order_id = _tpo.order_id if _tpo else None
                                         state.save()
                                         log.info(f'F-113: TP-лимитка перевыставлена @ {_tp_px:.2f}')
