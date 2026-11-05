@@ -537,7 +537,7 @@ def _main_loop():
         with _uq.urlopen(r, timeout=15) as resp:
             d = _json.loads(resp.read().decode())
         out = []
-        hour_ago = now - _td(minutes=65)   # бар закрыт, если его час закончился минуту назад
+        hour_ago = now + _td(hours=3) - _td(minutes=65)   # F-150: порог в МСК-naive (как bt: UTC+3), иначе свежие бары skip на 3+ часа
         for b in d.get("bars", []):
             ts = b.get("timestamp", "").replace("Z", "").replace("+00:00", "")
             g = lambda k: b.get(k, {}).get("value", b.get(k))
