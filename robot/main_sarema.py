@@ -299,7 +299,7 @@ def position_adjust(body: PositionAdjust):
             state.lots_qty = abs_qty
             state.entry_price = price
             state.stop_price = price if price > 0 else 0.0
-            state.entry_time = datetime.utcnow().isoformat()
+            state.entry_time = (datetime.utcnow() + _td(hours=3)).isoformat()  # F-151: МСК-naive (время везде московское)
             # стоп по 3×ATR от указанной цены (если есть бары)
             atr_now = None
             try:
@@ -528,7 +528,7 @@ def _main_loop():
     def _fetch_recent_h1():
         """Последние 2 дня H1 LKOH-класса (акции), возвращает список закрытых баров (кроме текущего часа)."""
         tok = _finam_token()
-        now = _dt.utcnow()
+        now = _dt.utcnow()   # F-151: UTC нужен ТОЛЬКО для интервала /bars (формат API Finam 'Z'); бары конвертируются в МСК ниже
         url = (f"https://api.finam.ru/v1/instruments/{SYMBOL}/bars?timeframe=TIME_FRAME_H1"
                f"&interval.start_time={(now - _td(days=3)).strftime('%Y-%m-%dT%H:%M:%SZ')}"
                f"&interval.end_time={now.strftime('%Y-%m-%dT%H:%M:%SZ')}")
