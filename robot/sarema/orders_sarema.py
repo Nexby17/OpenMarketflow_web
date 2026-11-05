@@ -117,7 +117,10 @@ class SaremaOrders:
             log.error(f'F-080: re-auth failed: {e}')
 
     def _is_token_error(self, err: str) -> bool:
-        return 'Token is invalid' in err or 'Token expired' in err or 'Unauthorized' in err
+        # F-155: 'Missing auth token' (code=16) = JWT в SDK нет (после auto_refresh=False
+        # SDK сам токен не получает) — тоже повод для re-auth.
+        return ('Token is invalid' in err or 'Token expired' in err or 'Unauthorized' in err
+                or 'Missing auth token' in err or 'auth token' in err.lower())
 
     def _r4(self):
         """Ленивая инициализация finam_rest4 (нужен FINAM_API_KEY в env или .env робота)."""
