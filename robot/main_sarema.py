@@ -83,6 +83,8 @@ class ParamsPatch(BaseModel):
     stop_loss_unit: str | None = None
     trail_value: int | float | None = None
     trail_unit: str | None = None
+    be_value: int | float | None = None
+    be_unit: str | None = None
     max_signal_age: int | float | None = None   # F-086: окно сигналов
 
 
@@ -605,7 +607,21 @@ def _main_loop():
                                         _step = float(_tv) * 0.01
                                     if _step <= 0:
                                         _step = _dist
-                                    # F-146: число ступеней считается от ВХОДА (mark vs entry),
+                                                                        # F-153: БЕЗУБЫТОК — при профите >= порога стоп прыжком на entry.
+                                    _bv = cfg.get("be_value")
+                                    if _bv is not None and state.initial_stop_price and state.entry_price:
+                                        _pnl_units = ((float(mark) - state.entry_price) / state.entry_price * 100.0) if (cfg.get("be_unit") or "pct") == "pct" else (((float(mark) - state.entry_price) * state.lots_qty) if (cfg.get("be_unit") == "rub") else ((float(mark) - state.entry_price) / 0.01))
+                                        _need_be = (_pnl_units >= float(_bv)) if state.direction > 0 else (_pnl_units <= -float(_bv))
+                                        if _need_be:
+                                            _be_px = round(float(state.entry_price), 2)
+                                            _ns_be = max(state.stop_price, _be_px) if state.direction > 0 else min(state.stop_price, _be_px)
+                                            if abs(_ns_be - state.stop_price) > 1e-9:
+                                                strategy._replace_broker_stop(_ns_be)
+                                                state.stop_price = _ns_be
+                                                state.save()
+                                                log.info(f"F-153 BE: стоп -> безубыток {_ns_be:.2f} (mark={mark:.2f})")
+
+# F-146: число ступеней считается от ВХОДА (mark vs entry),
                                     # а стоп-уровни отсчитываются от initial. Иначе при initial
                                     # в 2% от входа лестница мгновенно перепрыгивала к цене
                                     # (MTLR 04.11: вход 44.58, стоп уехал на 44.56 и сработал через 23с).

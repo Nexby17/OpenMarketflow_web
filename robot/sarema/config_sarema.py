@@ -45,7 +45,9 @@ DEFAULTS = {
     "stop_loss_value": None,
     "stop_loss_unit": "atr",          # atr | pct | rub | points
     "trail_value": None,
-    "trail_unit": "sar",              # sar | pct | rub | points
+    "trail_unit": "sar",
+    "be_value": None,   # F-153: безубыток — порог профита позиции (null = выкл)
+    "be_unit": "pct",   # F-153: pct | rub | points              # sar | pct | rub | points
     "tf_min": 60,
     "base": 1_000_000.0,
     "risk_pct": 0.005,
@@ -167,6 +169,21 @@ def validate_params(patch: dict) -> tuple[dict, list[str]]:
             clean["trail_unit"] = u
         else:
             errors.append("trail_unit must be sar|pct|rub|points")
+    # F-153: безубыток — порог и единицы
+    if "be_value" in patch:
+        v = patch["be_value"]
+        if v is None:
+            clean["be_value"] = None
+        elif isinstance(v, (int, float)) and 0 <= v <= 100000:
+            clean["be_value"] = float(v)
+        else:
+            errors.append("be_value must be >= 0 or null")
+    if "be_unit" in patch:
+        u = patch["be_unit"]
+        if u in ("pct", "rub", "points"):
+            clean["be_unit"] = u
+        else:
+            errors.append("be_unit must be pct|rub|points")
     # Сигнальные SAR/EMA (диапазоны ТЗ: sar_af0 0.02-0.03; sar_step 0.008-0.2;
     # ema_n 12-20; init_stop_atr 3.0 (допуск 1-10 для тюнинга); tf 5-240 мин)
     sig_specs = {

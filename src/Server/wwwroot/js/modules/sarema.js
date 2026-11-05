@@ -178,7 +178,7 @@ async function sarLoadPanelData(inst) {
     // дефолты
     set('sarMaxLong', ''); set('sarMaxShort', ''); set('sarBase', 1000000);
     set('sarSlUnit', 'rub_pnl'); set('sarSlValue', '');
-    set('sarTrUnit', 'pct'); set('sarTrValue', '');
+    set('sarTrUnit', 'pct'); set('sarTrValue', '');     set('sarBeUnit', 'pct'); set('sarBeValue', '');
     set('sarAf0', 0.02); set('sarStep', 0.2); set('sarMax', 0.2);
     set('sarEmaN', 12); set('sarTfMin', 60);
     // F-065: VP дефолты
@@ -194,7 +194,7 @@ async function sarLoadPanelData(inst) {
             set('sarSlUnit', d.stop_loss_unit || 'rub_pnl');
             set('sarSlValue', d.stop_loss_value ?? '');
             set('sarTrUnit', d.trail_unit || 'pct');
-            set('sarTrValue', d.trail_value ?? '');
+            set('sarTrValue', d.trail_value ?? ''); set('sarBeUnit', d.be_unit || 'pct'); set('sarBeValue', d.be_value ?? '');
             set('sarAf0', d.sar_af0 ?? 0.02);
             set('sarStep', d.sar_step ?? 0.2);
             set('sarMax', d.sar_max ?? 0.2);
@@ -218,7 +218,7 @@ async function sarLoadPanelData(inst) {
             set('sarSlUnit', p.stop_loss_unit || 'rub_pnl');
             set('sarSlValue', p.stop_loss_value ?? '');
             set('sarTrUnit', p.trail_unit || 'pct');
-            set('sarTrValue', p.trail_value ?? '');
+            set('sarTrValue', p.trail_value ?? ''); set('sarBeUnit', p.be_unit || 'pct'); set('sarBeValue', p.be_value ?? '');
             
             set('sarAf0', p.sar_af0 ?? 0.02);
             set('sarStep', p.sar_step ?? 0.2);
@@ -379,6 +379,8 @@ async function sarSaveParams() {
         stop_loss_value: slNum,
         trail_unit: trUnit,
         trail_value: trNum,
+        be_unit: (document.getElementById('sarBeUnit')?.value || 'pct'),
+        be_value: (function(){ var v = (document.getElementById('sarBeValue')?.value || '').trim().replace(',', '.'); return v === '' ? null : parseFloat(v); })(),
         sar_af0: af0, sar_step: step, sar_max: smax,
         ema_n: emaN != null ? Math.round(emaN) : undefined,
         tp_mode: (function(){ var fx = document.getElementById('sarTpFixed'), sr = document.getElementById('sarTpSar');
