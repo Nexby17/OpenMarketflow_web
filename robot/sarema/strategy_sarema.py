@@ -352,7 +352,8 @@ class SaremaStrategy:
         self.state.entry_price = fill_price   # F-121: РЕАЛЬНАЯ цена исполнения
         self.state.stop_price = stop0
         self.state.initial_stop_price = stop0   # F-098: база трейлинга (стоп не двигается ближе этого зазора)
-        self.state.entry_time = (datetime.utcnow() + _td(hours=3)).isoformat()  # F-164: МСК
+        from datetime import timedelta as _td_f164
+        self.state.entry_time = (datetime.utcnow() + _td_f164(hours=3)).isoformat()  # F-164/F-166: МСК
         self._place_broker_stop(stop0, qty, direction)
         # F-105: TP-лимитка (fixed: от входа; sar: от SAR последнего бара)
         try:
