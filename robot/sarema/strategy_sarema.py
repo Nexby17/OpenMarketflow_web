@@ -288,6 +288,14 @@ class SaremaStrategy:
         if (self.cfg.get("stop_loss_unit") or '').lower() == 'rub_pnl' and self.cfg.get("stop_loss_value") is not None:
             stop_dist, stop_basis = self._initial_stop_dist(direction, price_hint, atr_signal, qty=qty)
         side = BUY if direction == LONG else SELL
+        # F-157: перед входом снять ВСЕ висячие sarema-* заявки (старые стопы/TP прошлых позиций —
+        # их исполнение на новой позиции удваивает объём, кейс 05.11 18:04).
+        try:
+            _cleaned = self.orders.cancel_all_robot_orders()
+            if _cleaned:
+                log.info(f'F-157: перед входом снято {_cleaned} висячих заявок')
+        except Exception as _ce:
+            log.error(f'F-157 pre-entry cancel_all err: {_ce}')
         po = self.orders.place_market(side, qty, tag="sarema-entry")
         if not po:
             return {"event": "entry_error", "error": self.orders.last_error}

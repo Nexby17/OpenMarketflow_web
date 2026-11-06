@@ -661,6 +661,12 @@ def _main_loop():
                                     _pnl = (state.stop_price - state.entry_price) * (-1 if state.direction < 0 else 1) * state.lots_qty
                                     log.warning(f'F-129: стоп ИСПОЛНЕН брокером (PnL≈{_pnl:.0f}₽) — синхронизирую FLAT')
                                     try:
+                                        _ca = orders.cancel_all_robot_orders()
+                                        if _ca:
+                                            log.info(f'F-157: снято {_ca} висячих sarema-* заявок после FLAT-sync')
+                                    except Exception as _cae:
+                                        log.error(f'F-157 cancel_all err: {_cae}')
+                                    try:
                                         strategy.journal_close_manual(reason='stop-filled-broker',
                                                                       exit_px=state.stop_price)
                                     except Exception as _je:
