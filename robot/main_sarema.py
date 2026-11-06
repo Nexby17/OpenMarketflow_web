@@ -54,7 +54,8 @@ app.add_middleware(
 )
 
 _stop_lock = threading.Lock()             # F-060: идемпотентный /stop
-_SAR_LAST_RESTART = [0.0]                 # restart cooldown (90с, урок F-059)
+_SAR_LAST_RESTART = [0.0]
+_LAST_FLAT_CLEAN = [0.0]                 # F-158: таймер флэт-чистки                 # restart cooldown (90с, урок F-059)
 
 
 class ParamsPatch(BaseModel):
@@ -717,6 +718,12 @@ def _main_loop():
                                     state.stop_order_id = None
                                     state.tp_order_id = None
                                     state.save()
+                                    try:  # F-158: после закрытия снять ВСЕ оставшиеся заявки
+                                        _ca = orders.cancel_all_robot_orders()
+                                        if _ca:
+                                            log.info(f'F-158: снято {_ca} заявок после TP-close')
+                                    except Exception as _cae:
+                                        log.error(f'F-158 cancel_all err: {_cae}')
                                     continue
                                 need_tp = (not state.tp_order_id) or orders.is_dead_order(state.tp_order_id)  # F-156: None тоже перевыставляем
                                 if need_tp and cfg.get('tp_R'):
@@ -776,7 +783,19 @@ def _main_loop():
             state.save()
             _py = _sys.executable
             _os.execl(_py, _py, "-X", "utf8", _os.path.abspath(__file__), "--port", str(PORT))
-        time.sleep(20)
+        
+            # F-158: периодическая чистка висячих заявок во ФЛЭТЕ (раз в ~5 мин)
+            if state.mode == "running" and state.direction == 0:
+                try:
+                    if time.time() - _last_flat_clean[0] > 300:
+                        _last_flat_clean[0] = time.time()
+                        _cn = orders.cancel_all_robot_orders()
+                        if _cn:
+                            log.info(f'F-158: ФЛЭТ-чистка сняла {_cn} висячих заявок')
+                except Exception as _fce:
+                    log.error(f'F-158 flat clean err: {_fce}')
+
+            time.sleep(20)
 
 
 if __name__ == "__main__":
