@@ -539,7 +539,9 @@ def _main_loop():
         """Последние 2 дня H1 LKOH-класса (акции), возвращает список закрытых баров (кроме текущего часа)."""
         tok = _finam_token()
         now = _dt.utcnow()   # F-151: UTC нужен ТОЛЬКО для интервала /bars (формат API Finam 'Z'); бары конвертируются в МСК ниже
-        url = (f"https://api.finam.ru/v1/instruments/{SYMBOL}/bars?timeframe=TIME_FRAME_H1"
+        _tfm = int(cfg.get("tf_min", 60) or 60)   # F-165: ТФ робота (M15 -> M15-бары)
+        _tf_code = (f"TIME_FRAME_M{_tfm}" if _tfm < 60 else f"TIME_FRAME_H{_tfm // 60}")
+        url = (f"https://api.finam.ru/v1/instruments/{SYMBOL}/bars?timeframe={_tf_code}"
                f"&interval.start_time={(now - _td(days=3)).strftime('%Y-%m-%dT%H:%M:%SZ')}"
                f"&interval.end_time={now.strftime('%Y-%m-%dT%H:%M:%SZ')}")
         r = _uq.Request(url)
@@ -547,7 +549,7 @@ def _main_loop():
         with _uq.urlopen(r, timeout=15) as resp:
             d = _json.loads(resp.read().decode())
         out = []
-        hour_ago = now + _td(hours=3) - _td(minutes=65)   # F-150: порог в МСК-naive (как bt: UTC+3), иначе свежие бары skip на 3+ часа
+        hour_ago = now + _td(hours=3) - _td(minutes=_tfm + 5)   # F-165: порог = текущий интервал ТФ + 5 мин   # F-150: порог в МСК-naive (как bt: UTC+3), иначе свежие бары skip на 3+ часа
         for b in d.get("bars", []):
             ts = b.get("timestamp", "").replace("Z", "").replace("+00:00", "")
             g = lambda k: b.get(k, {}).get("value", b.get(k))
@@ -768,7 +770,7 @@ def _main_loop():
                         if feed.append_closed_bar(bt, o, h, l, c, v):
                             new_count += 1
                     if new_count:
-                        log.info(f"live feed: +{new_count} closed H1 bars (last {bars[-1][0] if bars else '?'})")
+                        log.info(f"live feed: +{new_count} closed bars tf={cfg.get('tf_min')} (last {bars[-1][0] if bars else '?'})")
                         ev = strategy.on_closed_bar()
                         if ev.get("events"):
                             log.info(f"strategy events: {ev['events']}")
@@ -834,7 +836,8 @@ if __name__ == "__main__":
         import urllib.request as _uw
         import json as _uj
         from datetime import datetime as _dtu, timedelta as _tdd
-        _url = f"http://127.0.0.1:5050/api/candles?ticker={TICKER}&tf=60&days=30"
+        _warm_tf = int(cfg.get("tf_min", 60) or 60)
+        _url = f"http://127.0.0.1:5050/api/candles?ticker={TICKER}&tf={_warm_tf}&days=30"
         with _uw.urlopen(_url, timeout=20) as _r:
             _candles = _uj.loads(_r.read())
         _n = 0
@@ -844,7 +847,7 @@ if __name__ == "__main__":
                                       float(_c["c"]), float(_c["v"] or 0)):
                 _n += 1
         warm = feed.bars is not None and len(feed.bars) >= 100
-        log.info(f"F-114: warmup from /api/candles: +{_n} H1 bars")
+        log.info(f"F-114: warmup from /api/candles: +{_n} bars (tf={_warm_tf})")
     except Exception as _we:
         log.error(f"F-114 warmup candles failed: {_we} — fallback to csv")
         warm = feed.warmup_from_csv(TICKER) if DATA_DIR else False
