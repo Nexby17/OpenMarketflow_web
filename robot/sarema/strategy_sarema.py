@@ -457,8 +457,9 @@ class SaremaStrategy:
         _entry = float(rec.get("entry", 0))
         _qty = int(float(rec.get("qty", 0)))
         _dir = 1 if rec.get("dir") == "L" else -1
-        _commission = round(_qty * 0.90, 2)
-        _net = (exit_px - _entry) * _dir * _qty - _commission
+        # F-162: комиссия не моделируем (0.90/лот было неверно для акций) — PnL чистый по цене
+        _commission = 0.0
+        _net = (exit_px - _entry) * _dir * _qty
         close_rec = {
             "date_close": _now.strftime("%Y-%m-%d"),
             "time_close": _now.strftime("%H:%M:%S"),

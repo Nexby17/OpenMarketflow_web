@@ -147,8 +147,13 @@ def _pnl_block() -> dict:
                 unreal = round((mark - state.entry_price) * state.direction * state.lots_qty, 2)
     except Exception:
         pass
-    total = round(state.total_pnl + (unreal or 0.0), 2)
-    return {"total": state.total_pnl, "trades": state.trades_done,
+    # F-162: total из журнала НА ДИСКЕ (правильный PnL по цене, без фантомной комиссии)
+    _disk = _load_state_file()
+    _hist = _disk.get("trade_history", [])
+    _jp = sum((r.get("close") or {}).get("pnl") or 0.0 for r in _hist if r.get("status") == "closed")
+    _jc = sum(1 for r in _hist if r.get("status") == "closed")
+    total = round(_jp + (unreal or 0.0), 2)
+    return {"total": round(_jp, 2), "trades": _jc,
             "unrealized": unreal, "total_with_unrealized": total, "mark_source": src}
 
 
@@ -172,10 +177,12 @@ def status():
         "dir": state.direction,
         "value_used": state.lots_qty * state.entry_price if state.entry_price else 0.0,
     }
-    # F-091: общий ПнЛ торгового журнала = Σ pnl закрытых сделок (реальные fill-цены)
-    _hist = state.trade_history or []
+    # F-162: ПнЛ журнала читаем С ДИСКА (как /journal) — память может расходиться с диском.
+    _disk = _load_state_file()
+    _hist = _disk.get("trade_history", state.trade_history or [])
     _journal_pnl = sum((r.get("close") or {}).get("pnl") or 0.0
                        for r in _hist if r.get("status") == "closed")
+    _journal_trades = sum(1 for r in _hist if r.get("status") == "closed")
     return {
         "robot": "sarema", "ticker": TICKER, "symbol": SYMBOL, "port": PORT,
         "mode": state.mode, "position": pos,
@@ -781,24 +788,24 @@ def _main_loop():
         except Exception as e:
             log.exception(f"loop error: {e}")
         # F-107: превентивный само-перезапуск раз в 20 часов (свежий JWT из .env, свежий код)
+        # F-158: периодическая чистка висячих заявок во ФЛЭТЕ (раз в ~5 мин)
+        if state.mode == "running" and state.direction == 0:
+            try:
+                if time.time() - _last_flat_clean[0] > 300:
+                    _last_flat_clean[0] = time.time()
+                    _cn = orders.cancel_all_robot_orders()
+                    if _cn:
+                        log.info(f'F-158: ФЛЭТ-чистка сняла {_cn} висячих заявок')
+            except Exception as _fce:
+                log.error(f'F-158 flat clean err: {_fce}')
+
         if time.time() - _start_ts >= _RESTART_AFTER:
             log.warning("F-107: 20h reached — self-restart for fresh JWT")
             state.save()
             _py = _sys.executable
             _os.execl(_py, _py, "-X", "utf8", _os.path.abspath(__file__), "--port", str(PORT))
-        
-            # F-158: периодическая чистка висячих заявок во ФЛЭТЕ (раз в ~5 мин)
-            if state.mode == "running" and state.direction == 0:
-                try:
-                    if time.time() - _last_flat_clean[0] > 300:
-                        _last_flat_clean[0] = time.time()
-                        _cn = orders.cancel_all_robot_orders()
-                        if _cn:
-                            log.info(f'F-158: ФЛЭТ-чистка сняла {_cn} висячих заявок')
-                except Exception as _fce:
-                    log.error(f'F-158 flat clean err: {_fce}')
 
-            time.sleep(20)
+        time.sleep(20)
 
 
 if __name__ == "__main__":
