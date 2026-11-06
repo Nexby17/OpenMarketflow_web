@@ -95,7 +95,8 @@ function sarSwitchInstance(inst) {
                 <strong>График <span id="sarChartTicker" style="color:var(--accent)"></span> — SAR/EMA</strong>
                 <div style="display:flex;gap:6px;align-items:center">
                     <span class="text-secondary" style="font-size:12px">Таймфрейм</span>
-                    <select id="sarChartTf" class="input" style="width:70px" onchange="this.dataset.auto='0';sarChartReload()">
+                    <select id="sarChartTf" class="input" style="width:70px" onchange="this.dataset.auto='0';try{localStorage.setItem('sarChartTf_'+(sarPanelInst||'mtlr'), this.value);}catch(e){}sarChartReload()">
+                        <option value="5">M5</option>
                         <option value="15">M15</option>
                         <option value="30">M30</option>
                         <option value="60">H1</option>
@@ -974,7 +975,12 @@ async function sarChartLoad(inst) {
     const tfSel = document.getElementById('sarChartTf');
     // F-163: TF графика по умолчанию = tf_min робота (/params); ручной выбор пользователя сохраняется
     let tf = tfSel ? (parseInt(tfSel.value, 10) || 0) : 0;
-    if (!tf || tfSel.dataset.auto !== '0') {
+    const lsKey = 'sarChartTf_' + inst;
+    const lsTf = parseInt(localStorage.getItem(lsKey) || '0', 10);
+    const userPicked = tfSel && tfSel.dataset.auto === '0'; // менял вручную в этой сессии
+    if (!userPicked && lsTf > 0 && tfSel) { tf = lsTf; tfSel.value = String(lsTf); } // F-163: сохранённый выбор
+    const needAuto = !userPicked && lsTf <= 0;
+    if (!tf || needAuto) {
         try {
             const pr = await fetch(sarApi(inst) + '/params', { signal: AbortSignal.timeout(4000) });
             const pp = await pr.json();
@@ -983,6 +989,7 @@ async function sarChartLoad(inst) {
                 if ([...tfSel.options].some(o => parseInt(o.value,10) === tfr)) {
                     tfSel.value = String(tfr);
                     tfSel.dataset.auto = '0';
+                    localStorage.setItem(lsKey, String(tfr)); // F-163: сохранить авто-TF
                 }
             }
         } catch (e) {}
@@ -1104,3 +1111,11 @@ document.addEventListener('click', async (ev) => {
         alert('Ошибка: ' + e.message);
     }
 });
+
+// F-163: быстрый reload графика (переключение TF) — sarChartLoad сам решает: если инстанс тот же,
+// график НЕ дестроится и данные обновятся через setData (быстро даже в Я.браузере).
+window.sarChartReload = function() {
+    if (typeof sarPanelInst !== 'undefined' && sarPanelInst && typeof sarChartLoad === 'function') {
+        sarChartLoad(sarPanelInst);
+    }
+};
