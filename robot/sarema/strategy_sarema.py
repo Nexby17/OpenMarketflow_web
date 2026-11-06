@@ -190,7 +190,9 @@ class SaremaStrategy:
             # F-161: после закрытия по стопу старый сигнал погашен — вход только по сигналу,
             # возникшему НА баре стопа или позже
             _lsb = str(getattr(self.state, 'last_stop_bar', '') or '')
-            if _lsb and str(g2['begin'].iloc[j]) <= _lsb:
+            if _lsb and str(g2['begin'].iloc[j]) < _lsb:
+                # F-164: гасим только СТРОГО старее стоп-бара; кросс на баре стопа = свежий
+                # разворотный сигнал (возник одновременно со стопом) — разрешаем
                 entry_sig = None
                 events.append({'event': 'entry_skipped_post_stop', 'signal_bar': str(g2['begin'].iloc[j]), 'stop_bar': _lsb})
                 return {'events': events, 'last_bar': str(g2['begin'].iloc[-1])}
@@ -350,7 +352,7 @@ class SaremaStrategy:
         self.state.entry_price = fill_price   # F-121: РЕАЛЬНАЯ цена исполнения
         self.state.stop_price = stop0
         self.state.initial_stop_price = stop0   # F-098: база трейлинга (стоп не двигается ближе этого зазора)
-        self.state.entry_time = datetime.utcnow().isoformat()
+        self.state.entry_time = (datetime.utcnow() + _td(hours=3)).isoformat()  # F-164: МСК
         self._place_broker_stop(stop0, qty, direction)
         # F-105: TP-лимитка (fixed: от входа; sar: от SAR последнего бара)
         try:
