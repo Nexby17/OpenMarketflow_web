@@ -6888,20 +6888,37 @@ async function ofMxRobotApi(action) {
     try {
         // F-012: одна кнопка = поднять процесс + включить
         if (action === 'start') {
-            showToast('⏳ Поднимаю процесс MXU6 (подключение к Finam ~15с)...', 'info');
+            // F-071 (6.11): если робот уже отвечает на своём порту — НЕ дёргаем C# process-start.
+            // При истёкшей сессии он возвращал 401, кнопка делала return и /start не уходил
+            // (3 дня подряд «не запустился»). Робот жив = поднимать нечего.
+            let robotAlive = false;
             try {
-                const pr = await fetch('/api/of/process/of_mx/start', {method: 'POST', signal: AbortSignal.timeout(35000)});
-                const pd = await pr.json();
-                if (!pd.ok) {
-                    showToast('❌ Процесс MXU6 не поднялся: ' + (pd.error || '?'), 'error');
-                    addLog(nowTime(), 'ERROR', 'MXU6 process start failed: ' + (pd.error || '?'));
+                const hp = await fetch(OF_MX_ROBOT_API + '/health', {signal: AbortSignal.timeout(2500)});
+                robotAlive = hp.ok;
+            } catch (he) { robotAlive = false; }
+            if (!robotAlive) {
+                showToast('⏳ Поднимаю процесс MXU6 (подключение к Finam ~15с)...', 'info');
+                try {
+                    const pr = await fetch('/api/of/process/of_mx/start', {method: 'POST', signal: AbortSignal.timeout(35000)});
+                    const pd = await pr.json();
+                    if (pr.status === 401) {
+                        showToast('🔐 Сессия истекла — нажми Ctrl+F5 и перезайди, затем ▶ ещё раз', 'error');
+                        addLog(nowTime(), 'ERROR', 'MXU6 process start: 401 Unauthorized (сессия истекла)');
+                        return;
+                    }
+                    if (!pd.ok) {
+                        showToast('❌ Процесс MXU6 не поднялся: ' + (pd.error || '?'), 'error');
+                        addLog(nowTime(), 'ERROR', 'MXU6 process start failed: ' + (pd.error || '?'));
+                        return;
+                    }
+                    showToast('🟢 Процесс MXU6 поднят' + (pd.alreadyRunning ? ' (уже работал)' : ''), 'ok');
+                } catch(pe) {
+                    showToast('❌ Не удалось поднять процесс MXU6: ' + pe.message, 'error');
+                    addLog(nowTime(), 'ERROR', 'MXU6 process start error: ' + pe.message);
                     return;
                 }
-                showToast('🟢 Процесс MXU6 поднят' + (pd.alreadyRunning ? ' (уже работал)' : ''), 'ok');
-            } catch(pe) {
-                showToast('❌ Не удалось поднять процесс MXU6: ' + pe.message, 'error');
-                addLog(nowTime(), 'ERROR', 'MXU6 process start error: ' + pe.message);
-                return;
+            } else {
+                showToast('ℹ Процесс уже работает — запускаю торговлю напрямую', 'info');
             }
         }
         // F-068 fix (18.10): /stop ДОЛЖЕН уходить первым — раньше перед /stop шёл POST /account,
