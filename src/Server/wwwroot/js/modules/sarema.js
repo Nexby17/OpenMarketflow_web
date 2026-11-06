@@ -95,10 +95,10 @@ function sarSwitchInstance(inst) {
                 <strong>График <span id="sarChartTicker" style="color:var(--accent)"></span> — SAR/EMA</strong>
                 <div style="display:flex;gap:6px;align-items:center">
                     <span class="text-secondary" style="font-size:12px">Таймфрейм</span>
-                    <select id="sarChartTf" class="input" style="width:70px" onchange="sarChartReload()">
+                    <select id="sarChartTf" class="input" style="width:70px" onchange="this.dataset.auto='0';sarChartReload()">
                         <option value="15">M15</option>
                         <option value="30">M30</option>
-                        <option value="60" selected>H1</option>
+                        <option value="60">H1</option>
                         <option value="120">H2</option>
                         <option value="240">H4</option>
                     </select>
@@ -972,7 +972,22 @@ async function sarChartLoad(inst) {
     const cfg = sarCfg(inst);
     const info = document.getElementById('sarChartInfo');
     const tfSel = document.getElementById('sarChartTf');
-    const tf = tfSel ? (parseInt(tfSel.value, 10) || 60) : 60;
+    // F-163: TF графика по умолчанию = tf_min робота (/params); ручной выбор пользователя сохраняется
+    let tf = tfSel ? (parseInt(tfSel.value, 10) || 0) : 0;
+    if (!tf || tfSel.dataset.auto !== '0') {
+        try {
+            const pr = await fetch(sarApi(inst) + '/params', { signal: AbortSignal.timeout(4000) });
+            const pp = await pr.json();
+            const tfr = parseInt(pp.tf_min, 10);
+            if (tfr > 0 && tfSel) {
+                if ([...tfSel.options].some(o => parseInt(o.value,10) === tfr)) {
+                    tfSel.value = String(tfr);
+                    tfSel.dataset.auto = '0';
+                }
+            }
+        } catch (e) {}
+        tf = tfSel ? (parseInt(tfSel.value, 10) || 60) : 60;
+    }
     const tickerEl = document.getElementById('sarChartTicker');
     if (tickerEl) tickerEl.textContent = cfg.label + ' · порт ' + cfg.port;
     if (info) info.textContent = 'Загрузка графика...';
