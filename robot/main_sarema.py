@@ -622,23 +622,16 @@ def _main_loop():
                                                 state.save()
                                                 log.info(f"F-153 BE: стоп -> безубыток {_ns_be:.2f} (mark={mark:.2f})")
 
-# F-146: число ступеней считается от ВХОДА (mark vs entry),
-                                    # а стоп-уровни отсчитываются от initial. Иначе при initial
-                                    # в 2% от входа лестница мгновенно перепрыгивала к цене
-                                    # (MTLR 04.11: вход 44.58, стоп уехал на 44.56 и сработал через 23с).
-                                    _eps = 0.005  # допуск полтикера (цены 2 знака) — ступень на границе
+# F-160z: ступени считаются ОТ INITIAL по движению ЦЕНЫ от INITIAL (правило Дмитрия 03.11: initial 45.07, цена ушла ниже на 0.2% -> стоп 44.98; синхронно за ценой, без отката).
+                                    _eps = 0.005
                                     if state.direction > 0:
-                                        _n = max(0, int((float(mark) - state.entry_price + _eps) / _step))
+                                        _n = max(0, int((float(mark) - _init + _eps) / _step))
                                         _want = _init + _n * _step
                                         _ns = max(state.stop_price, _want)
                                     else:
-                                        _n = max(0, int((state.entry_price - float(mark) + _eps) / _step))
+                                        _n = max(0, int((_init - float(mark) + _eps) / _step))
                                         _want = _init - _n * _step
                                         _ns = min(state.stop_price, _want)
-                                    # антидребезг: двигаем только при смене ступени (Δ ≥ шага)
-                                    _delta = (_ns - state.stop_price) if state.direction > 0 else (state.stop_price - _ns)
-                                    if _delta < _step - 1e-9:
-                                        _ns = state.stop_price
                                     if abs(_ns - state.stop_price) > 1e-9:
                                         strategy._replace_broker_stop(_ns)
                                         state.stop_price = _ns
@@ -660,6 +653,10 @@ def _main_loop():
                                         state.save()
                                         continue
                                     _pnl = (state.stop_price - state.entry_price) * (-1 if state.direction < 0 else 1) * state.lots_qty
+                                    try:
+                                        state.last_stop_bar = str((strategy.last_stats or {}).get('last_bar') or '')
+                                    except Exception:
+                                        state.last_stop_bar = ''
                                     log.warning(f'F-129: стоп ИСПОЛНЕН брокером (PnL≈{_pnl:.0f}₽) — синхронизирую FLAT')
                                     try:
                                         _ca = orders.cancel_all_robot_orders()
@@ -743,6 +740,12 @@ def _main_loop():
 
                         breached = bool(state.stop_price) and ((mark <= state.stop_price) if state.direction > 0 else (mark >= state.stop_price))
                         if breached:
+                            # F-161: запомнить бар стопа — старые противоположные сигналы не должны
+                            # открывать позицию сразу после стопа
+                            try:
+                                state.last_stop_bar = str((strategy.last_stats or {}).get('last_bar') or '')
+                            except Exception:
+                                state.last_stop_bar = ''
                             log.warning(f"STOP-HIT: mark={mark} vs stop={state.stop_price} (src={src}) — закрываю маркетом")
                             ev = strategy.close_position(reason="stop-hit")
                             log.warning(f"stop-hit close result: {ev}")

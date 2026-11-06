@@ -187,6 +187,13 @@ class SaremaStrategy:
                 entry_sig = None              # SAR уже вернулся ниже EMA — шорт-кросс отменился
         if self.state.direction == FLAT and entry_sig:
             j, direction = entry_sig
+            # F-161: после закрытия по стопу старый сигнал погашен — вход только по сигналу,
+            # возникшему НА баре стопа или позже
+            _lsb = str(getattr(self.state, 'last_stop_bar', '') or '')
+            if _lsb and str(g2['begin'].iloc[j]) <= _lsb:
+                entry_sig = None
+                events.append({'event': 'entry_skipped_post_stop', 'signal_bar': str(g2['begin'].iloc[j]), 'stop_bar': _lsb})
+                return {'events': events, 'last_bar': str(g2['begin'].iloc[-1])}
             sig_age = i - j
             # F-065: VA-гейт (VP Mode) — ДО лимитов/сайзинга; сигнал не расходуется
             vp_mode = self._vp_mode()
