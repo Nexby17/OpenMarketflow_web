@@ -1,5 +1,5 @@
 {
- "mode": "running",
+ "mode": "stopped",
  "direction": 0,
  "lots_qty": 0,
  "entry_price": 0.0,
@@ -7,7 +7,7 @@
  "initial_stop_price": 0.0,
  "tp_order_id": null,
  "stop_order_id": null,
- "entry_time": "2026-11-09T10:36:22.513535",
+ "entry_time": null,
  "base": 20000.0,
  "pending_signal": null,
  "kill_day": null,
@@ -26,8 +26,8 @@
  },
  "total_pnl": -87.32,
  "trades_done": 15,
- "last_entry_signal_bar": "2026-11-09 08:45:00",
- "auto_start_disabled": false,
+ "last_entry_signal_bar": "2026-11-09 11:15:00",
+ "auto_start_disabled": true,
  "trade_history": [
   {
    "tic": "MTLR",
@@ -340,6 +340,22 @@
     "R": 0.0,
     "reason": "stop-filled-broker"
    }
+  },
+  {
+   "tic": "MTLR",
+   "tf": "M15",
+   "date_open": "2026-11-09",
+   "time_open": "11:52:21",
+   "dir": "S",
+   "entry": 44.97,
+   "qty": 443,
+   "volume": 19921.71,
+   "risk_pct": 2.0,
+   "risk_pts": 0.9,
+   "stop": 45.87,
+   "vp": "signal",
+   "status": "open",
+   "close": null
   }
  ]
 }
