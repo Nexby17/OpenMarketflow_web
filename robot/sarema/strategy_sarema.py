@@ -329,13 +329,13 @@ class SaremaStrategy:
         # уточняет entry; здесь предварительный стоп от price_hint, дальше /resync)
         stop0 = fill_price - stop_dist if direction == LONG else fill_price + stop_dist   # F-121: от РЕАЛЬНОЙ цены
         # запись в журнал позиций (логика таблицы Дмитрия): открытие — сразу при входе
-        from datetime import date as _date
-        _now = datetime.utcnow()
+        from datetime import timedelta as _td_open
+        _now = datetime.utcnow() + _td_open(hours=3)  # F-169: МСК
         risk_pts = stop_dist
         vp_mode = self._vp_mode()
         self.state.journal_open({
             "tic": self.ticker,
-            "tf": "H1",
+            "tf": f"M{int(self.cfg.get('tf_min', 60))}" if int(self.cfg.get('tf_min', 60) or 60) < 60 else f"H{int(self.cfg.get('tf_min', 60) or 60) // 60}",
             "date_open": _now.strftime("%Y-%m-%d"),
             "time_open": _now.strftime("%H:%M:%S"),
             "dir": "L" if direction == LONG else "S",
@@ -508,8 +508,8 @@ class SaremaStrategy:
             return {"event": "close_error", "error": self.orders.last_error}
         log.info(f"close reason={reason} qty={self.state.lots_qty}")
         # закрытие в журнал позиций: дозапись справа в открытую строку (логика Дмитрия)
-        from datetime import datetime as _dt
-        _now = _dt.utcnow()
+        from datetime import timedelta as _dt_td
+        _now = _dt.utcnow() + _dt_td(hours=3)  # F-169: МСК
         _entry = self.state.entry_price
         _qty = self.state.lots_qty
         _dir = self.state.direction
