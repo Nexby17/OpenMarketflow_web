@@ -821,6 +821,54 @@ def _main_loop():
 
 
 if __name__ == "__main__":
+    # F-173: PID-замок — каждый новый пуск стартует ЧИСТЫМ: убивает зомби-процессы прошлых
+    # запусков (они висели параллельно и торговали по старому коду/старому state).
+    import os as _os, sys as _sys2
+    try:
+        import ctypes
+        _k32 = ctypes.windll.kernel32
+        _k32.SetConsoleCtrlHandler(None, True)  # отключаем Ctrl+C handler для детерминированного выхода
+    except Exception:
+        pass
+    _LOCK_FILE = _os.path.join(_os.path.dirname(_os.path.abspath(__file__)),
+                               f".lock_sarema_{TICKER}.pid")
+    def _pid_alive(pid: int) -> bool:
+        try:
+            import ctypes
+            PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+            h = ctypes.windll.kernel32.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, False, int(pid))
+            if not h:
+                return False
+            ctypes.windll.kernel32.CloseHandle(h)
+            return True
+        except Exception:
+            return False
+    try:
+        if _os.path.exists(_LOCK_FILE):
+            _old = int(open(_LOCK_FILE, encoding="utf-8").read().strip() or 0)
+            if _old and _old != _os.getpid() and _pid_alive(_old):
+                # зомби прошлого пуска жив — убиваем (новый пуск всегда чистый)
+                try:
+                    import subprocess as _sp
+                    _sp.check_output(["taskkill", "/F", "/PID", str(_old)],
+                                     stderr=_sp.DEVNULL, text=True)
+                    print(f"F-173: убит зомби-процесс прошлого пуска pid={_old}")
+                except Exception:
+                    pass
+    except Exception:
+        pass
+    with open(_LOCK_FILE, "w", encoding="utf-8") as _f:
+        _f.write(str(_os.getpid()))
+
+    def _cleanup_lock():
+        try:
+            if _os.path.exists(_LOCK_FILE):
+                _os.remove(_LOCK_FILE)
+        except Exception:
+            pass
+    import atexit as _atexit
+    _atexit.register(_cleanup_lock)
+
     # RobotProcessManager передаёт --port (совместимость с OF-паттерном запуска)
     import sys as _sys
     if "--port" in _sys.argv:
