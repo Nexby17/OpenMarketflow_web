@@ -55,7 +55,7 @@ app.add_middleware(
 
 _stop_lock = threading.Lock()             # F-060: идемпотентный /stop
 _SAR_LAST_RESTART = [0.0]
-_LAST_FLAT_CLEAN = [0.0]                 # F-158: таймер флэт-чистки                 # restart cooldown (90с, урок F-059)
+_last_flat_clean = [0.0]                 # F-158: таймер флэт-чистки                 # restart cooldown (90с, урок F-059)
 
 
 class ParamsPatch(BaseModel):
@@ -641,6 +641,15 @@ def _main_loop():
                                         _n = max(0, int((_init - float(mark) + _eps) / _step))
                                         _want = _init - _n * _step
                                         _ns = min(state.stop_price, _want)
+                                    # F-168: стоп всегда минимум на 1 шаг от текущей цены
+                                    if state.direction > 0:
+                                        _ns = min(_ns, float(mark) - _step)
+                                    else:
+                                        _ns = max(_ns, float(mark) + _step)
+                                    if state.direction > 0:
+                                        _ns = max(_ns, state.stop_price)
+                                    else:
+                                        _ns = min(_ns, state.stop_price)
                                     if abs(_ns - state.stop_price) > 1e-9:
                                         strategy._replace_broker_stop(_ns)
                                         state.stop_price = _ns
@@ -688,7 +697,7 @@ def _main_loop():
                                     state.save()
                                     continue
                                 # F-113: None (не ставился/после рестарта) или снят брокером → ставим/перевыставляем
-                                need_stop = (not state.stop_order_id) or orders.is_dead_order(state.stop_order_id)
+                                need_stop = state.direction != 0 and ((not state.stop_order_id) or orders.is_dead_order(state.stop_order_id))  # F-168: ФЛЭТ — стопы не ставим
                                 if need_stop:
                                     log.warning('F-113: стоп-заявка отсутствует/снята — ставлю брокерский стоп')
                                     strategy._place_broker_stop(state.stop_price, state.lots_qty, state.direction)
