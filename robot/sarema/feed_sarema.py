@@ -64,11 +64,13 @@ class H1Feed:
 
     # ---------- append закрытого бара (из REST/гРПС подписки) ----------
     def append_closed_bar(self, begin: datetime, o: float, h: float, l: float,
-                          c: float, volume: float) -> bool:
-        """Добавляет ЗАКРЫТЫЙ бар. Бар с begin в будущем (незакрытый) отклоняется."""
+                          c: float, volume: float, bar_minutes: int = 60) -> bool:
+        """Добавляет ЗАКРЫТЫЙ бар ТФ bar_minutes. Незакрытый (begin + ТФ > now+1м) — отклоняется.
+        F-165b: bar_minutes от ТФ робота (для M15 жёсткий hours=1 отбрасывал закрытые бары —
+        фид отставал на 45+ минут)."""
         begin = pd.Timestamp(begin)
         now = pd.Timestamp.now(tz=None)
-        if begin + pd.Timedelta(hours=1) > now + pd.Timedelta(minutes=1):
+        if begin + pd.Timedelta(minutes=bar_minutes) > now + pd.Timedelta(minutes=1):
             log.warning(f"reject unclosed bar {begin}")
             return False
         if self.bars is None:

@@ -775,8 +775,9 @@ def _main_loop():
                 try:
                     bars = _fetch_recent_h1()
                     new_count = 0
+                    _tfm_live = int(cfg.get("tf_min", 60) or 60)
                     for (bt, o, h, l, c, v) in bars:
-                        if feed.append_closed_bar(bt, o, h, l, c, v):
+                        if feed.append_closed_bar(bt, o, h, l, c, v, bar_minutes=_tfm_live):
                             new_count += 1
                     if new_count:
                         log.info(f"live feed: +{new_count} closed bars tf={cfg.get('tf_min')} (last {bars[-1][0] if bars else '?'})")
@@ -850,10 +851,11 @@ if __name__ == "__main__":
         with _uw.urlopen(_url, timeout=20) as _r:
             _candles = _uj.loads(_r.read())
         _n = 0
+        _warm_tf_min = int(cfg.get("tf_min", 60) or 60)
         for _c in _candles:
             _bt = _dtu.utcfromtimestamp(int(_c["t"])) + _tdd(hours=3)   # UTC → МСК-naive (как F-112)
             if feed.append_closed_bar(_bt, float(_c["o"]), float(_c["h"]), float(_c["l"]),
-                                      float(_c["c"]), float(_c["v"] or 0)):
+                                      float(_c["c"]), float(_c["v"] or 0), bar_minutes=_warm_tf_min):
                 _n += 1
         warm = feed.bars is not None and len(feed.bars) >= 100
         log.info(f"F-114: warmup from /api/candles: +{_n} bars (tf={_warm_tf})")
