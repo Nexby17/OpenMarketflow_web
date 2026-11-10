@@ -631,25 +631,26 @@ def _main_loop():
                                                 state.save()
                                                 log.info(f"F-153 BE: стоп -> безубыток {_ns_be:.2f} (mark={mark:.2f})")
 
-# F-160z: ступени считаются ОТ INITIAL по движению ЦЕНЫ от INITIAL (правило Дмитрия 03.11: initial 45.07, цена ушла ниже на 0.2% -> стоп 44.98; синхронно за ценой, без отката).
-                                    _eps = 0.005
-                                    if state.direction > 0:
-                                        _n = max(0, int((float(mark) - _init + _eps) / _step))
-                                        _want = _init + _n * _step
-                                        _ns = max(state.stop_price, _want)
+# F-178: ПРАВИЛА ДМИТРИЯ (его текст 10.11 12:58):
+                                    # 1) вход -> стоп initial (2%)
+                                    # 2) цена в плюс на be_value (0.7%) от ВХОДА -> стоп = БЕЗУБЫТОК (entry)
+                                    # 3) далее каждые trail_value (0.2%) хода цены от ВХОДА -> стоп += trail от ВХОДА
+                                    _entry_f = float(state.entry_price)
+                                    _step = _entry_f * float(cfg.get("trail_value", 0.2)) / 100.0
+                                    _be_trig = _entry_f * float(cfg.get("be_value", 0.7)) / 100.0
+                                    _gain = (float(mark) - _entry_f) * (1 if state.direction > 0 else -1)
+                                    _be_done = (state.stop_price >= _entry_f - 1e-9) if state.direction > 0 else (state.stop_price <= _entry_f + 1e-9)
+                                    if not _be_done and _gain >= _be_trig:
+                                        _ns = round(_entry_f, 2)  # БЕЗУБЫТОК
                                     else:
-                                        _n = max(0, int((_init - float(mark) + _eps) / _step))
-                                        _want = _init - _n * _step
-                                        _ns = min(state.stop_price, _want)
-                                    # F-168: стоп всегда минимум на 1 шаг от текущей цены
-                                    if state.direction > 0:
-                                        _ns = min(_ns, float(mark) - _step)
-                                    else:
-                                        _ns = max(_ns, float(mark) + _step)
-                                    if state.direction > 0:
-                                        _ns = max(_ns, state.stop_price)
-                                    else:
-                                        _ns = min(_ns, state.stop_price)
+                                        # F-178 fix: пока BE не достигнут — стоп остаётся initial
+                                        # (阶梯 не прыгает на entry без триггера — баг мгновенного выбоя 09.11)
+                                        _n = max(0, int((_gain - _be_trig) / _step))
+                                        _want = round(_entry_f + (1 if state.direction > 0 else -1) * _n * _step, 2)
+                                        if state.direction > 0:
+                                            _ns = max(state.stop_price, min(_want, _entry_f)) if _be_done else max(state.stop_price, state.initial_stop_price if state.initial_stop_price else state.stop_price)
+                                        else:
+                                            _ns = min(state.stop_price, max(_want, _entry_f)) if _be_done else min(state.stop_price, state.initial_stop_price if state.initial_stop_price else state.stop_price)
                                     if abs(_ns - state.stop_price) > 1e-9:
                                         strategy._replace_broker_stop(_ns)
                                         state.stop_price = _ns
