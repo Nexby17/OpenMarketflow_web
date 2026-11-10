@@ -481,6 +481,15 @@ def post_params(patch: ParamsPatch):
     return {"ok": True, "params": cfg}
 
 
+def _dp_position(ticker: str) -> dict:
+    """F-181: позиция по тикеру через DataProvider (:5060). dir/lots/avg_price."""
+    try:
+        import urllib.request as _uq
+        with _uq.urlopen(f"http://localhost:5060/position?account={ACCOUNT_ID}&ticker={ticker}", timeout=5) as _r:
+            return json.loads(_r.read())
+    except Exception:
+        return {}
+
 def _main_loop():
     """Цикл робота: раз в минуту проверяет новый закрытый H1-бар; при появлении —
     strategy.on_closed_bar(). Рестарт между итерациями через state."""
@@ -685,6 +694,22 @@ def _main_loop():
                                     state.save()
                                     continue
                                 # F-113: None (не ставился/после рестарта) или снят брокером → ставим/перевыставляем
+                                # F-181: сверка СВОЕЙ позиции с брокером (MTLR торгуется только роботом):
+                                # если брокер показывает другую сторону/флэт — синхронизировать state.
+                                try:
+                                    _dp = _dp_position(TICKER)
+                                    _sd = int(state.direction or 0)
+                                    _bd = int(_dp.get("dir") or 0)
+                                    if _sd != _bd:
+                                        log.warning(f'F-181: рассинхрон state={_sd} vs брокер={_bd} — синхронизирую')
+                                        state.direction = _bd
+                                        state.lots_qty = int(_dp.get("lots") or 0)
+                                        state.entry_price = float(_dp.get("avg_price") or 0)
+                                        state.stop_order_id = None
+                                        state.tp_order_id = None
+                                        state.save()
+                                except Exception as _synce:
+                                    log.error(f'F-181 sync err: {_synce}')
                                 need_stop = state.direction != 0 and ((not state.stop_order_id) or orders.is_dead_order(state.stop_order_id))  # F-168: ФЛЭТ — стопы не ставим
                                 if need_stop:
                                     log.warning('F-113: стоп-заявка отсутствует/снята — ставлю брокерский стоп')

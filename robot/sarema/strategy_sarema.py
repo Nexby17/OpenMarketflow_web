@@ -505,8 +505,8 @@ class SaremaStrategy:
             return {"event": "close_error", "error": self.orders.last_error}
         log.info(f"close reason={reason} qty={self.state.lots_qty}")
         # закрытие в журнал позиций: дозапись справа в открытую строку (логика Дмитрия)
-        from datetime import timedelta as _dt_td
-        _now = _dt.utcnow() + _dt_td(hours=3)  # F-169: МСК
+        from datetime import datetime as _dt, timedelta as _dt_td
+        _now = _dt.utcnow() + _dt_td(hours=3)  # F-181: МСК (и импорт _dt на месте — раньше падал NameError)
         _entry = self.state.entry_price
         _qty = self.state.lots_qty
         _dir = self.state.direction
