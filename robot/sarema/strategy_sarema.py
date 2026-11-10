@@ -422,13 +422,10 @@ class SaremaStrategy:
             return 0
 
     def _place_broker_stop(self, stop: float, qty: int, direction: int) -> None:
-        """F-113: брокерский STOP-ордер (place_stop_loss) — СТРАХОВОЧНАЯ заявка у брокера:
-        ставится на 0.05 ДАЛЬШЕ роботовского уровня (F-168), чтобы при активном роботе
-        программный стоп закрывал позицию маркетом С КОММЕНТАРИЕМ раньше брокерской
-        конверсии. При офлайне робота страховка всё равно отработает."""
-        _offset = 0.05 * (1 if direction < 0 else -1)  # шорт: выше, лонг: ниже
-        _broker_stop = round(stop + _offset, 2)
-        po = self.orders.place_stop_loss(direction, qty, _broker_stop, tag="sarema-stop")
+        """F-180: брокерский STOP-ордер ставится ТОЧНО на уровень стопа (без offset).
+        Закрытие позиции — исполнением этой заявки брокером (правило Дмитрия: робот не
+        закрывает позиции маркетом сам; заявки проверяются и перевыставляются F-113)."""
+        po = self.orders.place_stop_loss(direction, qty, stop, tag="sarema-stop")
         self.stop_order_id = po.order_id if po else None
         self.state.stop_order_id = self.stop_order_id
         if not po:

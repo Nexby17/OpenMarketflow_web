@@ -570,20 +570,7 @@ def _main_loop():
 
     while True:
         try:
-            # --- F-084: TAKE-PROFIT по R — закрытие при ПнЛ ≥ tp_R × риск ---
-            if state.mode == "running" and state.direction != 0 and cfg.get("tp_R"):
-                try:
-                    mark, src = _live_mark()
-                    if mark is not None:
-                        risk_rub = state.base * cfg.get("risk_pct", 0.015)
-                        pnl_now = (mark - state.entry_price) * state.direction * state.lots_qty
-                        tp_target = risk_rub * float(cfg["tp_R"])
-                        if pnl_now >= tp_target:
-                            log.warning(f"TAKE-PROFIT: pnl={pnl_now:.2f} >= target={tp_target:.2f} (tp_R={cfg['tp_R']}) — закрываю маркетом")
-                            ev = strategy.close_position(reason="take-profit")
-                            log.warning(f"take-profit close result: {ev}")
-                except Exception as te:
-                    log.error(f"TP watchdog error: {te}")
+            # F-180: TP закрытие — только исполнением TP-лимитки брокером.
 
             # --- F-073: WATCHDOG СТОПА — работает всегда, пока есть позиция (running/paused) ---
             if state.mode in ("running", "paused"):
@@ -757,18 +744,13 @@ def _main_loop():
                         except Exception as _re_:
                             log.error(f'F-113 re-place error: {_re_}')
 
-                        breached = bool(state.stop_price) and ((mark <= state.stop_price) if state.direction > 0 else (mark >= state.stop_price))
-                        if breached:
-                            # F-161: запомнить бар стопа — старые противоположные сигналы не должны
-                            # открывать позицию сразу после стопа
+                        # F-180: позицию закрывает БРОКЕРСКИЙ СТОП (исполнением заявки робота).
+                        # Робот не закрывает маркетом сам. FLAT-sync (F-129) ниже по коду.
+                        if state.stop_order_id and state.direction != 0:
                             try:
                                 state.last_stop_bar = str((strategy.last_stats or {}).get('last_bar') or '')
                             except Exception:
                                 state.last_stop_bar = ''
-                            log.warning(f"STOP-HIT: mark={mark} vs stop={state.stop_price} (src={src}) — закрываю маркетом")
-                            ev = strategy.close_position(reason="stop-hit")
-                            log.warning(f"stop-hit close result: {ev}")
-                            # продолжаем цикл (позиция закрыта, stop_order_id обнулён в close_position)
                 except Exception as se:
                     log.error(f"stop watchdog error: {se}")
 
