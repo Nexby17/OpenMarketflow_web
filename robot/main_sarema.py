@@ -360,6 +360,69 @@ def journal():
     }
 
 
+@app.get("/journal_trades")
+def journal_trades(from_date: str = "", to_date: str = ""):
+    """F-182: сделки с ленты БРОКЕРА за период (как в терминале). Время МСК.
+    from_date/to_date: YYYY-MM-DD (пустые = сегодня). Источник: Finam REST /trades."""
+    import urllib.request as _uw
+    import json as _uj
+    from datetime import datetime as _dt, timedelta as _td
+    try:
+        # F-182: _finam_token вложена в _main_loop — здесь недоступна. Прямой POST /sessions.
+        import urllib.request as _uw2
+        import json as _uj2
+        import os as _os2
+        _sec = _os2.environ.get("FINAM_API_KEY")
+        if not _sec:
+            for _cand in (os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "src", "Server", "bin", "Debug", "net10.0", ".env"),):
+                if os.path.exists(_cand):
+                    with open(_cand, encoding="utf-8-sig") as _f:
+                        for _line in _f:
+                            if _line.strip().startswith("FINAM_API_KEY="):
+                                _sec = _line.split("=", 1)[1].strip()
+                                break
+        if not _sec:
+            raise HTTPException(500, "FINAM_API_KEY not found")
+        _sreq = _uw2.Request("https://api.finam.ru/v1/sessions", data=_uj2.dumps({"secret": _sec}).encode(), method="POST")
+        _sreq.add_header("Content-Type", "application/json")
+        with _uw2.urlopen(_sreq, timeout=15) as _sr:
+            _tok = _uj2.loads(_sr.read())["token"]
+        _sym = SYMBOL
+        if not from_date:
+            from_date = _dt.now().strftime("%Y-%m-%d")
+        if not to_date:
+            to_date = _dt.now().strftime("%Y-%m-%d")
+        _end_dt = _dt.strptime(to_date, "%Y-%m-%d") + _td(days=1)
+        url = (f"https://api.finam.ru/v1/accounts/{ACCOUNT_ID}/trades"
+               f"?interval.start_time={from_date}T00:00:00Z"
+               f"&interval.end_time={_end_dt.strftime('%Y-%m-%dT%H:%M:%SZ')}&limit=500")
+        req = _uw.Request(url)
+        req.add_header("Authorization", _tok)
+        with _uw.urlopen(req, timeout=30) as r:
+            d = _uj.loads(r.read())
+        trades = [t for t in d.get("trades", []) if _sym.split("@")[0] in str(t.get("symbol", ""))]
+        out = []
+        for t in sorted(trades, key=lambda x: x.get("timestamp", "")):
+            ts = str(t.get("timestamp", "")).replace("Z", "")
+            try:
+                msk = _dt.fromisoformat(ts) + _td(hours=3)
+                ts_msk = msk.strftime("%Y-%m-%d %H:%M:%S")
+            except Exception:
+                ts_msk = ts
+            qv = t.get("size", {})
+            qv = float(qv.get("value", 0)) if isinstance(qv, dict) else float(qv or 0)
+            pv = t.get("price", {})
+            pv = float(pv.get("value", 0)) if isinstance(pv, dict) else float(pv or 0)
+            out.append({"time": ts_msk,
+                        "side": str(t.get("side", "")).replace("SIDE_", ""),
+                        "qty": qv, "price": pv,
+                        "comment": str(t.get("comment", ""))})
+        return {"ticker": TICKER, "trades": out, "count": len(out),
+                "from": from_date, "to": to_date}
+    except Exception as e:
+        raise HTTPException(500, str(e))
+
+
 @app.delete("/journal")
 def journal_clear():
     """F-149: очистить торговый журнал (trade_history в state и на диске).
@@ -694,6 +757,25 @@ def _main_loop():
                                     state.save()
                                     continue
                                 # F-113: None (не ставился/после рестарта) или снят брокером → ставим/перевыставляем
+                                # F-183: чистка лишних sarema-* заявок при позиции (раз в цикл,
+                                # дешёвая проверка счётчиком, тяжёлая сверка раз в 5 мин)
+                                try:
+                                    if time.time() - getattr(_main_loop, "_last_pos_clean", 0) > 300:
+                                        _main_loop._last_pos_clean = time.time()
+                                        _acts = orders.list_active_stop_orders()
+                                        _keep_stop = str(state.stop_order_id or "")
+                                        _keep_tp = str(state.tp_order_id or "")
+                                        for _a in _acts:
+                                            _aid = str(_a.get("order_id", ""))
+                                            if not _aid:
+                                                continue
+                                            if _aid == _keep_stop or _aid == _keep_tp:
+                                                continue
+                                            orders.cancel(_aid)
+                                            log.info(f"F-183: снята лишняя заявка {_aid} при позиции")
+                                except Exception as _pce:
+                                    log.error(f"F-183 pos clean err: {_pce}")
+
                                 # F-181: сверка СВОЕЙ позиции с брокером (MTLR торгуется только роботом):
                                 # если брокер показывает другую сторону/флэт — синхронизировать state.
                                 try:
