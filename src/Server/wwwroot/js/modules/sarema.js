@@ -110,6 +110,34 @@ function sarSwitchInstance(inst) {
             <div id="sarChartSlot" style="min-height:320px;border:1px solid #2D2D44;border-radius:8px;background:#121826"><div id="sarChartHost" style="height:320px;background:#121826"></div></div>
             <div id="sarChartInfo" class="text-secondary" style="font-size:11.5px;margin-top:4px"></div>
             <hr style="border-color:#2D2D44;margin:12px 0">
+            <!-- F-182: Сделки брокера (лента) с выбором периода -->
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+                <strong>Сделки брокера (лента)</strong>
+                <span style="display:flex;gap:8px;align-items:center">
+                    <span class="text-secondary" style="font-size:12px">с</span>
+                    <input type="date" id="sarTradesFrom" class="input" style="width:140px">
+                    <span class="text-secondary" style="font-size:12px">по</span>
+                    <input type="date" id="sarTradesTo" class="input" style="width:140px">
+                    <button id="sarTradesLoad" class="btn btn-sm" style="padding:2px 10px;font-size:12px">Загрузить</button>
+                </span>
+            </div>
+            <div style="max-height:260px;overflow-y:auto;border:1px solid var(--border-color);border-radius:8px;margin-bottom:12px">
+                <table style="width:100%;border-collapse:collapse;font-size:12.5px">
+                    <thead style="position:sticky;top:0;z-index:1">
+                        <tr style="background:#1a2332;border-bottom:2px solid var(--accent)">
+                            <th style="padding:5px 8px;text-align:left">Время (МСК)</th>
+                            <th style="padding:5px 8px;text-align:left">Направление</th>
+                            <th style="padding:5px 8px;text-align:right">Объём</th>
+                            <th style="padding:5px 8px;text-align:right">Цена</th>
+                            <th style="padding:5px 8px;text-align:left">Комментарий</th>
+                        </tr>
+                    </thead>
+                    <tbody id="sarTradesTable">
+                        <tr><td colspan="5" class="text-secondary" style="padding:8px">Выберите период и нажмите «Загрузить»</td></tr>
+                    </tbody>
+                </table>
+            </div>
+            <hr style="border-color:#2D2D44;margin:12px 0">
             <!-- Торговый журнал: логика таблицы Дмитрия — открытые позиции сверху, закрытие дозаписывается справа -->
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
                 <strong>Журнал торговых операций</strong>
@@ -1119,3 +1147,42 @@ window.sarChartReload = function() {
         sarChartLoad(sarPanelInst);
     }
 };
+
+// F-182: Сделки брокера — выбор периода и загрузка ленты
+document.addEventListener('click', async (ev) => {
+    const btn = ev.target.closest('#sarTradesLoad');
+    if (!btn) return;
+    ev.preventDefault();
+    const fromV = document.getElementById('sarTradesFrom')?.value || '';
+    const toV = document.getElementById('sarTradesTo')?.value || '';
+    const tbl = document.getElementById('sarTradesTable');
+    if (!tbl) return;
+    tbl.innerHTML = '<tr><td colspan="5" class="text-secondary" style="padding:8px">Загрузка...</td></tr>';
+    try {
+        const inst = (typeof sarPanelInst !== 'undefined' && sarPanelInst) ? sarPanelInst : 'mtlr';
+        const cfgC = sarCfg(inst);
+        const qs = '/bars-journal-trades?' + new URLSearchParams({ from: fromV, to: toV });
+        const data = await fetchJson('/api/sarema/journal-trades/' + inst + (fromV || toV ? '?' + new URLSearchParams({ from: fromV, to: toV }) : ''), 30000).catch(async () =>
+            await fetchJson(sarApi(inst) + '/journal_trades?' + new URLSearchParams({ from_date: fromV, to_date: toV }), 30000));
+        const rows = (data.trades || []).map(t => {
+            const sideCls = t.side === 'BUY' ? 'color:var(--green)' : 'color:var(--red)';
+            const sideRu = t.side === 'BUY' ? 'Покупка' : 'Продажа';
+            return '<tr>' +
+                '<td style="padding:4px 8px">' + t.time + '</td>' +
+                '<td style="padding:4px 8px;color:' + sideCls + '">' + sideRu + '</td>' +
+                '<td style="padding:4px 8px;text-align:right">' + t.qty + '</td>' +
+                '<td style="padding:4px 8px;text-align:right">' + t.price.toFixed(2) + '</td>' +
+                '<td style="padding:4px 8px" class="text-secondary">' + (t.comment || '—') + '</td></tr>';
+        });
+        tbl.innerHTML = rows.length ? rows.join('') :
+            '<tr><td colspan="5" class="text-secondary" style="padding:8px">Сделок за период нет</td></tr>';
+    } catch (e) {
+        tbl.innerHTML = '<tr><td colspan="5" style="padding:8px;color:var(--red)">Ошибка: ' + e.message + '</td></tr>';
+    }
+});
+// дефолтные даты: сегодня
+document.addEventListener('DOMContentLoaded', () => {
+    const setD = (id, v) => { const el = document.getElementById(id); if (el && !el.value) el.value = v; };
+    const today = new Date().toISOString().slice(0, 10);
+    setD('sarTradesFrom', today); setD('sarTradesTo', today);
+});
