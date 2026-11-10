@@ -112,7 +112,7 @@ function sarSwitchInstance(inst) {
             <hr style="border-color:#2D2D44;margin:12px 0">
             <!-- F-182: Сделки брокера (лента) с выбором периода -->
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
-                <strong>Сделки брокера (лента)</strong>
+                <strong>Торговый журнал — все сделки (как у брокера)</strong>
                 <span style="display:flex;gap:8px;align-items:center">
                     <span class="text-secondary" style="font-size:12px">с</span>
                     <input type="date" id="sarTradesFrom" class="input" style="width:140px">
@@ -140,7 +140,7 @@ function sarSwitchInstance(inst) {
             <hr style="border-color:#2D2D44;margin:12px 0">
             <!-- Торговый журнал: логика таблицы Дмитрия — открытые позиции сверху, закрытие дозаписывается справа -->
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
-                <strong>Журнал торговых операций</strong>
+                <strong>Позиции робота (агрегат сделок)</strong>
                 <span style="display:flex;gap:10px;align-items:center">
                     <span class="text-secondary" style="font-size:12px">открытые сверху · закрытие в той же строке</span>
                     <button id="sarJournalClear" class="btn btn-danger btn-sm" style="padding:2px 10px;font-size:12px" title="Очистить журнал (только при ФЛЭТ)">Очистить</button>
