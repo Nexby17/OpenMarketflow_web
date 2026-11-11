@@ -193,6 +193,47 @@ def t_state_migration_old_state():
     assert s._last_pyr_entry_price == 83337.5, f"old state fallback must use lastPyramidPrice, got {s._last_pyr_entry_price}"
 
 
+# ---------- 5. F-194: уровень стопа нельзя ставить «за рынком» ----------
+
+def t_no_stop_when_level_passed_long():
+    s = make_strategy()
+    st = Stopper()
+    set_pyr_position(s, LONG, 4, 2, 83468.5)   # уровень 83443.5
+    s._current_price = 83401.0                 # рынок уже ниже уровня
+    s.sync_pyramid_broker_stop(83401.0, place_stop_fn=st.place, cancel_fn=st.cancel)
+    assert not st.placed, f"stop behind market must NOT be placed, got {st.placed}"
+
+
+def t_no_stop_when_level_passed_short():
+    s = make_strategy()
+    st = Stopper()
+    set_pyr_position(s, SHORT, 3, 1, 83337.5)  # уровень 83362.5
+    s._current_price = 83400.0                 # рынок уже выше уровня
+    s.sync_pyramid_broker_stop(83400.0, place_stop_fn=st.place, cancel_fn=st.cancel)
+    assert not st.placed, f"stop behind market must NOT be placed, got {st.placed}"
+
+
+def t_stop_placed_when_level_not_passed():
+    s = make_strategy()
+    st = Stopper()
+    set_pyr_position(s, LONG, 4, 2, 83468.5)   # уровень 83443.5
+    s._current_price = 83500.0                 # рынок выше уровня — стоп ниже, ок
+    s.sync_pyramid_broker_stop(83500.0, place_stop_fn=st.place, cancel_fn=st.cancel)
+    assert len(st.placed) == 1 and st.placed[0][2] == 83443.5, f"normal stop must be placed, got {st.placed}"
+
+
+def t_existing_stop_cancelled_when_level_passed():
+    s = make_strategy()
+    st = Stopper()
+    set_pyr_position(s, LONG, 4, 2, 83468.5)
+    s._current_price = 83401.0
+    s._pyr_stop_order_id = "behind-1"
+    s._pyr_stop_price = 83443.5
+    s._pyr_stop_qty = 4
+    s.sync_pyramid_broker_stop(83401.0, place_stop_fn=st.place, cancel_fn=st.cancel)
+    assert st.cancelled == ["behind-1"] and not st.placed, f"behind-market stop must be cancelled, got {st.cancelled}/{st.placed}"
+
+
 print("F-193 pyramid stop levels")
 check("2 lots (entry+1 pyramid) SHORT gets stop", t_two_lots_short_gets_stop)
 check("2 lots LONG gets stop", t_two_lots_long_gets_stop)
@@ -206,6 +247,10 @@ check("resync FLAT clears pyramid state", t_resync_to_flat_clears_pyramid)
 check("resync direction flip clears pyramid", t_resync_dir_flip_clears_pyramid)
 check("state round-trip keeps last pyr price", t_state_roundtrip_keeps_last_pyr)
 check("old state migration fallback", t_state_migration_old_state)
+check("F-194 no stop behind market (LONG)", t_no_stop_when_level_passed_long)
+check("F-194 no stop behind market (SHORT)", t_no_stop_when_level_passed_short)
+check("F-194 stop placed when level ahead", t_stop_placed_when_level_not_passed)
+check("F-194 behind-market stop cancelled", t_existing_stop_cancelled_when_level_passed)
 
 passed = sum(RESULTS)
 print(f"\n{passed}/{len(RESULTS)} PASS")

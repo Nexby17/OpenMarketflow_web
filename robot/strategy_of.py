@@ -763,6 +763,31 @@ class OrderFlowStrategy:
         qty = self._total_lots
         close_side = "sell" if self._dir == LONG else "buy"
 
+        # F-194: НЕ ставить стоп, если его уровень уже ПРОЙДЕН рынком.
+        # Инцидент 11.11 15:46 (Si): после рестарта цена (83401) была уже ниже
+        # уровня стопа (83443.5) — LAST_DOWN-стоп исполнился в ту же секунду
+        # рыночной продажей 4 лотов, одновременно отработал pullback-close_all
+        # → позиция перевернулась в ШОРТ (−6). Стоп с ценой за рынком — это
+        # не защита, а рыночный ордер; в таком случае позицию закрывает
+        # штатное правило pullback (F-073), а стоп не выставляется.
+        cur = float(self._current_price or price or 0.0)
+        if cur > 0:
+            already_passed = ((self._dir == LONG and stop_px >= cur)
+                              or (self._dir == SHORT and stop_px <= cur))
+            if already_passed:
+                if stop_id and cancel_fn:
+                    try:
+                        cancel_fn(stop_id)
+                    except Exception:
+                        pass
+                self._pyr_stop_order_id = None
+                self._pyr_stop_price = 0.0
+                self._pyr_stop_qty = 0
+                log.warning(
+                    f"PYR STOP skipped (F-194): level {fmt_price(stop_px)} already passed "
+                    f"(price={fmt_price(cur)}, dir={self._dir}) — no instant market trigger")
+                return
+
         # перестановка нужна если: стопа нет, или уровень/объём изменились
         prev_px = getattr(self, "_pyr_stop_price", 0.0)
         prev_qty = getattr(self, "_pyr_stop_qty", 0)
