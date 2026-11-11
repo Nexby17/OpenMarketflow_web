@@ -354,8 +354,15 @@
    "risk_pts": 0.9,
    "stop": 45.87,
    "vp": "signal",
-   "status": "open",
-   "close": null
+   "status": "closed",
+   "close": {
+    "date_close": "2026-11-09",
+    "time_close": "12:37:10",
+    "exit": 44.97,
+    "commission": 0.0,
+    "pnl": -0.0,
+    "reason": "closed-manual-or-reverse"
+   }
   },
   {
    "tic": "MTLR",
@@ -394,8 +401,15 @@
    "risk_pts": 0.9,
    "stop": 44.08,
    "vp": "signal",
-   "status": "open",
-   "close": null
+   "status": "closed",
+   "close": {
+    "date_close": "2026-11-10",
+    "time_close": "16:59:26",
+    "exit": 44.92,
+    "commission": 0.0,
+    "pnl": -26.64,
+    "reason": "closed-manual-or-reverse"
+   }
   },
   {
    "tic": "MTLR",
@@ -410,8 +424,15 @@
    "risk_pts": 0.89,
    "stop": 45.56,
    "vp": "signal",
-   "status": "open",
-   "close": null
+   "status": "closed",
+   "close": {
+    "date_close": "2026-11-10",
+    "time_close": "19:20:10",
+    "exit": 43.47,
+    "commission": 0.0,
+    "pnl": 536.4,
+    "reason": "closed-manual-or-reverse"
+   }
   },
   {
    "tic": "MTLR",

@@ -53,7 +53,25 @@ def _get_module():
     class _Rest4:
         def __init__(self):
             self.tm = TokenManager(api_key)
-            self.client = Client(self.tm, auto_refresh_tokens=False)  # F-152: SDK auto-refresh шлёт POST /sessions с Authorization и всегда получает 400 → весь вызов падает "Token invalid"; JWT обновляет orders_sarema._reauth напрямую
+            self.client = Client(self.tm, auto_refresh_tokens=False)
+            # F-153 (11.11.2026): SDK 4.3.3 при auto_refresh_tokens=False НЕ получает JWT сам —
+            # все REST-вызовы уходили с 401 «Missing auth token» (прод не торговал).
+            # Берём JWT тем же путём, что и WS-хаб (/v1/sessions c secret=api_key) и продлеваем.
+            self._api_key = api_key
+            self._jwt_ts = 0.0
+
+        def _ensure_jwt(self):
+            """Обновить JWT в TokenManager (раз в 10 мин) — иначе REST 401."""
+            import time as _t
+            now = _t.time()
+            if (not self.tm.jwt_token) or (now - self._jwt_ts > 600):
+                try:
+                    from finam_hub import _fetch_jwt
+                    self.tm.set_jwt_token(_fetch_jwt(self._api_key))
+                    self._jwt_ts = now
+                    log.info("rest4 JWT refreshed")
+                except Exception as e:
+                    log.warning("rest4 JWT refresh failed: %s", str(e)[:120])  # F-152: SDK auto-refresh шлёт POST /sessions с Authorization и всегда получает 400 → весь вызов падает "Token invalid"; JWT обновляет orders_sarema._reauth напрямую
             self.loop = asyncio.new_event_loop()
             self._lock = threading.Lock()
             threading.Thread(target=self._loop_thread, name="finam-rest4", daemon=True).start()
@@ -64,6 +82,7 @@ def _get_module():
 
         def call(self, coro, timeout=15):
             import asyncio
+            self._ensure_jwt()          # F-153: JWT перед каждым вызовом (кэш 10 мин)
             with self._lock:
                 fut = asyncio.run_coroutine_threadsafe(coro, self.loop)
                 return fut.result(timeout=timeout)
@@ -153,11 +172,18 @@ def place_stop_loss(account_id: str, symbol: str, side: str, quantity: int, stop
     достижении stop_price — без участия цикла робота, без задержки тика.
     side — ЗАКРЫВАЮЩАЯ сторона (для LONG-позиции = sell, для SHORT = buy).
     stop_condition: LAST_UP (для buy-стопа) / LAST_DOWN (для sell-стопа).
+    F-155: side нормализуется ДО обеих проверок (caller может передать
+    'SIDE_SELL'/'sell'/-1). Старый код сравнивал сырой side=='sell', а caller
+    слал 'SIDE_SELL' -> stop_condition всегда LAST_UP -> sell-стопы срабатывали
+    мгновенно при выставлении.
     Цена округляется к шагу инструмента (Si — целые): брокер отвергает дробные
     (INVALID_ARGUMENT: Invalid value for field: ConditionValuePrice)."""
     r4 = _get_module()
     from finam_trade_api.order.model import Order, OrderType, StopCondition
     from finam_trade_api.base_client.models import Side, FinamDecimal
+    # F-155: normalize side first ('SIDE_SELL'->'SELL', 'sell'->'SELL', '-1'/'2'->SELL)
+    s = str(side).upper().replace("SIDE_", "")
+    is_sell = s in ("SELL", "-1", "2")
     # F-136: округление стопа к шагу инструмента.
     # Фьючерсы (@RTSX/@SPBX: Si, MX, BR и т.д.) — целочисленный шаг (брокер отвергает дробные).
     # Акции (@MISX: SBER, MTLR, ...) — шаг 0.01-0.05, округляем до 2 знаков.
@@ -169,10 +195,10 @@ def place_stop_loss(account_id: str, symbol: str, side: str, quantity: int, stop
         account_id=account_id,
         symbol=symbol,
         quantity=FinamDecimal(value=str(quantity)),
-        side=Side('SIDE_SELL' if str(side).lower() in ('sell','-1') else 'SIDE_BUY'),
+        side=Side('SIDE_SELL' if is_sell else 'SIDE_BUY'),
         type=OrderType("ORDER_TYPE_STOP"),
         stop_price=FinamDecimal(value=px_str),
-        stop_condition=StopCondition("STOP_CONDITION_LAST_DOWN" if side == "sell" else "STOP_CONDITION_LAST_UP"),
+        stop_condition=StopCondition("STOP_CONDITION_LAST_DOWN" if is_sell else "STOP_CONDITION_LAST_UP"),
     )
     if comment:
         o.comment = comment

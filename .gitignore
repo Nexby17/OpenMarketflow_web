@@ -74,3 +74,35 @@ robot/py4/*
 robot/py4/finam_trade_api/*
 !robot/py4/finam_trade_api/proto
 !robot/py4/google
+
+## F-153 (11.11.2026): python-зависимости, переустановленные pip --target в корень проекта
+## (обход сломанных ACL на robot/py4 — там 59 из 60 папок недоступны). НЕ коммитить.
+/aiohappyeyeballs/
+/aiohttp/
+/aiosignal/
+/annotated_types/
+/anyio/
+/attrs/
+/certifi/
+/charset_normalizer/
+/finam_trade_api/
+/frozenlist/
+/h11/
+/h2/
+/hpack/
+/httpcore/
+/httpx/
+/hyperframe/
+/idna/
+/multidict/
+/numpy/
+/propcache/
+/pydantic/
+/pydantic_core/
+/requests/
+/typing_extensions.py
+/typing_inspection/
+/urllib3/
+/websockets/
+/yarl/
+/*.dist-info/
