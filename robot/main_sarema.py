@@ -704,12 +704,14 @@ def _main_loop():
                                     else:
                                         # F-178 fix: пока BE не достигнут — стоп остаётся initial
                                         # (阶梯 не прыгает на entry без триггера — баг мгновенного выбоя 09.11)
-                                        _n = max(0, int((_gain - _be_trig) / _step))
+                                        # F-187 fix: ступени считаются от ВХОДА напрямую (без вычета
+                                        # be-триггера) — иначе после BE стоп замирал до +0.9%
+                                        _n = max(0, int(_gain / _step))
                                         _want = round(_entry_f + (1 if state.direction > 0 else -1) * _n * _step, 2)
                                         if state.direction > 0:
-                                            _ns = max(state.stop_price, min(_want, _entry_f)) if _be_done else max(state.stop_price, state.initial_stop_price if state.initial_stop_price else state.stop_price)
+                                            _ns = max(state.stop_price, _want) if _be_done else state.stop_price
                                         else:
-                                            _ns = min(state.stop_price, max(_want, _entry_f)) if _be_done else min(state.stop_price, state.initial_stop_price if state.initial_stop_price else state.stop_price)
+                                            _ns = min(state.stop_price, _want) if _be_done else state.stop_price
                                     if abs(_ns - state.stop_price) > 1e-9:
                                         strategy._replace_broker_stop(_ns)
                                         state.stop_price = _ns
