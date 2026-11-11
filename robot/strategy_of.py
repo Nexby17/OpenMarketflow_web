@@ -731,7 +731,14 @@ class OrderFlowStrategy:
         """
         if not self.p.pyramid_full_exit:
             need = False
-        elif not self.in_position or self._total_lots < 3 or self._pyramid_levels <= 0:
+        elif not self.in_position or self._pyramid_levels <= 0:
+            # F-193: стоп ставится сразу с ПЕРВЫМ уровнем пирамиды.
+            # Раньше требовалось _total_lots >= 3 — в результате позиция
+            # «1 вход + 1 пирамида» (2 лота) оставалась без брокерского стопа
+            # на все 4 минуты до следующего долива (инцидент 11.11 15:25-15:29:
+            # SHORT 2 лота, стоп появился только на 3-м лоте).
+            # Порог 3 лота остаётся только для правила pullback-close (F-073),
+            # но не для защиты уровней пирамидинга.
             need = False
         else:
             ref = self._last_pyramid_entry_price()
@@ -983,10 +990,12 @@ class OrderFlowStrategy:
         if full:
             old_lots = self._total_lots * (1 if self._dir == LONG else -1)
             old_avg = self._avg_price
+            prev_dir = self._dir
+            prev_pyr_levels = self._pyramid_levels
+            prev_last_pyr = self._last_pyr_entry_price
+            prev_last_pyr_add = self._last_pyramid_price
             self._lot_queue.clear()
-            self._pyramid_levels = 0
             self._average_levels = 0
-            self._last_pyr_entry_price = 0.0
             self._pyr_stop_order_id = None
             self._pyr_stop_price = 0.0
             self._pyr_stop_qty = 0
@@ -995,12 +1004,27 @@ class OrderFlowStrategy:
                 self._total_lots = 0
                 self._avg_price = 0.0
                 self._entry_price = 0.0
+                self._pyramid_levels = 0
+                self._last_pyr_entry_price = 0.0
             else:
                 self._dir = LONG if broker_lots > 0 else SHORT
                 self._total_lots = abs(broker_lots)
                 self._avg_price = broker_avg
                 self._entry_price = broker_avg
                 self._lot_queue.append(LotEntry(price=broker_avg, side=self._dir, lots=self._total_lots, added_ts=time.monotonic()))
+                # F-193: ресинк НЕ должен стирать пирамид-состояние той же позиции.
+                # F-095 обнулял _pyramid_levels/_last_pyr_entry_price при любом
+                # расхождении — после этого позиция с пирамидами оставалась без
+                # брокерского стопа (и без pullback-правила) до следующего долива.
+                if prev_dir == self._dir and prev_pyr_levels > 0:
+                    self._pyramid_levels = prev_pyr_levels
+                    self._last_pyr_entry_price = prev_last_pyr
+                    self._last_pyramid_price = prev_last_pyr_add
+                    log.info(f"RESYNC: pyramid state kept (levels={self._pyramid_levels}, "
+                             f"last_pyr={fmt_price(self._last_pyr_entry_price)}) — stop will be re-placed")
+                else:
+                    self._pyramid_levels = 0
+                    self._last_pyr_entry_price = 0.0
             self._peak_lots = max(self._peak_lots, self._total_lots)
             log.info(f"BROKER FULL SYNC: was {old_lots:+d}@{old_avg:.1f} → now {broker_lots:+d}@{broker_avg:.1f}")
 
@@ -1734,6 +1758,8 @@ class OrderFlowStrategy:
             "pyramidLevels": self._pyramid_levels,
             "lastAveragePrice": self._last_average_price,
             "lastPyramidPrice": self._last_pyramid_price,
+            # F-193: без этого после рестарта терялся уровень стопа пирамиды
+            "lastPyrEntryPrice": self._last_pyr_entry_price,
             "peakLots": self._peak_lots,
             "lotQueue": [{"price": e.price, "side": e.side, "lots": e.lots} for e in self._lot_queue],
             "roundTrips": self._round_trips,
@@ -1755,6 +1781,13 @@ class OrderFlowStrategy:
         self._pyramid_levels = state.get("pyramidLevels", 0)
         self._last_average_price = state.get("lastAveragePrice", 0.0)
         self._last_pyramid_price = state.get("lastPyramidPrice", 0.0)
+        # F-193: восстанавливаем цену последнего пирамид-входа — иначе после
+        # рестарта позиция с пирамидами остаётся без стопа на уровень
+        self._last_pyr_entry_price = state.get("lastPyrEntryPrice", 0.0)
+        if (self._last_pyr_entry_price <= 0 and self._pyramid_levels > 0
+                and self._last_pyramid_price > 0):
+            # миграция старых state: лучшая оценка — цена последнего пирамид-долива
+            self._last_pyr_entry_price = self._last_pyramid_price
         self._peak_lots = state.get("peakLots", 0)
         # Fallback: if peak_lots not saved (old state), recalculate from queue
         if self._peak_lots == 0 and self._total_lots > 0:
