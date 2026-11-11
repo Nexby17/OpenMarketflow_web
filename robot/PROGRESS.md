@@ -828,3 +828,21 @@ BR-edp (b9b48e3) → добавлены те же варианты 60%/70% в в
 **Важно для Дмитрия.** py4 остаётся битым — если он переустановит/почистит корень проекта или пересоздаст окружение, нужно
 повторить `pip install --target` (список в `.gitignore`-блоке). Полное лечение — один раз от администратора:
 `takeown /f ...\robot\py4 /r /d y` + `icacls ...\robot\py4 /reset /T /C`.
+
+### 2026-11-11 14:19 — автозапуск сервера включён (ярлык в Startup)
+
+**Было:** автозапуск НЕ активен. В реестре `HKCU\...\Explorer\StartupApproved\StartupFolder` запись `OpenMarketflow.lnk`
+стояла со значением 02 (DISABLED), а самого ярлыка в папке Startup не было. Ни задачи планировщика, ни службы, ни Run-ключа
+для HedgeFund.Server.exe нет. AutoClaw стартует позже сервера (13:07:49 vs 13:07:15), т.е. не он поднимал.
+Записи `autostart.log` 13:03:54 и 13:07:15 — ручные запуски скрипта.
+
+**Сделано (выбор Дмитрия — вариант 1):**
+- создан ярлык `%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup\OpenMarketflow.lnk`
+  → `powershell.exe -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File <proj>\scripts\autostart.ps1`
+  (WorkingDirectory = scripts, окно скрыто);
+- в `StartupApproved\StartupFolder` запись `OpenMarketflow.lnk` переведена в 03 (ENABLED);
+- проверка: ярлык на месте (1534 Б), target/args корректны, скрипт запущен вживую → `server already running (13960)`
+  (значит дублей не создаёт, при старте поднимет сервер если его нет).
+
+**Семантика сохранена:** автозапуск поднимает ТОЛЬКО сервер (UI + данные). Роботы по-прежнему запускаются вручную
+(решение Дмитрия 25.08). Лог автозапуска: `robot\logs\autostart.log`.
