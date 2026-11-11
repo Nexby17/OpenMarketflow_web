@@ -1459,6 +1459,15 @@
       "owner": "main",
       "date": "2026-11-02",
       "summary": "Dmitry request 02.11: BRX6 (BR-11.26) expired 30.10, OF-BR edp rolled to next front month BRZ6 (BR-12.26). config_of_br.py SYMBOL/TICKER defaults -> BRZ6@RTSX/BRZ6 (env ROBOT_SYMBOL_BR/ROBOT_TICKER_BR still override, revert possible); DataProvider config.json BRX6@RTSX->BRZ6@RTSX (DP NOT restarted - live OF-MX on it; BRZ6 subs added dynamically via POST /subscribe, bars verified flowing; BRX6 had no quote stream either); UI OF_BR_INSTANCES.edp symbol/label -> BRZ6 (robots-table badge renders cfg.symbol), arb br badge marked 'leg A expired', app.js v140; test_of_br_params expectations -> BRZ6; robots.md + RULES.md R-021 identity tables updated. Pre-checks: edp account BRX6=0/BRZ6=0, no active orders, state stopped/FLAT (last trade 27.10) -> clean rollover, journal kept. Restart: manual PID 18480 killed, instance started via /api/of/process/of_br_edp/start, mode=stopped per R-001 (trading start is Dmitry's call). Untouched: OF-BR main :5082 (config default now BRZ6, picks up on next manual start), ARB-BR :5092 calendar BRX6/BRZ6 - leg A expired, separate Dmitry decision."
+    },
+    {
+      "id": "F-131b",
+      "name": "Environment recovery after reinstall + Finam auth protocol change + OF-BR edp raised live",
+      "area": "infra/auth",
+      "status": "done (DP :5060 up, BR edp :5083 running, real SHORT 1 @93.66 broker-synced)",
+      "owner": "main",
+      "date": "2026-11-11",
+      "summary": "Dmitry: 'подними робота с актуальными параметрами'. Found the whole data/order path down after the environment reinstall: DP :5060 dead, BR edp :5083 dead, python had no fastapi/uvicorn/grpcio/protobuf (installed to user site), vendored finam_trade_api lost its generated gRPC stubs (restored from git: robot/py4/finam_trade_api/proto + google/{api,type} -> repo root), and robot/py4/typing_extensions.py is ACL-broken (read denied, cannot rename) shadowing the good copy -> fixed with sitecustomize.py that preloads typing_extensions from site-packages (scripts/sitecustomize.py, installed to user site-packages). Then the real blocker surfaced: Finam now rejects the API secret in the Authorization header ('Secret must be passed in the request body'), so SDK 4.3.3 token refresh returned 400 -> gRPC 'Invalid access key' -> orders silently 'no response' while the robot opened a phantom SHORT (DESYNC robot=1 broker=0). Phantom removed by POST /stop (state FLAT, no broker position). Fix: TokenClient._exec_request calls /v1/sessions anonymously (secret already in body) — applied to vendored SDK and made reproducible via scripts/patch_finam_sdk_auth.py (idempotent; /finam_trade_api/ is gitignored so it must be re-applied after every SDK reinstall). Verified: direct /v1/sessions 200, SDK set_jwt_token returns tapi_ak_* token, safe limit probe order placed+cancelled, then live: ENTRY sell 1 @93.68 -> FILL 93.66 -> robot SHORT 1, brokerLots=1, mismatch=False. Snapshot of actual params taken before start (robot/config_snapshots/of_config_br_edp_20261111_145415.json + backup)."
     }
   ]
 }

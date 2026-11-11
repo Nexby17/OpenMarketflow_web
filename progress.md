@@ -813,3 +813,21 @@ BR-edp (b9b48e3) → добавлены те же варианты 60%/70% в в
 **Рестарт:** ручной процесс 5083 (PID 18480 от 19.10) убит taskkill, инстанс поднят сервером /api/of/process/of_br_edp/start → mode=stopped (R-001: старт торговли — только Дмитрием), FLAT, журнал сохранён.
 
 **Не тронуто:** OF-BR main :5082 (вне UI с F-122; дефолт конфига теперь BRZ6 — подхватит при следующем ручном старте), ARB-BR :5092 календарь BRX6/BRZ6 — leg A истёк 30.10, отдельное решение Дмитрия.
+
+## 2026-11-11 15:30 — F-131b: подъём OF-BR edp после переустановки среды + смена протокола авторизации Finam
+
+**Запрос Дмитрия.** «BRZ6 edp Order Flow (PYTHON), счёт 2049688 — подними робота с актуальными параметрами».
+
+**Что было сломано (после переустановки среды).**
+- DataProvider :5060 и OF-BR edp :5083 не работали; живы были только C# сервер :5050 и OF-MX :5081.
+- В python не было fastapi/uvicorn/grpcio/protobuf (поставил в user-site: `C:\Users\User\AppData\Roaming\AutoClaw-oversea-official\toolchain\python\Python313\site-packages`).
+- Вендорный `finam_trade_api` в корне потерял сгенерированные gRPC-стабы. Достал из git (`robot/py4/finam_trade_api/proto`, `robot/py4/google/{api,type}` — они трекаются) и разложил в корень: `finam_trade_api/proto`, `google/api`, `google/type`.
+- `robot/py4/typing_extensions.py` — битые ACL (read denied, переименовать нельзя, 59 из 60 папок py4 недоступны). Он перекрывает нормальный модуль и валит pydantic/grpcio. Обход: `scripts/sitecustomize.py` (установлен в user-site) предзагружает typing_extensions из site-packages ДО того, как скрипт робота добавит py4 в sys.path.
+
+**Корневая причина, из-за которой не уходили заявки.** Finam изменил протокол: секрет API принимается **только в теле** `POST /v1/sessions`, заголовок `Authorization` теперь отвергается («Secret must be passed in the request body»). SDK 4.3.3 шлёт и то, и другое → 400 на каждом refresh → gRPC «Invalid access key» → `PlaceOrder response: None` → робот открыл фантомный SHORT (DESYNC robot=1 broker=0).
+- Фикс: в `TokenClient._exec_request` запрос к `/sessions` идёт без Authorization (секрет уже в payload). Применён к вендорному SDK и обёрнут в `scripts/patch_finam_sdk_auth.py` (идемпотентный; `/finam_trade_api/` в .gitignore, поэтому после каждой переустановки SDK скрипт надо прогнать).
+- Фантом снят штатным `POST /stop` (стейт FLAT, позиции у брокера не было).
+
+**Проверки.** Прямой `POST /v1/sessions {"secret": ...}` → 200; SDK `set_jwt_token()` → токен `tapi_ak_*`; безопасная проба заявкой BUY limit 1 @80.00 (далеко от рынка) → `order_id` получен, отменена; затем живой вход: `ENTRY sell 1 @93.68` → `FILL 93.66` → робот SHORT 1, `brokerLots=1`, `mismatch=False`, у брокера `dir=-1 lots=1 avg=93.66`.
+
+**Актуальные параметры на старте (снапшот `robot/config_snapshots/of_config_br_edp_20261111_145415.json`, бэкап `of_config_br_edp.json.backup_before_start_20261111_145415`).** lots=1, maxAvg=25, stepAvg=0.4, stepPyr=1000, spread=0.25, SL=rub/1000, min_profit_per_lot=0.18, close_half_pct=60, max_hold=999, direction=both, timing 09:50–18:15, phase_filter=true (окно 777), VAH/VAL range 95%, VWEMA 20/40, M5, symbol BRZ6@RTSX, счёт edp 2049688.
