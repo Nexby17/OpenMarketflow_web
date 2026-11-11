@@ -137,47 +137,7 @@ function sarSwitchInstance(inst) {
                     </tbody>
                 </table>
             </div>
-            <hr style="border-color:#2D2D44;margin:12px 0">
-            <!-- Торговый журнал: логика таблицы Дмитрия — открытые позиции сверху, закрытие дозаписывается справа -->
-            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
-                <strong>Позиции робота (агрегат сделок)</strong>
-                <span style="display:flex;gap:10px;align-items:center">
-                    <span class="text-secondary" style="font-size:12px">открытые сверху · закрытие в той же строке</span>
-                    <button id="sarJournalClear" class="btn btn-danger btn-sm" style="padding:2px 10px;font-size:12px" title="Очистить журнал (только при ФЛЭТ)">Очистить</button>
-                </span>
-            </div>
-            <div id="sarJournalSummary" class="metrics-row" style="flex-wrap:wrap;margin-bottom:12px"></div>
-            <div style="max-height:360px;overflow-y:auto;border:1px solid var(--border-color);border-radius:8px">
-                <table style="width:100%;border-collapse:collapse;font-size:12.5px">
-                    <thead style="position:sticky;top:0;z-index:1">
-                        <tr style="background:#1a2332;border-bottom:2px solid var(--accent)">
-                            <th colspan="3" style="padding:6px 8px;text-align:center;border-right:2px solid var(--accent);color:#60A5FA">Открытие</th>
-                            <th colspan="3" style="padding:6px 8px;text-align:center;border-right:2px solid var(--accent);color:#60A5FA">Позиция</th>
-                            <th colspan="3" style="padding:6px 8px;text-align:center;border-right:2px solid var(--accent);color:#60A5FA">Стоп</th>
-                            <th colspan="5" style="padding:6px 8px;text-align:center;color:#34D399">Закрытие</th>
-                        </tr>
-                        <tr style="background:var(--card);border-bottom:2px solid var(--accent)">
-                            <th style="padding:6px 8px;text-align:left">Дата</th>
-                            <th style="padding:6px 8px;text-align:left">Время</th>
-                            <th style="padding:6px 8px;text-align:center">L/S</th>
-                            <th style="padding:6px 8px;text-align:right">Цена</th>
-                            <th style="padding:6px 8px;text-align:right">Шт</th>
-                            <th style="padding:6px 8px;text-align:right">Объём ₽</th>
-                            <th style="padding:6px 8px;text-align:right">Риск ₽</th>
-                            <th style="padding:6px 8px;text-align:right">Стоп</th>
-                            <th style="padding:6px 8px;text-align:right">Риск %</th>
-                            <th style="padding:6px 8px;text-align:left">Дата</th>
-                            <th style="padding:6px 8px;text-align:left">Время</th>
-                            <th style="padding:6px 8px;text-align:right">Цена</th>
-                            <th style="padding:6px 8px;text-align:right">Комис.</th>
-                            <th style="padding:6px 8px;text-align:right">PnL ₽</th>
-                            <th style="padding:6px 8px;text-align:right">R</th>
-                        </tr>
-                    </thead>
-                    <tbody id="sarJournalBody" style="background:var(--bg)"><tr><td colspan="15" style="text-align:center;padding:24px;color:#9CA3AF">Загрузка...</td></tr></tbody>
-                </table>
-            </div>
-            <div id="sarJournalInfo" style="font-size:12px;color:#9CA3AF;margin-top:8px"></div>
+                        <div id="sarJournalInfo" style="font-size:12px;color:#9CA3AF;margin-top:8px"></div>
         </div>
     `;
     document.body.appendChild(div);
