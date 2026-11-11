@@ -3720,6 +3720,7 @@ function createArbInstance(prefix, port) {
 const arbPy = createArbInstance('arbPy', 5090);
 const sber = createArbInstance('sber', 5091);
 const brCal = createArbInstance('brCal', 5092);
+const lkoh = createArbInstance('lkoh', 5093);
 
 // Expose as global functions for onclick handlers
 async function arbPyStart() { arbPy.start(); arbPyLog('▶️ Запуск GAZP/GZU6...'); }
@@ -3731,12 +3732,16 @@ async function sberStop()   { if (!confirm('Остановить SBER/SRU6?')) r
 async function brCalStart() { brCal.start(); arbPyLog('▶️ Запуск BR Calendar...'); }
 async function brCalPause() { brCal.pause(); arbPyLog('⏸ Пауза BR Calendar...'); }
 async function brCalStop()  { if (!confirm('Остановить BR Calendar?')) return; brCal.stop(); arbPyLog('⏹ Стоп BR Calendar...'); }
+async function lkohStart()  { lkoh.start(); arbPyLog('▶️ Запуск LKOH/LKZ6...'); }
+async function lkohPause()  { lkoh.pause(); arbPyLog('⏸ Пауза LKOH/LKZ6...'); }
+async function lkohStop()   { if (!confirm('Остановить LKOH/LKZ6?')) return; lkoh.stop(); arbPyLog('⏹ Стоп LKOH/LKZ6...'); }
 
 // Back-compat: arbPyRefresh now calls both
 async function arbPyRefresh() {
     await arbPy.refresh();
     await sber.refresh();
     await brCal.refresh();
+    await lkoh.refresh();
     arbPyData = arbPy.getData();
 }
 
@@ -3746,12 +3751,14 @@ async function arbPyFetch(path, method='GET', body=null) {
 }
 
 function arbPyLog(msg, level='INFO') {
-    const c = el('arbPyLogContainer');
-    if (!c) return;
+    const containers = document.querySelectorAll('.arb-log');
+    if (!containers.length) return;
     const t = new Date().toLocaleTimeString('ru-RU');
     const color = level === 'ERROR' ? '#F44336' : level === 'WARN' ? '#FF9800' : '#4CAF50';
-    c.innerHTML = `<div style="padding:2px 0;color:${color}">[${t}] ${level}: ${msg}</div>` + c.innerHTML;
-    while (c.children.length > 50) c.removeChild(c.lastChild);
+    containers.forEach(c => {
+        c.innerHTML = `<div style="padding:2px 0;color:${color}">[${t}] ${level}: ${msg}</div>` + c.innerHTML;
+        while (c.children.length > 50) c.removeChild(c.lastChild);
+    });
 }
 function arbPyEditPanel() {
     const existing = el('arbPyEditPanel');
@@ -4097,6 +4104,75 @@ async function sberSaveFromPanel() {
     }
 }
 
+async function lkohEditPanel() {
+    const existing = el('lkohEditPanel');
+    if (existing) { existing.remove(); _arbJournalInstance = null; return; }
+    _arbJournalInstance = 'lkoh';
+    await lkoh.refresh();
+    arbPyData = lkoh.getData();
+    const savedInstance = _arbJournalInstance;
+    arbPyEditPanel();
+    setTimeout(arbUpdateCommissionLabels, 50);
+    _arbJournalInstance = savedInstance;
+    const panel = el('arbPyEditPanel');
+    if (panel) {
+        panel.id = 'lkohEditPanel';
+        const header = panel.querySelector('.card-header');
+        if (header) header.innerHTML = header.innerHTML.replace('Арбитражный робот (PYTHON)', 'Арбитражный робот — LKOH/LKZ6');
+        const saveBtn = panel.querySelector('button[onclick*="arbPySaveFromPanel"]');
+        if (saveBtn) saveBtn.setAttribute('onclick', 'lkohSaveFromPanel()');
+        const copyBtn = panel.querySelector('button[onclick*="arbPyShowCopyDialog"]');
+        if (copyBtn) copyBtn.remove();
+        const closeBtn = panel.querySelector('button[onclick*="arbPyEditPanel"]');
+        if (closeBtn) closeBtn.setAttribute('onclick', 'el(\'lkohEditPanel\')?.remove(); _arbJournalInstance=null;');
+    }
+}
+
+async function lkohSaveFromPanel() {
+    const body = {
+        ticker_a: el('arbSymA').value,
+        symbol_a: el('arbSymA').value + '@RTSX',
+        ticker_b: el('arbSymB').value,
+        symbol_b: el('arbSymB').value + '@RTSX',
+        lots_a: parseInt(el('arbLotsA').value),
+        lots_b: parseInt(el('arbLotsB').value),
+        hedge_ratio: parseFloat(el('arbHedgeRatio').value),
+        capital: parseFloat(el('arbCapital')?.value || 100000),
+        entry_z: parseFloat(el('arbEntryZ').value),
+        entry_z_long: parseFloat(el('arbEntryZLong').value),
+        entry_mode: el('arbEntryModeRub')?.checked ? 'spread_rub' : 'zscore',
+        spread_rub_high: parseFloat(el('arbSpreadRubHigh')?.value || 400),
+        spread_rub_low: parseFloat(el('arbSpreadRubLow')?.value || 200),
+        risk_free_rate: parseFloat(el('arbRate')?.value || 16) / 100,
+        expiration_date: el('arbExpiration')?.value || '2026-09-18',
+        contract_size: parseInt(el('arbContractSize')?.value || 100),
+        lookback: parseInt(el('arbLookback').value),
+        leg_a_timeout: parseInt(el('arbLegTimeout').value),
+        min_fill_ratio: parseFloat(el('arbMinFill').value),
+        min_profit_type: el('arbMinProfitType').value,
+        min_profit_value: parseFloat(el('arbMinProfitVal').value),
+        risk_type: el('arbRiskType').value,
+        risk_value: parseFloat(el('arbRiskVal').value),
+        allow_long_basis: el('arbAllowLong')?.checked || false,
+        use_commission: el('arbUseCommission')?.checked ?? true,
+        commission_stock_pct: parseFloat(el('arbCommStock')?.value || 0.035),
+        commission_futures_rt: parseFloat(el('arbCommFut')?.value || 0.9),
+        slippage_bps: parseFloat(el('arbSlippage')?.value || 5),
+    };
+    const symA = el('arbSymA')?.value || '';
+    if (/\d/.test(symA)) {
+        body.commission_futures_rt = parseFloat(el('arbCommStock')?.value || body.commission_futures_rt);
+    }
+    const r = await lkoh.fetch('/params', 'POST', body);
+    if (r && r.ok) {
+        arbPyLog('✅ LKOH/LKZ6 параметры сохранены');
+        lkoh.refresh();
+        el('lkohEditPanel')?.remove();
+    } else {
+        arbPyLog('Ошибка сохранения LKOH/LKZ6', 'ERROR');
+    }
+}
+
 async function brCalEditPanel() {
     const existing = el('brCalEditPanel');
     if (existing) { existing.remove(); _arbJournalInstance = null; return; }
@@ -4395,7 +4471,7 @@ async function arbPyLoadAccounts() {
 
 // === Arb Trade Journal ===
 let _arbJournal = [];
-let _arbJournalInstance = null; // null/'arbPy' = GAZP, 'sber' = SBER, 'brCal' = BR Calendar
+let _arbJournalInstance = null; // null/'arbPy' = GAZP, 'sber' = SBER, 'brCal' = BR Calendar, 'lkoh' = LKOH
 
 // Parse entryTime/exitTime: supports both "2026-07-05 10:20:13" and "2026-07-05T10:20:13.542367+03:00"
 function _arbParseTime(s) {
@@ -4418,7 +4494,7 @@ function arbJournalSetYesterday() {
 }
 
 async function arbLoadJournal() {
-    const inst = _arbJournalInstance === 'sber' ? sber : _arbJournalInstance === 'brCal' ? brCal : arbPy;
+    const inst = _arbJournalInstance === 'sber' ? sber : _arbJournalInstance === 'lkoh' ? lkoh : _arbJournalInstance === 'brCal' ? brCal : arbPy;
     const data = await inst.fetch('/status');
     if (!data) { _arbJournal = []; arbRenderJournal(); return; }
     _arbJournal = data.tradeHistory || [];
@@ -4427,10 +4503,10 @@ async function arbLoadJournal() {
 
 async function arbResetStats() {
     if (!confirm('Сбросить статистику? Realized PnL → 0, история сделок очищена. positions сохраняются.')) return;
-    const inst = _arbJournalInstance === 'sber' ? sber : _arbJournalInstance === 'brCal' ? brCal : arbPy;
+    const inst = _arbJournalInstance === 'sber' ? sber : _arbJournalInstance === 'lkoh' ? lkoh : _arbJournalInstance === 'brCal' ? brCal : arbPy;
     const r = await inst.fetch('/reset-stats', 'POST');
     if (r && r.ok) {
-        const name = _arbJournalInstance === 'sber' ? 'SBER/SRU6' : _arbJournalInstance === 'brCal' ? 'BR Calendar' : 'GAZP/GZU6';
+        const name = _arbJournalInstance === 'sber' ? 'SBER/SRU6' : _arbJournalInstance === 'lkoh' ? 'LKOH/LKZ6' : _arbJournalInstance === 'brCal' ? 'BR Calendar' : 'GAZP/GZU6';
         arbPyLog(`🗑 Статистика ${name} сброшена`);
         arbLoadJournal();
         arbPyRefresh();
@@ -4534,6 +4610,350 @@ function arbRenderJournal() {
         el('arbJournalInfo').textContent = `Показано ${trades.length} из ${_arbJournal.length} сделок`;
     }
 }
+
+// ==================== MTLR ROBOT (Роботы Акции, порт 5094) ====================
+const MTLR_BASE = 'http://' + (window.location.hostname || 'localhost') + ':5094';
+let _mtlrData = null;
+let _mtlrChart = null, _mtlrCandleS = null, _mtlrEmaS = null, _mtlrSarS = null;
+let _mtlrRsiChart = null, _mtlrRsiS = null, _mtlrOscChart = null, _mtlrOscS = null;
+let _mtlrPriceLines = [];
+
+async function mtlrFetch(path, method='GET', body=null) {
+    const opts = {method, headers:{'Content-Type':'application/json'}};
+    if (body) opts.body = JSON.stringify(body);
+    try {
+        const r = await fetch(`${MTLR_BASE}${path}`, opts);
+        return r.ok ? await r.json() : null;
+    } catch { return null; }
+}
+
+async function mtlrRefresh() {
+    const d = await mtlrFetch('/status');
+    const s = el('mtlrStatus');
+    if (!d) {
+        if (s) { s.textContent = '❌ Не подключён'; s.style.color = 'var(--red)'; }
+        return;
+    }
+    _mtlrData = d;
+    if (s) {
+        const modeMap = {running:'▶️ Торгует', paused:'⏸ Пауза', stopped:'⏹ Остановлен'};
+        s.textContent = (modeMap[d.mode] || d.mode) + (d.paper ? ' 📝' : '') + (d.in_session ? '' : ' (вне сессии)');
+        s.style.color = d.mode==='running' ? 'var(--green)' : d.mode==='paused' ? 'var(--yellow)' : 'var(--red)';
+    }
+    if (el('mtlrTf')) el('mtlrTf').textContent = d.timeframe || '—';
+    if (el('mtlrPrice')) el('mtlrPrice').textContent = d.price ? d.price.toFixed(2) + ' ₽' : '—';
+    const reg = d.indicators || {};
+    if (el('mtlrRegime')) {
+        el('mtlrRegime').textContent = reg.regime + (reg.osc != null ? ' (' + reg.osc.toFixed(2) + ')' : '');
+        el('mtlrRegime').style.color = reg.regime === 'LONG' ? 'var(--green)' : reg.regime === 'SHORT' ? 'var(--red)' : '';
+    }
+    if (el('mtlrRsi')) el('mtlrRsi').textContent = reg.rsi != null ? reg.rsi.toFixed(1) : '—';
+    const pos = d.position;
+    if (el('mtlrPos')) {
+        if (pos) {
+            el('mtlrPos').textContent = `${pos.side===1?'LONG':'SHORT'} ${pos.qty} @ ${pos.entry.toFixed(2)}`;
+            el('mtlrPos').style.color = pos.side===1 ? 'var(--green)' : 'var(--red)';
+        } else { el('mtlrPos').textContent = 'Флэт'; el('mtlrPos').style.color = ''; }
+    }
+    if (el('mtlrUnreal')) {
+        const u = d.unrealized || 0;
+        el('mtlrUnreal').textContent = (u>=0?'+':'') + u.toFixed(1) + ' ₽';
+        el('mtlrUnreal').style.color = u > 0 ? 'var(--green)' : u < 0 ? 'var(--red)' : '';
+    }
+    const st = d.stats || {};
+    if (el('mtlrRealized')) {
+        el('mtlrRealized').textContent = (st.realized>=0?'+':'') + (st.realized||0).toLocaleString('ru-RU') + ' ₽';
+        el('mtlrRealized').style.color = st.realized > 0 ? 'var(--green)' : st.realized < 0 ? 'var(--red)' : '';
+    }
+    if (el('mtlrTrades')) el('mtlrTrades').textContent = st.trades || 0;
+    if (el('mtlrEv')) {
+        el('mtlrEv').textContent = st.ev != null ? (st.ev>=0?'+':'') + st.ev.toFixed(1) + ' ₽' : '—';
+        el('mtlrEv').style.color = st.ev > 0 ? 'var(--green)' : st.ev < 0 ? 'var(--red)' : '';
+    }
+    if (el('mtlrWr')) el('mtlrWr').textContent = st.win_rate != null ? st.win_rate + '%' : '—';
+    if (el('mtlrPf')) el('mtlrPf').textContent = st.profit_factor != null ? st.profit_factor : '—';
+    if (el('mtlrSig')) el('mtlrSig').textContent = d.last_signal || '—';
+    mtlrRenderJournal(d.journal || [], st);
+}
+
+function _fmtT(ts) {
+    if (!ts) return '—';
+    // Жёстко московское время — как у брокера, независимо от локали браузера
+    const d = new Date(ts * 1000);
+    return d.toLocaleDateString('ru-RU', {timeZone:'Europe/Moscow', day:'2-digit',month:'2-digit'}) + ' ' +
+           d.toLocaleTimeString('ru-RU', {timeZone:'Europe/Moscow', hour:'2-digit',minute:'2-digit',second:'2-digit'});
+}
+
+function mtlrRenderJournal(trades, st) {
+    const tbody = el('mtlrJournalBody');
+    if (!tbody) return;
+    if (el('mtlrJrSummary')) {
+        el('mtlrJrSummary').textContent = st && st.trades ?
+            `Сделок: ${st.trades} · WR ${st.win_rate}% · MO ${st.ev>=0?'+':''}${st.ev}₽ · AvgWin +${st.avg_win}₽ · AvgLoss −${st.avg_loss}₽ · MaxDD ${st.max_dd}₽` : '';
+    }
+    if (!trades.length) { tbody.innerHTML = '<tr><td colspan="11" style="text-align:center;padding:18px;color:#9CA3AF">Сделок пока нет</td></tr>'; return; }
+    const reasonMap = {cross:'кросс', pb:'откат', 'cross+pb':'кросс+откат', tp:'TP', sl:'SL', trail:'трейлинг', flip:'флип', manual:'вручную'};
+    tbody.innerHTML = trades.slice().reverse().map(t => {
+        const pnlCls = t.pnl > 0 ? 'color:var(--green)' : t.pnl < 0 ? 'color:var(--red)' : '';
+        const holdS = t.exit_time - t.entry_time;
+        const hold = holdS > 3600 ? (holdS/3600).toFixed(1)+'ч' : Math.round(holdS/60)+'м';
+        return `<tr>
+            <td style="font-size:11px">${_fmtT(t.entry_time)}</td>
+            <td style="font-size:11px">${_fmtT(t.exit_time)}</td>
+            <td>${t.side==='LONG'?'🟢':'🔴'}</td>
+            <td>${t.qty}</td>
+            <td>${t.entry_price.toFixed(2)}</td>
+            <td>${t.exit_price.toFixed(2)}</td>
+            <td>${reasonMap[t.reason_in]||t.reason_in}</td>
+            <td>${reasonMap[t.reason_out]||t.reason_out}</td>
+            <td style="color:#9CA3AF">${hold}</td>
+            <td style="color:#9CA3AF">${t.commission.toFixed(1)}₽</td>
+            <td style="font-weight:600;${pnlCls}">${t.pnl>=0?'+':''}${t.pnl.toFixed(1)}₽</td>
+        </tr>`;
+    }).join('');
+}
+
+// ---------- График ----------
+const _mtlrChartBase = {layout:{background:{type:'solid',color:'#1A1A2E'},textColor:'#9CA3AF'},
+    grid:{vertLines:{color:'#2D2D44'},horzLines:{color:'#2D2D44'}},
+    timeScale:{timeVisible:true,secondsVisible:false},crosshair:{mode:0}};
+const MTLR_MSK_OFFSET = 3 * 3600;  // lightweight-charts рисует time как UTC — сдвигаем на МСК, чтобы совпадало с брокером
+const mskT = t => t + MTLR_MSK_OFFSET;
+
+function _mtlrChartMsg(text) {
+    const m = el('mtlrChartMsg');
+    if (m) { m.textContent = text || ''; m.style.display = text ? 'block' : 'none'; }
+}
+
+async function mtlrUpdateChart() {
+    let d = null;
+    try {
+        d = await mtlrFetch('/chart');
+        if (!d || !d.candles || !d.candles.length) {
+            _mtlrChartMsg('⚠️ График пуст: робот не отдал свечи (/chart' + (d ? ': 0 свечей' : ' недоступен, порт 5094') + '). Обнови страницу — если не помогло, скажи Коре.');
+            return;
+        }
+        if (!window.LightweightCharts) {
+            _mtlrChartMsg('⚠️ График пуст: не загружена библиотека lightweight-charts.js (кэш браузера?) — Ctrl+Shift+R');
+            return;
+        }
+        _mtlrChartMsg('');
+    } catch (e) {
+        _mtlrChartMsg('⚠️ График: ошибка загрузки — ' + e.message);
+        return;
+    }
+    try {
+    if (!_mtlrChart) {
+        _mtlrChart = LightweightCharts.createChart(el('mtlrPriceChart'), Object.assign({}, _mtlrChartBase, {height: 420}));
+        _mtlrCandleS = _mtlrChart.addCandlestickSeries({upColor:'#22C55E',downColor:'#EF4444',borderUpColor:'#22C55E',borderDownColor:'#EF4444',wickUpColor:'#22C55E',wickDownColor:'#EF4444'});
+        _mtlrSarS = _mtlrChart.addLineSeries({color:'#F59E0B',lineWidth:1,priceLineVisible:false,lastValueVisible:false});
+        _mtlrEmaS = _mtlrChart.addLineSeries({color:'#3B82F6',lineWidth:1,priceLineVisible:false,lastValueVisible:false});
+        _mtlrRsiChart = LightweightCharts.createChart(el('mtlrRsiChart'), Object.assign({}, _mtlrChartBase, {height: 130}));
+        _mtlrRsiS = _mtlrRsiChart.addLineSeries({color:'#A855F7',lineWidth:1,lastValueVisible:false});
+        _mtlrRsiS.createPriceLine({price:70,color:'#EF4444',lineWidth:1,lineStyle:2,axisLabelVisible:true});
+        _mtlrRsiS.createPriceLine({price:30,color:'#22C55E',lineWidth:1,lineStyle:2,axisLabelVisible:true});
+        _mtlrRsiS.createPriceLine({price:50,color:'#6B7280',lineWidth:1,lineStyle:3,axisLabelVisible:false});
+        _mtlrOscChart = LightweightCharts.createChart(el('mtlrOscChart'), Object.assign({}, _mtlrChartBase, {height: 130}));
+        _mtlrOscS = _mtlrOscChart.addLineSeries({color:'#F59E0B',lineWidth:1,lastValueVisible:false});
+        _mtlrOscS.createPriceLine({price:0,color:'#E5E7EB',lineWidth:1,lineStyle:2,axisLabelVisible:false});
+    }
+    const cnd = d.candles.map(c => ({time: mskT(c.t), open: c.o, high: c.h, low: c.l, close: c.c}));
+    _mtlrCandleS.setData(cnd);
+    const zip = (arr) => d.candles.map((c,i) => arr && arr[i] != null ? {time: mskT(c.t), value:arr[i]} : null).filter(Boolean);
+    _mtlrEmaS.setData(zip(d.ema));
+    _mtlrSarS.setData(zip(d.sar));
+    _mtlrRsiS.setData(zip(d.rsi));
+    _mtlrOscS.setData(zip(d.osc));
+    // маркеры сделок (время — московское, как у брокера)
+    const markers = (d.trades || []).map(t => ({
+        time: mskT(t.entry_time), position: t.side==='LONG' ? 'belowBar' : 'aboveBar',
+        color: t.side==='LONG' ? '#22C55E' : '#EF4444', shape: t.side==='LONG' ? 'arrowUp' : 'arrowDown',
+        text: `${t.side==='LONG'?'L':'S'}${t.reason_out ? '→' + t.reason_out : ''}`
+    })).concat((d.trades || []).map(t => ({
+        time: mskT(t.exit_time), position: 'aboveBar',
+        color: t.pnl > 0 ? '#22C55E' : '#EF4444', shape: 'circle',
+        text: `${t.pnl>=0?'+':''}${t.pnl.toFixed(0)}₽`
+    }))).sort((a,b) => a.time - b.time);
+    if (_mtlrCandleS.setMarkers) _mtlrCandleS.setMarkers(markers);
+    // линии позиции: entry / TP / SL
+    _mtlrPriceLines.forEach(pl => { try { _mtlrCandleS.removePriceLine(pl); } catch(e){} });
+    _mtlrPriceLines = [];
+    const pos = d.position;
+    if (pos) {
+        _mtlrPriceLines.push(_mtlrCandleS.createPriceLine({price:pos.entry, color:'#EAB308', lineWidth:1, lineStyle:0, axisLabelVisible:true, title:'вход'}));
+        if (pos.tp) _mtlrPriceLines.push(_mtlrCandleS.createPriceLine({price:pos.tp, color:'#22C55E', lineWidth:1, lineStyle:2, axisLabelVisible:true, title:'TP'}));
+        if (pos.sl) _mtlrPriceLines.push(_mtlrCandleS.createPriceLine({price:pos.sl, color:'#EF4444', lineWidth:1, lineStyle:2, axisLabelVisible:true, title:'SL'}));
+    }
+    } catch (e) {
+        _mtlrChartMsg('⚠️ График: ошибка отрисовки — ' + e.message + ' (скажи Коре этот текст)');
+    }
+}
+
+// ---------- Кнопки ----------
+async function mtlrStartBtn() { const r = await mtlrFetch('/start','POST'); arbPyLog(r ? '▶️ MTLR запуск' : 'MTLR недоступен', r ? 'INFO' : 'ERROR'); mtlrRefresh(); }
+async function mtlrPauseBtn() { await mtlrFetch('/pause','POST'); arbPyLog('⏸ MTLR пауза'); mtlrRefresh(); }
+async function mtlrStopBtn()  { if (!confirm('Остановить MTLR? Позиция будет закрыта по рынку.')) return; await mtlrFetch('/stop','POST'); arbPyLog('⏹ MTLR стоп'); mtlrRefresh(); }
+async function mtlrResetStats() { if (!confirm('Сбросить статистику MTLR? История сделок и PnL → 0, позиция сохраняется.')) return; await mtlrFetch('/reset-stats','POST'); arbPyLog('🗑 MTLR статистика сброшена'); mtlrRefresh(); mtlrUpdateChart(); }
+
+// ---------- Панель настроек (двойной клик) ----------
+function _mtlrChk(id, label, checked, hint) {
+    return `<div class="metric-card" style="min-width:150px;border:1px solid var(--border-color)"><div class="metric-label">${label}${hint ? ` <span style="color:#6B7280">· ${hint}</span>` : ''}</div>
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;padding:4px 0">
+        <input type="checkbox" id="${id}" ${checked?'checked':''} style="width:20px;height:20px;cursor:pointer">
+        <span style="font-size:13px">включено</span></label></div>`;
+}
+function _mtlrNum(id, label, val, w=70, step='1') {
+    return `<div class="metric-card" style="min-width:100px"><div class="metric-label">${label}</div><input id="${id}" class="input" type="number" step="${step}" value="${val}" style="width:${w}px"></div>`;
+}
+function _mtlrTime(id, label, val, w=70) {
+    return `<div class="metric-card" style="min-width:100px"><div class="metric-label">${label}</div><input id="${id}" class="input" type="text" value="${val}" placeholder="ЧЧ:ММ" style="width:${w}px"></div>`;
+}
+function _mtlrUnitSel(id, val) {
+    return `<select id="${id}" class="input" style="width:80px">
+        <option value="pct" ${val==='pct'?'selected':''}>%</option>
+        <option value="pts" ${val==='pts'?'selected':''}>пт</option>
+        <option value="rub" ${val==='rub'?'selected':''}>₽</option></select>`;
+}
+
+function mtlrEditPanel() {
+    const existing = el('mtlrEditPanel');
+    if (existing) { existing.remove(); return; }
+    const p = (_mtlrData && _mtlrData.params) || null;
+    // подтянуть актуальные параметры
+    mtlrFetch('/params').then(cfg => {
+        if (!cfg || !cfg.params) { arbPyLog('MTLR: не удалось получить параметры', 'ERROR'); return; }
+        const q = cfg.params;
+        const div = document.createElement('div');
+        div.id = 'mtlrEditPanel';
+        div.className = 'card';
+        div.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);z-index:1000;width:820px;max-height:90vh;overflow-y:auto;box-shadow:0 8px 32px rgba(0,0,0,.5)';
+        div.innerHTML = `
+        <div class="card-header row gap-8">
+            📈 MTLR — параметры робота (${q.symbol}, счёт ${q.account}${q.paper ? ', 📝 PAPER' : ', 💰 РЕАЛ'})
+            <span style="flex:1"></span>
+            <button class="btn btn-primary btn-sm" onclick="mtlrSaveFromPanel()">💾 Сохранить</button>
+            <button class="btn btn-secondary btn-sm" onclick="el('mtlrEditPanel')?.remove()">✕</button>
+        </div>
+        <div style="padding:16px;display:flex;flex-direction:column;gap:12px">
+            <!-- Сигналы -->
+            <div class="card-header" style="padding:4px 0;font-size:13px">🎯 Сигналы (каждый — самостоятельный; оба включены → откат после кросса)</div>
+            <div class="metrics-row" style="flex-wrap:wrap">
+                ${_mtlrChk('mUseCross', '☑ Кросс SAR×EMA', q.use_cross, 'вход по флипу режима')}
+                ${_mtlrChk('mUsePb', '☑ Откат', q.use_pullback, 'пуллбэк к EMA')}
+            </div>
+            <div class="metrics-row" style="flex-wrap:wrap">
+                ${_mtlrNum('mSarStart', 'SAR start', q.sar_start, 70, '0.001')}
+                ${_mtlrNum('mSarStep', 'SAR step', q.sar_step, 70, '0.001')}
+                ${_mtlrNum('mSarMax', 'SAR max', q.sar_max, 70, '0.01')}
+                ${_mtlrNum('mEma', 'EMA период', q.ema_period, 70)}
+                ${_mtlrNum('mAtr', 'ATR период', q.atr_period, 70)}
+                ${_mtlrNum('mPbBars', 'Откат: баров', q.pb_bars, 70)}
+                ${_mtlrNum('mPbDepth', 'Откат: глубина ×ATR', q.pb_depth_atr, 80, '0.1')}
+                ${_mtlrChk('mPbTouch', 'Касание EMA достаточно', q.pb_touch_only, '')}
+            </div>
+            <!-- Фильтры -->
+            <div class="card-header" style="padding:4px 0;font-size:13px">🔎 Фильтры (галка = активен)</div>
+            <div class="metrics-row" style="flex-wrap:wrap">
+                ${_mtlrChk('mUseRsi', '☑ RSI', q.use_rsi)}
+                ${_mtlrNum('mRsiP', 'RSI период', q.rsi_period, 70)}
+                ${_mtlrNum('mRsiUp', 'RSI верх', q.rsi_upper, 70, '0.5')}
+                ${_mtlrNum('mRsiDn', 'RSI низ', q.rsi_lower, 70, '0.5')}
+                ${_mtlrChk('mUseReg', '☑ Осциллятор режима', q.use_regime, '(EMA−SAR)/ATR')}
+                ${_mtlrNum('mRegThr', 'Порог режима', q.regime_threshold, 70, '0.05')}
+            </div>
+            <!-- Риск -->
+            <div class="card-header" style="padding:4px 0;font-size:13px">🛡 Тейк-профит / Стоп-лосс / Трейлинг (каждый с галкой; % | пт | ₽; 1 пт = шаг цены 0.01₽)</div>
+            <div class="metrics-row" style="flex-wrap:wrap">
+                ${_mtlrChk('mTpOn', '☑ Тейк-профит', q.tp_enabled)}
+                <div class="metric-card" style="min-width:130px"><div class="metric-label">TP значение</div><div style="display:flex;gap:4px">${_mtlrNum('mTpVal', '', q.tp_value, 80, '0.1')}${_mtlrUnitSel('mTpUnit', q.tp_unit)}</div></div>
+                ${_mtlrChk('mSlOn', '☑ Стоп-лосс', q.sl_enabled)}
+                <div class="metric-card" style="min-width:130px"><div class="metric-label">SL значение</div><div style="display:flex;gap:4px">${_mtlrNum('mSlVal', '', q.sl_value, 80, '0.1')}${_mtlrUnitSel('mSlUnit', q.sl_unit)}</div></div>
+                ${_mtlrChk('mTrailOn', '☑ Трейлинг стоп', q.trail_enabled)}
+                <div class="metric-card" style="min-width:130px"><div class="metric-label">Trail отступ</div><div style="display:flex;gap:4px">${_mtlrNum('mTrailVal', '', q.trail_value, 80, '0.1')}${_mtlrUnitSel('mTrailUnit', q.trail_unit)}</div></div>
+                ${_mtlrNum('mTrailAct', 'Активация после +%', q.trail_activate_pct, 80, '0.1')}
+            </div>
+            <!-- Позиция -->
+            <div class="card-header" style="padding:4px 0;font-size:13px">💼 Позиция и капитал</div>
+            <div class="metrics-row" style="flex-wrap:wrap">
+                ${_mtlrNum('mMaxCap', 'Макс. капитал ₽', q.max_capital, 110)}
+                ${_mtlrNum('mLongQty', 'Лонг (шт)', q.long_qty, 80)}
+                ${_mtlrNum('mShortQty', 'Шорт (шт)', q.short_qty, 80)}
+                ${_mtlrNum('mComm', 'Комиссия % оборот', q.commission_pct, 80, '0.005')}
+            </div>
+            <!-- ТФ и сессия -->
+            <div class="card-header" style="padding:4px 0;font-size:13px">⏱ Таймфрейм и сессия</div>
+            <div class="metrics-row" style="flex-wrap:wrap">
+                <div class="metric-card" style="min-width:120px"><div class="metric-label">Таймфрейм</div>
+                    <select id="mTf" class="input" style="width:90px">
+                        ${['M1','M5','M15','M30','H1','D'].map(tf => `<option value="${tf}" ${q.timeframe===tf?'selected':''}>${tf}</option>`).join('')}
+                    </select></div>
+                ${_mtlrTime('mSessStart', 'Сессия с', q.session_start)}
+                ${_mtlrTime('mSessEnd', 'Сессия до', q.session_end)}
+                ${_mtlrChk('mUseEve', '☑ Вечерняя сессия', q.use_evening)}
+                ${_mtlrTime('mEveStart', 'Вечер с', q.evening_start)}
+                ${_mtlrTime('mEveEnd', 'Вечер до', q.evening_end)}
+            </div>
+            <div style="font-size:12px;color:#9CA3AF">⚠️ Лонг и Шорт оба пустые/0 → робот торгует на весь Макс. капитал автоматически. 0 в одном поле (при заданном другом) → это направление запрещено. Меняются все параметры на лету; ТФ — перезагружает историю. Счёт и paper меняются только при запуске робота.</div>
+        </div>`;
+        document.body.appendChild(div);
+    });
+}
+
+async function mtlrSaveFromPanel() {
+    const g = id => el(id);
+    const body = {
+        use_cross: g('mUseCross').checked,
+        use_pullback: g('mUsePb').checked,
+        sar_start: parseFloat(g('mSarStart').value),
+        sar_step: parseFloat(g('mSarStep').value),
+        sar_max: parseFloat(g('mSarMax').value),
+        ema_period: parseInt(g('mEma').value),
+        atr_period: parseInt(g('mAtr').value),
+        pb_bars: parseInt(g('mPbBars').value),
+        pb_depth_atr: parseFloat(g('mPbDepth').value),
+        pb_touch_only: g('mPbTouch').checked,
+        use_rsi: g('mUseRsi').checked,
+        rsi_period: parseInt(g('mRsiP').value),
+        rsi_upper: parseFloat(g('mRsiUp').value),
+        rsi_lower: parseFloat(g('mRsiDn').value),
+        use_regime: g('mUseReg').checked,
+        regime_threshold: parseFloat(g('mRegThr').value),
+        tp_enabled: g('mTpOn').checked,
+        tp_unit: g('mTpUnit').value,
+        tp_value: parseFloat(g('mTpVal').value),
+        sl_enabled: g('mSlOn').checked,
+        sl_unit: g('mSlUnit').value,
+        sl_value: parseFloat(g('mSlVal').value),
+        trail_enabled: g('mTrailOn').checked,
+        trail_unit: g('mTrailUnit').value,
+        trail_value: parseFloat(g('mTrailVal').value),
+        trail_activate_pct: parseFloat(g('mTrailAct').value),
+        max_capital: parseFloat(g('mMaxCap').value) || 0,
+        long_qty: parseInt(g('mLongQty').value) || 0,
+        short_qty: parseInt(g('mShortQty').value) || 0,
+        commission_pct: parseFloat(g('mComm').value),
+        timeframe: g('mTf').value,
+        session_start: g('mSessStart').value,
+        session_end: g('mSessEnd').value,
+        use_evening: g('mUseEve').checked,
+        evening_start: g('mEveStart').value,
+        evening_end: g('mEveEnd').value,
+    };
+    const r = await mtlrFetch('/params', 'POST', body);
+    if (r && r.ok) {
+        arbPyLog('✅ MTLR параметры сохранены');
+        el('mtlrEditPanel')?.remove();
+        mtlrRefresh();
+        mtlrUpdateChart();
+    } else {
+        arbPyLog('Ошибка сохранения параметров MTLR', 'ERROR');
+    }
+}
+
+// MTLR polling
+setInterval(() => { if (el('mtlrStatus')) mtlrRefresh(); }, 3000);
+setTimeout(() => { if (el('mtlrStatus')) { mtlrRefresh(); mtlrUpdateChart(); } }, 1500);
+setInterval(() => { if (el('mtlrPriceChart')) mtlrUpdateChart(); }, 10000);
 
 // Init arb polling
 setInterval(() => { if (el('arbPyStatus')) arbPyRefresh(); }, 3000);

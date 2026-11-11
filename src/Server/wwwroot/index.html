@@ -28,6 +28,7 @@
         <button class="tab" data-tab="monitoring">🤖 Роботы</button>
         <button class="tab" data-tab="testing">🧪 Тестирование</button>
         <button class="tab" data-tab="arbitrage">🔄 Арбитраж</button>
+        <button class="tab" data-tab="stocks">💼 Роботы Акции</button>
         <button class="tab" data-tab="strategies">⚙️ Стратегии</button>
         <button class="tab" data-tab="settings">🔧 Настройки подключения</button>
     </nav>
@@ -143,6 +144,15 @@
 
     <!-- ==================== ТЕСТИРОВАНИЕ ==================== -->
     <div id="testing" class="tab-content">
+        <!-- MTLR режим+откат — статический отчёт 10.11.2026 (новая страница, логику не трогает) -->
+        <div class="card" style="margin-bottom:16px">
+            <div class="card-header" style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+                📈 MTLR — Режим + Откат <span class="badge" style="background:#9C27B0">ОТЧЁТ 10.11</span>
+                <span class="pill" style="color:#9CA3AF">275 сделок · PF 1.18 · avgR +0.251 · ΣR +68.9</span>
+                <span style="flex:1"></span>
+                <a class="btn btn-primary btn-sm" href="/backtest-mtlr.html" target="_blank">🕯️ График: свечи + сделки + осцилляторы</a>
+            </div>
+        </div>
         <!-- VP Scalp Grid — параметры теста -->
         <div class="card" style="margin-bottom:16px">
             <div class="card-header" style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
@@ -285,6 +295,65 @@
 
     </div>
 
+    <!-- ==================== РОБОТЫ АКЦИИ ==================== -->
+    <div id="stocks" class="tab-content">
+        <!-- ====== MTLR робот ====== -->
+        <div class="card" style="margin-bottom:16px">
+            <div class="card-header row gap-8" ondblclick="mtlrEditPanel()" style="cursor:pointer" title="Двойной клик — настройки робота">
+                📈 MTLR — Кросс SAR×EMA + Откат <span class="badge" style="background:#2196F3">PYTHON</span>
+                <span class="text-secondary" style="font-size:12px" id="mtlrTf">H1</span>
+                <span style="flex:1"></span>
+                <button class="btn btn-success btn-sm" onclick="mtlrStartBtn()" id="mtlrStartBtn">▶️ Старт</button>
+                <button class="btn btn-secondary btn-sm" onclick="mtlrPauseBtn()" id="mtlrPauseBtn">⏸ Пауза</button>
+                <button class="btn btn-danger btn-sm" onclick="mtlrStopBtn()" id="mtlrStopBtn">⏹ Стоп</button>
+                <span id="mtlrStatus" class="status-text">Не подключён</span>
+            </div>
+            <div class="metrics-row" style="flex-wrap:wrap">
+                <div class="metric-card"><div class="metric-label">Цена</div><div id="mtlrPrice" class="metric-value accent">—</div></div>
+                <div class="metric-card"><div class="metric-label">Режим (osc)</div><div id="mtlrRegime" class="metric-value">—</div></div>
+                <div class="metric-card"><div class="metric-label">RSI</div><div id="mtlrRsi" class="metric-value">—</div></div>
+                <div class="metric-card"><div class="metric-label">Позиция</div><div id="mtlrPos" class="metric-value">Флэт</div></div>
+                <div class="metric-card"><div class="metric-label">Unrealized PnL</div><div id="mtlrUnreal" class="metric-value">—</div></div>
+                <div class="metric-card"><div class="metric-label">Realized PnL</div><div id="mtlrRealized" class="metric-value">0 ₽</div></div>
+                <div class="metric-card"><div class="metric-label">Сделок</div><div id="mtlrTrades" class="metric-value">0</div></div>
+                <div class="metric-card"><div class="metric-label">Матожидание ₽/сделку</div><div id="mtlrEv" class="metric-value">—</div></div>
+                <div class="metric-card"><div class="metric-label">Win Rate</div><div id="mtlrWr" class="metric-value">—</div></div>
+                <div class="metric-card"><div class="metric-label">Profit Factor</div><div id="mtlrPf" class="metric-value">—</div></div>
+                <div class="metric-card"><div class="metric-label">Сигнал</div><div id="mtlrSig" class="metric-value" style="font-size:13px">—</div></div>
+            </div>
+        </div>
+
+        <!-- График с осцилляторами -->
+        <div class="card" style="margin-bottom:16px">
+            <div class="card-header">🕯️ График MTLR — свечи + SAR + EMA + сделки · SL/TP линии</div>
+            <div id="mtlrChartMsg" class="text-secondary" style="font-size:12px;padding:2px 8px;color:#F59E0B"></div>
+            <div id="mtlrPriceChart" style="width:100%;min-height:420px"></div>
+            <div style="display:flex;gap:8px">
+                <div style="flex:1"><div class="card-header" style="font-size:12px;padding:4px 8px">📊 RSI <span id="mtlrRsiLbl"></span></div><div id="mtlrRsiChart" style="width:100%;height:130px"></div></div>
+                <div style="flex:1"><div class="card-header" style="font-size:12px;padding:4px 8px">🌀 Осциллятор режима (EMA−SAR)/ATR</div><div id="mtlrOscChart" style="width:100%;height:130px"></div></div>
+            </div>
+        </div>
+
+        <!-- Торговый журнал -->
+        <div class="card" style="margin-bottom:16px">
+            <div class="card-header row gap-8">📋 Торговый журнал MTLR
+                <span style="flex:1"></span>
+                <span id="mtlrJrSummary" class="text-secondary" style="font-size:12px"></span>
+                <button class="btn btn-danger btn-sm" onclick="mtlrResetStats()">🗑 Сбросить статистику</button>
+            </div>
+            <table class="data-table">
+                <thead><tr><th>Вход</th><th>Выход</th><th>Напр.</th><th>Кол-во</th><th>Цена вх.</th><th>Цена вых.</th><th>Причина вх.</th><th>Причина вых.</th><th>Держал</th><th>Комиссия</th><th>PnL</th></tr></thead>
+                <tbody id="mtlrJournalBody"></tbody>
+            </table>
+        </div>
+
+        <!-- Лог -->
+        <div class="card" style="margin-top:16px">
+            <div class="card-header">Лог событий</div>
+            <div id="stocksLogContainer" class="log-container arb-log"></div>
+        </div>
+    </div>
+
     <!-- ==================== АРБИТРАЖ ==================== -->
     <div id="arbitrage" class="tab-content">
         <!-- Управление -->
@@ -354,6 +423,28 @@
             </div>
         </div>
 
+        <!-- ====== LKOH/LKZ6 робот ====== -->
+        <div class="card" style="margin-bottom:16px;margin-top:8px">
+            <div class="card-header row gap-8">
+                💼 Арбитражный робот (PYTHON) — LKOH/LKZ6
+                <span style="flex:1"></span>
+                <button class="btn btn-success btn-sm" onclick="lkohStart()" id="lkohStartBtn">▶️ Старт</button>
+                <button class="btn btn-secondary btn-sm" onclick="lkohPause()" id="lkohPauseBtn">⏸ Пауза</button>
+                <button class="btn btn-danger btn-sm" onclick="lkohStop()" id="lkohStopBtn">⏹ Стоп</button>
+                <span id="lkohStatus" class="status-text">Не подключён</span>
+            </div>
+            <div class="metrics-row" style="flex-wrap:wrap">
+                <div class="metric-card"><div class="metric-label">Пара</div><div id="lkohPair" class="metric-value">—</div></div>
+                <div class="metric-card"><div class="metric-label">Basis</div><div id="lkohBasis" class="metric-value">—</div></div>
+                <div class="metric-card"><div class="metric-label">Z-score</div><div id="lkohZ" class="metric-value accent">—</div></div>
+                <div class="metric-card"><div class="metric-label">Позиция</div><div id="lkohPos" class="metric-value">—</div></div>
+                <div class="metric-card"><div class="metric-label">Unrealized PnL</div><div id="lkohUnreal" class="metric-value">—</div></div>
+                <div class="metric-card"><div class="metric-label">Realized PnL</div><div id="lkohRealized" class="metric-value">0 ₽</div></div>
+                <div class="metric-card"><div class="metric-label">Сделок</div><div id="lkohTrades" class="metric-value">0</div></div>
+                <div class="metric-card"><div class="metric-label">Paper</div><div id="lkohPaper" class="metric-value">—</div></div>
+            </div>
+        </div>
+
         <!-- Список роботов (двойной клик = параметры) -->
         <div class="card">
             <div class="card-header">Активные роботы</div>
@@ -395,6 +486,15 @@
                         <td id="brCalRbBasis">—</td>
                         <td id="brCalRbStatus">⚪</td>
                     </tr>
+                    <tr ondblclick="lkohEditPanel()" style="cursor:pointer" title="Двойной клик — настройки робота">
+                        <td id="lkohRbPair">LKOH / LKZ6</td>
+                        <td id="lkohRbMode">—</td>
+                        <td id="lkohRbPos">—</td>
+                        <td id="lkohRbPnl">0 ₽</td>
+                        <td id="lkohRbZ">—</td>
+                        <td id="lkohRbBasis">—</td>
+                        <td id="lkohRbStatus">⚪</td>
+                    </tr>
                 </tbody>
             </table>
         </div>
@@ -402,7 +502,7 @@
         <!-- Лог -->
         <div class="card" style="margin-top:16px">
             <div class="card-header">Лог событий</div>
-            <div id="arbPyLogContainer" class="log-container"></div>
+            <div id="arbPyLogContainer" class="log-container arb-log"></div>
         </div>
     </div>
 
@@ -472,6 +572,6 @@
         </div>
     </div>
 
-    <script src="/js/app.js?v=brui7"></script>
+    <script src="/js/app.js?v=mtlr5"></script>
 </body>
 </html>
