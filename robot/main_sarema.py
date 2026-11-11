@@ -704,18 +704,22 @@ def _main_loop():
                                     else:
                                         # F-178 fix: пока BE не достигнут — стоп остаётся initial
                                         # (阶梯 не прыгает на entry без триггера — баг мгновенного выбоя 09.11)
-                                        # F-188 (правила Дмитрия 11:53): после BE стоп шагает
-                                        # на trail% ОТ ТЕКУЩЕГО СТОПА, когда цена дошла до нового уровня:
-                                        # шорт: стоп -0.2%×стоп, если mark <= новый уровень
-                                        # лонг: стоп +0.2%×стоп, если mark >= новый уровень
-                                        # Пример Дмитрия: стоп 43.80 -> 43.80-0.2% = 43.71 и т.д.
-                                        _step_stop = state.stop_price * float(cfg.get("trail_value", 0.2)) / 100.0
+                                        # F-189 (уточнение Дмитрия 11:10): шаг стопа — когда цена ушла
+                                        # на be_value (0.7%) ОТ ТЕКУЩЕГО СТОПА, стоп шагает на
+                                        # trail_value (0.2%) ОТ СТОПА:
+                                        # шорт: mark <= stop×0.993 -> stop ×= 0.998
+                                        # лонг: mark >= stop×1.007 -> stop ×= 1.002
+                                        # (цикл повторяется — стоп всегда держит 0.7% защиты над ценой)
+                                        _be_rate = float(cfg.get("be_value", 0.7)) / 100.0   # 0.007 — порог хода цены
+                                        _trail_rate = float(cfg.get("trail_value", 0.2)) / 100.0  # 0.002 — шаг стопа
                                         if state.direction > 0:
-                                            _next_lvl = round(state.stop_price + _step_stop, 2)
-                                            _ns = _next_lvl if float(mark) >= _next_lvl else state.stop_price
+                                            while float(mark) >= state.stop_price * (1.0 + _be_rate) and state.stop_price < float(mark):
+                                                state.stop_price = round(state.stop_price * (1.0 + _trail_rate), 4)
+                                            _ns = max(state.stop_price, state.stop_price)
                                         else:
-                                            _next_lvl = round(state.stop_price - _step_stop, 2)
-                                            _ns = _next_lvl if float(mark) <= _next_lvl else state.stop_price
+                                            while float(mark) <= state.stop_price * (1.0 - _be_rate) and state.stop_price > 0:
+                                                state.stop_price = round(state.stop_price * (1.0 - _trail_rate), 4)
+                                            _ns = state.stop_price
                                     if abs(_ns - state.stop_price) > 1e-9:
                                         strategy._replace_broker_stop(_ns)
                                         state.stop_price = _ns
