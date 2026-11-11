@@ -1119,6 +1119,9 @@ class APIHandler(BaseHTTPRequestHandler):
                     # Reconstruct VP if VAH/VAL params changed
                     if "use_vah_val" in data or "vah_val_pct" in data or "vah_val_bin_size" in data or "vah_val_mode" in data:
                         strategy._init_vp()
+                    # F-192: CVD Trend EMA периоды меняются на ходу — пересчитать альфы
+                    if "cvd_ema_fast" in data or "cvd_ema_slow" in data:
+                        strategy.apply_cvd_trend_params()
 
                     # Save to config (FIX: путь от папки робота, не cwd)
                     cfg_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "of_config_mx.json")

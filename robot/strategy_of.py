@@ -123,6 +123,15 @@ class OFParams:
     hl_filter: bool = False        # OFF по умолчанию — поведение как раньше
     hl_window: int = 24            # окно в барах (24 × M5 = 2 часа)
     hl_delta: float = 150.0        # «близко к экстремуму» в пунктах
+    # F-191: HL — «фейдовый» фильтр (вход у экстремума окна). Трендовый CVD Trend
+    # по определению запаздывает (цена уже ушла на 1+ ATR), поэтому к нему HL по
+    # умолчанию НЕ применяем — иначе вход по кроссоверу структурно невозможен
+    # (инцидент 11.11: SHORT-кроссовер @83459.5 при хае 83614, Δ=55 → блок,
+    # хотя ATR=151 и сигнал был верный). True = старое поведение (HL для всех).
+    hl_apply_cvd_trend: bool = False
+    # F-191: сколько секунд живёт отложенный сигнал CVD Trend (0 = бессрочно).
+    # Сигнал больше НЕ съедается гейтами: ждёт первого тика, где прошли все фильтры.
+    pending_signal_ttl_sec: float = 300.0
     # F-067: Phase Zones — зонный фильтр направления (Donchian-канал, трети).
     # phase_filter ON + окно: цена в нижней трети канала → только LONG,
     # в верхней трети → только SHORT, в середине (обе границы не задеты) → оба.
@@ -547,6 +556,35 @@ class OrderFlowStrategy:
         if self._last_price_update <= 0:
             return True
         return (time.time() - self._last_price_update) > max_age_sec
+
+    def apply_cvd_trend_params(self) -> bool:
+        """F-192: пересчитать периоды/альфы CVD Trend после изменения cvd_ema_fast/slow на ходу.
+
+        /params раньше обновлял только params и НЕ трогал альфы движка: UI показывал
+        новые периоды, а EMA считались по старым (заметно только при смене на лету).
+        Возвращает True, если периоды реально изменились и были применены.
+        EMAs сбрасываются в неготовое состояние → на следующем баре INIT (без ложного кроссовера).
+        """
+        try:
+            f = max(1, int(self.p.cvd_ema_fast))
+            s = max(2, int(self.p.cvd_ema_slow))
+        except (TypeError, ValueError):
+            log.warning(f"CVD Trend params invalid: fast={self.p.cvd_ema_fast} slow={self.p.cvd_ema_slow} — ignored")
+            return False
+        cur_f = int(getattr(self.signals, "_cvd_trend_ema_fast_period", 0) or 0)
+        cur_s = int(getattr(self.signals, "_cvd_trend_ema_slow_period", 0) or 0)
+        if (f, s) == (cur_f, cur_s):
+            return False
+        self.signals._cvd_trend_ema_fast_period = f
+        self.signals._cvd_trend_ema_slow_period = s
+        self.signals._cvd_trend_alpha_f = 2.0 / (f + 1)
+        self.signals._cvd_trend_alpha_s = 2.0 / (s + 1)
+        # re-seed, чтобы смена периодов не дала ложный кроссовер на старых EMA
+        self.signals._cvd_trend_ready = False
+        self.signals._cvd_trend_dir = 0
+        self.signals._cvd_trend_reverse_count = 0
+        log.info(f"CVD Trend params applied: EMA {f}/{s} (alpha {2.0/(f+1):.4f}/{2.0/(s+1):.4f})")
+        return True
 
     def _init_vwema(self):
         """Create or recreate VWEMA filter from current params."""
@@ -1072,14 +1110,23 @@ class OrderFlowStrategy:
 
         # F-067b: pending-сигнал CVD Trend (сохранён в on_bar_close, если кроссовер случился
         # вне окна/в позиции). Если обычные сигналы пусты — используем pending как входной сигнал.
+        # F-191: сигнал НЕ съедается здесь — он живёт до фактического входа (или TTL).
+        # Раньше `_pending_cvd_trend = None` стоял ДО гейтов, и любой отказ фильтра
+        # (HL/phase/direction) уничтожал сигнал навсегда: вход 15:15 11.11 был отбит HL
+        # по цене, хотя через 2 минуты HL уже разрешал — повторной попытки не было.
         if not sigs and self._pending_cvd_trend:
             from orderflow_engine import OFSignal
             import time as _t
             pd_ = self._pending_cvd_trend
-            sigs = [OFSignal(signal_type="cvd_trend", direction=pd_["direction"],
-                             strength=0.9, price=price, timestamp=_t.time())]
-            log.info(f"PENDING CVD Trend -> entry signal used: {pd_['direction']}")
-            self._pending_cvd_trend = None
+            age = _t.time() - float(pd_.get("ts") or 0)
+            ttl = float(getattr(self.p, "pending_signal_ttl_sec", 0) or 0)
+            if ttl > 0 and age > ttl:
+                log.info(f"PENDING CVD Trend expired: age={age:.0f}s > ttl={ttl:.0f}s → dropped")
+                self._pending_cvd_trend = None
+            else:
+                sigs = [OFSignal(signal_type="cvd_trend", direction=pd_["direction"],
+                                 strength=0.9, price=price, timestamp=_t.time())]
+                log.info(f"PENDING CVD Trend -> entry signal used: {pd_['direction']} (age={age:.0f}s)")
 
         if len(sigs) < self.p.signal_confirm_count:
             # F-080b: прозрачность — сигнал(ы) есть, но их меньше confirm-порога
@@ -1128,18 +1175,38 @@ class OrderFlowStrategy:
 
         # HL filter (only_strict): LONG только у лоу окна, SHORT только у хая окна.
         # Середина диапазона — блок входа. Выкл (hl_filter=False) → как раньше.
+        # F-191: для трендового CVD Trend фильтр отключаем (hl_apply_cvd_trend=False):
+        # кроссовер EMA по определению приходит с задержкой 1+ ATR, и «у экстремума»
+        # он оказаться не может — HL резал 100% трендовых входов.
+        # Импульсные (cvd_accel/agg) и прочие фильтруем как раньше.
         if self.p.hl_filter:
+            _has_trend_sig = any(getattr(s, "signal_type", "") == "cvd_trend" for s in sigs)
+            _hl_skip = _has_trend_sig and not bool(getattr(self.p, "hl_apply_cvd_trend", False))
             hl = self.signals.get_hl_window(self.p.hl_window)
             if hl is None:
-                log.info("HL FILTER: window not ready → BLOCK")
-                return None
-            wh, wl = hl
-            if direction == LONG and (price - wl) > self.p.hl_delta:
-                log.info(f"HL FILTER: LONG blocked — не у лоу окна (wl={fmt_price(wl)} price={fmt_price(price)} Δ={fmt_price(self.p.hl_delta)})")
-                return None
-            if direction == SHORT and (wh - price) > self.p.hl_delta:
-                log.info(f"HL FILTER: SHORT blocked — не у хая окна (wh={fmt_price(wh)} price={fmt_price(price)} Δ={fmt_price(self.p.hl_delta)})")
-                return None
+                if _hl_skip:
+                    log.info("HL FILTER: window not ready — skipped for cvd_trend (F-191)")
+                else:
+                    log.info("HL FILTER: window not ready → BLOCK")
+                    return None
+            else:
+                wh, wl = hl
+                _would_block = (
+                    (direction == LONG and (price - wl) > self.p.hl_delta)
+                    or (direction == SHORT and (wh - price) > self.p.hl_delta)
+                )
+                if _would_block:
+                    if _hl_skip:
+                        log.info(
+                            f"HL FILTER: skipped for cvd_trend (F-191) — "
+                            f"уровень был бы отбит: price={fmt_price(price)} hh={fmt_price(wh)} "
+                            f"ll={fmt_price(wl)} Δ={fmt_price(self.p.hl_delta)}")
+                    else:
+                        if direction == LONG:
+                            log.info(f"HL FILTER: LONG blocked — не у лоу окна (wl={fmt_price(wl)} price={fmt_price(price)} Δ={fmt_price(self.p.hl_delta)})")
+                        else:
+                            log.info(f"HL FILTER: SHORT blocked — не у хая окна (wh={fmt_price(wh)} price={fmt_price(price)} Δ={fmt_price(self.p.hl_delta)})")
+                        return None
 
         # VWEMA regime filter — block counter-trend entries
         if self.vwema and self.vwema.ready and self.p.vwema_block_counter:
@@ -1173,6 +1240,11 @@ class OrderFlowStrategy:
         self._lock_entry(10.0)  # 10 sec entry lock
 
         log.info(f"ENTRY {side} {self.p.lots} @ {fmt_price(price)} | signals: {signal_types}")
+
+        # F-191: pending снимается только теперь — когда вход реально разрешён всеми гейтами.
+        if self._pending_cvd_trend:
+            log.info("PENDING CVD Trend consumed by entry (F-191)")
+            self._pending_cvd_trend = None
 
         return {
             'action': 'entry',

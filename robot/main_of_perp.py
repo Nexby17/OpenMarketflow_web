@@ -1158,6 +1158,9 @@ class APIHandler(BaseHTTPRequestHandler):
                     # Reconstruct VP if VAH/VAL params changed
                     if "use_vah_val" in data or any(k.startswith("vah_val_") for k in data):
                         strategy._init_vp()
+                    # F-192: CVD Trend EMA периоды меняются на ходу — пересчитать альфы
+                    if "cvd_ema_fast" in data or "cvd_ema_slow" in data:
+                        strategy.apply_cvd_trend_params()
                     # Sync agg engine params (Si-specific)
                     if "agg_window" in data:
                         strategy.signals.set_agg_window(data["agg_window"])
