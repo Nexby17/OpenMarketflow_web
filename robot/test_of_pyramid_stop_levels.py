@@ -234,6 +234,31 @@ def t_existing_stop_cancelled_when_level_passed():
     assert st.cancelled == ["behind-1"] and not st.placed, f"behind-market stop must be cancelled, got {st.cancelled}/{st.placed}"
 
 
+# ---------- 6. Сквозной сценарий инцидента 11.11 15:46 ----------
+
+def t_incident_scenario_no_double_close():
+    """Рестарт при цене ниже уровня: стоп НЕ ставится, закрытие ровно одно."""
+    from datetime import datetime
+    from strategy_of import MSK
+    s = make_strategy()
+    st = Stopper()
+    set_pyr_position(s, LONG, 4, 2, 83468.5)
+    s._current_price = 83401.0
+    s._last_price_update = __import__("time").time()
+
+    # 1) стоп ставить нельзя — уровень уже позади рынка (иначе мгновенный рынок)
+    s.sync_pyramid_broker_stop(83401.0, place_stop_fn=st.place, cancel_fn=st.cancel)
+    assert not st.placed, f"F-194: stop must not be placed behind market, got {st.placed}"
+
+    # 2) закрывает штатный pullback — РОВНО одно действие close_all
+    acts = s.process_tick(83401.0, datetime(2026, 11, 11, 15, 46, tzinfo=MSK))
+    close_acts = [a for a in (acts or []) if a.get("action") == "close_all"]
+    entry_acts = [a for a in (acts or []) if a.get("action") == "entry"]
+    assert len(close_acts) == 1, f"exactly one close_all expected, got {acts}"
+    assert not entry_acts, f"no entry/пepeворот in same tick, got {acts}"
+    assert close_acts[0].get("qty") == 4, f"close must cover 4 lots, got {close_acts[0]}"
+
+
 print("F-193 pyramid stop levels")
 check("2 lots (entry+1 pyramid) SHORT gets stop", t_two_lots_short_gets_stop)
 check("2 lots LONG gets stop", t_two_lots_long_gets_stop)
@@ -251,6 +276,7 @@ check("F-194 no stop behind market (LONG)", t_no_stop_when_level_passed_long)
 check("F-194 no stop behind market (SHORT)", t_no_stop_when_level_passed_short)
 check("F-194 stop placed when level ahead", t_stop_placed_when_level_not_passed)
 check("F-194 behind-market stop cancelled", t_existing_stop_cancelled_when_level_passed)
+check("incident 11.11 scenario: no stop + single close", t_incident_scenario_no_double_close)
 
 passed = sum(RESULTS)
 print(f"\n{passed}/{len(RESULTS)} PASS")
