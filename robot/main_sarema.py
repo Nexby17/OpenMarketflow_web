@@ -704,14 +704,18 @@ def _main_loop():
                                     else:
                                         # F-178 fix: пока BE не достигнут — стоп остаётся initial
                                         # (阶梯 не прыгает на entry без триггера — баг мгновенного выбоя 09.11)
-                                        # F-187 fix: ступени считаются от ВХОДА напрямую (без вычета
-                                        # be-триггера) — иначе после BE стоп замирал до +0.9%
-                                        _n = max(0, int(_gain / _step))
-                                        _want = round(_entry_f + (1 if state.direction > 0 else -1) * _n * _step, 2)
+                                        # F-188 (правила Дмитрия 11:53): после BE стоп шагает
+                                        # на trail% ОТ ТЕКУЩЕГО СТОПА, когда цена дошла до нового уровня:
+                                        # шорт: стоп -0.2%×стоп, если mark <= новый уровень
+                                        # лонг: стоп +0.2%×стоп, если mark >= новый уровень
+                                        # Пример Дмитрия: стоп 43.80 -> 43.80-0.2% = 43.71 и т.д.
+                                        _step_stop = state.stop_price * float(cfg.get("trail_value", 0.2)) / 100.0
                                         if state.direction > 0:
-                                            _ns = max(state.stop_price, _want) if _be_done else state.stop_price
+                                            _next_lvl = round(state.stop_price + _step_stop, 2)
+                                            _ns = _next_lvl if float(mark) >= _next_lvl else state.stop_price
                                         else:
-                                            _ns = min(state.stop_price, _want) if _be_done else state.stop_price
+                                            _next_lvl = round(state.stop_price - _step_stop, 2)
+                                            _ns = _next_lvl if float(mark) <= _next_lvl else state.stop_price
                                     if abs(_ns - state.stop_price) > 1e-9:
                                         strategy._replace_broker_stop(_ns)
                                         state.stop_price = _ns
