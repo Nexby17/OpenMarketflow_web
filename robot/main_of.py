@@ -701,6 +701,26 @@ def _execute_action(action: dict):
             strategy.update_fill_price(action["fill_price"], act)
         return
 
+    # F-195: перед ЛЮБЫМ закрытием сверяемся с брокером.
+    # Инцидент 11.11 15:46: брокерский стоп закрыл позицию, а робот в том же тике
+    # отправил close_all → переворот LONG 4 → SHORT −6. Раньше страховка (F-043)
+    # включалась только ПОСЛЕ неудачной отправки; теперь проверка идёт ДО.
+    if act in ("close_all", "partial_tp"):
+        _bl = _get_broker_position_fast()
+        if _bl is not None:
+            if _bl == 0:
+                log.warning(f"{str(act).upper()} skipped (F-195): broker already FLAT "
+                            f"(stop/manual close) — syncing robot to FLAT, no counter order")
+                strategy._reset_position()
+                save_state()
+                return
+            _robot_lots = abs(int(strategy._total_lots))
+            if act == "close_all" and _bl < _robot_lots:
+                log.warning(f"CLOSE_ALL qty reduced {_robot_lots} → {_bl} "
+                            f"(F-195: broker has fewer lots, partial fill)")
+                qty = _bl
+                action["qty"] = qty
+
     if act == "close_all":
         # Skip if already flat (partial_tp closed last lot in same tick)
         if strategy._total_lots <= 0:
