@@ -891,3 +891,22 @@ BR 11.11 не работал (лога нет).
 **Проверки.** Прямой `POST /v1/sessions {"secret": ...}` → 200; SDK `set_jwt_token()` → токен `tapi_ak_*`; безопасная проба заявкой BUY limit 1 @80.00 (далеко от рынка) → `order_id` получен, отменена; затем живой вход: `ENTRY sell 1 @93.68` → `FILL 93.66` → робот SHORT 1, `brokerLots=1`, `mismatch=False`, у брокера `dir=-1 lots=1 avg=93.66`.
 
 **Актуальные параметры на старте (снапшот `robot/config_snapshots/of_config_br_edp_20261111_145415.json`, бэкап `of_config_br_edp.json.backup_before_start_20261111_145415`).** lots=1, maxAvg=25, stepAvg=0.4, stepPyr=1000, spread=0.25, SL=rub/1000, min_profit_per_lot=0.18, close_half_pct=60, max_hold=999, direction=both, timing 09:50–18:15, phase_filter=true (окно 777), VAH/VAL range 95%, VWEMA 20/40, M5, symbol BRZ6@RTSX, счёт edp 2049688.
+
+### 2026-11-16 10:15 — F-196: кнопка ▶ MXU6 «не запускает» робота (UI v142)
+
+**Диагностика.** Процесс MXU6 жив с 11.11 (PID 8740, :5081), цена идёт live, но `mode=stopped`.
+В логах `of_mx_20261115.log` и `of_mx_20261116.log` — **ноль** `POST /start`: нажатия кнопки не доходили до робота вообще.
+Прямой `POST /start` сразу дал `{"ok": true, "mode": "running"}` — значит робот исправен, проблема во фронте.
+
+**Два корня:**
+1. Вкладка браузера открыта с 11.11 и держит старый `app.js` в памяти (5 дней без перезагрузки) — все фиксы UI на сервере на неё не действуют.
+2. В `ofMxRobotApi` использовался `AbortSignal.timeout()` (появился в Chrome 103). На старом браузере это `TypeError` → health-пинг робота падает в `catch` → `robotAlive=false` → код уходит в ветку C# `/api/of/process/of_mx/start`, которая требует UI-авторизацию (401 при истёкшей сессии) → молчаливый `return`, кнопка «мертва».
+
+**Исправлено (v142):**
+- хелпер `makeTimeoutSignal(ms)` с фолбэком на `AbortController` + `setTimeout`; в `ofMxRobotApi` заменены все 6 вызовов `AbortSignal.timeout`;
+- авто-проверка версии UI раз в 3 минуты: если сервер отдаёт `app.js?v` больше загруженного — тост «🔄 Вышло обновление интерфейса» и `location.reload()` (чтобы вкладка больше не жила неделями со старым кодом);
+- версия UI 142, `bin` синхронизирован, `node --check` OK, сервер уже отдаёт v142 с обоими изменениями.
+
+**Состояние робота:** mode=running, цена 247 900 live (`stale=false`), FLAT, CVD Trend ready (dir=−1), VWEMA ready, фаза SHORT-зона (pos 0.675), тайминг 10:15–17:15 открыт, `dirFilter=both`, live-счёт 2049688.
+
+**Требуется от Дмитрия:** один Ctrl+F5 — вкладка получит v142, дальше авто-обновление будет работать само.

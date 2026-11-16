@@ -6884,6 +6884,24 @@ async function ofRobotApi(action) {
     }
 }
 
+// F-196 (16.11): фолбэк для браузеров без AbortSignal.timeout (Chrome < 103).
+// Из-за него кнопка ▶ молча падала: TypeError -> catch -> шла ветка C# -> 401 -> «не запускается».
+function makeTimeoutSignal(ms) {
+    try {
+        if (typeof AbortSignal !== 'undefined' && typeof AbortSignal.timeout === 'function') {
+            return AbortSignal.timeout(ms);
+        }
+    } catch (e) {}
+    try {
+        if (typeof AbortController !== 'undefined') {
+            const c = new AbortController();
+            setTimeout(function () { try { c.abort(); } catch (e) {} }, ms);
+            return c.signal;
+        }
+    } catch (e) {}
+    return undefined;
+}
+
 async function ofMxRobotApi(action) {
     try {
         // F-012: одна кнопка = поднять процесс + включить
@@ -6893,13 +6911,13 @@ async function ofMxRobotApi(action) {
             // (3 дня подряд «не запустился»). Робот жив = поднимать нечего.
             let robotAlive = false;
             try {
-                const hp = await fetch(OF_MX_ROBOT_API + '/health', {signal: AbortSignal.timeout(2500)});
+                const hp = await fetch(OF_MX_ROBOT_API + '/health', {signal: makeTimeoutSignal(2500)});
                 robotAlive = hp.ok;
             } catch (he) { robotAlive = false; }
             if (!robotAlive) {
                 showToast('⏳ Поднимаю процесс MXU6 (подключение к Finam ~15с)...', 'info');
                 try {
-                    const pr = await fetch('/api/of/process/of_mx/start', {method: 'POST', signal: AbortSignal.timeout(35000)});
+                    const pr = await fetch('/api/of/process/of_mx/start', {method: 'POST', signal: makeTimeoutSignal(35000)});
                     const pd = await pr.json();
                     if (pr.status === 401) {
                         showToast('🔐 Сессия истекла — нажми Ctrl+F5 и перезайди, затем ▶ ещё раз', 'error');
@@ -6925,7 +6943,7 @@ async function ofMxRobotApi(action) {
         // и если он висел/падал, кнопка ⏹ молча не останавливала робота (жалоба Дмитрия 18.10).
         if (action === 'stop') {
             try {
-                const stopResp = await fetch(OF_MX_ROBOT_API + '/stop', {method: 'POST', signal: AbortSignal.timeout(5000)});
+                const stopResp = await fetch(OF_MX_ROBOT_API + '/stop', {method: 'POST', signal: makeTimeoutSignal(5000)});
                 const stopData = await stopResp.json();
                 addLog(nowTime(), 'INFO', 'OF-MX stop: ' + JSON.stringify(stopData));
                 showToast('⏹ Остановлен: ' + JSON.stringify(stopData), 'ok');
@@ -6942,7 +6960,7 @@ async function ofMxRobotApi(action) {
                 try {
                     const acctResp = await fetch(OF_MX_ROBOT_API + '/account', {
                         method: 'POST', headers: {'Content-Type': 'application/json'},
-                        body: JSON.stringify({account: acctVal}), signal: AbortSignal.timeout(3000)
+                        body: JSON.stringify({account: acctVal}), signal: makeTimeoutSignal(3000)
                     });
                     const acctData = await acctResp.json();
                     if (acctData.ok) {
@@ -6956,13 +6974,13 @@ async function ofMxRobotApi(action) {
         // F-068: старт с автоповтором — если после ok-ответа робот всё ещё stopped, повторяем до 3 раз
         let data = null;
         for (let attempt = 1; attempt <= 3; attempt++) {
-            const resp = await fetch(OF_MX_ROBOT_API + '/' + action, {method: 'POST', signal: AbortSignal.timeout(8000)});
+            const resp = await fetch(OF_MX_ROBOT_API + '/' + action, {method: 'POST', signal: makeTimeoutSignal(8000)});
             data = await resp.json();
             addLog(nowTime(), 'INFO', 'OF-MX ' + action + ' (попытка ' + attempt + '): ' + JSON.stringify(data));
             if (action !== 'start') break;
             await new Promise(r => setTimeout(r, 700));
             try {
-                const chk = await fetch(OF_MX_ROBOT_API + '/status', {signal: AbortSignal.timeout(2000)});
+                const chk = await fetch(OF_MX_ROBOT_API + '/status', {signal: makeTimeoutSignal(2000)});
                 const st = await chk.json();
                 if (st.mode === 'running') break;
                 if (attempt === 3) showToast('⚠ Робот не перешёл в running после 3 попыток — смотри журнал', 'error');
@@ -9067,4 +9085,27 @@ setTimeout(async () => { await ofPerpRobotPoll(); renderRobots(); }, 700);
         for (const k of OF_BR_INSTANCE_ORDER) await ofBrRobotPoll(k);
         renderRobots();
     }, 3000); // F-096c
+})();
+
+// F-196: если сервер отдаёт более новую версию app.js — перезагружаем страницу.
+// Иначе вкладка живёт днями со старым JS, и кнопки ведут себя «странно».
+(function () {
+    try {
+        var me = (document.currentScript && document.currentScript.src) || '';
+        var m = me.match(/app\.js\?v=(\d+)/);
+        var cur = m ? parseInt(m[1], 10) : 0;
+        if (!cur) return;
+        setInterval(function () {
+            fetch('/index.html?ts=' + Date.now(), { cache: 'no-store' })
+                .then(function (r) { return r.text(); })
+                .then(function (t) {
+                    var mm = t.match(/app\.js\?v=(\d+)/);
+                    if (mm && parseInt(mm[1], 10) > cur) {
+                        try { showToast('🔄 Вышло обновление интерфейса — обновляю страницу', 'info'); } catch (e) {}
+                        setTimeout(function () { location.reload(); }, 1200);
+                    }
+                })
+                .catch(function () {});
+        }, 180000);
+    } catch (e) {}
 })();
