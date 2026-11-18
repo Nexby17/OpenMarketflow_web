@@ -766,6 +766,18 @@ class OrderFlowStrategy:
         place_stop_fn(side, qty, stop_price, tag) / cancel_fn(order_id) — колбэки
         main_of (брокерские вызовы), вызываются только при изменении состояния.
         """
+        # F-198: в режиме Trailing SL старый PYR STOP не используется — его роль
+        # играет трейлинг-стоп (sync_trail_stops). Старую заявку снимаем.
+        if self.p.trail_mode:
+            stop_id = getattr(self, "_pyr_stop_order_id", None)
+            if stop_id and cancel_fn:
+                try:
+                    cancel_fn(stop_id)
+                except Exception:
+                    pass
+            self._pyr_stop_order_id = None
+            return
+
         if not self.p.pyramid_full_exit:
             need = False
         elif not self.in_position or self._pyramid_levels <= 0:
@@ -847,6 +859,266 @@ class OrderFlowStrategy:
             import time as _t
             self._pyr_stop_placed_ts = _t.time()  # F-094 guard: возраст стопа для FLAT-синка
             log.info(f"PYR STOP placed: {close_side} {qty} @ {fmt_price(stop_px)} (ref={fmt_price(ref)} step={fmt_price(step)}) id={new_id}")
+
+    # ---------- F-198: Trailing SL (по-лотовый + агрегированный) ----------
+
+    def _trail_price_basis(self, bid: float, ask: float):
+        """База и уровень стопа: для LONG считаем от Bid, для SHORT — от Ask."""
+        sl = float(self.p.trail_sl_pts)
+        if self._dir == LONG:
+            return bid, bid - sl
+        return ask, ask + sl
+
+    def _trail_level_ok(self, base: float, stop_px: float) -> bool:
+        """F-194: стоп за рынком не выставляем (иначе мгновенный рыночный триггер)."""
+        if stop_px <= 0 or base <= 0:
+            return False
+        return stop_px < base if self._dir == LONG else stop_px > base
+
+    def _trail_agg_needed(self) -> bool:
+        """Нужен ли ОДИН стоп на весь объём.
+
+        F-198: (1) пирамида от 3 лотов — сразу; (2) Close % All — когда после
+        закрытия части лотов стопами остаток <= max(2, peak*close_half_pct/100).
+        """
+        if self._total_lots >= 3 and self._pyramid_levels > 0:
+            return True
+        pct = int(self.p.close_half_pct or 0)
+        if pct <= 0 or self._peak_lots <= 0:
+            return False
+        threshold = max(2, int(self._peak_lots * pct / 100.0))
+        return self._total_lots <= threshold and self._trail_closed_lots > 0
+
+    def _cancel_all_trail(self, cancel_fn=None) -> None:
+        if cancel_fn:
+            for rec in list(self._trail_stops.values()):
+                oid = rec.get("order_id")
+                if oid:
+                    try:
+                        cancel_fn(oid)
+                    except Exception:
+                        pass
+            if self._agg_trail and self._agg_trail.get("order_id"):
+                try:
+                    cancel_fn(self._agg_trail["order_id"])
+                except Exception:
+                    pass
+        self._trail_stops.clear()
+        self._agg_trail = None
+
+    def sync_trail_stops(self, bid: float, ask: float,
+                         place_stop_fn=None, cancel_fn=None) -> None:
+        """F-198: держит трейлинг-стопы. Вызывается каждый тик (live) из main_of.
+
+        Режим off → снимает всё. Позиции нет → снимает всё.
+        Агрегат (пирамида 3+/Close % All) — один стоп на весь объём,
+        иначе — свой стоп на каждый слой (по 1 лоту), порог активации = spread.
+        """
+        if not self.p.trail_mode:
+            if self._trail_stops or self._agg_trail:
+                self._cancel_all_trail(cancel_fn)
+            return
+        if not self.in_position or self._total_lots <= 0:
+            self._cancel_all_trail(cancel_fn)
+            return
+        if bid <= 0 or ask <= 0 or place_stop_fn is None:
+            return
+        if self._trail_agg_needed():
+            self._sync_agg_trail(bid, ask, place_stop_fn, cancel_fn)
+        else:
+            self._sync_lot_trails(bid, ask, place_stop_fn, cancel_fn)
+
+    def _sync_lot_trails(self, bid, ask, place_stop_fn, cancel_fn) -> None:
+        base, stop_px = self._trail_price_basis(bid, ask)
+        if not self._trail_level_ok(base, stop_px):
+            return
+        if self._agg_trail:
+            oid = self._agg_trail.get("order_id")
+            if oid and cancel_fn:
+                try:
+                    cancel_fn(oid)
+                except Exception:
+                    pass
+            self._agg_trail = None
+
+        live = {e.uid: e for e in self._lot_queue if e.uid}
+        for uid in list(self._trail_stops):
+            if uid not in live:
+                rec = self._trail_stops.pop(uid)
+                if rec.get("order_id") and cancel_fn:
+                    try:
+                        cancel_fn(rec["order_id"])
+                    except Exception:
+                        pass
+
+        now = time.monotonic()
+        side = "sell" if self._dir == LONG else "buy"
+        for uid, e in live.items():
+            rec = self._trail_stops.get(uid)
+            if rec is None:
+                pnl_pts = (base - e.price) * e.side
+                if pnl_pts < float(self.p.spread):
+                    continue
+                placed = place_stop_fn(side, e.lots, stop_px, "of_trail_sl")
+                oid = getattr(placed, "order_id", None) if placed else None
+                self._trail_stops[uid] = {"order_id": oid, "stop_px": stop_px,
+                                          "qty": e.lots, "best": base, "ts": now}
+                log.info(f"TRAIL SL armed: lot#{uid} {side} {e.lots} @ {fmt_price(stop_px)} "
+                         f"(lot={fmt_price(e.price)} base={fmt_price(base)}) id={oid}")
+                continue
+            if now - float(rec.get("ts", 0) or 0) < 1.5:
+                continue
+            best = float(rec.get("best", base) or base)
+            improved = (base - best) if self._dir == LONG else (best - base)
+            if improved < float(self.p.trail_step_pts):
+                continue
+            if rec.get("order_id") and cancel_fn:
+                try:
+                    cancel_fn(rec["order_id"])
+                except Exception:
+                    pass
+            placed = place_stop_fn(side, e.lots, stop_px, "of_trail_sl")
+            oid = getattr(placed, "order_id", None) if placed else None
+            rec.update({"order_id": oid, "stop_px": stop_px, "qty": e.lots,
+                        "best": base, "ts": now})
+            log.info(f"TRAIL SL moved: lot#{uid} {side} {e.lots} @ {fmt_price(stop_px)} id={oid}")
+
+    def _sync_agg_trail(self, bid, ask, place_stop_fn, cancel_fn) -> None:
+        base, stop_px = self._trail_price_basis(bid, ask)
+        if not self._trail_level_ok(base, stop_px):
+            return
+        # по-лотовые больше не нужны — снимаем
+        for uid, rec in list(self._trail_stops.items()):
+            if rec.get("order_id") and cancel_fn:
+                try:
+                    cancel_fn(rec["order_id"])
+                except Exception:
+                    pass
+            self._trail_stops.pop(uid, None)
+
+        qty = int(self._total_lots)
+        now = time.monotonic()
+        side = "sell" if self._dir == LONG else "buy"
+        rec = self._agg_trail
+        if rec is None or int(rec.get("qty", 0)) != qty:
+            if rec and rec.get("order_id") and cancel_fn:
+                try:
+                    cancel_fn(rec["order_id"])
+                except Exception:
+                    pass
+            placed = place_stop_fn(side, qty, stop_px, "of_trail_sl_agg")
+            oid = getattr(placed, "order_id", None) if placed else None
+            self._agg_trail = {"order_id": oid, "stop_px": stop_px, "qty": qty,
+                               "best": base, "ts": now}
+            log.info(f"TRAIL SL AGG armed: {side} {qty} @ {fmt_price(stop_px)} "
+                     f"(base={fmt_price(base)}) id={oid}")
+            return
+        if now - float(rec.get("ts", 0) or 0) < 1.5:
+            return
+        best = float(rec.get("best", base) or base)
+        improved = (base - best) if self._dir == LONG else (best - base)
+        if improved < float(self.p.trail_step_pts):
+            return
+        if rec.get("order_id") and cancel_fn:
+            try:
+                cancel_fn(rec["order_id"])
+            except Exception:
+                pass
+        placed = place_stop_fn(side, qty, stop_px, "of_trail_sl_agg")
+        oid = getattr(placed, "order_id", None) if placed else None
+        rec.update({"order_id": oid, "stop_px": stop_px, "qty": qty, "best": base, "ts": now})
+        log.info(f"TRAIL SL AGG moved: {side} {qty} @ {fmt_price(stop_px)} id={oid}")
+
+    def trail_stop_for_order(self, order_id: str) -> Optional[dict]:
+        """F-198: опознать трейл-стоп по order_id (для WS ORDERS)."""
+        if not order_id:
+            return None
+        oid = str(order_id)
+        if self._agg_trail and str(self._agg_trail.get("order_id")) == oid:
+            return {"kind": "agg"}
+        for uid, rec in self._trail_stops.items():
+            if str(rec.get("order_id")) == oid:
+                return {"kind": "lot", "uid": uid}
+        return None
+
+    def apply_trail_stop_fill(self, order_id: str, fill_price: float) -> Optional[dict]:
+        """F-198: обработать исполнение трейл-стопа. Возвращает action для журнала."""
+        hit = self.trail_stop_for_order(order_id)
+        if not hit:
+            return None
+        if hit["kind"] == "agg":
+            qty = int(self._total_lots)
+            entry = self._avg_price
+            entry_side = self._dir
+            self._agg_trail = None
+            self._trail_stops.clear()
+            self._reset_position()
+            log.info(f"TRAIL SL AGG filled @ {fmt_price(fill_price)} qty={qty}")
+            return {"action": "close_all", "qty": qty, "avgPrice": entry,
+                    "entrySide": entry_side,
+                    "price": fill_price, "reason": "trail_sl_agg"}
+        uid = hit["uid"]
+        self._trail_stops.pop(uid, None)
+        lot = next((e for e in self._lot_queue if e.uid == uid), None)
+        if lot is None:
+            return None
+        qty, entry, side = lot.lots, lot.price, lot.side
+        self._lot_queue = [e for e in self._lot_queue if e.uid != uid]
+        self._total_lots = max(0, self._total_lots - qty)
+        self._trail_closed_lots += qty
+        if self._total_lots <= 0:
+            self._reset_position()
+        else:
+            total = sum(e.lots for e in self._lot_queue)
+            self._avg_price = (sum(e.price * e.lots for e in self._lot_queue) / total) if total else 0.0
+        log.info(f"TRAIL SL filled: lot#{uid} qty={qty} @ {fmt_price(fill_price)} "
+                 f"| remaining={self._total_lots}")
+        return {"action": "partial_tp", "qty": qty, "entryPrice": entry,
+                "entrySide": side, "price": fill_price, "reason": "trail_sl"}
+
+    def trail_active_order_ids(self) -> set:
+        """F-198: id живых трейл-заявок (для сверки с брокером при старте/ресинке)."""
+        ids = {str(r.get("order_id")) for r in self._trail_stops.values() if r.get("order_id")}
+        if self._agg_trail and self._agg_trail.get("order_id"):
+            ids.add(str(self._agg_trail["order_id"]))
+        return ids
+
+    def trail_prune_dead(self, alive_ids) -> None:
+        """F-198: выкинуть из реестра стопы, которых больше нет у брокера."""
+        alive = {str(x) for x in (alive_ids or [])}
+        for uid in list(self._trail_stops):
+            oid = str(self._trail_stops[uid].get("order_id") or "")
+            if oid and oid not in alive:
+                self._trail_stops.pop(uid, None)
+        if (self._agg_trail and self._agg_trail.get("order_id")
+                and str(self._agg_trail["order_id"]) not in alive):
+            self._agg_trail = None
+
+    def _trail_registry_payload(self) -> dict:
+        return {
+            "stops": {str(uid): rec for uid, rec in self._trail_stops.items()},
+            "agg": self._agg_trail,
+            "closedLots": self._trail_closed_lots,
+            "uidSeq": self._trail_uid_seq,
+        }
+
+    def _trail_registry_load(self, data: dict) -> None:
+        self._trail_stops = {}
+        stops = (data or {}).get("stops") or {}
+        for k, rec in stops.items():
+            try:
+                self._trail_stops[int(k)] = dict(rec)
+            except (TypeError, ValueError):
+                continue
+        self._agg_trail = dict((data or {}).get("agg")) if (data or {}).get("agg") else None
+        try:
+            self._trail_closed_lots = int((data or {}).get("closedLots", 0) or 0)
+        except (TypeError, ValueError):
+            self._trail_closed_lots = 0
+        try:
+            self._trail_uid_seq = max(self._trail_uid_seq, int((data or {}).get("uidSeq", 0) or 0))
+        except (TypeError, ValueError):
+            pass
 
     def _timeout_hit(self, now: datetime) -> bool:
         if self._entry_time is None:
@@ -982,7 +1254,7 @@ class OrderFlowStrategy:
                         actions.append(action)
                         self._last_action_time = time.time()
                         return actions
-                    if self._tp_full_hit(current_price):
+                    if not self.p.trail_mode and self._tp_full_hit(current_price):
                         action = self._close_all(current_price, "tp_full")
                         actions.append(action)
                         self._last_action_time = time.time()
@@ -1132,11 +1404,11 @@ class OrderFlowStrategy:
                 target = signal_price if signal_price > 0 else self._lot_queue[-1].price
                 for i in range(len(self._lot_queue) - 1, -1, -1):
                     if abs(self._lot_queue[i].price - target) < 1e-9:
-                        self._lot_queue[i] = LotEntry(price=fill_price, side=self._lot_queue[i].side, lots=self._lot_queue[i].lots)
+                        self._lot_queue[i] = LotEntry(price=fill_price, side=self._lot_queue[i].side, lots=self._lot_queue[i].lots, uid=self._lot_queue[i].uid)
                         replaced = True
                         break
                 if not replaced:
-                    self._lot_queue[-1] = LotEntry(price=fill_price, side=self._lot_queue[-1].side, lots=self._lot_queue[-1].lots)
+                    self._lot_queue[-1] = LotEntry(price=fill_price, side=self._lot_queue[-1].side, lots=self._lot_queue[-1].lots, uid=self._lot_queue[-1].uid)
                 total_cost = sum(e.price * e.lots for e in self._lot_queue)
                 total_lots = sum(e.lots for e in self._lot_queue)
                 if total_lots > 0:
@@ -1345,6 +1617,8 @@ class OrderFlowStrategy:
         self._entry_time = now
         self._signal_type = signal_types
         self._lot_queue.append(LotEntry(price=price, side=direction, lots=self.p.lots, added_ts=time.monotonic()))
+        # F-198: uid слою (ключ реестра трейлинг-стопов)
+        self._lot_queue[-1].uid = self._mk_lot_uid()
 
         self._lock_entry(10.0)  # 10 sec entry lock
 
@@ -1395,7 +1669,7 @@ class OrderFlowStrategy:
             return self._close_all(price, "reverse_signal")
 
         # c) Full TP
-        if self._tp_full_hit(price):
+        if not self.p.trail_mode and self._tp_full_hit(price):
             return self._close_all(price, "tp_full")
 
         # d) Timeout
@@ -1487,6 +1761,8 @@ class OrderFlowStrategy:
             self._average_levels += 1
             self._last_average_price = level_price
             self._lot_queue.append(LotEntry(price=level_price, side=self._dir, lots=self.p.lots, added_ts=time.monotonic()))
+            # F-198: uid слою (ключ реестра трейлинг-стопов)
+            self._lot_queue[-1].uid = self._mk_lot_uid()
 
             actions.append({
                 'action': 'average',
@@ -1558,6 +1834,7 @@ class OrderFlowStrategy:
             self._lot_queue.append(LotEntry(
                 price=price, side=new_side, lots=adj_qty,
                 added_ts=time.monotonic(),  # 2s grace vs instant partial TP
+                uid=self._mk_lot_uid(),
             ))
             if self._dir == FLAT:
                 self._dir = new_side
@@ -1578,7 +1855,7 @@ class OrderFlowStrategy:
                     closed.append(LotEntry(price=last.price, side=last.side, lots=remaining))
                     self._lot_queue[-1] = LotEntry(price=last.price, side=last.side,
                                                    lots=last.lots - remaining,
-                                                   added_ts=last.added_ts)
+                                                   added_ts=last.added_ts, uid=last.uid)
                     remaining = 0
 
             if remaining > 0:
@@ -1591,6 +1868,7 @@ class OrderFlowStrategy:
                 self._lot_queue.append(LotEntry(
                     price=price, side=new_side, lots=remaining,
                     added_ts=time.monotonic(),
+                    uid=self._mk_lot_uid(),
                 ))
 
         # --- Recompute derived state from queue (same invariants as sync_lot_count) ---
@@ -1653,6 +1931,8 @@ class OrderFlowStrategy:
         self._last_pyramid_price = price
         self._last_pyr_entry_price = price  # F-073: для pullback-закрытия — только пирамиды обновляют
         self._lot_queue.append(LotEntry(price=price, side=self._dir, lots=self.p.lots, added_ts=time.monotonic()))
+        # F-198: uid слою (ключ реестра трейлинг-стопов)
+        self._lot_queue[-1].uid = self._mk_lot_uid()
 
         log.info(f"PYRAMID {side} {self.p.lots} @ {fmt_price(price)} | lvl {self._pyramid_levels}/{self.p.max_pyramid_levels} | avg={fmt_price(self._avg_price)} lots={self._total_lots}")
 
@@ -1778,6 +2058,9 @@ class OrderFlowStrategy:
         Returns a list of actions (empty if nothing to close).
         """
         if not self.p.partial_tp or len(self._lot_queue) == 0:
+            return []
+        # F-198: в режиме Trailing SL прибыль фиксируется стопом, а не маркетом
+        if self.p.trail_mode:
             return []
 
         # Check X% threshold — close remaining batch when lots <= threshold
@@ -1911,6 +2194,10 @@ class OrderFlowStrategy:
         self._entry_time = None
         self._signal_type = ""
         self._broker_avg_price = 0.0
+        # F-198: сбрасываем реестр трейлинг-стопов (заявки снимает main_of при close_all)
+        self._trail_stops.clear()
+        self._agg_trail = None
+        self._trail_closed_lots = 0
 
     def _effective_step(self, average: bool = True) -> float:
         """Get effective step (with optional ATR adaptation).
@@ -1955,6 +2242,7 @@ class OrderFlowStrategy:
             "entryTime": self._entry_time.isoformat() if self._entry_time else "",
             "signalType": self._signal_type,
             "tradeHistory": self._trade_history[-200:],  # Last 200 trades
+            "trail": self._trail_registry_payload(),   # F-198
         }
 
     def load_state(self, state: dict):
@@ -1991,6 +2279,7 @@ class OrderFlowStrategy:
         else:
             self._entry_time = None
         self._signal_type = state.get("signalType", "")
+        self._trail_registry_load(state.get("trail") or {})   # F-198
         self._trade_history = state.get("tradeHistory", [])
 
         # Restore lot queue from state (exact)
@@ -2002,6 +2291,7 @@ class OrderFlowStrategy:
                     side=e.get("side", LONG),
                     lots=e.get("lots", 0),
                     added_ts=0.0,  # No grace for restored lots
+                    uid=int(e.get("uid", 0) or 0),
                 ))
             log.info(f"Restored position: dir={self._dir} lots={self._total_lots} avg={fmt_price(self._avg_price)} lotEntries={len(self._lot_queue)}")
         elif self._total_lots > 0 and self._avg_price > 0:
@@ -2011,6 +2301,7 @@ class OrderFlowStrategy:
                 side=self._dir if self._dir != 0 else LONG,
                 lots=self._total_lots,
                 added_ts=0.0,  # No grace for restored lots
+                uid=self._mk_lot_uid(),
             ))
             log.warning(f"Restored position without lotQueue — single entry: dir={self._dir} lots={self._total_lots}")
 

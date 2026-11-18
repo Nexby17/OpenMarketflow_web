@@ -5589,6 +5589,14 @@ async function ofRobotEditPanel() {
                         <span style="font-weight:bold;color:#FF7043">🏔 Pyr Full Exit</span>
                     </label>
                 </div>
+                <div class="metric-card" style="display:flex;align-items:center;gap:8px">
+                    <label style="display:flex;align-items:center;gap:6px;cursor:pointer" title="F-198: прибыль не фиксируется маркетом — вместо partial TP/tp_full выставляется брокерский стоп (LONG Bid−SL / SHORT Ask+SL), который трейлится шагом. Усреднение — по-лотово с порогом Spread; Close % All и пирамида с 3 лотов — на весь объём">
+                        <input id="editOfTrailMode" type="checkbox" ${(p.trail_mode)?'checked':''} style="width:18px;height:18px;cursor:pointer">
+                        <span style="font-weight:bold;color:#26C6DA">🎯 Trailing SL</span>
+                    </label>
+                </div>
+                <div class="metric-card"><div class="metric-label">SL (пт)</div><input id="editOfTrailSl" class="input" type="number" step="1" min="1" value="${p.trail_sl_pts!=null?p.trail_sl_pts:12}" style="width:70px"></div>
+                <div class="metric-card"><div class="metric-label">Шаг SL (пт)</div><input id="editOfTrailStep" class="input" type="number" step="1" min="1" value="${p.trail_step_pts!=null?p.trail_step_pts:5}" style="width:70px"></div>
             </div>
             <hr style="border-color:#2D2D44;margin:12px 0">
             <!-- F-067: Фазы рынка (Donchian-трети): низ LONG / верх SHORT / середина both -->
@@ -5863,6 +5871,9 @@ async function ofRobotSaveFromPanel() {
         timing_start: (el('editOfTimingStart')?.value || '').trim(),
         timing_end: (el('editOfTimingEnd')?.value || '').trim(),
         pyramid_full_exit: el('editOfPyrFullExit')?.checked || false,
+        trail_mode: el('editOfTrailMode')?.checked || false,
+        trail_sl_pts: parseFloat(el('editOfTrailSl')?.value) || 12,
+        trail_step_pts: parseFloat(el('editOfTrailStep')?.value) || 5,
         phase_filter: el('editOfUsePhase')?.checked || false,
         phase_window: (() => { const v = el('editOfPhaseWin')?.value; if (v == null || v.trim() === '') return undefined; const n = parseInt(v); return isNaN(n) ? undefined : n; })(),
         phase_lower: (() => { const v = el('editOfPhaseLower')?.value; if (v == null || v.trim() === '') return undefined; const n = parseFloat(String(v).replace(',', '.')); return isNaN(n) ? undefined : n; })(),

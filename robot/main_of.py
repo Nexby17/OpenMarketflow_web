@@ -333,6 +333,16 @@ def _on_my_trade(trade):
             oid = str(trade.order_id)
         if price <= 0:
             return
+        # F-198: срабатывание трейлинг-стопа — закрываем слой/позицию и пишем в журнал
+        _trail_hit = strategy.trail_stop_for_order(oid)
+        if _trail_hit is not None:
+            _trail_act = strategy.apply_trail_stop_fill(oid, price)
+            if _trail_act:
+                _record_broker_trade(_trail_act, price)
+                save_state()
+                log.info(f"TRAIL STOP filled: order={oid} qty={_trail_act.get('qty')} "
+                         f"@ {price:.0f} reason={_trail_act.get('reason')}")
+                return
         _last_fill_price = price
         _last_fill_time = time.time()
         _last_fill_qty = qty
@@ -412,6 +422,7 @@ def _on_quote(event):
 
             if last > 0:
                 _set_current_price(last)
+                _set_bid_ask(bid, ask)   # F-198
                 strategy.update_price(last)
     except Exception as e:
         log.error(f"Quote callback error: {e}")
@@ -458,6 +469,19 @@ def _set_current_price(price: float):
     global _current_price
     with _price_lock:
         _current_price = price
+
+
+# F-198: последние Bid/Ask из Quote-потока (основа для трейлинг-стопов)
+_last_bid: float = 0.0
+_last_ask: float = 0.0
+
+
+def _set_bid_ask(bid: float, ask: float):
+    global _last_bid, _last_ask
+    if bid > 0:
+        _last_bid = bid
+    if ask > 0:
+        _last_ask = ask
 
 
 def main_loop():
@@ -532,6 +556,18 @@ def main_loop():
                 except Exception as e:
                     log.warning(f"PYR STOP sync error: {e}")
 
+                # F-198: трейлинг-стопы (режим под галкой). Внутри — проверка trail_mode.
+                try:
+                    _bid = _last_bid or price
+                    _ask = _last_ask or price
+                    strategy.sync_trail_stops(
+                        _bid, _ask,
+                        place_stop_fn=lambda side, qty, px, tag: orders.place_stop_loss(side, qty, px, tag=tag),
+                        cancel_fn=lambda oid: orders.cancel(oid),
+                    )
+                except Exception as e:
+                    log.warning(f"TRAIL SL sync error: {e}")
+
             # Execute actions
             for action in actions:
                 _execute_action(action)
@@ -589,6 +625,14 @@ def main_loop():
                                     "layers": [[e.price, e.lots] for e in strategy._lot_queue],
                                 }
                                 _record_broker_trade(action_rec, close_px)
+                            # F-198: трейл-стопы старой позиции снимаем ДО full-resync
+                            try:
+                                _trail_ids = strategy.trail_active_order_ids()
+                                if _trail_ids:
+                                    orders.cancel_many(list(_trail_ids))
+                                    log.warning(f"F-198: canceled {len(_trail_ids)} trail stop(s) before full resync")
+                            except Exception as te:
+                                log.warning(f"F-198 trail cancel on resync failed: {te}")
                             strategy.sync_from_broker(bd, full=True)
                             save_state()
                             log.warning(f"BROKER RESYNC done: robot now dir={strategy._dir} lots={strategy._total_lots} avg={strategy._avg_price:.0f}")
@@ -638,7 +682,7 @@ def _record_broker_trade(action: dict, fill_price: float):
         direction = 'LONG' if entry_side == 1 else 'SHORT'
     elif act == "close_all":
         entry_price = action.get('avgPrice', strategy._avg_price)
-        entry_side = strategy._dir
+        entry_side = action.get('entrySide', strategy._dir)   # F-198: после reset dir уже FLAT
         lots = action.get('qty', strategy.total_lots)
         pnl = (fill_price - entry_price) * entry_side * lots - comm_per_lot * lots
         direction = 'LONG' if entry_side == 1 else 'SHORT'
@@ -1540,6 +1584,18 @@ if __name__ == "__main__":
                     log.info(f"STARTUP: position OK — both FLAT, mode={_mode}")
     except Exception as _e:
         log.warning(f"STARTUP: broker position check failed: {_e}")
+
+    # F-198: сверка реестра трейл-стопов с брокером (заявки переживают рестарт процесса)
+    if not PAPER_MODE:
+        try:
+            _act_orders = orders.get_active_orders(symbol=SYMBOL)
+            _alive_ids = {(o.get("order_id") if isinstance(o, dict) else str(o)) for o in (_act_orders or [])}
+            strategy.trail_prune_dead(_alive_ids)
+            save_state()
+            if getattr(strategy, "_trail_stops", None) or getattr(strategy, "_agg_trail", None):
+                log.info(f"F-198: trail registry restored from state (alive orders={len(_alive_ids)})")
+        except Exception as _te:
+            log.warning(f"F-198 trail reconcile failed: {_te}")
 
     # Start main loop    # Start main loop
     t_main = threading.Thread(target=main_loop, daemon=True, name="main-loop")
