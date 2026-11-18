@@ -831,3 +831,19 @@ BR-edp (b9b48e3) → добавлены те же варианты 60%/70% в в
 **Проверки.** Прямой `POST /v1/sessions {"secret": ...}` → 200; SDK `set_jwt_token()` → токен `tapi_ak_*`; безопасная проба заявкой BUY limit 1 @80.00 (далеко от рынка) → `order_id` получен, отменена; затем живой вход: `ENTRY sell 1 @93.68` → `FILL 93.66` → робот SHORT 1, `brokerLots=1`, `mismatch=False`, у брокера `dir=-1 lots=1 avg=93.66`.
 
 **Актуальные параметры на старте (снапшот `robot/config_snapshots/of_config_br_edp_20261111_145415.json`, бэкап `of_config_br_edp.json.backup_before_start_20261111_145415`).** lots=1, maxAvg=25, stepAvg=0.4, stepPyr=1000, spread=0.25, SL=rub/1000, min_profit_per_lot=0.18, close_half_pct=60, max_hold=999, direction=both, timing 09:50–18:15, phase_filter=true (окно 777), VAH/VAL range 95%, VWEMA 20/40, M5, symbol BRZ6@RTSX, счёт edp 2049688.
+
+## 2026-11-18 12:00 — F-197: кнопка ▶ OF-BR edp не включала робота (тот же класс, что F-196 у MXU6)
+
+**Запрос Дмитрия.** «BRZ6 edp Order Flow (PYTHON) робот не включается кнопкой — включи его».
+
+**Диагноз.** Процесс :5083 жив с 11.11 в `mode=stopped` → сломана кнопка, а не робот:
+- `ofBrRobotApi('start')` всегда сначала дёргал `/api/of/process/of_br_edp/start`; этот C#-эндпоинт требует UI-сессию и при истёкшей cookie отдаёт **401** (проверено из консоли) → `pd.ok` отсутствует → молчаливый `return`, `POST /start` вообще не уходил.
+- В BR-блоке осталось **14 вызовов `AbortSignal.timeout`** — на Chrome <103 это TypeError (F-196 добавил `makeTimeoutSignal` только в MX-ветку), из-за чего health-пинг и сами запросы падали.
+
+**Фикс (app.js v144).** health-пинг `cfg.api()+'/health'` (2.5с) ПЕРЕД любым process-start: робот ответил → C#-эндпоинт не трогаем, сразу `POST /start`; не ответил → process-start с явным тостом про 401 («сессия истекла, Ctrl+F5»). Все 14 вызовов в BR-блоке переведены на `makeTimeoutSignal`. bin синхронизирован, отдаваемый сервером файл проверен (маркер F-197 есть, `AbortSignal.timeout` внутри `ofBrRobotApi` нет), `node --check` PASS.
+
+**Про `brokerLots=1 mismatch=true` в статусе.** Это был кэш синка 6.8-суточной давности: у брокера по DP было 0 лотов, заявок нет. При старте синк обновился → `brokerLots=1 mismatch=false` уже по живой позиции.
+
+**Что сделано по существу.** `POST /start` → робот `running`, вход `ENTRY buy 1 @91.75`, брокер подтверждает `dir=1 lots=1 avg=91.75`; тайминг-гейт открыт (09:50–18:15), unreal −0.1, realized 469.7, ошибок в логе нет. Аккаунт edp 2049688, инструмент BRZ6@RTSX, параметры из of_config_br_edp.json (lots=1, maxAvg=25, spread=0.25, SL 1000₽).
+
+**Урок.** Одна кнопка = health-пинг → (при необходимости) process-start → POST /start. Любой «C#-путь» в кнопках роботов требует сессии; молчаливый return на 401 — это и есть «кнопка не работает».

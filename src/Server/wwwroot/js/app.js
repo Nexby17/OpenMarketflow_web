@@ -8183,7 +8183,7 @@ async function arbAdjustApply(inst) {
     }
     el('arbAdjStatus').textContent = 'применяю...';
     try {
-        const resp = await fetch(api.baseUrl + '/position/adjust', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({qty_a: qa, price_a: prA, qty_b: qb, price_b: prB}), signal: AbortSignal.timeout(15000)});
+        const resp = await fetch(api.baseUrl + '/position/adjust', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({qty_a: qa, price_a: prA, qty_b: qb, price_b: prB}), signal: makeTimeoutSignal(15000)});
         const d = await resp.json();
         if (!resp.ok || !d.ok) { el('arbAdjStatus').textContent = 'ошибка: ' + (d.error || resp.status); arbLog(inst, '❌ Adjust failed: ' + (d.error || resp.status), 'ERROR'); return; }
         el('arbAdjStatus').textContent = '✓ применено';
@@ -8220,7 +8220,7 @@ function ofBrCfg(inst) { return OF_BR_INSTANCES[inst] || OF_BR_INSTANCES.edp; }
 async function ofBrRobotPoll(inst) {
     const cfg = ofBrCfg(inst);
     try {
-        const resp = await fetch(cfg.api() + '/status', {signal: AbortSignal.timeout(2000)});
+        const resp = await fetch(cfg.api() + '/status', {signal: makeTimeoutSignal(2000)});
         window[cfg.stateKey] = await resp.json();
         // Робот только что поднялся → досинхронизировать параметры, сохранённые при офлайне
         if (!window['_ofBrWasOnline_' + inst]) {
@@ -8269,20 +8269,38 @@ async function ofBrRobotApi(inst, action) {
     try {
         // F-012: одна кнопка = поднять процесс + включить (как MXU6)
         if (action === 'start') {
-            showToast('⏳ Поднимаю процесс ' + cfg.label + ' (подключение к Finam ~15с)...', 'info');
+            // F-197 (18.11): health-пинг ПЕРЕД C#-эндпоинтом, как в MX (F-071/F-196).
+            // Раньше кнопка ▶ всегда шла в /api/of/process/.../start, который требует UI-сессию:
+            // при истёкшей сессии приходил 401, pd.ok отсутствовал → молчаливый return,
+            // хотя процесс робота был жив (жалоба Дмитрия 18.11 по BRZ6 edp).
+            let robotAlive = false;
             try {
-                const pr = await fetch('/api/of/process/' + cfg.procName + '/start', {method: 'POST', signal: AbortSignal.timeout(35000)});
-                const pd = await pr.json();
-                if (!pd.ok) {
-                    showToast('❌ Процесс ' + cfg.label + ' не поднялся: ' + (pd.error || '?'), 'error');
-                    addLog(nowTime(), 'ERROR', cfg.label + ' process start failed: ' + (pd.error || '?'));
+                const hp = await fetch(cfg.api() + '/health', {signal: makeTimeoutSignal(2500)});
+                robotAlive = hp.ok;
+            } catch (he) { robotAlive = false; }
+            if (!robotAlive) {
+                showToast('⏳ Поднимаю процесс ' + cfg.label + ' (подключение к Finam ~15с)...', 'info');
+                try {
+                    const pr = await fetch('/api/of/process/' + cfg.procName + '/start', {method: 'POST', signal: makeTimeoutSignal(35000)});
+                    if (pr.status === 401) {
+                        showToast('🔐 Сессия истекла — нажми Ctrl+F5 и перезайди, затем ▶ ещё раз', 'error');
+                        addLog(nowTime(), 'ERROR', cfg.label + ' process start: 401 Unauthorized (сессия истекла)');
+                        return;
+                    }
+                    const pd = await pr.json();
+                    if (!pd.ok) {
+                        showToast('❌ Процесс ' + cfg.label + ' не поднялся: ' + (pd.error || '?'), 'error');
+                        addLog(nowTime(), 'ERROR', cfg.label + ' process start failed: ' + (pd.error || '?'));
+                        return;
+                    }
+                    showToast('🟢 Процесс ' + cfg.label + ' поднят' + (pd.alreadyRunning ? ' (уже работал)' : '') + ' — включаю робота', 'ok');
+                } catch(pe) {
+                    showToast('❌ Не удалось поднять процесс ' + cfg.label + ': ' + pe.message, 'error');
+                    addLog(nowTime(), 'ERROR', cfg.label + ' process start error: ' + pe.message);
                     return;
                 }
-                showToast('🟢 Процесс ' + cfg.label + ' поднят' + (pd.alreadyRunning ? ' (уже работал)' : '') + ' — включаю робота', 'ok');
-            } catch(pe) {
-                showToast('❌ Не удалось поднять процесс ' + cfg.label + ': ' + pe.message, 'error');
-                addLog(nowTime(), 'ERROR', cfg.label + ' process start error: ' + pe.message);
-                return;
+            } else {
+                showToast('ℹ ' + cfg.label + ': процесс уже работает — включаю торговлю напрямую', 'info');
             }
         }
         // POST /start с ретраями: после подъёма процесса роботу нужно ~15с на коннект Finam,
@@ -8291,7 +8309,7 @@ async function ofBrRobotApi(inst, action) {
         let resp = null, data = {};
         for (let attempt = 1; attempt <= maxAttempts; attempt++) {
             try {
-                resp = await fetch(cfg.api() + '/' + action, {method: 'POST', signal: AbortSignal.timeout(5000)});
+                resp = await fetch(cfg.api() + '/' + action, {method: 'POST', signal: makeTimeoutSignal(5000)});
                 data = await resp.json().catch(() => ({}));
                 break;
             } catch(re) {
@@ -8316,7 +8334,7 @@ async function ofBrRobotRestart(inst) {
     window['_ofBrRestarting_' + inst] = true;
     try {
         showToast('🔄 Регламентный рестарт ' + cfg.label + ' (FLAT-чек + cooldown 90с)...', 'info');
-        const resp = await fetch(cfg.api() + '/restart', {method: 'POST', signal: AbortSignal.timeout(10000)});
+        const resp = await fetch(cfg.api() + '/restart', {method: 'POST', signal: makeTimeoutSignal(10000)});
         const data = await resp.json().catch(() => ({}));
         if (resp.status === 409) {
             showToast(`⛔ Рестарт отклонён: позиция открыта (${data.lots} лот.) — сначала закрыть`, 'error');
@@ -8359,7 +8377,7 @@ async function ofBrLoadJournal(inst) {
     const body = el('ofBrJournalBody');
     if (!body) return;
     try {
-        const resp = await fetch(cfg.api() + '/status', {signal: AbortSignal.timeout(2000)});
+        const resp = await fetch(cfg.api() + '/status', {signal: makeTimeoutSignal(2000)});
         const data = await resp.json();
         _ofBrJournalTrades = data.tradeHistory || data.trades || [];
         _ofBrJournalInst = inst;
@@ -8465,7 +8483,7 @@ async function ofBrPositionAdjust(inst) {
     try {
         const r = await fetch(cfg.api() + '/position/adjust', {
             method: 'POST', headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({lots, price}), signal: AbortSignal.timeout(8000)
+            body: JSON.stringify({lots, price}), signal: makeTimeoutSignal(8000)
         });
         const j = await r.json();
         if (!r.ok) { alert('Ошибка: ' + (j.error || r.status)); return; }
@@ -8491,7 +8509,7 @@ async function ofBrSyncLots(inst) {
     if (!confirm('SYNC ' + cfg.label + ': внутренний счёт лотов робота будет приведён к ' + lots +
         ' (сейчас робот: ' + (s.totalLots || 0) + ', брокер: ' + (s.brokerLots != null ? s.brokerLots : '?') + ').\nПродолжить?')) return;
     try {
-        const r = await fetch(cfg.api() + '/sync?lots=' + lots, {signal: AbortSignal.timeout(8000)});
+        const r = await fetch(cfg.api() + '/sync?lots=' + lots, {signal: makeTimeoutSignal(8000)});
         const j = await r.json();
         if (!r.ok) { alert('Ошибка: ' + (j.error || r.status)); return; }
         addLog(nowTime(), 'INFO', '🔧 ' + cfg.label + ' SYNC: lots ' + j.old_lots + ' → ' + j.new_lots + ' (avg ' + (j.avg_price || 0).toFixed(2) + ')');
@@ -8511,13 +8529,13 @@ async function ofBrApplyClosePriceAll(inst) {
     if (price > 0 && !confirm('Выставить ручную цель ' + cfg.label + ': закрыть ВСЮ позицию по рынку при достижении цены ' + price.toFixed(2) + '?')) return;
     if (price === 0 && !confirm('Отключить ручную цель close_price_all (0)?')) return;
     try {
-        const r = await fetch(cfg.api() + '/params', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({close_price_all: price}), signal: AbortSignal.timeout(4000)});
+        const r = await fetch(cfg.api() + '/params', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({close_price_all: price}), signal: makeTimeoutSignal(4000)});
         await r.json();
         addLog(nowTime(), 'INFO', '🎯 ' + cfg.label + ' close_price_all = ' + price + (price === 0 ? ' (выкл)' : ''));
         showToast('🎯 close_price_all = ' + price + (price === 0 ? ' (выключено)' : ''), 'ok');
     } catch(e) {
         try {
-            const r2 = await fetch('/api/of/config/' + cfg.cfgName, {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({close_price_all: price}), signal: AbortSignal.timeout(4000)});
+            const r2 = await fetch('/api/of/config/' + cfg.cfgName, {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({close_price_all: price}), signal: makeTimeoutSignal(4000)});
             if (r2.ok) { showToast('🎯 close_price_all = ' + price + ' сохранён в конфиг (робот offline)', 'ok'); }
             else { showToast('⚠ Не сохранить close_price_all', 'error'); return; }
         } catch(e2) { showToast('⚠ Робот offline, прокси недоступен — close_price_all не применён', 'error'); return; }
@@ -8567,7 +8585,7 @@ function ofBrRobotEditPanel(inst) {
         let params = s.params || null;
         if (!params) {
             try {
-                const r = await fetch('/api/of/config/' + cfg.cfgName, {signal: AbortSignal.timeout(2500)});
+                const r = await fetch('/api/of/config/' + cfg.cfgName, {signal: makeTimeoutSignal(2500)});
                 if (r.ok) { params = await r.json(); cfgSrc = 'config'; }
             } catch(e) {}
         }
@@ -8931,7 +8949,7 @@ async function ofBrOpenPhaseChart() {
     const info = document.getElementById('ofBrPhaseChartInfo');
     if (info) info.textContent = 'Загрузка свечей...';
     try {
-        const r = await fetch('/api/candles?ticker=' + encodeURIComponent(ticker) + '&tf=' + tf + '&days=30', {signal: AbortSignal.timeout(15000)});
+        const r = await fetch('/api/candles?ticker=' + encodeURIComponent(ticker) + '&tf=' + tf + '&days=30', {signal: makeTimeoutSignal(15000)});
         const data = await r.json();
         if (!Array.isArray(data) || !data.length) { if (info) info.textContent = 'Нет данных'; return; }
         const MSK = 10800;
@@ -9050,7 +9068,7 @@ async function ofBrRobotSaveFromPanel() {
     localStorage.setItem('ofBrSavedParams_' + inst, JSON.stringify(body));
     // 2) живой робот
     try {
-        const resp = await fetch(cfg.api() + '/params', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body), signal: AbortSignal.timeout(4000)});
+        const resp = await fetch(cfg.api() + '/params', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body), signal: makeTimeoutSignal(4000)});
         await resp.json();
         localStorage.removeItem('ofBrSavedParams_' + inst);
         const badge = el('ofBrCfgSrcBadge');
@@ -9060,7 +9078,7 @@ async function ofBrRobotSaveFromPanel() {
     } catch(e) {
         // 3) робот offline → persist через серверный прокси в json
         try {
-            const r2 = await fetch('/api/of/config/' + cfg.cfgName, {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body), signal: AbortSignal.timeout(4000)});
+            const r2 = await fetch('/api/of/config/' + cfg.cfgName, {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body), signal: makeTimeoutSignal(4000)});
             if (r2.ok) {
                 localStorage.removeItem('ofBrSavedParams_' + inst);
                 addLog(nowTime(), 'INFO', '💾 OF-BR[' + cfg.label + '] конфиг сохранён в json (робот offline)');
