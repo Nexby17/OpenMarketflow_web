@@ -472,6 +472,7 @@ def _set_current_price(price: float):
 
 
 # F-198: последние Bid/Ask из Quote-потока (основа для трейлинг-стопов)
+_last_trail_recon: float = 0.0   # F-200: throttle сверки трейл-стопов (сек)
 _last_bid: float = 0.0
 _last_ask: float = 0.0
 
@@ -567,6 +568,15 @@ def main_loop():
                     )
                 except Exception as e:
                     log.warning(f"TRAIL SL sync error: {e}")
+
+                # F-200: сверка исполнения трейл-стопов раз в 3с (WS-id может не совпасть)
+                global _last_trail_recon
+                if strategy.trail_active_order_ids() and (time.time() - _last_trail_recon) > 3:
+                    _last_trail_recon = time.time()
+                    try:
+                        _reconcile_trail_fills()
+                    except Exception as _re:
+                        log.warning(f"F-200 reconcile error: {_re}")
 
             # Execute actions
             for action in actions:
