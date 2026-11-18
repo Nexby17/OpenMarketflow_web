@@ -50,6 +50,12 @@ class OFParams:
     step_pyramid: int = 35        # pts — шаг пирамидинга (по тренду)
     spread: int = 50              # pts — мин прибыль на partial TP
     partial_tp: bool = True       # LIFO partial close
+    # F-198 (18.11.2026): догон пропущенных partial TP после обрыва данных.
+    # Если связь пропадала дольше catchup_tp_min_gap_sec и за это окно цена проходила
+    # уровень тейка LIFO-лота, при восстановлении связи лот закрывается — но только
+    # если профит по нему ещё есть (не фиксируем убыток и не закрываем «в минус»).
+    catchup_tp_enabled: bool = True
+    catchup_tp_min_gap_sec: int = 30
     stop_loss_mode: str = "rub"   # rub / pct / pts
     stop_loss_value: float = 7000
     margin_per_lot: float = 7000  # ГО за 1 лот (для pct режима)
@@ -106,6 +112,11 @@ class OFParams:
     # При 1-2 лотах правило не действует — обычная торговля (усреднение, LIFO-тейки).
     # Выключено по умолчанию; включается в конфиге конкретного робота.
     pyramid_full_exit: bool = False
+    # F-198: режим Trailing SL — прибыль не фиксируется маркетом (partial TP/tp_full отключены),
+    # а запирается брокерским стопом, который трейлится за ценой.
+    trail_mode: bool = False
+    trail_sl_pts: float = 12.0     # дистанция стопа от Bid (LONG) / Ask (SHORT), пт
+    trail_step_pts: float = 5.0    # шаг подтяжки стопа, пт
     # VAH/VAL Volume Profile filter
     use_vah_val: bool = False      # enable VAH/VAL entry filter
     vah_val_pct: int = 70          # value area percentage (70%)
@@ -151,6 +162,7 @@ class LotEntry:
     side: int     # LONG or SHORT (buy=1, sell=-1)
     lots: int     # how many lots at this price
     added_ts: float = 0.0  # time.monotonic() when lot was added (grace period)
+    uid: int = 0          # F-198: стабильный id слоя (ключ реестра трейлинг-стопов)
 
 
 class VWEMARegime:
@@ -387,6 +399,7 @@ class OrderFlowStrategy:
         self._phase_dir: int = 0           # 1 = LONG-зона, -1 = SHORT-зона, 0 = BOTH/не готово
         self._phase_last_log: str = ""
         self._pending_cvd_trend: Optional[dict] = None   # F-067b: сигнал кроссовера, ждущий входа
+        self._blind_since: Optional[float] = None       # F-198: начало «слепого окна» (epoch)
         self._last_average_price: float = 0.0
         self._last_pyramid_price: float = 0.0
         self._lot_queue: deque[LotEntry] = deque()
@@ -414,6 +427,14 @@ class OrderFlowStrategy:
         # F-073 (fix 19.10): цена входа в последний ПИРАМИД-уровень. Обновляется только
         # в _check_pyramiding; усреднение/manual_adjust её НЕ трогают. 0 = пирамид нет.
         self._last_pyr_entry_price: float = 0.0
+
+        # F-198: реестр трейлинг-стопов. Ключ — uid слоя (LotEntry.uid).
+        # {uid: {order_id, stop_px, qty, best, ts}}; agg — консолидированный стоп
+        # на весь объём (Close % All или пирамида от 3 лотов).
+        self._trail_stops: dict[int, dict] = {}
+        self._agg_trail: Optional[dict] = None
+        self._trail_uid_seq: int = 0
+        self._trail_closed_lots: int = 0   # сколько лотов закрыто трейлинг-стопами
 
         # F-087 fix: фазовый канал из /api/candles (единый источник с UI-графиком).
         # Обновляется раз в 60с в _phase_channel_refresh; живые бары его не вытесняют.
@@ -685,6 +706,22 @@ class OrderFlowStrategy:
             return False
         return self.pnl_per_lot(price) >= self.p.min_profit_per_lot
 
+    def _mk_lot_uid(self) -> int:
+        """F-198: следующий uid слоя."""
+        self._trail_uid_seq += 1
+        return self._trail_uid_seq
+
+    def _mk_lot(self, price: float, side: int, lots: int,
+                added_ts: float = 0.0, uid: Optional[int] = None) -> LotEntry:
+        """F-198: создать слой с уникальным uid (ключ реестра трейлинг-стопов)."""
+        if uid is None or int(uid) <= 0:
+            uid = self._mk_lot_uid()
+        else:
+            self._trail_uid_seq = max(self._trail_uid_seq, int(uid))
+        lot = LotEntry(price=price, side=side, lots=lots, added_ts=added_ts, uid=int(uid))
+        self._lot_queue.append(lot)
+        return lot
+
     def _last_pyramid_entry_price(self) -> Optional[float]:
         """F-073 (fix 19.10): цена входа в ПОСЛЕДНИЙ ПИРАМИД-уровень.
 
@@ -869,6 +906,18 @@ class OrderFlowStrategy:
           [] — no action
         """
         with self._lock:
+            # F-198: заметить «слепое окно» ДО обновления метки цены
+            try:
+                _now_ts = time.time()
+                _gap_limit = float(getattr(self.p, "catchup_tp_min_gap_sec", 30) or 30)
+                if (self._last_price_update > 0
+                        and (_now_ts - self._last_price_update) > _gap_limit
+                        and self._blind_since is None):
+                    self._blind_since = self._last_price_update
+                    log.warning(f"BLIND GAP: no price for {_now_ts - self._last_price_update:.0f}s "
+                                f"— missed TP will be checked on reconnect")
+            except Exception:
+                pass
             self._current_price = current_price
             self.update_price(current_price)
             actions = []
@@ -912,6 +961,12 @@ class OrderFlowStrategy:
 
             # If in position — partial TP FIRST (scalp priority)
             if self.in_position:
+                # F-198: сначала проверить, не был ли пройден тейк, пока данных не было
+                _catch = self._catchup_missed_tp(current_price)
+                if _catch:
+                    actions.extend(_catch)
+                    self._last_action_time = time.time()
+                    return actions
                 # F-073 (сужено 19.10 по Дмитрию): правило действует ТОЛЬКО если в позиции
                 # есть хотя бы ОДИН реальный пирамид-уровень (_pyramid_levels > 0).
                 # Позиция из входа+усреднений (pyr=0) живёт по ОБЫЧНЫМ правилам:
@@ -1037,6 +1092,11 @@ class OrderFlowStrategy:
                 self._avg_price = broker_avg
                 self._entry_price = broker_avg
                 self._lot_queue.append(LotEntry(price=broker_avg, side=self._dir, lots=self._total_lots, added_ts=time.monotonic()))
+                # F-198: слой после full-resync получает свежий uid; трейл-реестр очищается
+                self._trail_stops.clear()
+                self._agg_trail = None
+                if self._lot_queue:
+                    self._lot_queue[-1].uid = self._mk_lot_uid()
                 # F-193: ресинк НЕ должен стирать пирамид-состояние той же позиции.
                 # F-095 обнулял _pyramid_levels/_last_pyr_entry_price при любом
                 # расхождении — после этого позиция с пирамидами оставалась без
@@ -1603,6 +1663,107 @@ class OrderFlowStrategy:
             'price': price,
             'level': self._pyramid_levels,
         }
+
+    # ---------- F-198: догон пропущенных partial TP ----------
+
+    def _fetch_recent_bars(self, since_ts: float):
+        """M1-бары с C#-сервера за сегодня; возвращает [(ts, high, low)] или []."""
+        import json as _json
+        import urllib.request as _uq
+        ticker = str(getattr(self, "symbol", "") or "").split("@")[0]
+        if not ticker:
+            return []
+        url = f"http://localhost:5050/api/candles?ticker={ticker}&tf=1&days=1"
+        with _uq.urlopen(url, timeout=6) as r:
+            data = _json.loads(r.read())
+        if not isinstance(data, list):
+            return []
+        return [(float(b["t"]), float(b["h"]), float(b["l"])) for b in data if float(b.get("t", 0)) >= since_ts]
+
+    def _catchup_missed_tp(self, price: float) -> list[dict]:
+        """F-198: закрыть LIFO-лот, если его тейк был пройден в «слепое окно».
+
+        Условия (все обязательны):
+          1) было окно без данных длиннее catchup_tp_min_gap_sec;
+          2) в этом окне high (LONG) / low (SHORT) дошёл до уровня лота ± spread;
+          3) профит по лоту ЕЩЁ есть (pnl >= min_profit_per_lot) — не закрываем в минус;
+          4) лот не в 2-секундном grace после добавления.
+        После проверки окно сбрасывается (одноразово).
+        """
+        if not getattr(self.p, "catchup_tp_enabled", True):
+            self._blind_since = None
+            return []
+        blind_since = self._blind_since
+        self._blind_since = None
+        if blind_since is None or not self.p.partial_tp or not self._lot_queue or self._dir == FLAT:
+            return []
+
+        gap = time.time() - blind_since
+        gap_limit = float(getattr(self.p, "catchup_tp_min_gap_sec", 30) or 30)
+        if gap < gap_limit:
+            return []
+
+        last = self._lot_queue[-1]
+        if last.added_ts > 0 and (time.monotonic() - last.added_ts) < 2.0:
+            return []
+
+        level = last.price + self.p.spread * last.side   # LONG: +spread, SHORT: −spread
+
+        try:
+            bars = self._fetch_recent_bars(blind_since)
+        except Exception as e:
+            log.warning(f"CATCHUP TP: bars fetch failed: {str(e)[:120]}")
+            return []
+        if not bars:
+            return []
+
+        if self._dir == LONG:
+            passed = any(h >= level for _ts, h, _l in bars)
+        else:
+            passed = any(l <= level for _ts, _h, l in bars)
+        if not passed:
+            log.info(f"CATCHUP TP: blind {gap:.0f}s, level {fmt_price(level)} NOT reached — nothing to do")
+            return []
+
+        pnl_pts = (price - last.price) * last.side
+        min_profit = float(getattr(self.p, "min_profit_per_lot", 0) or 0)
+        if pnl_pts < min_profit:
+            log.info(f"CATCHUP TP skipped: level {fmt_price(level)} passed during blind {gap:.0f}s, "
+                     f"but price already back (pnl={pnl_pts:.0f} < min_profit={min_profit:.0f})")
+            return []
+
+        side = "sell" if self._dir == LONG else "buy"
+        self._total_lots -= last.lots
+        self._lot_queue.pop()
+
+        action = {
+            "action": "partial_tp",
+            "side": side,
+            "qty": last.lots,
+            "price": price,
+            "entryPrice": last.price,
+            "entrySide": last.side,
+            "signal": self._signal_type,
+            "reason": "catchup_tp",
+        }
+
+        if self._lot_queue:
+            if self._dir == SHORT:
+                self._last_average_price = max(e.price for e in self._lot_queue)
+            else:
+                self._last_average_price = min(e.price for e in self._lot_queue)
+            total_cost = sum(e.price * e.lots for e in self._lot_queue)
+            total_lots = sum(e.lots for e in self._lot_queue)
+            self._avg_price = total_cost / total_lots if total_lots > 0 else 0
+        else:
+            self._last_average_price = self._avg_price
+            self._reset_position()
+            self._lock_entry(10.0)
+            self._round_trips += 1
+
+        log.info(f"CATCHUP TP: blind {gap:.0f}s, lot {fmt_price(last.price)} level {fmt_price(level)} was passed "
+                 f"— closing {last.lots} @ {fmt_price(price)} (pnl={pnl_pts:.0f})")
+        return [action]
 
     def _check_partial_tp(self, price: float) -> list[dict]:
         """Partial TP — close ALL profitable lots (LIFO — most recent first).
