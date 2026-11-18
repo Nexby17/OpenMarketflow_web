@@ -321,6 +321,30 @@ def t_state_roundtrip():
     assert s2._trail_stops[uid]["order_id"] == list(s._trail_stops.values())[0]["order_id"]
 
 
+# ---------- 10. F-200: ресинк не должен переворачивать направление ----------
+
+def t_resync_short_stays_short():
+    s = make_strategy()
+    pos(s, SHORT, [(83061, 2)])
+    s.sync_from_broker({"lots": 2, "dir": -1, "avg_price": 83061.0, "current_price": 83041.0}, full=True)
+    assert s._dir == SHORT, f"после ресинка шорт должен остаться шортом, got dir={s._dir}"
+    assert s._total_lots == 2, s._total_lots
+
+
+def t_resync_long_stays_long():
+    s = make_strategy()
+    pos(s, LONG, [(83061, 3)])
+    s.sync_from_broker({"lots": 3, "dir": 1, "avg_price": 83061.0, "current_price": 83070.0}, full=True)
+    assert s._dir == LONG and s._total_lots == 3, (s._dir, s._total_lots)
+
+
+def t_resync_flat():
+    s = make_strategy()
+    pos(s, SHORT, [(83061, 2)])
+    s.sync_from_broker({"lots": 0, "dir": 0, "avg_price": 0.0, "current_price": 83041.0}, full=True)
+    assert s._dir == FLAT and s._total_lots == 0
+
+
 print("F-198 Trailing SL")
 check("до +spread стопа нет", t_no_stop_before_spread)
 check("LONG: стоп на +spread (Bid-12)", t_stop_armed_at_spread_long)
@@ -341,6 +365,9 @@ check("старый режим не тронут", t_legacy_mode_unchanged)
 check("выключение галки снимает стопы", t_mode_off_cancels_stops)
 check("без позиции стопов нет", t_no_position_no_stops)
 check("реестр переживает рестарт", t_state_roundtrip)
+check("F-200 ресинк шорта остаётся шортом", t_resync_short_stays_short)
+check("F-200 ресинк лонга остаётся лонгом", t_resync_long_stays_long)
+check("F-200 ресинк во FLAT", t_resync_flat)
 
 passed = sum(RESULTS)
 print(f"\n{passed}/{len(RESULTS)} PASS")

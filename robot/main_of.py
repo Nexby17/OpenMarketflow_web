@@ -595,6 +595,11 @@ def main_loop():
                     sync_account = ACCOUNTS.get(ACTIVE_ACCOUNT_KEY, ACCOUNT)
                     bd = get_broker_position(_rest4mod, sync_account, SYMBOL)
                     if bd is not None:
+                        # F-200: сначала применяем исполненные трейл-стопы
+                        if _reconcile_trail_fills():
+                            _bd2 = get_broker_position(_rest4mod, sync_account, SYMBOL)
+                            if _bd2 is not None:
+                                bd = _bd2
                         strategy.sync_from_broker(bd)
                         # Passive desync monitor (dir-aware; None = API упал, НЕ тревога)
                         ok, msg = positions_in_sync(strategy._total_lots, strategy._dir, bd)
@@ -721,6 +726,41 @@ def _get_broker_position_fast():
     except Exception:
         pass
     return None
+
+
+def _reconcile_trail_fills() -> int:
+    """F-200: применить трейл-стопы, которые уже ИСПОЛНЕНЫ по статусу заявки.
+
+    WS-событие филла может не донести order_id (или прийти с другим id), из-за чего
+    робот не узнаёт о закрытии слоя и расходится с брокером. Здесь мы спрашиваем
+    статус каждой нашей стоп-заявки и локально применяем факт исполнения.
+    """
+    ids = list(strategy.trail_active_order_ids())
+    if not ids:
+        return 0
+    acc = ACCOUNTS.get(ACTIVE_ACCOUNT_KEY, ACCOUNT)
+    applied = 0
+    for oid in ids:
+        try:
+            st = _rest4mod.get_order(acc, oid) or {}
+        except Exception:
+            continue
+        status = str(st.get("status", ""))
+        if status in ("ORDER_STATUS_FILLED", "ORDER_STATUS_EXECUTED"):
+            px = _last_fill_price if (time.time() - _last_fill_time) < 180 else 0.0
+            act = strategy.apply_trail_stop_fill(oid, px or strategy._current_price)
+            if act:
+                _record_broker_trade(act, act.get("price") or strategy._current_price)
+                save_state()
+                applied += 1
+                log.warning(f"F-200: trail stop {oid} FILLED — applied locally "
+                            f"({act.get('reason')}, qty={act.get('qty')})")
+        elif status in ("ORDER_STATUS_CANCELED", "ORDER_STATUS_REJECTED", "ORDER_STATUS_EXPIRED",
+                        "ORDER_STATUS_FAILED", "ORDER_STATUS_DISABLED"):
+            alive = [x for x in strategy.trail_active_order_ids() if str(x) != str(oid)]
+            strategy.trail_prune_dead(alive)
+            log.info(f"F-200: trail stop {oid} is {status} — dropped from registry")
+    return applied
 
 
 def _execute_action(action: dict):

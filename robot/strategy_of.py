@@ -1348,6 +1348,14 @@ class OrderFlowStrategy:
         broker_avg = broker_data.get('avg_price', 0.0)
         broker_cur = broker_data.get('current_price', 0.0)
         broker_lots = int(broker_data.get('lots', 0) or 0)
+        # F-200: get_broker_position отдаёт lots АБСОЛЮТОМ, направление — в 'dir'.
+        # Раньше знак брался из lots → любая SHORT-позиция после full-resync
+        # превращалась в LONG (инцидент 18.11 16:20: шорт −2 стал «LONG 2»).
+        broker_dir = int(broker_data.get('dir', 0) or 0)
+        if broker_dir == 0 and broker_lots == 0:
+            signed_lots = 0
+        else:
+            signed_lots = abs(broker_lots) * (broker_dir if broker_dir else 1)
 
         if broker_cur > 0:
             self._broker_current_price = broker_cur
@@ -1367,7 +1375,7 @@ class OrderFlowStrategy:
             self._pyr_stop_order_id = None
             self._pyr_stop_price = 0.0
             self._pyr_stop_qty = 0
-            if broker_lots == 0:
+            if signed_lots == 0:
                 self._dir = FLAT
                 self._total_lots = 0
                 self._avg_price = 0.0
@@ -1375,8 +1383,8 @@ class OrderFlowStrategy:
                 self._pyramid_levels = 0
                 self._last_pyr_entry_price = 0.0
             else:
-                self._dir = LONG if broker_lots > 0 else SHORT
-                self._total_lots = abs(broker_lots)
+                self._dir = LONG if signed_lots > 0 else SHORT
+                self._total_lots = abs(signed_lots)
                 self._avg_price = broker_avg
                 self._entry_price = broker_avg
                 self._lot_queue.append(LotEntry(price=broker_avg, side=self._dir, lots=self._total_lots, added_ts=time.monotonic()))
