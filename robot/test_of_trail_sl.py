@@ -83,12 +83,14 @@ class Stops:
         self.cancelled.append(oid)
 
 
-def pos(s, direction, prices_lots):
-    """prices_lots = [(price, lots), ...] → очередь слоёв."""
+def pos(s, direction, prices_lots, srcs=None):
+    """prices_lots = [(price, lots), ...] → очередь слоёв; srcs = ['entry','avg','pyr',...]."""
     s._dir = direction
     s._lot_queue.clear()
-    for price, lots in prices_lots:
+    srcs = srcs or [""] * len(prices_lots)
+    for (price, lots), src in zip(prices_lots, srcs):
         s._mk_lot(price, direction, lots)
+        s._lot_queue[-1].src = src
     s._total_lots = sum(l for _, l in prices_lots)
     s._peak_lots = s._total_lots
     s._avg_price = sum(p * l for p, l in prices_lots) / max(1, s._total_lots)
@@ -345,6 +347,49 @@ def t_resync_flat():
     assert s._dir == FLAT and s._total_lots == 0
 
 
+# ---------- 11. F-201: порог активации по типу позиции ----------
+
+def t_pyramid_lot_arms_at_step_pyr():
+    """Пирамидный лот взводится на +Step Pyr (30), не дожидаясь +Spread (42)."""
+    s = make_strategy()          # spread=42, step_pyramid=30
+    st = Stops()
+    pos(s, SHORT, [(83077, 1)], srcs=["pyr"])
+    s.sync_trail_stops(bid=83046, ask=83045, place_stop_fn=st.place, cancel_fn=st.cancel)  # +32
+    assert len(st.placed) == 1, f"пирамидный лот должен взвестись на +30, got {st.placed}"
+
+
+def t_pyramid_lot_waits_below_step_pyr():
+    s = make_strategy()
+    st = Stops()
+    pos(s, SHORT, [(83077, 1)], srcs=["pyr"])
+    s.sync_trail_stops(bid=83049, ask=83048, place_stop_fn=st.place, cancel_fn=st.cancel)  # +29
+    assert not st.placed, f"до +30 стопа быть не должно, got {st.placed}"
+
+
+def t_averaging_lot_not_armed_at_30():
+    s = make_strategy()
+    st = Stops()
+    pos(s, SHORT, [(83077, 1)], srcs=["avg"])
+    s.sync_trail_stops(bid=83046, ask=83045, place_stop_fn=st.place, cancel_fn=st.cancel)  # +32
+    assert not st.placed, f"усреднение ждёт +42, got {st.placed}"
+
+
+def t_averaging_lot_armed_at_spread():
+    s = make_strategy()
+    st = Stops()
+    pos(s, SHORT, [(83077, 1)], srcs=["avg"])
+    s.sync_trail_stops(bid=83036, ask=83035, place_stop_fn=st.place, cancel_fn=st.cancel)  # +42
+    assert len(st.placed) == 1, f"усреднение взводится на +42, got {st.placed}"
+
+
+def t_entry_lot_uses_spread():
+    s = make_strategy()
+    st = Stops()
+    pos(s, LONG, [(83400, 1)], srcs=["entry"])
+    s.sync_trail_stops(bid=83432, ask=83433, place_stop_fn=st.place, cancel_fn=st.cancel)  # +32
+    assert not st.placed, f"входной лот ждёт +42, got {st.placed}"
+
+
 print("F-198 Trailing SL")
 check("до +spread стопа нет", t_no_stop_before_spread)
 check("LONG: стоп на +spread (Bid-12)", t_stop_armed_at_spread_long)
@@ -368,6 +413,11 @@ check("реестр переживает рестарт", t_state_roundtrip)
 check("F-200 ресинк шорта остаётся шортом", t_resync_short_stays_short)
 check("F-200 ресинк лонга остаётся лонгом", t_resync_long_stays_long)
 check("F-200 ресинк во FLAT", t_resync_flat)
+check("F-201 пирамида: стоп на +30", t_pyramid_lot_arms_at_step_pyr)
+check("F-201 пирамида: до +30 стопа нет", t_pyramid_lot_waits_below_step_pyr)
+check("F-201 усреднение: на +32 стопа нет", t_averaging_lot_not_armed_at_30)
+check("F-201 усреднение: стоп на +42", t_averaging_lot_armed_at_spread)
+check("F-201 вход: порог Spread", t_entry_lot_uses_spread)
 
 passed = sum(RESULTS)
 print(f"\n{passed}/{len(RESULTS)} PASS")

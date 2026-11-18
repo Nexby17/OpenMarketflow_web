@@ -171,6 +171,7 @@ class LotEntry:
     lots: int     # how many lots at this price
     added_ts: float = 0.0  # time.monotonic() when lot was added (grace period)
     uid: int = 0          # F-198: стабильный id слоя (ключ реестра трейлинг-стопов)
+    src: str = ""         # F-201: источник слоя: entry / avg / pyr / manual / resync
 
 
 class VWEMARegime:
@@ -966,7 +967,12 @@ class OrderFlowStrategy:
             rec = self._trail_stops.get(uid)
             if rec is None:
                 pnl_pts = (base - e.price) * e.side
-                if pnl_pts < float(self.p.spread):
+                # F-201: порог активации зависит от типа позиции —
+                # пирамида: Step Pyr (30), усреднение/вход: Spread (42).
+                _arm_pts = float(self.p.step_pyramid) if e.src == "pyr" else float(self.p.spread)
+                if _arm_pts <= 0:
+                    _arm_pts = float(self.p.spread)
+                if pnl_pts < _arm_pts:
                     continue
                 placed = place_stop_fn(side, e.lots, stop_px, "of_trail_sl")
                 oid = getattr(placed, "order_id", None) if placed else None
@@ -1393,6 +1399,7 @@ class OrderFlowStrategy:
                 self._agg_trail = None
                 if self._lot_queue:
                     self._lot_queue[-1].uid = self._mk_lot_uid()
+                    self._lot_queue[-1].src = "resync"
                 # F-193: ресинк НЕ должен стирать пирамид-состояние той же позиции.
                 # F-095 обнулял _pyramid_levels/_last_pyr_entry_price при любом
                 # расхождении — после этого позиция с пирамидами оставалась без
@@ -1643,6 +1650,7 @@ class OrderFlowStrategy:
         self._lot_queue.append(LotEntry(price=price, side=direction, lots=self.p.lots, added_ts=time.monotonic()))
         # F-198: uid слою (ключ реестра трейлинг-стопов)
         self._lot_queue[-1].uid = self._mk_lot_uid()
+        self._lot_queue[-1].src = "entry"
 
         self._lock_entry(10.0)  # 10 sec entry lock
 
@@ -1787,6 +1795,7 @@ class OrderFlowStrategy:
             self._lot_queue.append(LotEntry(price=level_price, side=self._dir, lots=self.p.lots, added_ts=time.monotonic()))
             # F-198: uid слою (ключ реестра трейлинг-стопов)
             self._lot_queue[-1].uid = self._mk_lot_uid()
+            self._lot_queue[-1].src = "avg"
 
             actions.append({
                 'action': 'average',
@@ -1859,6 +1868,7 @@ class OrderFlowStrategy:
                 price=price, side=new_side, lots=adj_qty,
                 added_ts=time.monotonic(),  # 2s grace vs instant partial TP
                 uid=self._mk_lot_uid(),
+                src="manual",
             ))
             if self._dir == FLAT:
                 self._dir = new_side
@@ -1893,6 +1903,7 @@ class OrderFlowStrategy:
                     price=price, side=new_side, lots=remaining,
                     added_ts=time.monotonic(),
                     uid=self._mk_lot_uid(),
+                    src="manual",
                 ))
 
         # --- Recompute derived state from queue (same invariants as sync_lot_count) ---
@@ -1957,6 +1968,7 @@ class OrderFlowStrategy:
         self._lot_queue.append(LotEntry(price=price, side=self._dir, lots=self.p.lots, added_ts=time.monotonic()))
         # F-198: uid слою (ключ реестра трейлинг-стопов)
         self._lot_queue[-1].uid = self._mk_lot_uid()
+        self._lot_queue[-1].src = "pyr"
 
         log.info(f"PYRAMID {side} {self.p.lots} @ {fmt_price(price)} | lvl {self._pyramid_levels}/{self.p.max_pyramid_levels} | avg={fmt_price(self._avg_price)} lots={self._total_lots}")
 
@@ -2351,7 +2363,8 @@ class OrderFlowStrategy:
             # F-193: без этого после рестарта терялся уровень стопа пирамиды
             "lastPyrEntryPrice": self._last_pyr_entry_price,
             "peakLots": self._peak_lots,
-            "lotQueue": [{"price": e.price, "side": e.side, "lots": e.lots} for e in self._lot_queue],
+            "lotQueue": [{"price": e.price, "side": e.side, "lots": e.lots,
+                          "uid": e.uid, "src": e.src} for e in self._lot_queue],
             "roundTrips": self._round_trips,
             "realizedPnL": self._realized_pnl,
             "dailyPnL": self._daily_pnl,
@@ -2409,6 +2422,7 @@ class OrderFlowStrategy:
                     lots=e.get("lots", 0),
                     added_ts=0.0,  # No grace for restored lots
                     uid=int(e.get("uid", 0) or 0),
+                    src=str(e.get("src", "") or ""),
                 ))
             log.info(f"Restored position: dir={self._dir} lots={self._total_lots} avg={fmt_price(self._avg_price)} lotEntries={len(self._lot_queue)}")
         elif self._total_lots > 0 and self._avg_price > 0:
