@@ -56,6 +56,14 @@ class OFParams:
     # если профит по нему ещё есть (не фиксируем убыток и не закрываем «в минус»).
     catchup_tp_enabled: bool = True
     catchup_tp_min_gap_sec: int = 30
+    # F-199 (18.11.2026): периодическая проверка пробоя уровня тейка по M1-барам.
+    # Даже без обрыва связи отдельные тики теряются (в 15:40 цена коснулась 246800,
+    # робот тик не получил -> partial TP не сработал). Раз в scan_sec робот смотрит
+    # последние scan_window_sec минутных баров: если high (LONG) / low (SHORT) пробил
+    # уровень LIFO-лота и профит ещё есть — лот закрывается.
+    tp_bar_scan_enabled: bool = True
+    tp_bar_scan_sec: int = 60
+    tp_bar_scan_window_sec: int = 240
     stop_loss_mode: str = "rub"   # rub / pct / pts
     stop_loss_value: float = 7000
     margin_per_lot: float = 7000  # ГО за 1 лот (для pct режима)
@@ -400,6 +408,7 @@ class OrderFlowStrategy:
         self._phase_last_log: str = ""
         self._pending_cvd_trend: Optional[dict] = None   # F-067b: сигнал кроссовера, ждущий входа
         self._blind_since: Optional[float] = None       # F-198: начало «слепого окна» (epoch)
+        self._tp_scan_ts: float = 0.0                   # F-199: время последнего скана баров
         self._last_average_price: float = 0.0
         self._last_pyramid_price: float = 0.0
         self._lot_queue: deque[LotEntry] = deque()
@@ -1239,6 +1248,13 @@ class OrderFlowStrategy:
                     actions.extend(_catch)
                     self._last_action_time = time.time()
                     return actions
+
+                # F-199: периодический скан M1-баров на пропущенный пробой уровня тейка
+                _scan = self._scan_missed_tp(current_price)
+                if _scan:
+                    actions.extend(_scan)
+                    self._last_action_time = time.time()
+                    return actions
                 # F-073 (сужено 19.10 по Дмитрию): правило действует ТОЛЬКО если в позиции
                 # есть хотя бы ОДИН реальный пирамид-уровень (_pyramid_levels > 0).
                 # Позиция из входа+усреднений (pyr=0) живёт по ОБЫЧНЫМ правилам:
@@ -1960,6 +1976,99 @@ class OrderFlowStrategy:
             return []
         return [(float(b["t"]), float(b["h"]), float(b["l"])) for b in data if float(b.get("t", 0)) >= since_ts]
 
+    def _next_tp_level(self):
+        """F-199: уровень partial TP для LIFO-лота (лот ± spread)."""
+        if not self._lot_queue:
+            return None
+        last = self._lot_queue[-1]
+        return round(last.price + self.p.spread * last.side, 4)
+
+    def _next_avg_level(self):
+        """F-199: цена следующего усреднения (крайний лот ± step_average)."""
+        if not self._lot_queue or self._dir == FLAT:
+            return None
+        step = self._effective_step(average=True)
+        if self._dir == LONG:
+            return round(min(e.price for e in self._lot_queue) - step, 4)
+        return round(max(e.price for e in self._lot_queue) + step, 4)
+
+    def _scan_missed_tp(self, price: float) -> list[dict]:
+        """F-199: раз в tp_bar_scan_sec проверить по M1-барам, не пробил ли рынок уровень
+        тейка LIFO-лота, пока робот этот тик не получил. Закрывает лот, только если
+        профит по нему ЕЩЁ есть (pnl >= min_profit_per_lot)."""
+        if not getattr(self.p, "tp_bar_scan_enabled", True):
+            return []
+        if not self.p.partial_tp or not self._lot_queue or self._dir == FLAT:
+            return []
+        now = time.time()
+        period = float(getattr(self.p, "tp_bar_scan_sec", 60) or 60)
+        if now - self._tp_scan_ts < period:
+            return []
+        self._tp_scan_ts = now
+
+        last = self._lot_queue[-1]
+        if last.added_ts > 0 and (time.monotonic() - last.added_ts) < 2.0:
+            return []
+
+        level = last.price + self.p.spread * last.side
+        window = float(getattr(self.p, "tp_bar_scan_window_sec", 240) or 240)
+        since = now - window
+
+        try:
+            bars = self._fetch_recent_bars(since)
+        except Exception as e:
+            log.warning(f"TP BAR SCAN: bars fetch failed: {str(e)[:120]}")
+            return []
+        if not bars:
+            return []
+
+        if self._dir == LONG:
+            passed = any(h >= level for _ts, h, _l in bars)
+        else:
+            passed = any(l <= level for _ts, _h, l in bars)
+        if not passed:
+            return []
+
+        pnl_pts = (price - last.price) * last.side
+        min_profit = float(getattr(self.p, "min_profit_per_lot", 0) or 0)
+        if pnl_pts < min_profit:
+            log.info(f"TP BAR SCAN: level {fmt_price(level)} was touched, but price back "
+                     f"(pnl={pnl_pts:.0f} < min_profit={min_profit:.0f}) — keep lot")
+            return []
+
+        side = "sell" if self._dir == LONG else "buy"
+        self._total_lots -= last.lots
+        self._lot_queue.pop()
+
+        action = {
+            "action": "partial_tp",
+            "side": side,
+            "qty": last.lots,
+            "price": price,
+            "entryPrice": last.price,
+            "entrySide": last.side,
+            "signal": self._signal_type,
+            "reason": "tp_bar_scan",
+        }
+
+        if self._lot_queue:
+            if self._dir == SHORT:
+                self._last_average_price = max(e.price for e in self._lot_queue)
+            else:
+                self._last_average_price = min(e.price for e in self._lot_queue)
+            total_cost = sum(e.price * e.lots for e in self._lot_queue)
+            total_lots = sum(e.lots for e in self._lot_queue)
+            self._avg_price = total_cost / total_lots if total_lots > 0 else 0
+        else:
+            self._last_average_price = self._avg_price
+            self._reset_position()
+            self._lock_entry(10.0)
+            self._round_trips += 1
+
+        log.info(f"TP BAR SCAN: level {fmt_price(level)} (lot {fmt_price(last.price)}) touched within "
+                 f"{window:.0f}s — closing {last.lots} @ {fmt_price(price)} (pnl={pnl_pts:.0f})")
+        return [action]
+
     def _catchup_missed_tp(self, price: float) -> list[dict]:
         """F-198: закрыть LIFO-лот, если его тейк был пройден в «слепое окно».
 
@@ -2460,6 +2569,8 @@ class OrderFlowStrategy:
             "maxPyramidLevels": self.p.max_pyramid_levels,
             "lotQueueSize": len(self._lot_queue),
             "roundTrips": self._round_trips,
+            "nextTpLevel": self._next_tp_level(),
+            "nextAvgLevel": self._next_avg_level(),
             "realizedPnL": self._realized_pnl,
             "unrealizedPnL": self.unrealized_pnl(self._current_price) if self._dir != FLAT and self._current_price > 0 else 0.0,
             "holdMinutes": int((datetime.now(MSK).timestamp() - self._entry_time.timestamp()) / 60) if self._entry_time and self._dir != FLAT else 0,
