@@ -390,6 +390,48 @@ def t_entry_lot_uses_spread():
     assert not st.placed, f"входной лот ждёт +42, got {st.placed}"
 
 
+# ---------- 12. F-202: дебаунс параметром + не откатывать уровень ----------
+
+def t_debounce_param_zero():
+    s = make_strategy(trail_debounce_sec=0)
+    st = Stops()
+    pos(s, LONG, [(83400, 1)])
+    s.sync_trail_stops(bid=83450, ask=83451, place_stop_fn=st.place, cancel_fn=st.cancel)
+    assert len(st.placed) == 1
+    s.sync_trail_stops(bid=83456, ask=83457, place_stop_fn=st.place, cancel_fn=st.cancel)  # +6
+    assert len(st.placed) == 2, f"при debounce=0 перестановка сразу, got {st.placed}"
+
+
+def t_agg_qty_change_tightens():
+    s = make_strategy()
+    st = Stops()
+    pos(s, LONG, [(83400, 1), (83420, 1), (83440, 1)])
+    s._pyramid_levels = 2
+    s.sync_trail_stops(bid=83460, ask=83461, place_stop_fn=st.place, cancel_fn=st.cancel)
+    first = st.placed[-1][2]
+    assert first == 83448.0, first
+    # долив → qty 4, цена выше: уровень должен стать выше (плотнее), не ниже
+    s._mk_lot(83470, LONG, 1); s._lot_queue[-1].src = "pyr"
+    s._total_lots = 4
+    s.sync_trail_stops(bid=83480, ask=83481, place_stop_fn=st.place, cancel_fn=st.cancel)
+    assert st.placed[-1][1] == 4, st.placed[-1]
+    assert st.placed[-1][2] == 83468.0, f"новый уровень 83480-12, got {st.placed[-1]}"
+
+
+def t_agg_qty_change_no_backtrack():
+    s = make_strategy()
+    st = Stops()
+    pos(s, LONG, [(83400, 1), (83420, 1), (83440, 1)])
+    s._pyramid_levels = 2
+    s.sync_trail_stops(bid=83460, ask=83461, place_stop_fn=st.place, cancel_fn=st.cancel)
+    # цена ушла вниз, добавляем лот: новый уровень 83408 ниже старого 83448 → не откатываем
+    s._mk_lot(83410, LONG, 1); s._lot_queue[-1].src = "pyr"
+    s._total_lots = 4
+    n = len(st.placed)
+    s.sync_trail_stops(bid=83420, ask=83421, place_stop_fn=st.place, cancel_fn=st.cancel)
+    assert len(st.placed) == n, f"уровень не должен откатываться назад, got {st.placed[n:]}"
+
+
 print("F-198 Trailing SL")
 check("до +spread стопа нет", t_no_stop_before_spread)
 check("LONG: стоп на +spread (Bid-12)", t_stop_armed_at_spread_long)
@@ -418,6 +460,9 @@ check("F-201 пирамида: до +30 стопа нет", t_pyramid_lot_waits_
 check("F-201 усреднение: на +32 стопа нет", t_averaging_lot_not_armed_at_30)
 check("F-201 усреднение: стоп на +42", t_averaging_lot_armed_at_spread)
 check("F-201 вход: порог Spread", t_entry_lot_uses_spread)
+check("F-202 дебаунс параметром", t_debounce_param_zero)
+check("F-202 долив: уровень плотнее", t_agg_qty_change_tightens)
+check("F-202 долив: без отката назад", t_agg_qty_change_no_backtrack)
 
 passed = sum(RESULTS)
 print(f"\n{passed}/{len(RESULTS)} PASS")

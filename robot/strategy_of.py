@@ -125,6 +125,7 @@ class OFParams:
     trail_mode: bool = False
     trail_sl_pts: float = 12.0     # дистанция стопа от Bid (LONG) / Ask (SHORT), пт
     trail_step_pts: float = 5.0    # шаг подтяжки стопа, пт
+    trail_debounce_sec: float = 0.4  # F-202: пауза между перестановками одной заявки
     # VAH/VAL Volume Profile filter
     use_vah_val: bool = False      # enable VAH/VAL entry filter
     vah_val_pct: int = 70          # value area percentage (70%)
@@ -981,7 +982,7 @@ class OrderFlowStrategy:
                 log.info(f"TRAIL SL armed: lot#{uid} {side} {e.lots} @ {fmt_price(stop_px)} "
                          f"(lot={fmt_price(e.price)} base={fmt_price(base)}) id={oid}")
                 continue
-            if now - float(rec.get("ts", 0) or 0) < 1.5:
+            if now - float(rec.get("ts", 0) or 0) < float(self.p.trail_debounce_sec):
                 continue
             best = float(rec.get("best", base) or base)
             improved = (base - best) if self._dir == LONG else (best - base)
@@ -1016,6 +1017,19 @@ class OrderFlowStrategy:
         side = "sell" if self._dir == LONG else "buy"
         rec = self._agg_trail
         if rec is None or int(rec.get("qty", 0)) != qty:
+            # F-202: при доливе объёма уровень не откатываем назад —
+            # берём более плотный из старого и нового (LONG: max, SHORT: min).
+            if rec is not None and rec.get("stop_px"):
+                prev_px = float(rec["stop_px"])
+                tightened = max(stop_px, prev_px) if self._dir == LONG else min(stop_px, prev_px)
+                if not self._trail_level_ok(base, tightened):
+                    log.warning(f"TRAIL SL AGG qty change: level {fmt_price(tightened)} behind market "
+                                f"(base={fmt_price(base)}) — keeping existing stop, no re-place")
+                    return
+                if abs(tightened - stop_px) > 1e-9:
+                    log.info(f"TRAIL SL AGG qty change: keep tighter level "
+                             f"{fmt_price(tightened)} instead of {fmt_price(stop_px)}")
+                stop_px = tightened
             if rec and rec.get("order_id") and cancel_fn:
                 try:
                     cancel_fn(rec["order_id"])
@@ -1028,7 +1042,7 @@ class OrderFlowStrategy:
             log.info(f"TRAIL SL AGG armed: {side} {qty} @ {fmt_price(stop_px)} "
                      f"(base={fmt_price(base)}) id={oid}")
             return
-        if now - float(rec.get("ts", 0) or 0) < 1.5:
+        if now - float(rec.get("ts", 0) or 0) < float(self.p.trail_debounce_sec):
             return
         best = float(rec.get("best", base) or base)
         improved = (base - best) if self._dir == LONG else (best - base)
