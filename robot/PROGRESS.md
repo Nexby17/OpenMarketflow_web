@@ -1004,3 +1004,15 @@ rate-limit, выключение, нет пробоя, SHORT). Регресс: c
 
 **Живой MXU6:** перезапущен 16:08 (PID 59336), LONG 3 @246 816,67 восстановлен, mode=running,
 `nextTpLevel=246800`, `nextAvgLevel=246025`, скан включён.
+
+### 2026-11-18 16:11 — MXU6 перезапущен по просьбе Дмитрия, торговля НЕ включена
+
+Позиция была закрыта им вручную (FLAT, очередь пуста, у брокера 0). Перезапуск процесса:
+kill 59336 → spawn 64360 (`of_mx_console_20261118_161054.log`), `mode=stopped` (F-059), `/start` НЕ вызывался.
+
+Лог старта: `State loaded: dir=0 lots=0 mode=stopped dirFilter=long` → `rest4 JWT refreshed` →
+`REST4 OK: account 2049688, equity 14 200 220` → `websockets ready` → `WS connected` →
+`STARTUP: position OK — both FLAT, mode=stopped`. **Ошибок: 0.**
+
+Состояние: mode=stopped, FLAT 0, lotQueueSize=0, price 246 400 live (stale=false), CVD сброшен
+(daily reset 07:00 MSK, emaFast/Slow=0 — наберётся по мере баров), `direction_filter=long` сохранён.
