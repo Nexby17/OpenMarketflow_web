@@ -1449,11 +1449,13 @@ class OrderFlowStrategy:
                 target = signal_price if signal_price > 0 else self._lot_queue[-1].price
                 for i in range(len(self._lot_queue) - 1, -1, -1):
                     if abs(self._lot_queue[i].price - target) < 1e-9:
-                        self._lot_queue[i] = LotEntry(price=fill_price, side=self._lot_queue[i].side, lots=self._lot_queue[i].lots, uid=self._lot_queue[i].uid)
+                        self._lot_queue[i] = LotEntry(price=fill_price, side=self._lot_queue[i].side, lots=self._lot_queue[i].lots, uid=self._lot_queue[i].uid,
+                                      src=self._lot_queue[i].src)
                         replaced = True
                         break
                 if not replaced:
-                    self._lot_queue[-1] = LotEntry(price=fill_price, side=self._lot_queue[-1].side, lots=self._lot_queue[-1].lots, uid=self._lot_queue[-1].uid)
+                    self._lot_queue[-1] = LotEntry(price=fill_price, side=self._lot_queue[-1].side, lots=self._lot_queue[-1].lots, uid=self._lot_queue[-1].uid,
+                                              src=self._lot_queue[-1].src)
                 total_cost = sum(e.price * e.lots for e in self._lot_queue)
                 total_lots = sum(e.lots for e in self._lot_queue)
                 if total_lots > 0:
@@ -1903,7 +1905,7 @@ class OrderFlowStrategy:
                     closed.append(LotEntry(price=last.price, side=last.side, lots=remaining))
                     self._lot_queue[-1] = LotEntry(price=last.price, side=last.side,
                                                    lots=last.lots - remaining,
-                                                   added_ts=last.added_ts, uid=last.uid)
+                                                   added_ts=last.added_ts, uid=last.uid, src=last.src)
                     remaining = 0
 
             if remaining > 0:

@@ -432,6 +432,27 @@ def t_agg_qty_change_no_backtrack():
     assert len(st.placed) == n, f"уровень не должен откатываться назад, got {st.placed[n:]}"
 
 
+def t_fill_preserves_src():
+    """F-203: филл пересоздаёт слой — источник (src) и uid должны сохраниться."""
+    s = make_strategy()
+    pos(s, LONG, [(83400, 1)], srcs=["pyr"])
+    uid = s._lot_queue[0].uid
+    s.update_fill_price(83405.0, "entry", 83400.0)
+    assert s._lot_queue[0].src == "pyr", f"src потерян после филла: {s._lot_queue[0]}"
+    assert s._lot_queue[0].uid == uid, s._lot_queue[0]
+
+
+def t_pyramid_fill_keeps_step_pyr_threshold():
+    """После филла пирамидный слой должен взводиться на +30, а не на +42."""
+    s = make_strategy()
+    st = Stops()
+    pos(s, SHORT, [(83077, 1)], srcs=["pyr"])
+    s.update_fill_price(83075.0, "pyramid", 83077.0)
+    assert s._lot_queue[0].src == "pyr"
+    s.sync_trail_stops(bid=83046, ask=83045, place_stop_fn=st.place, cancel_fn=st.cancel)  # +30
+    assert len(st.placed) == 1, f"после филла пирамида должна взводиться на +30, got {st.placed}"
+
+
 print("F-198 Trailing SL")
 check("до +spread стопа нет", t_no_stop_before_spread)
 check("LONG: стоп на +spread (Bid-12)", t_stop_armed_at_spread_long)
@@ -463,6 +484,8 @@ check("F-201 вход: порог Spread", t_entry_lot_uses_spread)
 check("F-202 дебаунс параметром", t_debounce_param_zero)
 check("F-202 долив: уровень плотнее", t_agg_qty_change_tightens)
 check("F-202 долив: без отката назад", t_agg_qty_change_no_backtrack)
+check("F-203 филл сохраняет src", t_fill_preserves_src)
+check("F-203 пирамида после филла — порог +30", t_pyramid_fill_keeps_step_pyr_threshold)
 
 passed = sum(RESULTS)
 print(f"\n{passed}/{len(RESULTS)} PASS")
