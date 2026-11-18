@@ -889,10 +889,14 @@ class OrderFlowStrategy:
     def _trail_agg_needed(self) -> bool:
         """Нужен ли ОДИН стоп на весь объём.
 
-        F-198: (1) пирамида от 3 лотов — сразу; (2) Close % All — когда после
-        закрытия части лотов стопами остаток <= max(2, peak*close_half_pct/100).
+        F-204: ТОЛЬКО два случая (Дмитрий 18.11):
+        (1) позиция набрана ПИРАМИДОЙ до 3 лотов — то есть минимум ДВА пирамидных
+            долива (вход + 2); один пирамидный уровень + усреднение — это НЕ пирамида;
+        (2) Close % All — остаток <= max(2, peak*close_half_pct/100) после первых
+            закрытий стопами.
+        Во всех остальных случаях — только по-лотовые стопы (1 лот на слой).
         """
-        if self._total_lots >= 3 and self._pyramid_levels > 0:
+        if self._total_lots >= 3 and self._pyramid_levels >= 2:
             return True
         pct = int(self.p.close_half_pct or 0)
         if pct <= 0 or self._peak_lots <= 0:

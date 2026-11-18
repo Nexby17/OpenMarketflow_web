@@ -453,6 +453,37 @@ def t_pyramid_fill_keeps_step_pyr_threshold():
     assert len(st.placed) == 1, f"после филла пирамида должна взводиться на +30, got {st.placed}"
 
 
+def t_avg_plus_one_pyramid_no_agg():
+    """F-204: 3 лота, но пирамида только 1 уровень (+ усреднение) — агрегата быть НЕ должно."""
+    s = make_strategy()
+    st = Stops()
+    pos(s, LONG, [(83400, 1), (83430, 1), (83360, 1)], srcs=["entry", "pyr", "avg"])
+    s._pyramid_levels = 1        # один пирамидный долив
+    s.sync_trail_stops(bid=83455, ask=83456, place_stop_fn=st.place, cancel_fn=st.cancel)
+    assert s._agg_trail is None, "при 1 пирамидном уровне агрегата быть не должно"
+    assert all(p[1] == 1 for p in st.placed), f"только по-лотовые (1 лот), got {st.placed}"
+
+
+def t_two_pyramid_levels_agg():
+    """F-204: вход + 2 пирамидных долива (3 лота) — агрегат на весь объём."""
+    s = make_strategy()
+    st = Stops()
+    pos(s, LONG, [(83400, 1), (83430, 1), (83460, 1)], srcs=["entry", "pyr", "pyr"])
+    s._pyramid_levels = 2
+    s.sync_trail_stops(bid=83465, ask=83466, place_stop_fn=st.place, cancel_fn=st.cancel)
+    assert s._agg_trail is not None, "3 лота пирамидой → агрегат"
+    assert st.placed[-1][1] == 3, st.placed[-1]
+
+
+def t_four_lots_pyramid_agg():
+    s = make_strategy()
+    st = Stops()
+    pos(s, LONG, [(83400, 1), (83430, 1), (83460, 1), (83490, 1)], srcs=["entry", "pyr", "pyr", "pyr"])
+    s._pyramid_levels = 3
+    s.sync_trail_stops(bid=83495, ask=83496, place_stop_fn=st.place, cancel_fn=st.cancel)
+    assert s._agg_trail is not None and st.placed[-1][1] == 4, st.placed[-1]
+
+
 print("F-198 Trailing SL")
 check("до +spread стопа нет", t_no_stop_before_spread)
 check("LONG: стоп на +spread (Bid-12)", t_stop_armed_at_spread_long)
@@ -486,6 +517,9 @@ check("F-202 долив: уровень плотнее", t_agg_qty_change_tighte
 check("F-202 долив: без отката назад", t_agg_qty_change_no_backtrack)
 check("F-203 филл сохраняет src", t_fill_preserves_src)
 check("F-203 пирамида после филла — порог +30", t_pyramid_fill_keeps_step_pyr_threshold)
+check("F-204 усреднение+1 пирамида — без агрегата", t_avg_plus_one_pyramid_no_agg)
+check("F-204 2 пирамидных уровня — агрегат", t_two_pyramid_levels_agg)
+check("F-204 4 лота пирамидой — агрегат", t_four_lots_pyramid_agg)
 
 passed = sum(RESULTS)
 print(f"\n{passed}/{len(RESULTS)} PASS")
