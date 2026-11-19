@@ -323,9 +323,91 @@
             </div>
         </div>
 
+        <!-- ====== PLZL робот (Дончиан) ====== -->
+        <div class="card" style="margin-bottom:16px">
+            <div class="card-header row gap-8" ondblclick="plzlEditPanel()" style="cursor:pointer" title="Двойной клик — настройки робота">
+                📉 PLZL — Дончиан N30 k3 + D1 <span class="badge" style="background:#2196F3">PYTHON</span>
+                <span class="text-secondary" style="font-size:12px" id="plzlTf">M30</span>
+                <span style="flex:1"></span>
+                <button class="btn btn-success btn-sm" onclick="plzlStartBtn()" id="plzlStartBtn">▶️ Старт</button>
+                <button class="btn btn-secondary btn-sm" onclick="plzlPauseBtn()" id="plzlPauseBtn">⏸ Пауза</button>
+                <button class="btn btn-danger btn-sm" onclick="plzlStopBtn()" id="plzlStopBtn">⏹ Стоп</button>
+                <span id="plzlStatus" class="status-text">Не подключён</span>
+            </div>
+            <div class="metrics-row" style="flex-wrap:wrap">
+                <div class="metric-card"><div class="metric-label">Цена</div><div id="plzlPrice" class="metric-value accent">—</div></div>
+                <div class="metric-card"><div class="metric-label">Тренд D1</div><div id="plzlD1" class="metric-value">—</div></div>
+                <div class="metric-card"><div class="metric-label">Позиция</div><div id="plzlPos" class="metric-value">Флэт</div></div>
+                <div class="metric-card"><div class="metric-label">Unrealized PnL</div><div id="plzlUnreal" class="metric-value">—</div></div>
+                <div class="metric-card"><div class="metric-label">Realized PnL</div><div id="plzlRealized" class="metric-value">0 ₽</div></div>
+                <div class="metric-card"><div class="metric-label">Сделок</div><div id="plzlTrades" class="metric-value">0</div></div>
+                <div class="metric-card"><div class="metric-label">Win Rate</div><div id="plzlWr" class="metric-value">—</div></div>
+                <div class="metric-card"><div class="metric-label">Profit Factor</div><div id="plzlPf" class="metric-value">—</div></div>
+                <div class="metric-card"><div class="metric-label">Сигнал</div><div id="plzlSig" class="metric-value" style="font-size:13px">—</div></div>
+            </div>
+        </div>
+
+        <!-- ====== RUAL робот ====== -->
+        <div class="card" style="margin-bottom:16px">
+            <div class="card-header row gap-8" ondblclick="rualEditPanel()" style="cursor:pointer" title="Двойной клик — настройки робота">
+                ⛏ RUAL — Кросс SAR×EMA + Откат <span class="badge" style="background:#2196F3">PYTHON</span>
+                <span class="text-secondary" style="font-size:12px" id="rualTf">H1</span>
+                <span style="flex:1"></span>
+                <button class="btn btn-success btn-sm" onclick="rualStartBtn()" id="rualStartBtn">▶️ Старт</button>
+                <button class="btn btn-secondary btn-sm" onclick="rualPauseBtn()" id="rualPauseBtn">⏸ Пауза</button>
+                <button class="btn btn-danger btn-sm" onclick="rualStopBtn()" id="rualStopBtn">⏹ Стоп</button>
+                <span id="rualStatus" class="status-text">Не подключён</span>
+            </div>
+            <div class="metrics-row" style="flex-wrap:wrap">
+                <div class="metric-card"><div class="metric-label">Цена</div><div id="rualPrice" class="metric-value accent">—</div></div>
+                <div class="metric-card"><div class="metric-label">Режим (osc)</div><div id="rualRegime" class="metric-value">—</div></div>
+                <div class="metric-card"><div class="metric-label">RSI</div><div id="rualRsi" class="metric-value">—</div></div>
+                <div class="metric-card"><div class="metric-label">Позиция</div><div id="rualPos" class="metric-value">Флэт</div></div>
+                <div class="metric-card"><div class="metric-label">Unrealized PnL</div><div id="rualUnreal" class="metric-value">—</div></div>
+                <div class="metric-card"><div class="metric-label">Realized PnL</div><div id="rualRealized" class="metric-value">0 ₽</div></div>
+                <div class="metric-card"><div class="metric-label">Сделок</div><div id="rualTrades" class="metric-value">0</div></div>
+                <div class="metric-card"><div class="metric-label">Матожидание ₽/сделку</div><div id="rualEv" class="metric-value">—</div></div>
+                <div class="metric-card"><div class="metric-label">Win Rate</div><div id="rualWr" class="metric-value">—</div></div>
+                <div class="metric-card"><div class="metric-label">Profit Factor</div><div id="rualPf" class="metric-value">—</div></div>
+                <div class="metric-card"><div class="metric-label">Сигнал</div><div id="rualSig" class="metric-value" style="font-size:13px">—</div></div>
+            </div>
+        </div>
+
+        <!-- ====== SNGS робот ====== -->
+        <div class="card" style="margin-bottom:16px">
+            <div class="card-header row gap-8" ondblclick="sngsEditPanel()" style="cursor:pointer" title="Двойной клик — настройки робота">
+                🛢 SNGS — Кросс SAR×EMA + Откат <span class="badge" style="background:#2196F3">PYTHON</span>
+                <span class="text-secondary" style="font-size:12px" id="sngsTf">H1</span>
+                <span style="flex:1"></span>
+                <button class="btn btn-success btn-sm" onclick="sngsStartBtn()" id="sngsStartBtn">▶️ Старт</button>
+                <button class="btn btn-secondary btn-sm" onclick="sngsPauseBtn()" id="sngsPauseBtn">⏸ Пауза</button>
+                <button class="btn btn-danger btn-sm" onclick="sngsStopBtn()" id="sngsStopBtn">⏹ Стоп</button>
+                <span id="sngsStatus" class="status-text">Не подключён</span>
+            </div>
+            <div class="metrics-row" style="flex-wrap:wrap">
+                <div class="metric-card"><div class="metric-label">Цена</div><div id="sngsPrice" class="metric-value accent">—</div></div>
+                <div class="metric-card"><div class="metric-label">Режим (osc)</div><div id="sngsRegime" class="metric-value">—</div></div>
+                <div class="metric-card"><div class="metric-label">RSI</div><div id="sngsRsi" class="metric-value">—</div></div>
+                <div class="metric-card"><div class="metric-label">Позиция</div><div id="sngsPos" class="metric-value">Флэт</div></div>
+                <div class="metric-card"><div class="metric-label">Unrealized PnL</div><div id="sngsUnreal" class="metric-value">—</div></div>
+                <div class="metric-card"><div class="metric-label">Realized PnL</div><div id="sngsRealized" class="metric-value">0 ₽</div></div>
+                <div class="metric-card"><div class="metric-label">Сделок</div><div id="sngsTrades" class="metric-value">0</div></div>
+                <div class="metric-card"><div class="metric-label">Матожидание ₽/сделку</div><div id="sngsEv" class="metric-value">—</div></div>
+                <div class="metric-card"><div class="metric-label">Win Rate</div><div id="sngsWr" class="metric-value">—</div></div>
+                <div class="metric-card"><div class="metric-label">Profit Factor</div><div id="sngsPf" class="metric-value">—</div></div>
+                <div class="metric-card"><div class="metric-label">Сигнал</div><div id="sngsSig" class="metric-value" style="font-size:13px">—</div></div>
+            </div>
+        </div>
+
         <!-- График с осцилляторами -->
         <div class="card" style="margin-bottom:16px">
-            <div class="card-header">🕯️ График MTLR — свечи + SAR + EMA + сделки · SL/TP линии</div>
+            <div class="card-header row gap-8">🕯️ <span id="chartTitle">График MTLR — свечи + SAR + EMA + канал Дончиана · сделки/SL/TP</span>
+                    <select id="chartSrcSel" class="input" style="width:90px;font-size:12px" onchange="chartSrc(this.value)">
+                        <option value="MTLR" selected>MTLR</option>
+                        <option value="PLZL">PLZL</option>
+                        <option value="RUAL">RUAL</option>
+                        <option value="SNGS">SNGS</option>
+                    </select></div>
             <div id="mtlrChartMsg" class="text-secondary" style="font-size:12px;padding:2px 8px;color:#F59E0B"></div>
             <div id="mtlrPriceChart" style="width:100%;min-height:420px"></div>
             <div style="display:flex;gap:8px">
@@ -336,13 +418,20 @@
 
         <!-- Торговый журнал -->
         <div class="card" style="margin-bottom:16px">
-            <div class="card-header row gap-8">📋 Торговый журнал MTLR
+            <div class="card-header row gap-8">📋 Торговый журнал
+                <select class="input" style="width:120px;font-size:12px" onchange="journalFilter(this.value)">
+                    <option value="all" selected>Все бумаги</option>
+                    <option value="MTLR">MTLR</option>
+                    <option value="PLZL">PLZL</option>
+                    <option value="RUAL">RUAL</option>
+                    <option value="SNGS">SNGS</option>
+                </select>
                 <span style="flex:1"></span>
                 <span id="mtlrJrSummary" class="text-secondary" style="font-size:12px"></span>
                 <button class="btn btn-danger btn-sm" onclick="mtlrResetStats()">🗑 Сбросить статистику</button>
             </div>
             <table class="data-table">
-                <thead><tr><th>Вход</th><th>Выход</th><th>Напр.</th><th>Кол-во</th><th>Цена вх.</th><th>Цена вых.</th><th>Причина вх.</th><th>Причина вых.</th><th>Держал</th><th>Комиссия</th><th>PnL</th></tr></thead>
+                <thead><tr><th>Бумага</th><th>Вход</th><th>Выход</th><th>Напр.</th><th>Кол-во</th><th>Цена вх.</th><th>Цена вых.</th><th>Причина вх.</th><th>Причина вых.</th><th>Держал</th><th>Комиссия</th><th>PnL</th></tr></thead>
                 <tbody id="mtlrJournalBody"></tbody>
             </table>
         </div>
@@ -572,6 +661,6 @@
         </div>
     </div>
 
-    <script src="/js/app.js?v=mtlr5"></script>
+    <script src="/js/app.js?v=mtlr19"></script>
 </body>
 </html>
