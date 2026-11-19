@@ -399,6 +399,32 @@
             </div>
         </div>
 
+        <!-- ====== POSI робот (Дончиан строгий) ====== -->
+        <div class="card" style="margin-bottom:16px">
+            <div class="card-header row gap-8" ondblclick="posiEditPanel()" style="cursor:pointer" title="Двойной клик — настройки робота">
+                🔷 POSI — Дончиан N240 k2.5 (строгий) <span class="badge" style="background:#2196F3">PYTHON</span>
+                <span class="text-secondary" style="font-size:12px" id="posiTf">M30</span>
+                <span style="flex:1"></span>
+                <button class="btn btn-success btn-sm" onclick="posiStartBtn()" id="posiStartBtn">▶️ Старт</button>
+                <button class="btn btn-secondary btn-sm" onclick="posiPauseBtn()" id="posiPauseBtn">⏸ Пауза</button>
+                <button class="btn btn-danger btn-sm" onclick="posiStopBtn()" id="posiStopBtn">⏹ Стоп</button>
+                <span id="posiStatus" class="status-text">Не подключён</span>
+            </div>
+            <div class="metrics-row" style="flex-wrap:wrap">
+                <div class="metric-card"><div class="metric-label">Цена</div><div id="posiPrice" class="metric-value accent">—</div></div>
+                <div class="metric-card"><div class="metric-label">Режим (osc)</div><div id="posiRegime" class="metric-value">—</div></div>
+                <div class="metric-card"><div class="metric-label">RSI</div><div id="posiRsi" class="metric-value">—</div></div>
+                <div class="metric-card"><div class="metric-label">Позиция</div><div id="posiPos" class="metric-value">Флэт</div></div>
+                <div class="metric-card"><div class="metric-label">Unrealized PnL</div><div id="posiUnreal" class="metric-value">—</div></div>
+                <div class="metric-card"><div class="metric-label">Realized PnL</div><div id="posiRealized" class="metric-value">0 ₽</div></div>
+                <div class="metric-card"><div class="metric-label">Сделок</div><div id="posiTrades" class="metric-value">0</div></div>
+                <div class="metric-card"><div class="metric-label">Матожидание ₽/сделку</div><div id="posiEv" class="metric-value">—</div></div>
+                <div class="metric-card"><div class="metric-label">Win Rate</div><div id="posiWr" class="metric-value">—</div></div>
+                <div class="metric-card"><div class="metric-label">Profit Factor</div><div id="posiPf" class="metric-value">—</div></div>
+                <div class="metric-card"><div class="metric-label">Сигнал</div><div id="posiSig" class="metric-value" style="font-size:13px">—</div></div>
+            </div>
+        </div>
+
         <!-- График с осцилляторами -->
         <div class="card" style="margin-bottom:16px">
             <div class="card-header row gap-8">🕯️ <span id="chartTitle">График MTLR — свечи + SAR + EMA + канал Дончиана · сделки/SL/TP</span>
@@ -407,6 +433,7 @@
                         <option value="PLZL">PLZL</option>
                         <option value="RUAL">RUAL</option>
                         <option value="SNGS">SNGS</option>
+                        <option value="POSI">POSI</option>
                     </select></div>
             <div id="mtlrChartMsg" class="text-secondary" style="font-size:12px;padding:2px 8px;color:#F59E0B"></div>
             <div id="mtlrPriceChart" style="width:100%;min-height:420px"></div>
@@ -425,6 +452,7 @@
                     <option value="PLZL">PLZL</option>
                     <option value="RUAL">RUAL</option>
                     <option value="SNGS">SNGS</option>
+                    <option value="POSI">POSI</option>
                 </select>
                 <span style="flex:1"></span>
                 <span id="mtlrJrSummary" class="text-secondary" style="font-size:12px"></span>

@@ -4692,7 +4692,7 @@ function mtlrRenderJournal() {
     const tbody = el('mtlrJournalBody');
     if (!tbody) return;
     const tag = (data, tkr) => (data && data.journal ? data.journal.map(t => Object.assign({}, t, {ticker: tkr})) : []);
-    let rows = tag(_mtlrData, 'MTLR').concat(tag(_plzlData, 'PLZL'), tag(_pyBotData.rual, 'RUAL'), tag(_pyBotData.sngs, 'SNGS'));
+    let rows = tag(_mtlrData, 'MTLR').concat(tag(_plzlData, 'PLZL'), tag(_pyBotData.rual, 'RUAL'), tag(_pyBotData.sngs, 'SNGS'), tag(_pyBotData.posi, 'POSI'));
     if (_jrFilter !== 'all') rows = rows.filter(t => t.ticker === _jrFilter);
     rows.sort((a, b) => (b.exit_time || 0) - (a.exit_time || 0));
     const n = rows.length;
@@ -4770,7 +4770,7 @@ function _updateLivePriceLine(price) {
 async function mtlrUpdateChart() {
     let d = null;
     try {
-        d = await ({MTLR: mtlrFetch, PLZL: plzlFetch, RUAL: rualFetch, SNGS: sngsFetch}[_chartSrc] || mtlrFetch)('/chart');
+        d = await ({MTLR: mtlrFetch, PLZL: plzlFetch, RUAL: rualFetch, SNGS: sngsFetch, POSI: posiFetch}[_chartSrc] || mtlrFetch)('/chart');
         if (!d || !d.candles || !d.candles.length) {
             _mtlrChartMsg('⚠️ График пуст: робот не отдал свечи (/chart' + (d ? ': 0 свечей' : ' недоступен, порт 5094') + '). Обнови страницу — если не помогло, скажи Коре.');
             return;
@@ -4847,8 +4847,9 @@ async function mtlrResetStats() {
     if (_jrFilter === 'all' || _jrFilter === 'PLZL') await plzlFetch('/reset-stats','POST');
     if (_jrFilter === 'all' || _jrFilter === 'RUAL') await rualFetch('/reset-stats','POST');
     if (_jrFilter === 'all' || _jrFilter === 'SNGS') await sngsFetch('/reset-stats','POST');
+    if (_jrFilter === 'all' || _jrFilter === 'POSI') await posiFetch('/reset-stats','POST');
     arbPyLog(`🗑 Статистика ${what} сброшена`);
-    mtlrRefresh(); plzlRefresh(); rualRefresh(); sngsRefresh(); mtlrUpdateChart();
+    mtlrRefresh(); plzlRefresh(); rualRefresh(); sngsRefresh(); posiRefresh(); mtlrUpdateChart();
 }
 
 // ---------- Панель настроек (двойной клик) ----------
@@ -7985,11 +7986,13 @@ async function ofBrPositionAdjust() {
 // ---------- RUAL / SNGS роботы (Кросс SAR×EMA + Откат, порты 5096/5097) ----------
 const RUAL_BASE = 'http://' + (window.location.hostname || 'localhost') + ':5096';
 const SNGS_BASE = 'http://' + (window.location.hostname || 'localhost') + ':5097';
+const POSI_BASE = 'http://' + (window.location.hostname || 'localhost') + ':5098';
 const _PYBOTS = {
     rual: { base: RUAL_BASE, name: 'RUAL' },
     sngs: { base: SNGS_BASE, name: 'SNGS' },
+    posi: { base: POSI_BASE, name: 'POSI' },
 };
-const _pyBotData = { rual: null, sngs: null };
+const _pyBotData = { rual: null, sngs: null, posi: null };
 
 async function _pyFetch(base, path, method = 'GET', body = null) {
     try {
@@ -8054,6 +8057,8 @@ async function _pyStockRefresh(key) {
 
 async function rualRefresh() { await _pyStockRefresh('rual'); }
 async function sngsRefresh() { await _pyStockRefresh('sngs'); }
+async function posiFetch(p, m = 'GET', b = null) { return _pyFetch(POSI_BASE, p, m, b); }
+async function posiRefresh() { await _pyStockRefresh('posi'); }
 
 async function rualStartBtn() { const r = await rualFetch('/start', 'POST'); arbPyLog(r ? '▶️ RUAL запуск' : 'RUAL недоступен (робот не запущен?)', r ? 'INFO' : 'ERROR'); rualRefresh(); }
 async function rualPauseBtn() { await rualFetch('/pause', 'POST'); arbPyLog('⏸ RUAL пауза'); rualRefresh(); }
@@ -8061,12 +8066,15 @@ async function rualStopBtn() { if (!confirm('Остановить RUAL? Пози
 async function sngsStartBtn() { const r = await sngsFetch('/start', 'POST'); arbPyLog(r ? '▶️ SNGS запуск' : 'SNGS недоступен (робот не запущен?)', r ? 'INFO' : 'ERROR'); sngsRefresh(); }
 async function sngsPauseBtn() { await sngsFetch('/pause', 'POST'); arbPyLog('⏸ SNGS пауза'); sngsRefresh(); }
 async function sngsStopBtn() { if (!confirm('Остановить SNGS? Позиция будет закрыта по рынку.')) return; await sngsFetch('/stop', 'POST'); arbPyLog('⏹ SNGS стоп'); sngsRefresh(); }
+async function posiStartBtn() { const r = await posiFetch('/start', 'POST'); arbPyLog(r ? '▶️ POSI запуск' : 'POSI недоступен (робот не запущен?)', r ? 'INFO' : 'ERROR'); posiRefresh(); }
+async function posiPauseBtn() { await posiFetch('/pause', 'POST'); arbPyLog('⏸ POSI пауза'); posiRefresh(); }
+async function posiStopBtn() { if (!confirm('Остановить POSI? Позиция будет закрыта по рынку.')) return; await posiFetch('/stop', 'POST'); arbPyLog('⏹ POSI стоп'); posiRefresh(); }
 
 function _pyStockEditPanel(key) {
     const B = _PYBOTS[key];
     const pid = key + 'EditPanel';
     if (el(pid)) { el(pid).remove(); return; }
-    ['mtlrEditPanel', 'plzlEditPanel', 'rualEditPanel', 'sngsEditPanel'].forEach(i => { if (i !== pid) el(i)?.remove(); });
+    ['mtlrEditPanel', 'plzlEditPanel', 'rualEditPanel', 'sngsEditPanel', 'posiEditPanel'].forEach(i => { if (i !== pid) el(i)?.remove(); });
     _pyFetch(B.base, '/params').then(cfg => {
         if (!cfg || !cfg.params) { arbPyLog(B.name + ': не удалось получить параметры', 'ERROR'); return; }
         const q = cfg.params;
@@ -8206,7 +8214,9 @@ function rualEditPanel() { _pyStockEditPanel('rual'); }
 function sngsEditPanel() { _pyStockEditPanel('sngs'); }
 function rualSaveFromPanel() { _pyStockSavePanel('rual'); }
 function sngsSaveFromPanel() { _pyStockSavePanel('sngs'); }
+function posiEditPanel() { _pyStockEditPanel('posi'); }
+function posiSaveFromPanel() { _pyStockSavePanel('posi'); }
 
 // RUAL/SNGS polling
-setInterval(() => { if (el('rualStatus')) rualRefresh(); if (el('sngsStatus')) sngsRefresh(); }, 3000);
-setTimeout(() => { if (el('rualStatus')) rualRefresh(); if (el('sngsStatus')) sngsRefresh(); }, 1500);
+setInterval(() => { if (el('rualStatus')) rualRefresh(); if (el('sngsStatus')) sngsRefresh(); if (el('posiStatus')) posiRefresh(); }, 3000);
+setTimeout(() => { if (el('rualStatus')) rualRefresh(); if (el('sngsStatus')) sngsRefresh(); if (el('posiStatus')) posiRefresh(); }, 1500);
