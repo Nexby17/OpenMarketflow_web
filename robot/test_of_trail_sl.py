@@ -108,13 +108,18 @@ def t_no_stop_before_spread():
 
 
 def t_stop_armed_at_spread_long():
+    """F-206: уровень стопа = вход + Spread (42), а не Bid-12."""
     s = make_strategy()
     st = Stops()
     pos(s, LONG, [(83400, 1)])
-    s.sync_trail_stops(bid=83442, ask=83443, place_stop_fn=st.place, cancel_fn=st.cancel)  # +42
+    # ровно +42: стоп на уровне 83442 совпал бы с рынком -> не ставим (мгновенный триггер)
+    s.sync_trail_stops(bid=83442, ask=83443, place_stop_fn=st.place, cancel_fn=st.cancel)
+    assert not st.placed, f"на ровно +42 стоп ставить нельзя, got {st.placed}"
+    # +43: цена ушла за уровень -> стоп на 83442 (вход+42)
+    s.sync_trail_stops(bid=83443, ask=83444, place_stop_fn=st.place, cancel_fn=st.cancel)
     assert len(st.placed) == 1, f"ожидался 1 стоп, got {st.placed}"
     side, qty, px, tag = st.placed[0]
-    assert side == "sell" and qty == 1 and px == 83430.0, f"LONG стоп неверный: {st.placed[0]}"
+    assert side == "sell" and qty == 1 and px == 83442.0, f"LONG стоп неверный: {st.placed[0]}"
     assert tag == "of_trail_sl"
 
 
@@ -122,10 +127,12 @@ def t_stop_armed_at_spread_short():
     s = make_strategy()
     st = Stops()
     pos(s, SHORT, [(83400, 1)])
-    s.sync_trail_stops(bid=83357, ask=83358, place_stop_fn=st.place, cancel_fn=st.cancel)  # +42 вниз
+    s.sync_trail_stops(bid=83358, ask=83359, place_stop_fn=st.place, cancel_fn=st.cancel)  # +41
+    assert not st.placed, f"до +42 стопа нет, got {st.placed}"
+    s.sync_trail_stops(bid=83356, ask=83357, place_stop_fn=st.place, cancel_fn=st.cancel)  # +43
     assert len(st.placed) == 1, f"ожидался 1 стоп, got {st.placed}"
     side, qty, px, _ = st.placed[0]
-    assert side == "buy" and px == 83370.0, f"SHORT стоп неверный: {st.placed[0]}"
+    assert side == "buy" and px == 83358.0, f"SHORT стоп должен быть на вход-42: {st.placed[0]}"
 
 
 # ---------- 2. трейлинг ----------
@@ -136,7 +143,7 @@ def t_trail_moves_by_step():
     pos(s, LONG, [(83400, 1)])
     s.sync_trail_stops(bid=83450, ask=83451, place_stop_fn=st.place, cancel_fn=st.cancel)
     first = st.placed[-1][2]
-    assert first == 83438.0, first
+    assert first == 83442.0, f"стартовый уровень = вход+Spread, got {first}"
     # шаг меньше 5 пт — перестановки нет (сдвигаем ts, чтобы пройти дебаунс)
     s._trail_stops[list(s._trail_stops)[0]]["ts"] = time.monotonic() - 10
     s.sync_trail_stops(bid=83453, ask=83454, place_stop_fn=st.place, cancel_fn=st.cancel)
@@ -378,8 +385,8 @@ def t_averaging_lot_armed_at_spread():
     s = make_strategy()
     st = Stops()
     pos(s, SHORT, [(83077, 1)], srcs=["avg"])
-    s.sync_trail_stops(bid=83036, ask=83035, place_stop_fn=st.place, cancel_fn=st.cancel)  # +42
-    assert len(st.placed) == 1, f"усреднение взводится на +42, got {st.placed}"
+    s.sync_trail_stops(bid=83035, ask=83034, place_stop_fn=st.place, cancel_fn=st.cancel)  # +43
+    assert len(st.placed) == 1, f"усреднение взводится сразу за +42, got {st.placed}"
 
 
 def t_entry_lot_uses_spread():
@@ -449,8 +456,8 @@ def t_pyramid_fill_keeps_step_pyr_threshold():
     pos(s, SHORT, [(83077, 1)], srcs=["pyr"])
     s.update_fill_price(83075.0, "pyramid", 83077.0)
     assert s._lot_queue[0].src == "pyr"
-    s.sync_trail_stops(bid=83046, ask=83045, place_stop_fn=st.place, cancel_fn=st.cancel)  # +30
-    assert len(st.placed) == 1, f"после филла пирамида должна взводиться на +30, got {st.placed}"
+    s.sync_trail_stops(bid=83045, ask=83044, place_stop_fn=st.place, cancel_fn=st.cancel)  # +31
+    assert len(st.placed) == 1, f"после филла пирамида должна взводиться за +30, got {st.placed}"
 
 
 def t_avg_plus_one_pyramid_no_agg():

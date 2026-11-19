@@ -979,12 +979,21 @@ class OrderFlowStrategy:
                     _arm_pts = float(self.p.spread)
                 if pnl_pts < _arm_pts:
                     continue
-                placed = place_stop_fn(side, e.lots, stop_px, "of_trail_sl")
+                # F-206: уровень стопа привязан к ВХОДУ лота: вход ± порог
+                # (для усреднения это ровно уровень TP +Spread, для пирамиды +Step Pyr).
+                # Трейл (Bid-12) применяется как «не хуже»: берём более плотный.
+                _floor_px = e.price + _arm_pts * e.side
+                _lot_stop = (max(stop_px, _floor_px) if self._dir == LONG
+                             else min(stop_px, _floor_px))
+                # если цена ещё не ушла за уровень — стоп не ставим (иначе мгновенный триггер)
+                if not self._trail_level_ok(base, _lot_stop):
+                    continue
+                placed = place_stop_fn(side, e.lots, _lot_stop, "of_trail_sl")
                 oid = getattr(placed, "order_id", None) if placed else None
-                self._trail_stops[uid] = {"order_id": oid, "stop_px": stop_px,
+                self._trail_stops[uid] = {"order_id": oid, "stop_px": _lot_stop,
                                           "qty": e.lots, "best": base, "ts": now}
-                log.info(f"TRAIL SL armed: lot#{uid} {side} {e.lots} @ {fmt_price(stop_px)} "
-                         f"(lot={fmt_price(e.price)} base={fmt_price(base)}) id={oid}")
+                log.info(f"TRAIL SL armed: lot#{uid} {side} {e.lots} @ {fmt_price(_lot_stop)} "
+                         f"(lot={fmt_price(e.price)} +{_arm_pts:.0f} base={fmt_price(base)}) id={oid}")
                 continue
             if now - float(rec.get("ts", 0) or 0) < float(self.p.trail_debounce_sec):
                 continue
@@ -992,16 +1001,21 @@ class OrderFlowStrategy:
             improved = (base - best) if self._dir == LONG else (best - base)
             if improved < float(self.p.trail_step_pts):
                 continue
+            _prev_stop = float(rec.get("stop_px") or 0)
+            _cand = (max(stop_px, _prev_stop) if self._dir == LONG
+                     else min(stop_px, _prev_stop))
+            if not self._trail_level_ok(base, _cand) or abs(_cand - _prev_stop) < 1e-9:
+                continue
             if rec.get("order_id") and cancel_fn:
                 try:
                     cancel_fn(rec["order_id"])
                 except Exception:
                     pass
-            placed = place_stop_fn(side, e.lots, stop_px, "of_trail_sl")
+            placed = place_stop_fn(side, e.lots, _cand, "of_trail_sl")
             oid = getattr(placed, "order_id", None) if placed else None
-            rec.update({"order_id": oid, "stop_px": stop_px, "qty": e.lots,
+            rec.update({"order_id": oid, "stop_px": _cand, "qty": e.lots,
                         "best": base, "ts": now})
-            log.info(f"TRAIL SL moved: lot#{uid} {side} {e.lots} @ {fmt_price(stop_px)} id={oid}")
+            log.info(f"TRAIL SL moved: lot#{uid} {side} {e.lots} @ {fmt_price(_cand)} id={oid}")
 
     def _sync_agg_trail(self, bid, ask, place_stop_fn, cancel_fn) -> None:
         base, stop_px = self._trail_price_basis(bid, ask)
