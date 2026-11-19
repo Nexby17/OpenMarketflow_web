@@ -898,11 +898,10 @@ class OrderFlowStrategy:
         """
         if self._total_lots >= 3 and self._pyramid_levels >= 2:
             return True
-        pct = int(self.p.close_half_pct or 0)
-        if pct <= 0 or self._peak_lots <= 0:
-            return False
-        threshold = max(2, int(self._peak_lots * pct / 100.0))
-        return self._total_lots <= threshold and self._trail_closed_lots > 0
+        # F-208 (Дмитрий 19.11): как только позиция начала закрываться стопами —
+        # ВЕСЬ остаток немедленно уходит под ОДИН стоп. Раньше требовался остаток
+        # <= close_half_pct от пика, из-за чего 4 лота из 6 висели без агрегата.
+        return self._trail_closed_lots > 0 and self._total_lots > 0
 
     def _cancel_all_trail(self, cancel_fn=None) -> None:
         if cancel_fn:

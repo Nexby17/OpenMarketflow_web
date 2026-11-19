@@ -515,6 +515,18 @@ def t_tp_full_works_in_trail():
     assert act.get("reason") == "tp_full", act
 
 
+def t_remainder_aggregated_immediately():
+    """F-208: как только часть лотов закрыта стопами — весь остаток под ОДИН стоп."""
+    s = make_strategy()
+    st = Stops()
+    pos(s, LONG, [(83400, 1), (83430, 1), (83460, 1), (83490, 1)])
+    s._pyramid_levels = 0
+    s._trail_closed_lots = 2          # два лота уже закрыты стопами
+    s.sync_trail_stops(bid=83500, ask=83501, place_stop_fn=st.place, cancel_fn=st.cancel)
+    assert s._agg_trail is not None, "остаток должен уйти под один стоп сразу"
+    assert st.placed[-1][1] == 4, f"стоп на все 4 лота, got {st.placed[-1]}"
+
+
 print("F-198 Trailing SL")
 check("до +spread стопа нет", t_no_stop_before_spread)
 check("LONG: стоп на +spread (Bid-12)", t_stop_armed_at_spread_long)
@@ -551,6 +563,7 @@ check("F-203 пирамида после филла — порог +30", t_pyram
 check("F-204 усреднение+1 пирамида — без агрегата", t_avg_plus_one_pyramid_no_agg)
 check("F-204 2 пирамидных уровня — агрегат", t_two_pyramid_levels_agg)
 check("F-204 4 лота пирамидой — агрегат", t_four_lots_pyramid_agg)
+check("F-208 остаток под один стоп сразу", t_remainder_aggregated_immediately)
 check("F-205 догоны тейков выключены", t_catchup_tp_disabled_in_trail)
 check("F-205 tp_full работает в trail_mode", t_tp_full_works_in_trail)
 
