@@ -274,12 +274,14 @@ def t_partial_tp_disabled():
 
 
 def t_tp_full_disabled():
-    s = make_strategy()
+    # F-207: tp_full снова РАБОТАЕТ в trail_mode (просьба Дмитрия).
+    # Здесь проверяем, что ДО порога он не срабатывает.
+    s = make_strategy(min_profit_per_lot=50)
     pos(s, LONG, [(83400, 1)])
     from datetime import datetime
     from strategy_of import MSK
-    acts = s._check_exits(83600.0, datetime(2026, 11, 18, 15, 0, tzinfo=MSK))
-    assert acts is None, f"tp_full должен быть отключён в режиме, got {acts}"
+    acts = s._check_exits(83410.0, datetime(2026, 11, 19, 15, 0, tzinfo=MSK))
+    assert acts is None, f"до порога tp_full не должен срабатывать, got {acts}"
 
 
 def t_legacy_mode_unchanged():
@@ -501,15 +503,16 @@ def t_catchup_tp_disabled_in_trail():
     assert s._scan_missed_tp(83600) == [], "M1-скан TP должен быть выключен в trail_mode"
 
 
-def t_tp_full_off_in_trail():
-    """Min Profit/Lot (tp_full) не закрывает позицию в режиме Trailing SL."""
+def t_tp_full_works_in_trail():
+    """F-207: Min Profit/Lot (tp_full) РАБОТАЕТ и в режиме Trailing SL (просьба Дмитрия)."""
     from datetime import datetime
     from strategy_of import MSK
     s = make_strategy(min_profit_per_lot=50)
     pos(s, LONG, [(83400, 2)])
     s.update_price(83500)
     act = s._check_exits(83500.0, datetime(2026, 11, 19, 12, 0, tzinfo=MSK))
-    assert act is None, f"tp_full должен быть отключён, got {act}"
+    assert act and act.get("action") == "close_all", f"tp_full должен закрывать позицию, got {act}"
+    assert act.get("reason") == "tp_full", act
 
 
 print("F-198 Trailing SL")
@@ -527,7 +530,7 @@ check("пирамида 2 лота — по-лотово", t_pyramid_two_lots_pe
 check("срабатывание 1 стопа закрывает 1 лот", t_lot_fill_closes_only_that_lot)
 check("срабатывание агрегата закрывает всё", t_agg_fill_closes_all)
 check("partial TP отключён в режиме", t_partial_tp_disabled)
-check("tp_full отключён в режиме", t_tp_full_disabled)
+check("tp_full не срабатывает до порога", t_tp_full_disabled)
 check("старый режим не тронут", t_legacy_mode_unchanged)
 check("выключение галки снимает стопы", t_mode_off_cancels_stops)
 check("без позиции стопов нет", t_no_position_no_stops)
@@ -549,7 +552,7 @@ check("F-204 усреднение+1 пирамида — без агрегата
 check("F-204 2 пирамидных уровня — агрегат", t_two_pyramid_levels_agg)
 check("F-204 4 лота пирамидой — агрегат", t_four_lots_pyramid_agg)
 check("F-205 догоны тейков выключены", t_catchup_tp_disabled_in_trail)
-check("F-205 tp_full выключен", t_tp_full_off_in_trail)
+check("F-205 tp_full работает в trail_mode", t_tp_full_works_in_trail)
 
 passed = sum(RESULTS)
 print(f"\n{passed}/{len(RESULTS)} PASS")

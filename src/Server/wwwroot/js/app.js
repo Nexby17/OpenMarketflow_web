@@ -625,6 +625,51 @@ function fmtPriceDyn(p) {
     return Math.abs(p - Math.round(p)) > 0.005 ? p.toFixed(2) : String(Math.round(p));
 }
 
+// F-207: комментарий для выходов по стоп-лоссу в таблице «сделки за сегодня».
+// Брокер отдаёт сделку, порождённую стоп-заявкой, с ПУСТЫМ комментарием.
+// Сопоставляем её с журналом робота по времени/направлению/объёму и подставляем причину.
+const _EXIT_REASON_LABELS = {
+    trail_sl: 'SL трейл',
+    trail_sl_agg: 'SL трейл (весь объём)',
+    tp_full: 'TP',
+    pyramid_full_exit: 'пирамида',
+    reverse_signal: 'разворот',
+    broker_resync: 'ресинк',
+    stop_loss_rub: 'SL', stop_loss_pct: 'SL', stop_loss_pts: 'SL',
+};
+
+function _exitCommentForTrade(t) {
+    try {
+        const ts = new Date(t.timestamp || t.time || 0).getTime();
+        if (!ts) return '';
+        const isBuy = String(t.side || '').includes('BUY');
+        const closeDir = isBuy ? 'SHORT' : 'LONG';
+        const rawSize = (t.size && (t.size.value || t.size)) || 0;
+        const size = parseFloat(rawSize) || 0;
+        const robots = [];
+        if (typeof ofRobot !== 'undefined' && ofRobot) robots.push(ofRobot);
+        if (typeof ofPerpRobot !== 'undefined' && ofPerpRobot) robots.push(ofPerpRobot);
+        if (typeof ofMxRobot !== 'undefined' && ofMxRobot) robots.push(ofMxRobot);
+        let best = null, bestDt = 1e9;
+        for (const r of robots) {
+            const hist = (r && r.tradeHistory) || [];
+            for (const h of hist) {
+                if (h.direction !== closeDir) continue;
+                const ht = new Date(h.exitTime || 0).getTime();
+                if (!ht) continue;
+                const dt = Math.abs(ht - ts);
+                if (dt > 15000) continue;
+                if (size && h.lots && Number(h.lots) !== size) continue;
+                if (dt < bestDt) { bestDt = dt; best = h; }
+            }
+        }
+        if (!best) return '';
+        const reason = String(best.reason || '');
+        if (reason.startsWith('close_half')) return 'Close % All';
+        return _EXIT_REASON_LABELS[reason] || reason;
+    } catch (e) { return ''; }
+}
+
 function loadTrades() {
     fetch('/api/trades').then(r => r.json()).then(data => {
         const tbody = el('tradesTable');
@@ -645,7 +690,7 @@ function loadTrades() {
             const size = t.size?.value || t.size || 0;
             const ts = t.timestamp || t.time || '';
             const time = ts ? new Date(ts).toLocaleTimeString('ru-RU', {hour:'2-digit',minute:'2-digit',second:'2-digit'}) : '—';
-            const comment = t.comment || '';
+            const comment = t.comment || _exitCommentForTrade(t);
             return `<tr>
                 <td>${time}</td>
                 <td><b>${ticker}</b></td>

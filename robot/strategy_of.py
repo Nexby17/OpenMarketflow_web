@@ -1308,7 +1308,7 @@ class OrderFlowStrategy:
                         actions.append(action)
                         self._last_action_time = time.time()
                         return actions
-                    if not self.p.trail_mode and self._tp_full_hit(current_price):
+                    if self._tp_full_hit(current_price):
                         action = self._close_all(current_price, "tp_full")
                         actions.append(action)
                         self._last_action_time = time.time()
@@ -1735,7 +1735,7 @@ class OrderFlowStrategy:
             return self._close_all(price, "reverse_signal")
 
         # c) Full TP
-        if not self.p.trail_mode and self._tp_full_hit(price):
+        if self._tp_full_hit(price):
             return self._close_all(price, "tp_full")
 
         # d) Timeout
