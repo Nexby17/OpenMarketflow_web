@@ -484,6 +484,27 @@ def t_four_lots_pyramid_agg():
     assert s._agg_trail is not None and st.placed[-1][1] == 4, st.placed[-1]
 
 
+def t_catchup_tp_disabled_in_trail():
+    """F-205: в режиме Trailing SL догоны тейков (M1-скан и слепое окно) не закрывают лоты."""
+    s = make_strategy()
+    pos(s, LONG, [(83400, 1)])
+    s.update_price(83600)
+    s._blind_since = time.time() - 100
+    assert s._catchup_missed_tp(83600) == [], "catch-up TP должен быть выключен в trail_mode"
+    assert s._scan_missed_tp(83600) == [], "M1-скан TP должен быть выключен в trail_mode"
+
+
+def t_tp_full_off_in_trail():
+    """Min Profit/Lot (tp_full) не закрывает позицию в режиме Trailing SL."""
+    from datetime import datetime
+    from strategy_of import MSK
+    s = make_strategy(min_profit_per_lot=50)
+    pos(s, LONG, [(83400, 2)])
+    s.update_price(83500)
+    act = s._check_exits(83500.0, datetime(2026, 11, 19, 12, 0, tzinfo=MSK))
+    assert act is None, f"tp_full должен быть отключён, got {act}"
+
+
 print("F-198 Trailing SL")
 check("до +spread стопа нет", t_no_stop_before_spread)
 check("LONG: стоп на +spread (Bid-12)", t_stop_armed_at_spread_long)
@@ -520,6 +541,8 @@ check("F-203 пирамида после филла — порог +30", t_pyram
 check("F-204 усреднение+1 пирамида — без агрегата", t_avg_plus_one_pyramid_no_agg)
 check("F-204 2 пирамидных уровня — агрегат", t_two_pyramid_levels_agg)
 check("F-204 4 лота пирамидой — агрегат", t_four_lots_pyramid_agg)
+check("F-205 догоны тейков выключены", t_catchup_tp_disabled_in_trail)
+check("F-205 tp_full выключен", t_tp_full_off_in_trail)
 
 passed = sum(RESULTS)
 print(f"\n{passed}/{len(RESULTS)} PASS")

@@ -2033,6 +2033,10 @@ class OrderFlowStrategy:
         return round(max(e.price for e in self._lot_queue) + step, 4)
 
     def _scan_missed_tp(self, price: float) -> list[dict]:
+        # F-205: в режиме Trailing SL прибыль фиксирует только стоп —
+        # никакие «догоны тейков» не закрывают лоты маркетом.
+        if self.p.trail_mode:
+            return []
         """F-199: раз в tp_bar_scan_sec проверить по M1-барам, не пробил ли рынок уровень
         тейка LIFO-лота, пока робот этот тик не получил. Закрывает лот, только если
         профит по нему ЕЩЁ есть (pnl >= min_profit_per_lot)."""
@@ -2110,6 +2114,9 @@ class OrderFlowStrategy:
         return [action]
 
     def _catchup_missed_tp(self, price: float) -> list[dict]:
+        # F-205: в режиме Trailing SL догон тейков выключен (см. _scan_missed_tp).
+        if self.p.trail_mode:
+            return []
         """F-198: закрыть LIFO-лот, если его тейк был пройден в «слепое окно».
 
         Условия (все обязательны):
