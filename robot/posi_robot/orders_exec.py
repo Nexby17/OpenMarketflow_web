@@ -294,7 +294,11 @@ class ArbOrderManager:
                 base = symbol.split('@')[0]
                 order_symbol = f"{base}@{self._stock_mic}"
                 lot_size = self.get_lot_size(base)
-                grpc_qty = quantity * lot_size
+                # 20.11 БАГФИКС: quantity приходит УЖЕ в акциях (strategy _qty_for /
+                # pos["qty"]) — gRPC тоже принимает акции. Было: quantity * lot_size
+                # → SNGS открыл шорт 1100 акций как 110 000 (lot=100). Теперь только
+                # выравнивание вниз по лоту (no-op для lot=1 и кратных значений).
+                grpc_qty = (quantity // lot_size) * lot_size
             else:
                 acc = self._account
                 order_symbol = symbol
@@ -889,7 +893,8 @@ class ArbOrderManager:
             base = symbol.split('@')[0]
             order_symbol = f"{base}@{self._stock_mic}" if is_stock else symbol
             lot_size = self.get_lot_size(base) if is_stock else 1
-            grpc_qty = quantity * lot_size
+            # 20.11 БАГФИКС: см. _place_limit — quantity уже в акциях, не умножать!
+            grpc_qty = (quantity // lot_size) * lot_size
             req = StopOrder(
                 account_id=acc,
                 symbol=order_symbol,

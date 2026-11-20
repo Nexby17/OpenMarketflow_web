@@ -168,6 +168,17 @@ def _do_open(side: int, qty: int, reason: str):
         q = src.last_quote or {}
         est = q.get("offer") if side == LONG else q.get("bid")
         est = est or (engine.candles[-1]["c"] if engine.candles else 0.0)
+        # 20.11 HARD CAP: объём входа СТРОГО ≤ max_capital (страховка от любых
+        # будущих багов конвертации — инцидент SNGS: 1100 акций ушли как 110 000)
+        if params.max_capital > 0 and est > 0:
+            lot = getattr(params, "lot_size", 1) or 1
+            cap_qty = (int(params.max_capital / est) // lot) * lot
+            if qty > cap_qty:
+                if cap_qty <= 0:
+                    logg(f"🚫 CAP: вход отменён — цена {est:.2f} выше max_capital {params.max_capital:.0f}₽", logging.WARNING)
+                    return
+                logg(f"⚠️ CAP: вход урезан {qty} → {cap_qty} шт (max_capital {params.max_capital:.0f}₽ @ {est:.2f})", logging.WARNING)
+                qty = cap_qty
         bs = BUY if side == LONG else SELL
         oid, _ = _market(bs, qty, est)
         if oid is None and not params.paper:

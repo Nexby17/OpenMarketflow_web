@@ -170,8 +170,7 @@ class ArbOrderManager:
 
     def _wait_fill_price(self, order_id: str, timeout: float = 5.0) -> Optional[float]:
         """Wait for actual fill price from trade subscription.
-        Falls back to gRPC GetOrder if trade sub doesn't fire.
-        Returns real price or None if timeout (caller should use est_price as fallback)."""
+        После event/таймаута — короткая пауза: сплит-филлы догоняют, VWAP уточняется."""
         with self._fill_lock:
             if order_id in self._fill_prices:
                 return self._fill_prices.pop(order_id)
@@ -191,6 +190,7 @@ class ArbOrderManager:
                 from FinamPy.grpc.orders_service_pb2 import GetOrderRequest
                 for acc in [self._account, self._stock_account]:
                     with grpc_lock:
+                        self._fp.auth()  # JWT TTL 15 мин — обновляем перед каждым вызовом
                         resp, _ = self._fp.orders_stub.GetOrder.with_call(
                             request=GetOrderRequest(account_id=acc, order_id=order_id),
                             timeout=3, metadata=(self._fp.metadata,))
@@ -244,23 +244,35 @@ class ArbOrderManager:
                 log.info(f"SLIPPAGE {leg}: est={est:.4f} actual={actual:.4f} diff={slip:+.4f} cumul={self._total_slippage:.4f}")
 
     def _on_trade_event(self, trade):
-        """Handle incoming trade from FinamPy's on_trade event."""
+        """Handle incoming trade from FinamPy's on_trade event.
+        ВСЕ филлы пишутся в _fill_prices (VWAP сплит-филлов) — маркет-ордера
+        не регистрируются как pending, но их цена нужна для entry (закон Самурая:
+        цена входа = реальный филл брокера)."""
         oid = getattr(trade, 'order_id', '')
         price_val = getattr(trade.price, 'value', None) if hasattr(trade, 'price') and trade.price else None
         if not price_val or not oid:
             return
         fill_price = float(price_val)
+        # AccountTrade: количество в поле size (Decimal), не quantity
+        size_val = getattr(trade.size, 'value', None) if hasattr(trade, 'size') and trade.size else None
+        fill_qty = float(size_val or 0) or 1.0
         with self._fill_lock:
+            if not hasattr(self, '_fill_accum'):
+                self._fill_accum = {}
+            pq, q = self._fill_accum.get(oid, (0.0, 0.0))
+            pq += fill_price * fill_qty
+            q += fill_qty
+            self._fill_accum[oid] = (pq, q)
+            self._fill_prices[oid] = pq / q
             if oid in self._pending_fills:
-                self._fill_prices[oid] = fill_price
                 self._pending_fills[oid].set()
-                log.info(f"FILL {oid}: price={fill_price} symbol={getattr(trade, 'symbol', '?')}")
+                log.info(f"FILL {oid}: vwap={pq/q:.4f} qty={q:.0f} symbol={getattr(trade, 'symbol', '?')}")
             else:
                 if not hasattr(self, '_unexpected_count'):
                     self._unexpected_count = 0
                 self._unexpected_count += 1
                 if self._unexpected_count <= 10:
-                    log.info(f"TRADE UNEXPECTED: oid={oid} price={fill_price} sym={getattr(trade, 'symbol', '?')} (no pending)")
+                    log.info(f"TRADE (не-pending): oid={oid} vwap={pq/q:.4f} qty={q:.0f} sym={getattr(trade, 'symbol', '?')}")
 
     def _grpc_place_order(self, symbol: str, side: str, quantity: int,
                           price: float = None, order_type: str = "market") -> Optional[dict]:
@@ -282,7 +294,11 @@ class ArbOrderManager:
                 base = symbol.split('@')[0]
                 order_symbol = f"{base}@{self._stock_mic}"
                 lot_size = self.get_lot_size(base)
-                grpc_qty = quantity * lot_size
+                # 20.11 БАГФИКС: quantity приходит УЖЕ в акциях (strategy _qty_for /
+                # pos["qty"]) — gRPC тоже принимает акции. Было: quantity * lot_size
+                # → SNGS открыл шорт 1100 акций как 110 000 (lot=100). Теперь только
+                # выравнивание вниз по лоту (no-op для lot=1 и кратных значений).
+                grpc_qty = (quantity // lot_size) * lot_size
             else:
                 acc = self._account
                 order_symbol = symbol
@@ -304,6 +320,7 @@ class ArbOrderManager:
 
             log.info(f"gRPC sending: {order_type} {side} {grpc_qty} {order_symbol} acc={acc} @ {price or 'MKT'}")
             with grpc_lock:
+                self._fp.auth()  # JWT TTL 15 мин — обновляем перед каждым вызовом
                 resp, _ = self._fp.orders_stub.PlaceOrder.with_call(
                     request=o, timeout=10, metadata=(self._fp.metadata,))
             oid = resp.order_id if hasattr(resp, 'order_id') else str(resp)
@@ -326,6 +343,7 @@ class ArbOrderManager:
             try:
                 req = GrpcCancel(account_id=acc, order_id=order_id)
                 with grpc_lock:
+                    self._fp.auth()  # JWT TTL 15 мин — обновляем перед каждым вызовом
                     self._fp.orders_stub.CancelOrder(request=req, timeout=5, metadata=(self._fp.metadata,))
                 return (True, False)  # cancel sent
             except Exception as e:
@@ -371,6 +389,7 @@ class ArbOrderManager:
                     "side": side, "quantity": quantity,
                     "price": price_int,
                     "order_type": "limit", "tag": tag,
+                    "units": "shares",  # контракт Самурая: шлём ШТУКИ, DP не искажает
                 },
                 timeout=self._timeout,
             )
@@ -402,6 +421,7 @@ class ArbOrderManager:
                     "account": self._order_account(symbol), "symbol": symbol,
                     "side": side, "quantity": quantity,
                     "order_type": "market", "tag": tag,
+                    "units": "shares",  # контракт Самурая: шлём ШТУКИ, DP не искажает
                 },
                 timeout=self._timeout,
             )
@@ -441,6 +461,7 @@ class ArbOrderManager:
         for acc in {self._stock_account, self._account}:
             try:
                 with grpc_lock:
+                    self._fp.auth()  # JWT TTL 15 мин — обновляем перед каждым вызовом
                     resp, _ = self._fp.orders_stub.GetOrders.with_call(
                         request=OrdersRequest(account_id=acc),
                         timeout=5, metadata=(self._fp.metadata,))
@@ -466,6 +487,7 @@ class ArbOrderManager:
         try:
             from FinamPy.grpc.orders_service_pb2 import GetOrderRequest
             with grpc_lock:
+                self._fp.auth()  # JWT TTL 15 мин — обновляем перед каждым вызовом
                 resp, _ = self._fp.orders_stub.GetOrder.with_call(
                     request=GetOrderRequest(account_id=acc, order_id=order_id),
                     timeout=5, metadata=(self._fp.metadata,))
@@ -841,3 +863,106 @@ class ArbOrderManager:
             time.sleep(1)
         log.error(f"ALL 3 emergency close attempts FAILED — {side} {quantity} {symbol} may be OPEN")
         return False
+
+    # ============ MTLR: биржевые заявки TP/SL ============
+
+    def place_tp_limit(self, symbol: str, close_side: str, quantity: int, tp_price: float, tag: str = "tp") -> Optional[str]:
+        """TP — жёсткая лимитная заявка закрытия. Возвращает order_id или None."""
+        r = self._grpc_place_order(symbol, close_side, quantity, tp_price, "limit")
+        if r and r.get("order_id"):
+            log.info(f"TP ORDER placed: {close_side} {quantity} {symbol} @ {tp_price} id={r['order_id']}")
+            return r["order_id"]
+        log.error(f"TP ORDER FAILED: {close_side} {quantity} {symbol} @ {tp_price}")
+        return None
+
+    def place_sl_stop(self, symbol: str, close_side: str, quantity: int, sl_price: float,
+                      stop_condition: str = "last_down", tag: str = "sl") -> Optional[str]:
+        """SL — стоп-заявка через PlaceOrder ORDER_TYPE_STOP (штуки, как лимитки).
+        PlaceSLTPOrder для акций TQBR отклоняется Finam'ом «Wrong quantity» (13.11).
+        close_side: 'sell' для лонга (стоп при падении), 'buy' для шорта (при росте)."""
+        if not self._fp or not _HAS_GRPC:
+            log.error("SL ORDER FAILED: no gRPC")
+            return None
+        try:
+            from FinamPy.grpc.orders_service_pb2 import Order as StopOrder
+            long_close = close_side.lower() == "sell"
+            # enum: STOP_CONDITION_LAST_UP=1, LAST_DOWN=2 (в старом SLTP-коде были перевёрнуты)
+            cond = 1 if stop_condition == "last_up" else 2
+            is_stock = self._is_stock(symbol)
+            acc = self._stock_account if is_stock else self._account
+            base = symbol.split('@')[0]
+            order_symbol = f"{base}@{self._stock_mic}" if is_stock else symbol
+            lot_size = self.get_lot_size(base) if is_stock else 1
+            # 20.11 БАГФИКС: см. _place_limit — quantity уже в акциях, не умножать!
+            grpc_qty = (quantity // lot_size) * lot_size
+            req = StopOrder(
+                account_id=acc,
+                symbol=order_symbol,
+                side=1 if close_side.lower() == "buy" else 2,
+                type=3,  # ORDER_TYPE_STOP (рыночная при срабатывании)
+                time_in_force=1,  # DAY (акции MOEX не поддерживают GTC)
+                quantity=GrpcDecimal(value=str(grpc_qty)),
+                stop_price=GrpcDecimal(value=f"{sl_price:.2f}"),
+                stop_condition=cond,
+                comment=f"mtlr-{tag}",
+            )
+            with grpc_lock:
+                self._fp.auth()  # JWT TTL 15 мин — обновляем перед каждым вызовом
+                resp, _ = self._fp.orders_stub.PlaceOrder.with_call(
+                    request=req, timeout=10, metadata=(self._fp.metadata,))
+            oid = resp.order_id if hasattr(resp, "order_id") else ""
+            log.info(f"SL STOP placed: {close_side} {grpc_qty} {order_symbol} stop={sl_price} cond={cond} id={oid}")
+            return oid or None
+        except Exception as e:
+            err_details = e.details() if hasattr(e, "details") else str(e)
+            log.error(f"SL ORDER FAILED ({symbol} {close_side} {quantity}@{sl_price}): {err_details[:150]}")
+            return None
+
+    def get_symbol_orders(self, symbol: str) -> Optional[list]:
+        """Все заявки за сегодня по символу (акционный счёт). [{order_id,status,side,qty,limit,stop,executed}]
+        None = не удалось получить (ошибка канала). [] = получено успешно, заявок нет (брокер снял EOD)."""
+        out = []
+        if not self._fp or not _HAS_GRPC:
+            return None
+        try:
+            from FinamPy.grpc.orders_service_pb2 import OrderStatus
+            base = symbol.split('@')[0]
+            with grpc_lock:
+                self._fp.auth()  # JWT TTL 15 мин — обновляем перед каждым вызовом
+                resp, _ = self._fp.orders_stub.GetOrders.with_call(
+                    request=OrdersRequest(account_id=self._stock_account),
+                    timeout=5, metadata=(self._fp.metadata,))
+            for st in resp.orders:
+                o_ = st.order
+                sym = o_.symbol or ""
+                if base not in sym.split('@')[0]:
+                    continue
+                status = st.status
+                # gRPC отдаёт enum как int — переводим в канонические имена ORDER_STATUS_*
+                try:
+                    status_name = OrderStatus.Name(int(status))
+                except (ValueError, TypeError):
+                    status_name = str(status)
+                out.append({
+                    "order_id": st.order_id,
+                    "symbol": sym,
+                    "status": status_name,
+                    "side": "buy" if int(o_.side) == 1 else "sell",
+                    "qty": int(float(o_.quantity.value or 0)),
+                    "limit_price": float(o_.limit_price.value or 0) if o_.limit_price.value else 0.0,
+                    "stop_price": float(o_.stop_price.value or 0) if o_.stop_price.value else 0.0,
+                    "executed_qty": int(float(st.executed_quantity.value or 0)) if st.executed_quantity.value else 0,
+                })
+            return out
+        except Exception as e:
+            log.error(f"get_symbol_orders({symbol}): {str(e)[:100]}")
+            return None
+
+    def is_order_active(self, order_id: str) -> bool:
+        """Заявка ещё активна (не исполнена/не снята)?"""
+        if not order_id:
+            return False
+        st = self._grpc_get_order_status(order_id, self._stock_account)
+        if not st:
+            return True  # не смогли узнать — считаем живой (не снимем лишний раз)
+        return st.get("state") in ("active", "partial")
