@@ -886,24 +886,25 @@ class OrderFlowStrategy:
             return False
         return stop_px < base if self._dir == LONG else stop_px > base
 
-    def _trail_agg_needed(self) -> bool:
-        """Нужен ли ОДИН стоп на весь объём.
+    def _trail_agg_level(self, base: float):
+        """F-211: уровень стопа на ВЕСЬ объём.
 
-        F-204: ТОЛЬКО два случая (Дмитрий 18.11):
-        (1) позиция набрана ПИРАМИДОЙ до 3 лотов — то есть минимум ДВА пирамидных
-            долива (вход + 2); один пирамидный уровень + усреднение — это НЕ пирамида;
-        (2) Close % All — остаток <= max(2, peak*close_half_pct/100) после первых
-            закрытий стопами.
-        Во всех остальных случаях — только по-лотовые стопы (1 лот на слой).
+        Дмитрий 20.11: «как только цена выросла на +42 от входа одного из лотов —
+        стоп ставится на весь объём». То есть триггер — первый лот, дошедший до
+        своего порога (Spread для входа/усреднения, Step Pyr для пирамиды),
+        уровень = вход этого лота + порог. None = ни один лот ещё не дошёл.
         """
-        if self._total_lots >= 3 and self._pyramid_levels >= 2:
-            return True
-        # F-210 (Дмитрий 20.11): остаток под ОДИН стоп уходит только если его 3+ лота.
-        # Если осталось 1-2 лота — каждый держит СВОЙ стоп на +42 от своего входа
-        # (кейс 20.11 11:08: агрегат на 2 лота закрыл их в минус, а должен был
-        # оставить по-лотовые стопы).
-        # F-208 (остаток >= 3 после первых закрытий) сохранён.
-        return self._trail_closed_lots > 0 and self._total_lots >= 3
+        best = None
+        for e in self._lot_queue:
+            arm_pts = float(self.p.step_pyramid) if e.src == "pyr" else float(self.p.spread)
+            if arm_pts <= 0:
+                arm_pts = float(self.p.spread)
+            if (base - e.price) * e.side < arm_pts:
+                continue
+            lvl = e.price + arm_pts * e.side
+            if best is None or (self._dir == LONG and lvl > best) or (self._dir == SHORT and lvl < best):
+                best = lvl
+        return best
 
     def _cancel_all_trail(self, cancel_fn=None) -> None:
         if cancel_fn:
@@ -939,8 +940,15 @@ class OrderFlowStrategy:
             return
         if bid <= 0 or ask <= 0 or place_stop_fn is None:
             return
-        if self._trail_agg_needed():
-            self._sync_agg_trail(bid, ask, place_stop_fn, cancel_fn)
+        base, _ = self._trail_price_basis(bid, ask)
+        _is_pyr = (self._total_lots >= 3 and self._pyramid_levels >= 2)
+        _lvl = None if _is_pyr else self._trail_agg_level(base)
+        if _is_pyr or self._agg_trail is not None:
+            # пирамида 3+ ИЛИ стоп уже стоит — ведём по рынку (трейл Bid/Ask -/+ SL)
+            self._sync_agg_trail(bid, ask, place_stop_fn, cancel_fn, level=None)
+        elif _lvl is not None and self._trail_level_ok(base, _lvl):
+            # первый лот дошёл до +42 → первичная постановка на ВЕСЬ объём по его уровню
+            self._sync_agg_trail(bid, ask, place_stop_fn, cancel_fn, level=_lvl)
         else:
             self._sync_lot_trails(bid, ask, place_stop_fn, cancel_fn)
 
@@ -1018,8 +1026,9 @@ class OrderFlowStrategy:
                         "best": base, "ts": now})
             log.info(f"TRAIL SL moved: lot#{uid} {side} {e.lots} @ {fmt_price(_cand)} id={oid}")
 
-    def _sync_agg_trail(self, bid, ask, place_stop_fn, cancel_fn) -> None:
-        base, stop_px = self._trail_price_basis(bid, ask)
+    def _sync_agg_trail(self, bid, ask, place_stop_fn, cancel_fn, level=None) -> None:
+        base, _raw_px = self._trail_price_basis(bid, ask)
+        stop_px = float(level) if level is not None else _raw_px
         if not self._trail_level_ok(base, stop_px):
             return
         # по-лотовые больше не нужны — снимаем
@@ -1067,14 +1076,19 @@ class OrderFlowStrategy:
         improved = (base - best) if self._dir == LONG else (best - base)
         if improved < float(self.p.trail_step_pts):
             return
+        # не переставлять на тот же уровень (иначе лишние заявки каждые 5 пт)
+        _prev = float(rec.get("stop_px") or 0)
+        _cand = max(stop_px, _prev) if self._dir == LONG else min(stop_px, _prev)
+        if abs(_cand - _prev) < 1e-9 or not self._trail_level_ok(base, _cand):
+            return
         if rec.get("order_id") and cancel_fn:
             try:
                 cancel_fn(rec["order_id"])
             except Exception:
                 pass
-        placed = place_stop_fn(side, qty, stop_px, "of_trail_sl_agg")
+        placed = place_stop_fn(side, qty, _cand, "of_trail_sl_agg")
         oid = getattr(placed, "order_id", None) if placed else None
-        rec.update({"order_id": oid, "stop_px": stop_px, "qty": qty, "best": base, "ts": now})
+        rec.update({"order_id": oid, "stop_px": _cand, "qty": qty, "best": base, "ts": now})
         log.info(f"TRAIL SL AGG moved: {side} {qty} @ {fmt_price(stop_px)} id={oid}")
 
     def trail_stop_for_order(self, order_id: str) -> Optional[dict]:
