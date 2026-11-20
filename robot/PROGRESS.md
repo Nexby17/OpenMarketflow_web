@@ -1016,3 +1016,25 @@ kill 59336 → spawn 64360 (`of_mx_console_20261118_161054.log`), `mode=stopped`
 
 Состояние: mode=stopped, FLAT 0, lotQueueSize=0, price 246 400 live (stale=false), CVD сброшен
 (daily reset 07:00 MSK, emaFast/Slow=0 — наберётся по мере баров), `direction_filter=long` сохранён.
+
+### 2026-11-20 10:29 — F-209: кнопки ▶ Si и PERP не доставляли /start (health-bypass)
+
+**Симптом.** «Робот не запускается кнопкой». В логах всех роботов за 20.11 — **ноль** `POST /start`
+(Si, MX, PERP). Процессы живы, прямой `POST /start` работает.
+
+**Причины по кнопкам:**
+- **Si (`ofRobotApi`)**: health-проверка была, но с `AbortSignal.timeout()` (нет в Chrome <103 → TypeError
+  → `catch` → `_needSpawn=true` → шли в C# → 401 при истёкшей сессии → молчаливый выход). Заменены все
+  3 вызова на `makeTimeoutSignal()` (фолбэк на AbortController).
+- **PERP (`ofPerpRobotApi`)**: health-проверки НЕ было вообще — сразу `POST /api/of/process/of_perp/start`
+  (требует UI-сессию). При 401 `pd.ok` отсутствует → `return` → до робота ничего не доходило.
+  Добавлено: health-пинг → (если жив) сразу `POST /start`; (если мёртв) C#-путь с явным тостом
+  «Сессия истекла — Ctrl+F5»; автоповтор `/start` до 3 раз с проверкой статуса; `makeTimeoutSignal` везде.
+- **MXU6 и BR** — bypass уже был (F-196/F-197), код корректен.
+
+**UI:** версия поднята v146 → **v147**, `bin` синхронизирован, `node --check` OK, сервер отдаёт v147.
+
+**Запуск:** MXU6 принудительно включён напрямую (`POST /start`) — `mode=running`, FLAT, цена 237 550 live,
+`stale=false`, CVD ready, тайминг 10:15–17:15 открыт, `direction_filter=long`.
+
+**Требует Дмитрия:** Ctrl+F5 — вкладка получит v147; после этого кнопки всех четырёх роботов работают.

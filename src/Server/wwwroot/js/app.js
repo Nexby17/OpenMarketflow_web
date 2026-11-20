@@ -6131,21 +6131,37 @@ async function ofPerpRobotPoll() {
 
 async function ofPerpRobotApi(action) {
     try {
+        // F-209 (20.11): health-пинг ПЕРЕД C#-вызовом. C# /api/of/process/... требует UI-сессию;
+        // при истёкшей cookie возвращал 401, и кнопка молча выходила — /start до робота не доходил.
         if (action === 'start') {
-            showToast('⏳ Поднимаю процесс USDRUBF PERP (подключение к Finam ~15с)...', 'info');
+            let robotAlive = false;
             try {
-                const pr = await fetch('/api/of/process/of_perp/start', {method: 'POST', signal: AbortSignal.timeout(35000)});
-                const pd = await pr.json();
-                if (!pd.ok) {
-                    showToast('❌ Процесс OF-PERP не поднялся: ' + (pd.error || '?'), 'error');
-                    addLog(nowTime(), 'ERROR', 'OF-PERP process start failed: ' + (pd.error || '?'));
+                const hp = await fetch(OF_PERP_ROBOT_API + '/health', {signal: makeTimeoutSignal(2500)});
+                robotAlive = hp.ok;
+            } catch (he) { robotAlive = false; }
+            if (!robotAlive) {
+                showToast('⏳ Поднимаю процесс USDRUBF PERP (подключение к Finam ~15с)...', 'info');
+                try {
+                    const pr = await fetch('/api/of/process/of_perp/start', {method: 'POST', signal: makeTimeoutSignal(35000)});
+                    if (pr.status === 401) {
+                        showToast('🔐 Сессия истекла — Ctrl+F5 и перезайди, затем ▶ ещё раз', 'error');
+                        addLog(nowTime(), 'ERROR', 'OF-PERP process start: 401 Unauthorized (сессия истекла)');
+                        return;
+                    }
+                    const pd = await pr.json();
+                    if (!pd.ok) {
+                        showToast('❌ Процесс OF-PERP не поднялся: ' + (pd.error || '?'), 'error');
+                        addLog(nowTime(), 'ERROR', 'OF-PERP process start failed: ' + (pd.error || '?'));
+                        return;
+                    }
+                    showToast('✅ Процесс OF-PERP поднят' + (pd.alreadyRunning ? ' (уже был запущен)' : ''), 'ok');
+                } catch(pe) {
+                    showToast('❌ Не удалось запустить процесс OF-PERP: ' + pe.message, 'error');
+                    addLog(nowTime(), 'ERROR', 'OF-PERP process start error: ' + pe.message);
                     return;
                 }
-                showToast('✅ Процесс OF-PERP поднят' + (pd.alreadyRunning ? ' (уже был запущен)' : ''), 'ok');
-            } catch(pe) {
-                showToast('❌ Не удалось запустить процесс OF-PERP: ' + pe.message, 'error');
-                addLog(nowTime(), 'ERROR', 'OF-PERP process start error: ' + pe.message);
-                return;
+            } else {
+                showToast('ℹ Процесс PERP уже работает — включаю торговлю', 'info');
             }
         }
         if (action === 'start' || action === 'stop') {
@@ -6155,16 +6171,30 @@ async function ofPerpRobotApi(action) {
                     const acctResp = await fetch(OF_PERP_ROBOT_API + '/account', {
                         method: 'POST',
                         headers: {'Content-Type': 'application/json'},
-                        body: JSON.stringify({account: acctVal})
+                        body: JSON.stringify({account: acctVal}),
+                        signal: makeTimeoutSignal(3000)
                     });
                     const acctData = await acctResp.json();
                     if (acctData.ok) addLog(nowTime(), 'INFO', 'OF-PERP счёт: ' + acctData.account + ' (' + acctData.id + ')');
                 } catch(e2) {}
             }
         }
-        const resp = await fetch(OF_PERP_ROBOT_API + '/' + action, {method: 'POST'});
-        const data = await resp.json();
-        addLog(nowTime(), 'INFO', 'OF-PERP ' + action + ': ' + JSON.stringify(data));
+        // старт с автоповтором: если после ok-ответа робот всё ещё stopped — повторяем
+        let data = null;
+        for (let attempt = 1; attempt <= 3; attempt++) {
+            const resp = await fetch(OF_PERP_ROBOT_API + '/' + action, {method: 'POST', signal: makeTimeoutSignal(8000)});
+            data = await resp.json();
+            addLog(nowTime(), 'INFO', 'OF-PERP ' + action + ' (попытка ' + attempt + '): ' + JSON.stringify(data));
+            if (action !== 'start') break;
+            await new Promise(r => setTimeout(r, 700));
+            try {
+                const chk = await fetch(OF_PERP_ROBOT_API + '/status', {signal: makeTimeoutSignal(2000)});
+                const st = await chk.json();
+                if (st.mode === 'running') break;
+                if (attempt === 3) showToast('⚠ PERP не перешёл в running после 3 попыток — смотри журнал', 'error');
+            } catch(ce) { /* статус недоступен — считаем ок */ }
+        }
+        showToast('PERP ' + action + ': ' + JSON.stringify(data), 'ok');
         setTimeout(async () => { await ofPerpRobotPoll(); renderRobots(); }, 500);
     } catch(e) {
         addLog(nowTime(), 'ERROR', `Робот OF-PERP не отвечает (${action}): ${e.message}`);
@@ -6902,7 +6932,7 @@ async function ofRobotApi(action) {
             // Сначала probe: живой робот не спавним (защита от дубля на порт 5080).
             let _needSpawn = true;
             try {
-                const hp = await fetch(OF_ROBOT_API + '/health', {signal: AbortSignal.timeout(2500)});
+                const hp = await fetch(OF_ROBOT_API + '/health', {signal: makeTimeoutSignal(2500)});
                 if (hp.ok) {
                     _needSpawn = false;
                     showToast('ℹ Робот уже жив (перезапущен снаружи) — просто включаю', 'info');
@@ -6911,7 +6941,7 @@ async function ofRobotApi(action) {
             if (_needSpawn) {
             showToast('⏳ Поднимаю процесс SiU6 (подключение к Finam ~15с)...', 'info');
             try {
-                const pr = await fetch('/api/of/process/of/start', {method: 'POST', signal: AbortSignal.timeout(35000)});
+                const pr = await fetch('/api/of/process/of/start', {method: 'POST', signal: makeTimeoutSignal(35000)});
                 const pd = await pr.json();
                 if (!pd.ok) {
                     showToast('❌ Процесс SiU6 не поднялся: ' + (pd.error || '?'), 'error');
