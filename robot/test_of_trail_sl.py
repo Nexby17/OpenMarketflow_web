@@ -192,16 +192,28 @@ def t_three_lots_by_averaging_stay_per_lot():
 # ---------- 4. Close % All ----------
 
 def t_close_pct_aggregates():
+    """F-210: остаток 3+ лота после закрытий -> один стоп на весь остаток."""
     s = make_strategy(close_half_pct=60)
     st = Stops()
-    pos(s, LONG, [(83300, 1), (83330, 1), (83360, 1)])   # peak=3, threshold=max(2,1)=2
+    pos(s, LONG, [(83300, 1), (83330, 1), (83360, 1), (83390, 1)])
     s._trail_closed_lots = 1                              # один лот уже закрыт стопом
-    s._total_lots = 2
-    s._lot_queue.pop()                                    # осталось 2 слоя
+    s._total_lots = 3
+    s._lot_queue.pop()                                    # осталось 3 слоя
     s.sync_trail_stops(bid=83420, ask=83421, place_stop_fn=st.place, cancel_fn=st.cancel)
     assert s._agg_trail is not None, "должен быть агрегированный стоп"
-    assert st.placed[-1][1] == 2, f"агрегат на весь остаток (2), got {st.placed}"
+    assert st.placed[-1][1] == 3, f"агрегат на весь остаток (3), got {st.placed}"
     assert st.placed[-1][3] == "of_trail_sl_agg"
+
+
+def t_two_lots_remain_per_lot():
+    """F-210: остаток 2 лота после закрытия -> по-лотовые стопы, БЕЗ агрегата."""
+    s = make_strategy(close_half_pct=60)
+    st = Stops()
+    pos(s, LONG, [(83300, 1), (83330, 1)])
+    s._trail_closed_lots = 1
+    s.sync_trail_stops(bid=83420, ask=83421, place_stop_fn=st.place, cancel_fn=st.cancel)
+    assert s._agg_trail is None, "на 2 лотах агрегата быть не должно"
+    assert len(st.placed) == 2 and all(p[1] == 1 for p in st.placed), f"2 по-лотовых стопа, got {st.placed}"
 
 
 def t_close_pct_not_before_closures():
@@ -535,7 +547,8 @@ check("трейл шагом 5", t_trail_moves_by_step)
 check("трейл не двигается назад", t_trail_never_moves_back)
 check("2 лота усреднения — 2 по-лотовых стопа", t_two_lots_each_own_stop)
 check("3 лота усреднением — остаются по-лотовые", t_three_lots_by_averaging_stay_per_lot)
-check("Close % All → агрегат на остаток", t_close_pct_aggregates)
+check("остаток 3+ → агрегат", t_close_pct_aggregates)
+check("F-210 остаток 2 → по-лотово", t_two_lots_remain_per_lot)
 check("без закрытий стопами агрегата нет", t_close_pct_not_before_closures)
 check("пирамида 3+ → агрегат сразу", t_pyramid_three_lots_aggregate_immediately)
 check("пирамида 2 лота — по-лотово", t_pyramid_two_lots_per_lot)
