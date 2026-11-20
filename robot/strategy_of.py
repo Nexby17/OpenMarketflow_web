@@ -894,6 +894,10 @@ class OrderFlowStrategy:
         своего порога (Spread для входа/усреднения, Step Pyr для пирамиды),
         уровень = вход этого лота + порог. None = ни один лот ещё не дошёл.
         """
+        # F-212: агрегат на остаток — ТОЛЬКО после того, как часть лотов уже закрылась
+        # стопами. До первого закрытия каждый лот держит СВОЙ стоп (1 лот).
+        if self._trail_closed_lots <= 0:
+            return None
         best = None
         for e in self._lot_queue:
             arm_pts = float(self.p.step_pyramid) if e.src == "pyr" else float(self.p.spread)
