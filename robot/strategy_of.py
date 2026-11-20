@@ -898,6 +898,16 @@ class OrderFlowStrategy:
         # стопами. До первого закрытия каждый лот держит СВОЙ стоп (1 лот).
         if self._trail_closed_lots <= 0:
             return None
+        # F-214 (Дмитрий 20.11): агрегат на весь объём — ТОЛЬКО на уровне Close % All:
+        # остаток должен упасть до max(2, peak * close_half_pct / 100).
+        # Кейс 13:37: пик 4 лота, остаток 4 → 4 > 2 → агрегата быть не должно,
+        # закрывать надо было по одному лоту.
+        pct = int(self.p.close_half_pct or 0)
+        if pct <= 0 or self._peak_lots <= 0:
+            return None
+        threshold = max(2, int(self._peak_lots * pct / 100.0))
+        if self._total_lots > threshold:
+            return None
         best = None
         for e in self._lot_queue:
             arm_pts = float(self.p.step_pyramid) if e.src == "pyr" else float(self.p.spread)

@@ -341,6 +341,18 @@ def t_pyramid_two_lots_one_stop():
     assert s._agg_trail is None, "агрегата на 2 лотах быть не должно"
 
 
+def t_no_agg_above_close_pct():
+    """F-214: кейс 13:37 — 4 лота из пика 4, агрегата быть НЕ должно (выше Close % All)."""
+    s = make_strategy(); st = Stops()
+    pos(s, LONG, [(83400, 1), (83430, 1), (83460, 1), (83490, 1)])
+    s._peak_lots = 4
+    s._trail_closed_lots = 1          # часть лотов уже закрывалась ранее
+    sync(s, 83500, 83501, st)         # лоты 1-3 в плюсе >= 42
+    assert s._agg_trail is None, "4 из 4 выше Close % All — агрегат запрещён"
+    assert st.placed and all(p[1] == 1 for p in st.placed), f"только по одному лоту: {st.placed}"
+    assert len(st.placed) == 2, f"до порога дошли 2 лота: {st.placed}"
+
+
 print("F-198..F-212 Trailing SL")
 check("до +42 стопа нет", t_no_stop_before_spread)
 check("ровно +42 — стоп не ставим", t_exactly_42_no_stop)
@@ -351,6 +363,7 @@ check("SHORT: уровень вход−42", t_short_per_lot_level)
 check("пирамидный лот — порог Step Pyr", t_pyramid_lot_threshold)
 check("F-213 пирамида 2 лота — стоп на 1 лот", t_pyramid_two_lots_one_stop)
 check("F-212 агрегат после закрытия", t_agg_after_closure)
+check("F-214 выше Close % All — агрегата нет", t_no_agg_above_close_pct)
 check("без закрытий агрегата нет", t_agg_not_without_closure)
 check("остаток не дошёл до +42 — нет агрегата", t_agg_not_before_remainder_42)
 check("пирамида 3+ — агрегат по рынку", t_pyramid_three_market)
