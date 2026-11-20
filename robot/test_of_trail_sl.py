@@ -328,6 +328,19 @@ def t_resync_direction():
     assert s._dir == SHORT and s._total_lots == 2
 
 
+def t_pyramid_two_lots_one_stop():
+    """F-213: пирамида на 2 лотах — стоп только на 1 лот (первый)."""
+    s = make_strategy(); st = Stops()
+    pos(s, LONG, [(83400, 1), (83436, 1)], srcs=["entry", "pyr"])
+    s._pyramid_levels = 1
+    sync(s, 83440, 83441, st)
+    assert len(st.placed) == 1, f"только один стоп, got {st.placed}"
+    side, qty, px, tag = st.placed[0]
+    assert qty == 1, f"на 1 лот, got {qty}"
+    assert px == 83430.0, f"уровень = вход+Step Pyr = 83430, got {px}"
+    assert s._agg_trail is None, "агрегата на 2 лотах быть не должно"
+
+
 print("F-198..F-212 Trailing SL")
 check("до +42 стопа нет", t_no_stop_before_spread)
 check("ровно +42 — стоп не ставим", t_exactly_42_no_stop)
@@ -336,6 +349,7 @@ check("2 лота — у каждого свой стоп", t_two_lots_own_stops
 check("3 лота — пока по-лотово", t_three_lots_still_per_lot)
 check("SHORT: уровень вход−42", t_short_per_lot_level)
 check("пирамидный лот — порог Step Pyr", t_pyramid_lot_threshold)
+check("F-213 пирамида 2 лота — стоп на 1 лот", t_pyramid_two_lots_one_stop)
 check("F-212 агрегат после закрытия", t_agg_after_closure)
 check("без закрытий агрегата нет", t_agg_not_without_closure)
 check("остаток не дошёл до +42 — нет агрегата", t_agg_not_before_remainder_42)

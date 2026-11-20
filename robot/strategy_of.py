@@ -981,13 +981,20 @@ class OrderFlowStrategy:
 
         now = time.monotonic()
         side = "sell" if self._dir == LONG else "buy"
+        # F-213 (Дмитрий 20.11): пирамида на 2 лотах — стоп только на ПЕРВЫЙ (1 лот).
+        # Как взяли третий лот — включается агрегат на весь объём (ветка _is_pyr).
+        _pyr_two = (self._pyramid_levels == 1 and self._total_lots < 3 and self._lot_queue)
+        _first_uid = self._lot_queue[0].uid if _pyr_two else None
         for uid, e in live.items():
+            if _pyr_two and uid != _first_uid:
+                continue
             rec = self._trail_stops.get(uid)
             if rec is None:
                 pnl_pts = (base - e.price) * e.side
                 # F-201: порог активации зависит от типа позиции —
                 # пирамида: Step Pyr (30), усреднение/вход: Spread (42).
-                _arm_pts = float(self.p.step_pyramid) if e.src == "pyr" else float(self.p.spread)
+                _arm_pts = (float(self.p.step_pyramid) if (e.src == "pyr" or _pyr_two)
+                            else float(self.p.spread))
                 if _arm_pts <= 0:
                     _arm_pts = float(self.p.spread)
                 if pnl_pts < _arm_pts:
