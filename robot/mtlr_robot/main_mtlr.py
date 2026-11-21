@@ -661,6 +661,66 @@ def _poll_last_quote():
         logg(f"last_quote poll: {str(e)[:80]}", logging.WARNING)
 
 
+# ============ FinamPy watchdog (инцидент 21.11: канал умер в 04:18, ожил в 08:16) ============
+_last_fp_reconnect = 0.0
+
+
+def _reconnect_finampy(reason: str = ""):
+    """Пересоздать FinamPy-канал + подписки (trade sub, quote stream).
+    Кулдаун 120с — не чаще раза в 2 минуты."""
+    global fp, _last_fp_reconnect
+    now = time.time()
+    if now - _last_fp_reconnect < 120:
+        return
+    _last_fp_reconnect = now
+    logg(f"🔁 WATCHDOG: реконнект FinamPy ({reason})", logging.WARNING)
+    try:
+        try:
+            orders_mgr.stop_trade_subscription()
+        except Exception:
+            pass
+        if fp is not None:
+            try:
+                fp.close_channel()
+            except Exception:
+                pass
+        fp = None
+        time.sleep(1)
+        from FinamPy import FinamPy as _FP
+        fp = _FP(os.environ.get("FINAM_API_KEY", ""))
+        orders_mgr.set_finam_py(fp)
+        orders_mgr.start_trade_subscription()
+        _start_quote_stream()
+        logg("✅ WATCHDOG: FinamPy пересоздан, подписки восстановлены")
+    except Exception as e:
+        logg(f"❌ WATCHDOG: реконнект не удался: {e}", logging.ERROR)
+        fp = None
+
+
+_STALE_OPEN_SEC = 180  # маркет-вход по бару, закрытому дольше, — просрочен
+
+
+def _drop_stale_opens(evs: list) -> list:
+    """Гасить OPEN-события по бару, закрытому >_STALE_OPEN_SEC назад
+    (catch-up после провала данных: 21.11 кросс 978 → маркет-вход 963.4).
+    CLOSE-события (flip/SL) исполняются всегда — позицию бросать нельзя."""
+    from config_mtlr import TF_SECONDS
+    tf = TF_SECONDS.get(params.timeframe, 1800)
+    if not engine.last_bar_t:
+        return evs  # инициализация (scan ещё не отмечал бары) — не блокируем
+    age = time.time() - (engine.last_bar_t + tf)
+    if age <= _STALE_OPEN_SEC:
+        return evs
+    kept = []
+    for e in evs:
+        if e.get("action") == "open":
+            logg(f"⏭ STALE-OPEN: вход {e.get('reason')} погашен — бар закрыт "
+                 f"{age/60:.0f} мин назад, сигнал просрочен", logging.WARNING)
+        else:
+            kept.append(e)
+    return kept
+
+
 def quote_loop():
     """Watchdog цены: стрим — основной источник; тишина >10с → LastQuote-поллинг.
     ISS больше НЕ источник цены (лагает против брокера).
@@ -686,6 +746,16 @@ def quote_loop():
         except Exception as e:
             err_streak += 1
             logg(f"quote_loop: {e}", logging.ERROR)
+        # WATCHDOG (инцидент 21.11 04:18–08:16): канал FinamPy умер молча —
+        # котировки мертвы >120с в торговые часы → пересоздать канал+подписки
+        if fp:
+            _hm = datetime.now(MSK).strftime("%H:%M")
+            _mkt_open = ("09:45" <= _hm <= "18:55"
+                         or (params.use_evening and params.evening_start <= _hm <= params.evening_end))
+            if _mkt_open:
+                _stale_q = time.time() - ((src.last_quote or {}).get("ts") or 0)
+                if _stale_q > 120:
+                    _reconnect_finampy(f"котировки мертвы {_stale_q:.0f}с")
         time.sleep(min(2 * (1 + err_streak * 2), 30))
 
 
@@ -1136,6 +1206,8 @@ def bar_loop():
                         # маркет-вход pb по закрытию бара — гасим;
                         # кросс-входы (reason=cross) идут маркетом как есть
                         evs = [e for e in evs if not (e.get("action") == "open" and e.get("reason") == "pb")]
+                    if evs:
+                        evs = _drop_stale_opens(evs)
                     if evs:
                         execute_events(evs)
                 _manage_entry_limit()

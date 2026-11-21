@@ -147,6 +147,7 @@ class ArbOrderManager:
         self._trade_sub_running = False
         if self._trade_sub_thread:
             self._trade_sub_thread.join(timeout=5)
+        self._trade_sub_thread = None  # 21.11: fresh start после реконнекта FinamPy
         log.info("Trade subscription stopped")
 
     def _trade_sub_loop(self):
