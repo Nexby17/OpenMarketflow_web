@@ -1063,3 +1063,17 @@ kill 59336 → spawn 64360 (`of_mx_console_20261118_161054.log`), `mode=stopped`
 **Состояние:** MXU6 работает на прежнем коде (процесс с 18.11) — фикс подхватится при рестарте.
 Сейчас LONG 12 (11 ручных @233 200 + 1 пирамидный @233 250), avg 233 204,17, nextTp 233 625,
 nextAvg 232 800.
+
+
+### 2026-11-22 16:13 — F-215b: страховка при загрузке state + аккуратный рестарт MXU6
+
+Рестарт по просьбе Дмитрия («делай аккуратно»): kill 64360 → spawn 106476 (of_mx_console_20261122_161253.log).
+Стейт на диске свежий (12 лотов, очередь 2). Лог: Restored position: dir=1 lots=12 avg=233204.17 lotEntries=2 →
+STARTUP: position OK — robot 12 lot(s) dir=1 matches broker (avg=233169), mode=stopped → /start → mode=running.
+Позиция и очередь целы: nextTp 233625, nextAvg 232800, pyrLevels 1/1.
+
+Дополнительно закрыт корень: strategy.load_state теперь при открытой позиции и _last_pyramid_price <= 0
+подставляет _avg_price — иначе старый/обнулённый state давал мгновенную «пирамиду» после каждого рестарта.
+Тест 
+obot/test_of_loadstate_pyr_guard.py: bad state (0) → ориентир 233200, _check_pyramiding(233225)=None;
+нормальный state — без изменений; FLAT — остаётся 0. ALL OK. py_compile OK.

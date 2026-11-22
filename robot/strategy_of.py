@@ -2469,6 +2469,11 @@ class OrderFlowStrategy:
                 and self._last_pyramid_price > 0):
             # миграция старых state: лучшая оценка — цена последнего пирамид-долива
             self._last_pyr_entry_price = self._last_pyramid_price
+        # F-215b (22.11): страховка — при открытой позиции ориентир пирамиды не должен быть 0.
+        # Иначе _check_pyramiding считает distance = price - 0 и «пирамидит» мгновенно
+        # (кейс 22.11: ручной adjust обнулил ориентир, робот купил лишний лот через 2 минуты).
+        if self._dir != FLAT and self._last_pyramid_price <= 0 and self._total_lots > 0:
+            self._last_pyramid_price = self._avg_price or self._entry_price or 0.0
         self._peak_lots = state.get("peakLots", 0)
         # Fallback: if peak_lots not saved (old state), recalculate from queue
         if self._peak_lots == 0 and self._total_lots > 0:
