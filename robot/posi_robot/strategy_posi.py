@@ -176,9 +176,18 @@ class StrategyEngine:
         regime = self._regime(i)
         flip = regime != FLAT and prev_regime != FLAT and regime != prev_regime
 
+        # --- 0) валидность бара для закрытия (фикс 22.11.2026) ---
+        # catch-up бары, закрывшиеся ДО входа в позицию, не могут её закрывать
+        # (старт с галкой из stopped: догонял вчерашней историей и закрывал
+        # свежую позицию по «regime≠pos» на баре, старше самого входа).
+        close_valid = True
+        if self.position and self.position.get("entry_t") is not None:
+            tf = TF_SECONDS.get(self.p.timeframe, 300)
+            close_valid = self.candles[i]["t"] + tf > self.position["entry_t"]
+
         # --- 1) флип против позиции -> закрыть (КРОМЕ дончиан: у него выход только люстра) ---
         if self.position and flip and self.position["side"] != regime \
-                and self.position.get("src") != "donch":
+                and self.position.get("src") != "donch" and close_valid:
             events.append({"action": "close", "reason": "flip",
                            "side": self.position["side"], "qty": self.position["qty"]})
 
@@ -186,7 +195,7 @@ class StrategyEngine:
         # pb-вход при уже развёрнутом противоположном режиме не имеет ни SL
         # (SAR не с той стороны), ни флип-события (смена была до входа) — висел без защиты.
         if self.position and regime != FLAT and self.position["side"] != regime \
-                and self.position.get("src") != "donch" \
+                and self.position.get("src") != "donch" and close_valid \
                 and not any(ev.get("action") == "close" for ev in events):
             self.last_signal = f"regime≠pos→{'LONG' if regime == LONG else 'SHORT'}"
             events.append({"action": "close", "reason": "regime",
