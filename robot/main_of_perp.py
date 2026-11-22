@@ -1065,8 +1065,15 @@ class APIHandler(BaseHTTPRequestHandler):
                         strategy._total_lots = abs_lots
                         strategy._entry_price = price
                         strategy._avg_price = price
-                        strategy._last_average_price = 0.0
-                        strategy._last_pyramid_price = 0.0
+                        # F-215 (22.11): ручной adjust НЕ оставляет _last_pyramid_price=0.
+                        # Иначе в _check_pyramiding distance = price - 0 = вся цена >= step_pyramid
+                        # и робот мгновенно «пирамидит» 1 лот (кейс 22.11 16:04: 11 лотов руками
+                        # по 233200 -> через 2 мин PYRAMID buy 1 @233225 при Step Pyr=35000).
+                        strategy._last_average_price = price
+                        strategy._last_pyramid_price = price
+                        strategy._last_pyr_entry_price = 0.0
+                        strategy._pyramid_levels = 0
+                        strategy._average_levels = 0
                         strategy._peak_lots = abs_lots
                         strategy._entry_time = datetime.now(MSK)
                         strategy._lot_queue.clear()

@@ -1038,3 +1038,28 @@ kill 59336 → spawn 64360 (`of_mx_console_20261118_161054.log`), `mode=stopped`
 `stale=false`, CVD ready, тайминг 10:15–17:15 открыт, `direction_filter=long`.
 
 **Требует Дмитрия:** Ctrl+F5 — вкладка получит v147; после этого кнопки всех четырёх роботов работают.
+
+### 2026-11-22 16:04 — F-215: «of_pyramid 1 лот при Step Pyr 35000» — причина найдена
+
+**Кейс.** Дмитрий руками добавил 11 лотов по 233 200 (Step Avg 400, Spread 375), пирамидиться робот
+не должен был. В 16:04:32 робот сделал `PYRAMID buy 1 @ 233225 | lvl 1/1 | avg=233202.08 lots=12`.
+
+**Причина.** Обработчик `/position/adjust` в `main_of_mx.py` (строки 1025–1035) при ручной корректировке
+напрямую правит поля стратегии и **обнуляет `_last_pyramid_price = 0.0`**. В `_check_pyramiding`:
+`distance = price - _last_pyramid_price` → `233225 - 0 = 233225` пт ≥ `step_pyramid 35000` → «пора пирамидить».
+Защита от этого (F-055: «если `_last_pyramid_price <= 0` — инициализировать ценой») есть только в
+`strategy.apply_manual_adjust()`, а обработчик в main её обходит.
+
+**Проверка (robot/test_of_manual_adjust_pyr.py):**
+- `_last_pyramid_price=0`, цена 233 225, Step Pyr 35 000 → `_check_pyramiding` возвращает `pyramid` (баг воспроизведён);
+- `_last_pyramid_price=233 200` (как после фикса) → `None`, distance 25 пт < 35 000.
+
+**Исправлено (main_of_mx.py, main_of.py, main_of_perp.py):** после ручного adjust
+`_last_pyramid_price = price` (а не 0), `_last_average_price = price`, `_pyramid_levels = 0`,
+`_average_levels = 0`, `_last_pyr_entry_price = 0`. Теперь пирамида требует реальных +35 000 пт,
+усреднение работает по Step Avg 400 от цены входа. `main_of_br.py` — другой движок, поля нет.
+`py_compile` 3/3 OK.
+
+**Состояние:** MXU6 работает на прежнем коде (процесс с 18.11) — фикс подхватится при рестарте.
+Сейчас LONG 12 (11 ручных @233 200 + 1 пирамидный @233 250), avg 233 204,17, nextTp 233 625,
+nextAvg 232 800.
