@@ -1479,6 +1479,20 @@ class OrderFlowStrategy:
             self._broker_avg_price = broker_avg
         self._broker_sync_time = time.time()
 
+        # F-224 (23.11): full-resync НЕ должен схлопывать очередь слоёв, если позиция
+        # та же (тот же объём и направление). Иначе после рестарта 8 слоёв по 1 лоту
+        # превращались в один слой «средняя × 8», и трейл ставил ОДИН стоп на 8 лотов
+        # вместо восьми по-лотовых (инцидент 13:51: armed buy 8 @82668).
+        if (full and signed_lots != 0 and self._lot_queue
+                and self._dir == (LONG if signed_lots > 0 else SHORT)
+                and abs(signed_lots) == self._total_lots):
+            total = sum(e.lots for e in self._lot_queue)
+            if total:
+                self._avg_price = sum(e.price * e.lots for e in self._lot_queue) / total
+            log.info("F-224: full-resync — позиция совпадает (%d слоёв, %d лотов), "
+                     "очередь слоёв сохранена", len(self._lot_queue), self._total_lots)
+            return
+
         if full:
             old_lots = self._total_lots * (1 if self._dir == LONG else -1)
             old_avg = self._avg_price
