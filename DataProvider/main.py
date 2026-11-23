@@ -1,5 +1,6 @@
 """DataProvider — FastAPI app serving cached Finam data via REST."""
 import logging
+import json
 import os
 import sys
 import time
@@ -154,9 +155,37 @@ def unsubscribe(symbol: str, tf: str = "M5"):
 
 
 # === Order proxy endpoints ===
+_LOT_CACHE: dict = {}          # ticker → (lot_size, fetched_ts)
+_LOT_TTL = 3600.0              # 1 час
+
+
+def _get_stock_lot(base: str) -> int:
+    """Лот акции с MOEX ISS (кэш 1ч). Инвариант Самурая: штук не больше запрошенного."""
+    now = time.time()
+    hit = _LOT_CACHE.get(base)
+    if hit and now - hit[1] < _LOT_TTL:
+        return hit[0]
+    try:
+        import urllib.request
+        url = (f"https://iss.moex.com/iss/engines/stock/markets/shares/boards/TQBR/"
+               f"securities/{base}.json?iss.meta=off&iss.only=securities&securities.columns=SECID,LOTSIZE")
+        with urllib.request.urlopen(url, timeout=5) as resp:
+            data = json.loads(resp.read())
+        rows = data.get("securities", {}).get("data") or []
+        lot = int(rows[0][1]) if rows and rows[0][1] else 10
+    except Exception as e:
+        logger.warning(f"lot fetch {base} failed: {e}")
+        lot = 10
+    _LOT_CACHE[base] = (lot, now)
+    return lot
+
+
 @app.post("/order/place")
-def place_order(account: str, symbol: str, side: str, quantity: int, price: float = 0, order_type: str = "market", tag: str = ""):
-    """Place order via DP gRPC connection."""
+def place_order(account: str, symbol: str, side: str, quantity: int, price: float = 0, order_type: str = "market", tag: str = "", units: str = "lots"):
+    """Place order via DP gRPC connection.
+    units='lots' (default, legacy): quantity в лотах → переводим в штуки по таблице лотов.
+    units='shares' (контракт Самурая 13.11): quantity уже в ШТУКАХ → отправляем как есть,
+    округляя ВНИЗ до лота (не больше запрошенного)."""
     if not the_provider or not the_provider.fp:
         return {"error": "not connected"}
     try:
@@ -178,7 +207,10 @@ def place_order(account: str, symbol: str, side: str, quantity: int, price: floa
         }
         base = symbol.split('@')[0]
         is_stock = not any(c.isdigit() for c in base)
-        if is_stock:
+        if is_stock and units == "shares":
+            lot = _get_stock_lot(base)
+            grpc_qty = (quantity // lot) * lot
+        elif is_stock:
             lot_size = _STOCK_LOT_SIZES.get(base, 10)
             grpc_qty = quantity * lot_size
         else:
