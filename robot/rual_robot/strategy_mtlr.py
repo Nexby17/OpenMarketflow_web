@@ -504,6 +504,8 @@ class StrategyEngine:
                 "peak_pnl": self.peak_pnl,
                 "max_dd": self.max_dd,
                 "last_bar_t": self.last_bar_t,
+                "no_reentry_side": self._no_reentry_side,
+                "last_close_t": self._last_close_t,
             }
 
     def load_state(self, st: Dict) -> None:
@@ -517,3 +519,13 @@ class StrategyEngine:
             self.peak_pnl = st.get("peak_pnl", 0.0)
             self.max_dd = st.get("max_dd", 0.0)
             self.last_bar_t = st.get("last_bar_t", 0)
+            # 23.11 (17:25): стоп-блок и кулдаун переживают рестарт (инцидент PLZL:
+            # после SL-выхода старым кодом рестарт сбросил блок → re-regime перевойд)
+            self._no_reentry_side = st.get("no_reentry_side")
+            self._last_close_t = st.get("last_close_t", 0.0)
+            # самовосстановление из журнала: последняя сделка закрыта по стопу
+            # (sl/trail), позиции нет, а блок не сохранён → выставить самим
+            if self._no_reentry_side is None and not self.position and self.journal:
+                last = self.journal[-1]
+                if last.get("reason_out") in ("sl", "trail"):
+                    self._no_reentry_side = last.get("side")

@@ -157,6 +157,31 @@ def test_7_stop_exit_blocks_reregime():
     print("OK 7: после sl-выхода re-regime заблокирован до кросса; tp — нет")
 
 
+
+
+def test_9_stop_block_survives_restart():
+    """Инцидент PLZL 23.11 17:01: SL-выход → рестарт → блок сброшен → re-regime вошёл.
+    Теперь блок персистится и самовосстанавливается из журнала."""
+    candles = mk_candles([(1, 30), (-1, 10)])
+    eng = mk_engine(candles)
+    st = {"position": None, "pending": None, "open_trade": None,
+          "journal": [{"side": -1, "qty": 10, "entry_price": 1000.0,
+                       "entry_time": NOW - 3600, "reason_in": "cross",
+                       "exit_price": 1005.0, "exit_time": NOW - 60,
+                       "reason_out": "sl", "pnl": -50.0, "commission": 10.0}],
+          "realized_pnl": -50.0, "commission_paid": 10.0,
+          "peak_pnl": 0.0, "max_dd": 0.0, "last_bar_t": 0}
+    eng.load_state(st)
+    assert eng._no_reentry_side == SHORT, "блок должен восстановиться из журнала (sl-выход, позиций нет)"
+    d = eng.state_dict()
+    assert d["no_reentry_side"] == -1 and "last_close_t" in d, "блок должен персиститься"
+    # при живой позиции блок не выставляется зря
+    st2 = dict(st); st2["position"] = {"side": -1, "qty": 5, "entry": 1000.0, "entry_t": NOW}
+    eng2 = mk_engine(candles); eng2.load_state(st2)
+    assert eng2._no_reentry_side is None
+    print("OK 9: стоп-блок переживает рестарт (персист + журнал-самовосстановление)")
+
+
 if __name__ == "__main__":
     test_1_flat_in_regime_reenters()
     test_2_position_blocks_reentry()
@@ -165,4 +190,5 @@ if __name__ == "__main__":
     test_5_donchian_strict_untouched()
     test_6_no_duplicate_on_cross_bar()
     test_7_stop_exit_blocks_reregime()
-    print("\n✅ 7/7 — сеть работает; после стоп-выхода ждём только кросс")
+    test_9_stop_block_survives_restart()
+    print("\n✅ 8/8 — сеть работает; после стоп-выхода ждём только кросс")
