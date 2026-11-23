@@ -51,7 +51,7 @@ for cut in range(30, len(candles) + 1):
                 break
 
 st = eng.stats()
-print("\n=== РЕЗУЛЬТАТ ПРОГОНА (cross+pb, TP2%/SL1.5%) ===")
+print("\n=== РЕЗУЛЬТАТ ПРОГОНА (cross ИЛИ pb, TP2%/SL1.5%) ===")
 for k, v in st.items():
     print(f"  {k}: {v}")
 print("last_signal:", eng.last_signal)
@@ -60,6 +60,6 @@ assert st["trades"] < 200, "слишком много сделок (ловит �
 # валидность журнала
 for t in eng.journal:
     assert t["pnl"] is not None and t["entry_price"] > 0 and t["exit_price"] > 0
-    assert t["reason_in"] in ("cross", "pb", "cross+pb")
+    assert t["reason_in"] in ("cross", "pb")
     assert t["reason_out"] in ("tp", "sl", "trail", "flip", "manual")
 print("\n=== SMOKE-ТЕСТ СТРАТЕГИИ ПРОЙДЕН ===")

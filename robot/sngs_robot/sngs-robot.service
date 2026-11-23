@@ -1,0 +1,20 @@
+[Unit]
+Description=SNGS Robot (pb to EMA H1, spot SNGS@MISX) - REAL
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/root/.openclaw/workspace/HedgeFund/robot/sngs_robot
+EnvironmentFile=/root/.openclaw/workspace/HedgeFund/.env
+Environment=PYTHONPATH=/root/.openclaw/workspace/HedgeFund/robot:/root/.openclaw/workspace/HedgeFund/DataProvider
+Environment=FINAM_ACCOUNT=2049688
+Environment=DP_URL=http://localhost:5060
+ExecStartPre=/bin/rm -rf /root/.openclaw/workspace/HedgeFund/robot/sngs_robot/__pycache__
+ExecStart=/usr/bin/python3 /root/.openclaw/workspace/HedgeFund/robot/sngs_robot/main_mtlr.py --port 5097
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

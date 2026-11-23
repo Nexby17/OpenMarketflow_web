@@ -1,0 +1,15 @@
+[Unit]
+Description=PLZL Robot (SARxEMA cross + pullback, spot PLZL@MISX) - REAL
+After=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/root/.openclaw/workspace/HedgeFund/robot/plzl_robot
+Environment=DP_URL=http://localhost:5060
+EnvironmentFile=/root/.openclaw/workspace/HedgeFund/.env
+ExecStart=/usr/bin/python3 /root/.openclaw/workspace/HedgeFund/robot/plzl_robot/main_plzl.py --port 5095
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
