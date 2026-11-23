@@ -32,7 +32,7 @@ def mk(queue, direction, spread=375, pct=60, min_profit=160):
     return s
 
 
-print("=== слой 11 лотов (ручной adjust), peak 11, Close % All 60 → порог 6 ===")
+print("=== слой 11 лотов (ручной adjust), peak 11, Close % All 60 → порог 7 (F-221: 6.6 → 7) ===")
 s = mk([(233200.0, 11)], LONG)
 print("  до:", s._total_lots, "лот(ов), очередь:", [(e.price, e.lots) for e in s._lot_queue])
 
@@ -40,17 +40,17 @@ acts = s._check_partial_tp(233625.0)   # 233200 + 375 = 233575 → тейк
 print("  TP #1:", acts[0]["qty"], "лот | осталось:", s._total_lots, "| очередь:", [(e.price, e.lots) for e in s._lot_queue])
 assert acts[0]["qty"] == 1 and s._total_lots == 10
 
-for i in range(2, 6):
+for i in range(2, 5):
     a = s._check_partial_tp(233625.0)
     assert a and a[0]["qty"] == 1, a
     print(f"  TP #{i}: 1 лот | осталось: {s._total_lots}")
-assert s._total_lots == 6, s._total_lots
+assert s._total_lots == 7, s._total_lots
 
-print("  остаток 6 == порог Close % All → следующий тейк закрывает ВЕСЬ остаток одним ордером")
+print("  остаток 7 == порог Close % All → следующий тейк закрывает ВЕСЬ остаток одним ордером")
 a = s._check_partial_tp(233625.0)
 print("  BATCH:", a[0]["action"], "qty=", a[0]["qty"], "reason=", a[0].get("reason"))
-assert a[0]["action"] == "close_all" or a[0]["qty"] == 6, a
-print("PASS: 11 → по 1 лоту до 6 → остаток пакетом")
+assert a[0]["action"] == "close_all" and a[0]["qty"] == 7, a
+print("PASS: 11 → по 1 лоту до 7 → остаток пакетом")
 
 print("\n=== пик 2 лота: порог Close % All = 2 → остаток 2 закрывается пакетом (правило) ===")
 s2 = mk([(233200.0, 1), (232800.0, 1)], LONG)
@@ -62,7 +62,7 @@ print("PASS (малый пик: сразу пакет, как и требует 
 print("\n=== пик 5 лотов, остаток 5 > порога 3 → по 1 лоту ===")
 s2b = mk([(233200.0, 3), (232900.0, 2)], LONG)
 a2b = s2b._check_partial_tp(233575.0)
-print("  TP qty:", a2b[0]["qty"], "| осталось:", s2b._total_lots, "| порог:", max(2, int(5 * 60 / 100)))
+print("  TP qty:", a2b[0]["qty"], "| осталось:", s2b._total_lots, "| порог:", s2b._close_pct_threshold(5, 60))
 assert a2b[0]["qty"] == 1 and s2b._total_lots == 4
 print("PASS")
 

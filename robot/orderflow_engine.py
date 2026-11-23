@@ -511,8 +511,21 @@ class SignalEngine:
             return None
 
         # Detect daily CVD reset (CVD dropped to near-zero from a large value)
+        # F-217: только ОКОЛО 07:00 MSK. Иначе любой бар с малым дельт-объёмом
+        # после крупного CVD ложно «сбрасывал» историю посреди дня (23.11: CVD -581
+        # → 0 в 11:05, сигналы пропали, робот перестал торговать).
         prev_abs = abs(self._cvd_trend_prev_cvd)
-        if prev_abs > 500 and abs(current_cvd) < prev_abs * 0.1:
+        _bar_ts = float(getattr(self._bar_history[-1], "timestamp", 0) or 0)
+        _near_0700 = False
+        if _bar_ts > 0:
+            try:
+                from datetime import datetime as _dt
+                _msk = _dt.fromtimestamp(_bar_ts, MSK)
+                _mins = _msk.hour * 60 + _msk.minute
+                _near_0700 = (6 * 60 + 45) <= _mins <= (7 * 60 + 20)
+            except Exception:
+                _near_0700 = False
+        if _near_0700 and prev_abs > 500 and abs(current_cvd) < prev_abs * 0.1:
             log.info(f"CVD Trend: daily reset (CVD {self._cvd_trend_prev_cvd:.0f} → {current_cvd:.0f})")
             self._cvd_ema_fast = current_cvd
             self._cvd_ema_slow = current_cvd

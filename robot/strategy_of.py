@@ -886,6 +886,26 @@ class OrderFlowStrategy:
             return False
         return stop_px < base if self._dir == LONG else stop_px > base
 
+    @staticmethod
+    def _close_pct_threshold(peak_lots: int, pct: int) -> int:
+        """F-221: порог остатка для правила Close % All.
+
+        Дмитрий 23.11: пик 6, два лота закрылись стопом, осталось 4 —
+        следующим должен встать ОДИН стоп на весь остаток (Close % All 60).
+        60% от 6 = 3.6 -> порог 4 (округление к ближайшему), а НЕ 3,
+        как давало прежнее int() (усечение): из-за него при 4 лотах
+        агрегат не включался и робот продолжал ставить по-лотовые стопы.
+        Минимум 2 лота — как и раньше.
+        """
+        try:
+            peak = int(peak_lots or 0)
+            pc = int(pct or 0)
+        except Exception:
+            return 2
+        if peak <= 0 or pc <= 0:
+            return 2
+        return max(2, int(peak * pc / 100.0 + 0.5))
+
     def _trail_agg_level(self, base: float):
         """F-211: уровень стопа на ВЕСЬ объём.
 
@@ -905,7 +925,7 @@ class OrderFlowStrategy:
         pct = int(self.p.close_half_pct or 0)
         if pct <= 0 or self._peak_lots <= 0:
             return None
-        threshold = max(2, int(self._peak_lots * pct / 100.0))
+        threshold = self._close_pct_threshold(self._peak_lots, pct)
         if self._total_lots > threshold:
             return None
         best = None
@@ -2280,7 +2300,7 @@ class OrderFlowStrategy:
         # Check X% threshold — close remaining batch when lots <= threshold
         pct = self.p.close_half_pct
         if pct > 0 and self._peak_lots > 0:
-            threshold = max(2, int(self._peak_lots * pct / 100.0))
+            threshold = self._close_pct_threshold(self._peak_lots, pct)
             if self._total_lots <= threshold:
                 # Check if LIFO lot meets spread condition
                 last = self._lot_queue[-1]

@@ -107,7 +107,16 @@ class FinamHub:
             "errors": 0,
             "by_type": {},
             "last_msg_ts": 0,
+            # F-218 (2026-11-23): keepalive-переподписка. Инцидент Si 23.11:
+            # котировки шли, а trades-канал тихо замолк в 10:35 (CVD замер на 0,
+            # робот 30+ мин без сигналов). WS при этом жив -> штатный reconnect не срабатывал.
+            "keepalive_refreshes": 0,
         }
+        try:
+            self._keepalive_sec = float(os.getenv("HUB_KEEPALIVE_SEC", "300") or 300)
+        except Exception:
+            self._keepalive_sec = 300.0
+        self._last_keepalive_ts = 0.0
 
     # === JWT ===
 
@@ -229,12 +238,25 @@ class FinamHub:
 
     async def _recv_loop(self):
         import asyncio
+        self._last_keepalive_ts = time.time()
         while self._running:
             try:
                 msg = await asyncio.wait_for(self._ws.recv(), timeout=30)
             except asyncio.TimeoutError:
-                continue
-            self._dispatch(msg)
+                msg = None
+            if msg is not None:
+                self._dispatch(msg)
+            # F-218: периодически переотправляем SUBSCRIBE на все активные каналы.
+            # Finam иногда снимает подписку, оставляя сокет живым (тихий обрыв канала).
+            # Повторный SUBSCRIBE идемпотентен и восстанавливает поток без разрыва.
+            if self._keepalive_sec > 0 and (time.time() - self._last_keepalive_ts) >= self._keepalive_sec:
+                self._last_keepalive_ts = time.time()
+                try:
+                    self._resubscribe_all()
+                    self.stats["keepalive_refreshes"] += 1
+                    log.info("hub keepalive: refreshed %d channels", len(self._subs))
+                except Exception as e:
+                    log.warning("hub keepalive failed: %s", str(e)[:120])
 
     # === Subscribe API ===
 
