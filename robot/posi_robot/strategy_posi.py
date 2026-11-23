@@ -58,6 +58,9 @@ class StrategyEngine:
         self.last_signal: str = ""
         self.unrealized: float = 0.0
         self._open_trade: Optional[Dict] = None  # черновик сделки до закрытия
+        # 23.11: сеть безопасности — повторный вход в действующий режим
+        self.trading_since: Optional[float] = None  # время перехода в running (ставит main)
+        self._last_close_t: float = 0.0             # время последнего закрытия позиции
 
     # ================= indicators =================
     def recompute(self, candles: List[Dict]) -> None:
@@ -236,6 +239,25 @@ class StrategyEngine:
                     events.append(ev)
             # оба выкл — ничего
 
+        # --- 2c) сеть безопасности (23.11): режим действует, позиции нет → войти ---
+        # Кросс мог быть погашен STALE-OPEN (опоздавший бар), пропущен (рестарт,
+        # провал данных) или отфильтрован — робот не должен днями стоять во
+        # флэте в действующем режиме. Только для режимных сигналов
+        # (use_cross/use_pullback); строгий дончиан не трогаем.
+        if (self.p.use_cross or self.p.use_pullback) and regime != FLAT and not self.position \
+                and self.pending is None \
+                and not any(ev.get("action") == "open" for ev in events) \
+                and self._d1_ok(regime) and self._filters_ok(i, regime):
+            tf_c = TF_SECONDS.get(self.p.timeframe, 300)
+            bar_close_t = self.candles[i]["t"] + tf_c
+            if bar_close_t > self._last_close_t \
+                    and (self.trading_since is None or bar_close_t > self.trading_since):
+                qty = self._qty_for(regime, self.candles[i]["c"])
+                if qty > 0:
+                    self.last_signal = f"re-regime→{'LONG' if regime == LONG else 'SHORT'}"
+                    events.append({"action": "open", "side": regime, "qty": qty,
+                                   "reason": "re-regime"})
+
         return events
 
     def _check_standalone_pb(self, i: int) -> Optional[Dict]:
@@ -402,6 +424,7 @@ class StrategyEngine:
             self.peak_pnl = max(self.peak_pnl, self.realized_pnl)
             self.max_dd = max(self.max_dd, self.peak_pnl - self.realized_pnl)
             self.position = None
+            self._last_close_t = ts
             self._open_trade = None
             self.unrealized = 0.0
             return trade

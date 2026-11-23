@@ -707,6 +707,7 @@ def _reconnect_finampy(reason: str = ""):
 
 
 _STALE_OPEN_SEC = 180  # маркет-вход по бару, закрытому дольше, — просрочен
+_STALE_PRICE_ATR = 0.5  # но живая цена ≤ 0.5×ATR от сигнала — вход безопасен
 
 
 def _drop_stale_opens(evs: list) -> list:
@@ -720,6 +721,19 @@ def _drop_stale_opens(evs: list) -> list:
     age = time.time() - (engine.last_bar_t + tf)
     if age <= _STALE_OPEN_SEC:
         return evs
+    # 23.11: бар опоздал, но живая цена не убежала от сигнального закрытия —
+    # вход всё ещё безопасен (STALE-OPEN гасил кроссы на опоздавших барах M30/H1,
+    # роботы днями стояли во флэте в действующем режиме)
+    q = src.last_quote or {}
+    live = q.get("last") or q.get("bid") or q.get("offer")
+    atr = engine.atr_v[-1] if engine.atr_v else None
+    sig = engine.candles[-1]["c"] if engine.candles else None
+    if live and atr and sig and atr > 0:
+        tol = max(_STALE_PRICE_ATR * atr, sig * 0.001)
+        if abs(live - sig) <= tol:
+            logg(f"⏱ поздний бар ({age / 60:.0f} мин), цена рядом с сигналом "
+                 f"(|Δ{live - sig:+.2f}| ≤ {tol:.2f}) — вход разрешён")
+            return evs
     kept = []
     for e in evs:
         if e.get("action") == "open":
@@ -1317,6 +1331,7 @@ class Handler(BaseHTTPRequestHandler):
 
         if path == "/start":
             mode["m"] = "running"
+            engine.trading_since = time.time()
             logg("▶️ START (running)")
             # ☑ Позиция при старте: без ожидания сигнала, по текущему режиму (без фильтров)
             if params.entry_on_start:
