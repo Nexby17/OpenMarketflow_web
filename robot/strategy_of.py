@@ -141,6 +141,11 @@ class OFParams:
     # Без буфера зона переключается на каждом тике у границы (дребезг) и входы теряются.
     # 0 = выключено (старое поведение, зона без памяти).
     vah_val_zone_buffer_pts: float = 0.0
+    # F-227 (23.11.2026): уровни VAH/VAL «замораживаются» на закрытый M5-бар.
+    # Профиль объёма достраивается на каждом тике, из-за чего границы зоны дрейфуют
+    # и зона переключается десятки раз за день. Теперь уровни берутся с последнего
+    # закрытого бара и не меняются внутри бара; реакция на цену остаётся тиковой.
+    vah_val_freeze_levels_per_bar: bool = False
     vah_val_block_inside: bool = False  # F-091: True = внутри VA торговля запрещена полностью (Range v2)
     # VWEMA regime filter
     use_vwema: bool = False       # enable VWEMA trend filter
@@ -421,6 +426,8 @@ class OrderFlowStrategy:
         self._pending_cvd_trend: Optional[dict] = None   # F-067b: сигнал кроссовера, ждущий входа
         self._blind_since: Optional[float] = None       # F-198: начало «слепого окна» (epoch)
         self._vah_zone: str = ""                        # F-226: текущая зона VAH/VAL ("", "VAH", "VAL")
+        self._vah_levels_bar: int = -1                  # F-227: бар, на котором заморожены уровни
+        self._vah_levels_frozen = (0.0, 0.0)            # F-227: (vah, val) на закрытии бара
         self._tp_scan_ts: float = 0.0                   # F-199: время последнего скана баров
         self._last_average_price: float = 0.0
         self._last_pyramid_price: float = 0.0
@@ -667,7 +674,14 @@ class OrderFlowStrategy:
         """
         if not self.vp or not self.vp.ready:
             return ""
-        vah, val = self.vp.vah, self.vp.val
+        if getattr(self.p, "vah_val_freeze_levels_per_bar", False):
+            bar_idx = int(getattr(self.signals, "_bars_added", 0) or 0)
+            if bar_idx != self._vah_levels_bar or self._vah_levels_frozen[0] <= 0:
+                self._vah_levels_bar = bar_idx
+                self._vah_levels_frozen = (self.vp.vah, self.vp.val)
+            vah, val = self._vah_levels_frozen
+        else:
+            vah, val = self.vp.vah, self.vp.val
         if vah <= 0 or val <= 0:
             return ""
         buf = float(getattr(self.p, "vah_val_zone_buffer_pts", 0.0) or 0.0)
