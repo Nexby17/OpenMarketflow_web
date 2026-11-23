@@ -61,6 +61,9 @@ class StrategyEngine:
         # 23.11: сеть безопасности — повторный вход в действующий режим
         self.trading_since: Optional[float] = None  # время перехода в running (ставит main)
         self._last_close_t: float = 0.0             # время последнего закрытия позиции
+        # 23.11 (2): после стоп-выхода (SL/trail) повторный вход в ту же сторону
+        # запрещён до смены режима (нового кросса) — команда Самурая
+        self._no_reentry_side: Optional[int] = None
 
     # ================= indicators =================
     def recompute(self, candles: List[Dict]) -> None:
@@ -178,6 +181,8 @@ class StrategyEngine:
         prev_regime = LONG if self.osc_v[i - 1] > 0 else SHORT
         regime = self._regime(i)
         flip = regime != FLAT and prev_regime != FLAT and regime != prev_regime
+        if flip:
+            self._no_reentry_side = None   # смена режима = новый кросс, блок снят
 
         # --- 0) валидность бара для закрытия (фикс 22.11.2026) ---
         # catch-up бары, закрывшиеся ДО входа в позицию, не могут её закрывать
@@ -245,7 +250,7 @@ class StrategyEngine:
         # флэте в действующем режиме. Только для режимных сигналов
         # (use_cross/use_pullback); строгий дончиан не трогаем.
         if (self.p.use_cross or self.p.use_pullback) and regime != FLAT and not self.position \
-                and self.pending is None \
+                and self.pending is None and self._no_reentry_side != regime \
                 and not any(ev.get("action") == "open" for ev in events) \
                 and self._d1_ok(regime) and self._filters_ok(i, regime):
             tf_c = TF_SECONDS.get(self.p.timeframe, 300)
@@ -423,6 +428,9 @@ class StrategyEngine:
             self.commission_paid += trade["commission"]
             self.peak_pnl = max(self.peak_pnl, self.realized_pnl)
             self.max_dd = max(self.max_dd, self.peak_pnl - self.realized_pnl)
+            if reason in ("sl", "trail"):
+                # стоп-выход в живом режиме: перевойд только по новому кроссу (12:48 UTC, приказ Самурая)
+                self._no_reentry_side = pos["side"]
             self.position = None
             self._last_close_t = ts
             self._open_trade = None

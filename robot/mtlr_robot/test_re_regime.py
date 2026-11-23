@@ -11,6 +11,8 @@
   4. D1-фильтр против направления → входа НЕТ.
   5. Строгий дончиан (use_cross=use_pullback=False) → сеть НЕ работает.
   6. На баре кросса уже есть open → дубля НЕТ (cross, не re-regime).
+  7. Стоп-выход (sl) в живом режиме → re-regime в ту же сторону ЗАПРЕЩЁН
+     до смены режима (приказ Самурая 23.11 12:48).
 
 Offline: синтетические свечи, без сети.
 """
@@ -126,6 +128,35 @@ def test_6_no_duplicate_on_cross_bar():
     print("OK 6: на баре кросса один вход cross, далее re-regime — без дублей")
 
 
+def test_7_stop_exit_blocks_reregime():
+    candles = mk_candles([(1, 30), (-1, 10)])
+    eng = mk_engine(candles)
+    eng.last_bar_t = candles[33]["t"]
+    eng.trading_since = candles[33]["t"]
+    # эмуляция: шорт закрыт по SL в действующем SHORT-режиме
+    eng.position = {"side": SHORT, "qty": 10, "entry": 1000.0, "entry_t": NOW,
+                    "tp": None, "sl": None, "peak": 1000.0, "trail_active": False, "src": "cross"}
+    eng._open_trade = {"side": "SHORT", "qty": 10, "entry_price": 1000.0,
+                       "entry_time": NOW - 100, "reason_in": "cross"}
+    eng.on_close_fill(1005.0, NOW, "sl")
+    assert eng._no_reentry_side == SHORT, "после sl-выхода блок должен стоять"
+    eng._last_close_t = 0.0   # кулдаун проверяем отдельным тестом — изолируем блок
+    assert not opens(eng.scan()), "re-regime не должен входить после стоп-выхода"
+    # смена режима (кросс) снимает блок — catch-up заново
+    eng._no_reentry_side = None
+    eng.last_bar_t = candles[33]["t"]
+    evs = opens(eng.scan())
+    assert evs and evs[0]["reason"] == "re-regime", evs
+    # tp-выход блок НЕ ставит
+    eng.position = {"side": SHORT, "qty": 10, "entry": 1000.0, "entry_t": NOW,
+                    "tp": None, "sl": None, "peak": 1000.0, "trail_active": False, "src": "cross"}
+    eng._open_trade = {"side": "SHORT", "qty": 10, "entry_price": 1000.0,
+                       "entry_time": NOW - 100, "reason_in": "cross"}
+    eng.on_close_fill(900.0, NOW, "tp")
+    assert eng._no_reentry_side is None, "tp-выход не блокирует"
+    print("OK 7: после sl-выхода re-regime заблокирован до кросса; tp — нет")
+
+
 if __name__ == "__main__":
     test_1_flat_in_regime_reenters()
     test_2_position_blocks_reentry()
@@ -133,4 +164,5 @@ if __name__ == "__main__":
     test_4_d1_blocks_against_trend()
     test_5_donchian_strict_untouched()
     test_6_no_duplicate_on_cross_bar()
-    print("\n✅ 6/6 — сеть безопасности работает: во флэте в режиме не остаёмся")
+    test_7_stop_exit_blocks_reregime()
+    print("\n✅ 7/7 — сеть работает; после стоп-выхода ждём только кросс")
