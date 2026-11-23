@@ -67,19 +67,21 @@ def logg(msg: str, level=logging.INFO):
 
 # ============ candles ============
 def _load_candles(full: bool = False):
-    """Загрузить свечи под текущий ТФ.
-    ПЕРВОИСТОЧНИК (23.11, заказ Самурая): готовый график брокера — Finam gRPC Bars,
-    без самосбора из M1/тиков. Фолбэк: MOEX ISS (как раньше), если Finam недоступен."""
+    """Свечи: ПЕРВОИСТОЧНИК — готовый график брокера (Finam gRPC Bars, заказ Самурая 23.11);
+    фолбэк — MOEX ISS (самосбор M1 для агрегируемых ТФ)."""
     tf = params.timeframe
     want = params.history_bars if full else max(params.history_bars, 200)
+    fb = []
     try:
         fb = finam_fetch_bars(fp, grpc_lock, tf, want, params.ticker)
-    except Exception:
-        fb = []
+    except Exception as e:
+        logg(f"finam bars: исключение {e}", logging.WARNING)
     if fb:
         if full:
             logg(f"📊 свечи: Finam Bars ×{len(fb)} (первоисточник)")
         return fb[-want:]
+    if full:
+        logg("📊 свечи: Finam недоступен — ISS-фолбэк", logging.WARNING)
     iss = iss_interval_for(tf)
     raw = src.fetch_history(iss, _m1_bars_needed(tf)) if full else src.refresh_tail(iss)
     if needs_aggregation(tf):
