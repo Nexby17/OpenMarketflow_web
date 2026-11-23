@@ -163,7 +163,9 @@ class StrategyEngine:
                         break
                     # ...и данные по ней должны долететь (следующий бар уже идёт,
                     # либо прошло 2×tf — тогда обрабатываем как есть)
-                    if _t.time() < self.candles[i]["t"] + 2 * tf:
+                    # 23.11: гарда ослаблена (2×tf → tf+90с): M1-pending строит бар из
+                    # тиков, ждать подтверждения 2 часа незачем (лаг сигналов 60-125 мин)
+                    if _t.time() < self.candles[i]["t"] + tf + 90:
                         break
                 evs = self._on_bar(i)
                 events.extend(evs)

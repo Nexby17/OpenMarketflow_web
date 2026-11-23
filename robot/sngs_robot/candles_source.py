@@ -202,3 +202,67 @@ def iss_interval_for(tf: str) -> int:
 
 def needs_aggregation(tf: str) -> bool:
     return tf in ("M5", "M15", "M30")
+
+
+# ---------- Finam gRPC Bars: готовый график брокера (первоисточник с 23.11) ----------
+# Заказ Самурая: не собирать бары из M1/тиков, брать готовые у брокера.
+# Возвращает list[dict {t,o,h,l,c,v}] (epoch UTC) или [] при ошибке/нет fp —
+# тогда main падает на ISS-фолбэк. Все вызовы gRPC под общим lock (FinamPy не thread-safe).
+
+_FINAM_CACHE: List[Candle] = []      # полный кэш баров текущего ТФ
+
+
+def finam_fetch_bars(fp, lock, tf_str: str, count: int, symbol: str, window_days: int = 45) -> List[Candle]:
+    """История баров из Finam (gRPC marketdata Bars), пагинацией по tf_range.
+    full=True семантика: если кэш уже достаточно велик — дозапрашиваем только хвост."""
+    global _FINAM_CACHE
+    if fp is None:
+        return []
+    try:
+        from google.protobuf.timestamp_pb2 import Timestamp
+        from google.type.interval_pb2 import Interval
+        from FinamPy.grpc.marketdata_service_pb2 import BarsRequest
+        import datetime as _dt
+        tf_fin = {'H1': 'M60', 'H2': 'M120', 'H4': 'M240'}.get(tf_str, tf_str)  # FinamPy зовёт H1 как M60
+        finam_tf, tf_range, _ = fp.timeframe_to_finam_timeframe(tf_fin)
+        end = _dt.datetime.now()
+        start = end - _dt.timedelta(days=window_days)
+        out: List[Candle] = []
+        cur = start
+        while cur < end:
+            nxt = min(cur + tf_range, end)
+            with lock:
+                resp = fp.call_function(
+                    fp.marketdata_stub.Bars,
+                    BarsRequest(symbol=symbol, timeframe=finam_tf,
+                                interval=Interval(
+                                    start_time=Timestamp(seconds=int(cur.timestamp())),
+                                    end_time=Timestamp(seconds=int(nxt.timestamp())))))
+            if resp is None:      # FinamPy возвращает None за пределами доступной истории
+                cur = nxt
+                continue
+            for b in getattr(resp, 'bars', []):
+                try:
+                    out.append({"t": int(b.timestamp.seconds), "o": float(b.open.value),
+                                "h": float(b.high.value), "l": float(b.low.value),
+                                "c": float(b.close.value), "v": int(float(b.volume.value))})   # volume.value — строка "N.0"
+                except Exception:
+                    continue
+            cur = nxt
+        if not out:
+            return []
+        # сортировка + дедуп по t
+        out.sort(key=lambda x: x["t"])
+        dedup = []
+        for b in out:
+            if not dedup or dedup[-1]["t"] != b["t"]:
+                dedup.append(b)
+        # отрезать незакрытый (формирующийся) бар: Finam отдаёт и его
+        tf_sec = {"M1": 60, "M5": 300, "M10": 600, "M15": 900, "M30": 1800,
+                  "H1": 3600, "H2": 7200, "H4": 14400, "D": 86400}.get(tf_str, 3600)
+        while dedup and dedup[-1]["t"] + tf_sec > end.timestamp() + 5:
+            dedup.pop()
+        _FINAM_CACHE = dedup
+        return _FINAM_CACHE[-count:]
+    except Exception:
+        return []

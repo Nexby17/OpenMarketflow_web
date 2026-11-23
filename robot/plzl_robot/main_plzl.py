@@ -29,6 +29,7 @@ from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 from config_plzl import (MtlrParams, load_params, save_params,
                          TF_TO_ISS, TF_SECONDS)
 from candles_source import CandleSource, aggregate_m1, iss_interval_for, needs_aggregation
+from candles_source import finam_fetch_bars
 from strategy_plzl import StrategyEngine, LONG, SHORT
 from indicators import ema
 from orders_exec import ArbOrderManager, BUY, SELL
@@ -66,10 +67,19 @@ def logg(msg: str, level=logging.INFO):
 
 # ============ candles ============
 def _load_candles(full: bool = False):
-    """Загрузить свечи под текущий ТФ (с агрегацией M1→M5/M15/M30).
-    src.candles хранит СЫРЬЁ (M1 для агрегируемых ТФ, натив — для остальных);
-    агрегация выполняется на выходе."""
+    """Загрузить свечи под текущий ТФ.
+    ПЕРВОИСТОЧНИК (23.11, заказ Самурая): готовый график брокера — Finam gRPC Bars,
+    без самосбора из M1/тиков. Фолбэк: MOEX ISS (как раньше), если Finam недоступен."""
     tf = params.timeframe
+    want = params.history_bars if full else max(params.history_bars, 200)
+    try:
+        fb = finam_fetch_bars(fp, grpc_lock, tf, want, params.ticker)
+    except Exception:
+        fb = []
+    if fb:
+        if full:
+            logg(f"📊 свечи: Finam Bars ×{len(fb)} (первоисточник)")
+        return fb[-want:]
     iss = iss_interval_for(tf)
     raw = src.fetch_history(iss, _m1_bars_needed(tf)) if full else src.refresh_tail(iss)
     if needs_aggregation(tf):

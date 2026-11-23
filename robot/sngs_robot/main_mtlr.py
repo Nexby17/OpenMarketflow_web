@@ -29,6 +29,7 @@ from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 from config_mtlr import (MtlrParams, load_params, save_params,
                          TF_TO_ISS, TF_SECONDS)
 from candles_source import CandleSource, aggregate_m1, iss_interval_for, needs_aggregation
+from candles_source import finam_fetch_bars
 from strategy_mtlr import StrategyEngine, LONG, SHORT
 from indicators import ema
 from orders_exec import ArbOrderManager, BUY, SELL
