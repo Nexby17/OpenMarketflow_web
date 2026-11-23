@@ -136,6 +136,11 @@ class OFParams:
     vah_val_pct: int = 70          # value area percentage (70%)
     vah_val_bin_size: int = 5      # VP bin size in points
     vah_val_mode: str = "range"     # "fade" = counter-trend at VAH/VAL, "breakout" = trend with VAH/VAL
+    # F-226 (23.11.2026): гистерезис зоны VAH/VAL для режима "range".
+    # Вход в зону — по самому уровню, ВЫХОД — только когда цена ушла внутрь на buffer пт.
+    # Без буфера зона переключается на каждом тике у границы (дребезг) и входы теряются.
+    # 0 = выключено (старое поведение, зона без памяти).
+    vah_val_zone_buffer_pts: float = 0.0
     vah_val_block_inside: bool = False  # F-091: True = внутри VA торговля запрещена полностью (Range v2)
     # VWEMA regime filter
     use_vwema: bool = False       # enable VWEMA trend filter
@@ -415,6 +420,7 @@ class OrderFlowStrategy:
         self._phase_last_log: str = ""
         self._pending_cvd_trend: Optional[dict] = None   # F-067b: сигнал кроссовера, ждущий входа
         self._blind_since: Optional[float] = None       # F-198: начало «слепого окна» (epoch)
+        self._vah_zone: str = ""                        # F-226: текущая зона VAH/VAL ("", "VAH", "VAL")
         self._tp_scan_ts: float = 0.0                   # F-199: время последнего скана баров
         self._last_average_price: float = 0.0
         self._last_pyramid_price: float = 0.0
@@ -651,6 +657,43 @@ class OrderFlowStrategy:
         """Update current price and mark freshness."""
         self._current_price = price
         self._last_price_update = time.time()
+
+    def vah_val_zone(self, price: float) -> str:
+        """F-226: зона VAH/VAL для режима range с гистерезисом.
+
+        "" = внутри VA (оба направления), "VAH" = только шорт, "VAL" = только лонг.
+        Вход в зону — по уровню; выход — только после отхода внутрь на
+        vah_val_zone_buffer_pts (0 = без гистерезиса, зона без памяти).
+        """
+        if not self.vp or not self.vp.ready:
+            return ""
+        vah, val = self.vp.vah, self.vp.val
+        if vah <= 0 or val <= 0:
+            return ""
+        buf = float(getattr(self.p, "vah_val_zone_buffer_pts", 0.0) or 0.0)
+        prev = self._vah_zone
+        if price >= vah:
+            zone = "VAH"
+        elif price <= val:
+            zone = "VAL"
+        elif buf > 0 and prev == "VAH" and price > (vah - buf):
+            zone = "VAH"
+        elif buf > 0 and prev == "VAL" and price < (val + buf):
+            zone = "VAL"
+        else:
+            zone = ""
+        if zone != prev:
+            self._vah_zone = zone
+            if zone == "VAH":
+                log.info(f"VAH/VAL ZONE → SHORT-only (price={fmt_price(price)} >= VAH={fmt_price(vah)}"
+                         f"{f', буфер {buf:g} пт' if buf > 0 else ''})")
+            elif zone == "VAL":
+                log.info(f"VAH/VAL ZONE → LONG-only (price={fmt_price(price)} <= VAL={fmt_price(val)}"
+                         f"{f', буфер {buf:g} пт' if buf > 0 else ''})")
+            else:
+                log.info(f"VAH/VAL ZONE → BOTH (price={fmt_price(price)}, "
+                         f"VAL={fmt_price(val)}..VAH={fmt_price(vah)})")
+        return zone
 
     def is_outside_va(self, price: float) -> bool:
         """Check if price is outside Value Area. Only for 'range' mode.
@@ -1611,17 +1654,19 @@ class OrderFlowStrategy:
                     # Сам по себе край вход НЕ даёт: ждём сигнал (CVD Trend/dm_wall/Accel)
                     # и проверяем его направление на соответствие зоне ниже.
                     # Усреднение существующей позиции в этот гейт НЕ входит (вариант А).
-                    if price >= vah:
+                    # F-226: зона считается методом vah_val_zone() — с памятью и буфером
+                    zone = self.vah_val_zone(price)
+                    if zone == "VAH":
                         entry_zone = "VAH"
-                        log.info(f"VAH/VAL RANGE v2: price={fmt_price(price)} >= VAH={fmt_price(vah)} → зона SHORT-only (ждём сигнал)")
-                    elif price <= val:
+                    elif zone == "VAL":
                         entry_zone = "VAL"
-                        log.info(f"VAH/VAL RANGE v2: price={fmt_price(price)} <= VAL={fmt_price(val)} → зона LONG-only (ждём сигнал)")
                     else:
                         if self.p.vah_val_block_inside:
-                            log.info(f"VAH/VAL RANGE v2: inside VA (VAL={fmt_price(val)}..VAH={fmt_price(vah)}) + block_inside → BLOCK")
+                            if not getattr(self, "_vah_inside_logged", False):
+                                log.info(f"VAH/VAL RANGE v2: inside VA + block_inside → BLOCK (лог 1 раз за зону)")
+                                self._vah_inside_logged = True
                             return None
-                        log.info(f"VAH/VAL RANGE v2: inside VA → оба направления разрешены")
+                        self._vah_inside_logged = False
                 else:
                     # FADE / BREAKOUT mode (original logic): entry at VAH/VAL edges
                     if price >= vah:
