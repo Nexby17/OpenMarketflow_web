@@ -8293,9 +8293,15 @@ async function arbAdjustApply(inst) {
 const OF_BR_INSTANCES = {
     edp:  { port: 5083, api: () => 'http://' + window.location.hostname + ':5083',
             account: '2049688', symbol: 'BRZ6', badge: 'BR-edp', badgeColor: '#007ACC',
-            stateKey: 'ofBrRobot_edp', cfgName: 'of_br_edp', label: 'BRZ6 edp', procName: 'of_br_edp' }
+            stateKey: 'ofBrRobot_edp', cfgName: 'of_br_edp', label: 'BRZ6 edp', procName: 'of_br_edp' },
+    // F-219 (23.11.2026): второй инстанс по просьбе Дмитрия — копия edp один-в-один
+    // (тот же счёт 2049688, тот же контракт BRZ6 = BR-12.26 декабрь), порт 5086,
+    // файлы of_config_br_edp2.json / of_state_br_edp2.json, env ROBOT_STATE_SUFFIX_BR=_edp2.
+    edp2: { port: 5086, api: () => 'http://' + window.location.hostname + ':5086',
+            account: '2049688', symbol: 'BRZ6', badge: 'BR-edp2', badgeColor: '#00A3A3',
+            stateKey: 'ofBrRobot_edp2', cfgName: 'of_br_edp2', label: 'BRZ6 edp-2', procName: 'of_br_edp2' }
 };
-const OF_BR_INSTANCE_ORDER = ['edp'];
+const OF_BR_INSTANCE_ORDER = ['edp', 'edp2'];
 OF_BR_INSTANCE_ORDER.forEach(k => { window['ofBrRobot_' + k] = null; window['_ofBrWasOnline_' + k] = false; });
 let _ofBrJournalTrades = [];
 let _ofBrJournalInst = null;
