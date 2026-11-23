@@ -121,7 +121,7 @@ def t_agg_on_four_of_six():
         f"агрегата нет: closedLots={s._trail_closed_lots} peak={s._peak_lots} "
         f"lots={s._total_lots} — порог Close % All считается неверно")
     assert st.placed[-1][1] == 4, f"на весь остаток (4), got {st.placed[-1]}"
-    assert st.placed[-1][2] == 82445.0, f"уровень = вход 82487 − 42, got {st.placed[-1]}"
+    assert st.placed[-1][2] == 82456.0, f"уровень = ask 82444 + 12, got {st.placed[-1]}"
     assert st.placed[-1][3] == "of_trail_sl_agg", st.placed[-1]
 
 

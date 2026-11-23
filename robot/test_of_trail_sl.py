@@ -112,11 +112,13 @@ def t_no_stop_before_spread():
     assert not st.placed, st.placed
 
 
-def t_exactly_42_no_stop():
+def t_exactly_42_arms_at_12():
+    """F-223: на +42 стоп ставится сразу и стоит ровно в 12 пт от цены."""
     s = make_strategy(); st = Stops()
     pos(s, LONG, [(83400, 1)])
     sync(s, 83442, 83443, st)
-    assert not st.placed, f"на ровно +42 стоп совпал бы с рынком: {st.placed}"
+    assert st.placed, "на +42 стоп должен встать"
+    assert st.placed[0][2] == 83430.0, f"bid 83442 − 12, got {st.placed[0]}"
 
 
 def t_one_lot_stop_at_43():
@@ -125,7 +127,7 @@ def t_one_lot_stop_at_43():
     sync(s, 83443, 83444, st)
     assert len(st.placed) == 1, st.placed
     side, qty, px, tag = st.placed[0]
-    assert side == "sell" and qty == 1 and px == 83442.0, st.placed[0]
+    assert side == "sell" and qty == 1 and px == 83431.0, st.placed[0]
     assert tag == "of_trail_sl", f"это по-лотовый стоп, not agg: {st.placed[0]}"
 
 
@@ -150,14 +152,14 @@ def t_short_per_lot_level():
     s = make_strategy(); st = Stops()
     pos(s, SHORT, [(83400, 1)])
     sync(s, 83357, 83356, st)
-    assert st.placed and st.placed[0][0] == "buy" and st.placed[0][2] == 83358.0, st.placed
+    assert st.placed and st.placed[0][0] == "buy" and st.placed[0][2] == 83368.0, st.placed
 
 
 def t_pyramid_lot_threshold():
     s = make_strategy(); st = Stops()
     pos(s, SHORT, [(83077, 1)], srcs=["pyr"])
     sync(s, 83047, 83046, st)
-    assert st.placed and st.placed[0][2] == 83047.0, st.placed
+    assert st.placed and st.placed[0][2] == 83058.0, st.placed
 
 
 # ---------- 2. агрегат после закрытий ----------
@@ -170,7 +172,7 @@ def t_agg_after_closure():
     sync(s, 83410, 83411, st)
     assert s._agg_trail is not None, "агрегат должен встать"
     assert st.placed[-1][1] == 2, f"на весь остаток (2), got {st.placed[-1]}"
-    assert st.placed[-1][2] == 83402.0, f"уровень = вход 83360 + 42, got {st.placed[-1]}"
+    assert st.placed[-1][2] == 83398.0, f"уровень = bid 83410 − 12, got {st.placed[-1]}"
     assert st.placed[-1][3] == "of_trail_sl_agg"
 
 
@@ -208,7 +210,7 @@ def t_trail_moves_by_step():
     pos(s, LONG, [(83400, 1)])
     sync(s, 83450, 83451, st)
     uid = list(s._trail_stops)[0]
-    assert s._trail_stops[uid]["stop_px"] == 83442.0, s._trail_stops[uid]
+    assert s._trail_stops[uid]["stop_px"] == 83438.0, s._trail_stops[uid]
     s._trail_stops[uid]["ts"] = time.monotonic() - 10
     sync(s, 83453, 83454, st)
     assert len(st.placed) == 1, f"шаг 3 не двигает: {st.placed}"
@@ -233,7 +235,7 @@ def t_debounce_param():
     s = make_strategy(trail_debounce_sec=0); st = Stops()
     pos(s, LONG, [(83400, 1)])
     sync(s, 83450, 83451, st)
-    sync(s, 83456, 83457, st)
+    sync(s, 83458, 83459, st)
     assert len(st.placed) == 2, st.placed
 
 
@@ -338,7 +340,7 @@ def t_pyramid_two_lots_one_stop():
     assert len(st.placed) == 1, f"только один стоп, got {st.placed}"
     side, qty, px, tag = st.placed[0]
     assert qty == 1, f"на 1 лот, got {qty}"
-    assert px == 83430.0, f"уровень = вход+Step Pyr = 83430, got {px}"
+    assert px == 83428.0, f"уровень = bid 83440 − 12 = 83428, got {px}"
     assert s._agg_trail is None, "агрегата на 2 лотах быть не должно"
 
 
@@ -356,8 +358,8 @@ def t_no_agg_above_close_pct():
 
 print("F-198..F-212 Trailing SL")
 check("до +42 стопа нет", t_no_stop_before_spread)
-check("ровно +42 — стоп не ставим", t_exactly_42_no_stop)
-check("на +43 стоп на 1 лот по вход+42", t_one_lot_stop_at_43)
+check("на +42 стоп встаёт в 12 пт от цены", t_exactly_42_arms_at_12)
+check("на +43 стоп на 1 лот, 12 пт от цены", t_one_lot_stop_at_43)
 check("2 лота — у каждого свой стоп", t_two_lots_own_stops)
 check("3 лота — пока по-лотово", t_three_lots_still_per_lot)
 check("SHORT: уровень вход−42", t_short_per_lot_level)

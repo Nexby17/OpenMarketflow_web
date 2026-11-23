@@ -1001,9 +1001,9 @@ class OrderFlowStrategy:
         if _is_pyr or self._agg_trail is not None:
             # пирамида 3+ ИЛИ стоп уже стоит — ведём по рынку (трейл Bid/Ask -/+ SL)
             self._sync_agg_trail(bid, ask, place_stop_fn, cancel_fn, level=None)
-        elif _lvl is not None and self._trail_level_ok(base, _lvl):
-            # первый лот дошёл до +42 → первичная постановка на ВЕСЬ объём по его уровню
-            self._sync_agg_trail(bid, ask, place_stop_fn, cancel_fn, level=_lvl)
+        elif _lvl is not None:
+            # первый лот дошёл до +42 → стоп на ВЕСЬ объём, тоже в trail_sl_pts от цены
+            self._sync_agg_trail(bid, ask, place_stop_fn, cancel_fn)
         else:
             self._sync_lot_trails(bid, ask, place_stop_fn, cancel_fn)
 
@@ -1050,12 +1050,12 @@ class OrderFlowStrategy:
                     _arm_pts = float(self.p.spread)
                 if pnl_pts < _arm_pts:
                     continue
-                # F-206: уровень стопа привязан к ВХОДУ лота: вход ± порог
-                # (для усреднения это ровно уровень TP +Spread, для пирамиды +Step Pyr).
-                # Трейл (Bid-12) применяется как «не хуже»: берём более плотный.
-                _floor_px = e.price + _arm_pts * e.side
-                _lot_stop = (max(stop_px, _floor_px) if self._dir == LONG
-                             else min(stop_px, _floor_px))
+                # F-223 (Дмитрий 23.11): стоп ВСЕГДА стоит в trail_sl_pts (12) пт от цены
+                # и переставляется шагом trail_step_pts (7), оставаясь в 12 пт от цены.
+                # Вход ± порог (42 / Step Pyr) — это ТОЛЬКО триггер постановки, а не уровень:
+                # привязка уровня к входу ставила стоп вплотную к рынку (0-4 пт) и он
+                # срабатывал мгновенно как рыночное закрытие.
+                _lot_stop = stop_px
                 # если цена ещё не ушла за уровень — стоп не ставим (иначе мгновенный триггер)
                 if not self._trail_level_ok(base, _lot_stop):
                     continue
@@ -1064,7 +1064,8 @@ class OrderFlowStrategy:
                 self._trail_stops[uid] = {"order_id": oid, "stop_px": _lot_stop,
                                           "qty": e.lots, "best": base, "ts": now}
                 log.info(f"TRAIL SL armed: lot#{uid} {side} {e.lots} @ {fmt_price(_lot_stop)} "
-                         f"(lot={fmt_price(e.price)} +{_arm_pts:.0f} base={fmt_price(base)}) id={oid}")
+                         f"(base={fmt_price(base)} dist={abs(_lot_stop - base):.0f} "
+                         f"arm+{_arm_pts:.0f} от входа {fmt_price(e.price)}) id={oid}")
                 continue
             if now - float(rec.get("ts", 0) or 0) < float(self.p.trail_debounce_sec):
                 continue

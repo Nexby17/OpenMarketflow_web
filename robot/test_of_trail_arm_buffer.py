@@ -1,10 +1,9 @@
 # -*- coding: utf-8 -*-
-"""F-222: зазор стопа от рынка (иначе стоп-маркет брокера срабатывает мгновенно).
+"""F-222: страховка от стопа «за рынком» (биржа триггерит по LAST).
 
-Кейс 23.11 13:04: AGG-стоп buy 4 @ 82445 при ask 82443 был принят в 10:04:10Z
-и уже в 10:04:11Z превратился в рыночную заявку (triggered_order_id), филл 82441.5.
-Причина: уровень считался от Ask, а биржа триггерит стоп по LAST — стоп стоял
-вплотную к рынку.
+Основное правило дистанции живёт в test_of_trail_distance.py (F-223).
+Здесь — только проверка зазора: если стоп оказался ближе trail_arm_buffer_pts
+к лучшей из цен (bid/ask и last), он не выставляется.
 
 Run: cwd=robot, python test_of_trail_arm_buffer.py
 """
@@ -45,7 +44,7 @@ def make_strategy(**overrides):
     p.trail_mode = True
     p.trail_sl_pts = 12
     p.trail_step_pts = 7
-    p.trail_debounce_sec = 0.4
+    p.trail_debounce_sec = 0
     p.trail_arm_buffer_pts = 3.0
     p.partial_tp = True
     p.use_cvd = False
@@ -74,76 +73,65 @@ class Stops:
         pass
 
 
-def pos(s, direction, prices):
+def pos(s, direction, price):
     s._dir = direction
     s._lot_queue.clear()
-    for price in prices:
-        s._mk_lot(price, direction, 1)
-    s._total_lots = len(prices)
-    s._peak_lots = len(prices)
-    s._avg_price = sum(prices) / len(prices)
-    s._entry_price = prices[0]
+    s._mk_lot(price, direction, 1)
+    s._total_lots = 1
+    s._peak_lots = 1
+    s._avg_price = price
+    s._entry_price = price
 
 
-def t_short_no_arm_inside_buffer():
-    """SHORT: уровень 82445, ask 82443, last 82450 → стоп не ставим (мгновенный триггер)."""
+def t_last_above_ask_blocks_short():
+    """SHORT: last ушёл выше ask — стоп 12 пт от ask оказался бы за рынком."""
     s = make_strategy(); st = Stops()
-    pos(s, SHORT, [82487.0])
-    s.sync_trail_stops(bid=82442.0, ask=82443.0, place_stop_fn=st.place,
-                       cancel_fn=lambda o: None, last=82450.0)
-    assert not st.placed, f"стоп вплотную к рынку недопустим: {st.placed}"
-    assert s._trail_stops == {}, s._trail_stops
-
-
-def t_short_arms_with_gap():
-    """SHORT: last 82441 → зазор до уровня 82445 = 4 > 3 → стоп ставим."""
-    s = make_strategy(); st = Stops()
-    pos(s, SHORT, [82487.0])
-    s.sync_trail_stops(bid=82440.0, ask=82441.0, place_stop_fn=st.place,
-                       cancel_fn=lambda o: None, last=82441.0)
-    assert st.placed, "стоп должен встать"
-    assert st.placed[0][2] == 82445.0, st.placed[0]
-
-
-def t_short_last_beats_ask():
-    """last выше ask: именно last определяет зазор (биржа триггерит по last)."""
-    s = make_strategy(); st = Stops()
-    pos(s, SHORT, [82487.0])
-    s.sync_trail_stops(bid=82444.0, ask=82445.0, place_stop_fn=st.place,
-                       cancel_fn=lambda o: None, last=82446.0)
-    assert not st.placed, f"last уже за уровнем — ставить нельзя: {st.placed}"
-
-
-def t_long_mirror():
-    """LONG: уровень 83402, bid 83410, last 83409 → зазор 7 > 3 → ставим; last 83404 → нет."""
-    s = make_strategy(); st = Stops()
-    pos(s, LONG, [83360.0])
-    s.sync_trail_stops(bid=83404.0, ask=83405.0, place_stop_fn=st.place,
-                       cancel_fn=lambda o: None, last=83404.0)
-    assert not st.placed, f"для LONG стоп слишком близко: {st.placed}"
-
-    s2 = make_strategy(); st2 = Stops()
-    pos(s2, LONG, [83360.0])
-    s2.sync_trail_stops(bid=83409.0, ask=83410.0, place_stop_fn=st2.place,
-                        cancel_fn=lambda o: None, last=83409.0)
-    assert st2.placed and st2.placed[0][2] == 83402.0, st2.placed
-
-
-def t_buffer_zero_keeps_legacy():
-    """При buffer=0 поведение прежнее: стоп армится сразу за уровнем."""
-    s = make_strategy(trail_arm_buffer_pts=0.0); st = Stops()
-    pos(s, SHORT, [82487.0])
+    pos(s, SHORT, 82500.0)
     s.sync_trail_stops(bid=82443.0, ask=82444.0, place_stop_fn=st.place,
-                       cancel_fn=lambda o: None, last=82444.0)
-    assert st.placed and st.placed[0][2] == 82445.0, st.placed
+                       cancel_fn=lambda o: None, last=82460.0)
+    assert not st.placed, f"стоп за рынком ставить нельзя: {st.placed}"
+
+
+def t_normal_short_places():
+    s = make_strategy(); st = Stops()
+    pos(s, SHORT, 82410.0)
+    s.sync_trail_stops(bid=82363.0, ask=82364.0, place_stop_fn=st.place,
+                       cancel_fn=lambda o: None, last=82364.0)
+    assert st.placed and st.placed[0][2] == 82376.0, st.placed
+
+
+def t_last_below_bid_blocks_long():
+    """LONG: last ушёл ниже bid — стоп 12 пт от bid оказался бы за рынком."""
+    s = make_strategy(); st = Stops()
+    pos(s, LONG, 83300.0)
+    s.sync_trail_stops(bid=83404.0, ask=83405.0, place_stop_fn=st.place,
+                       cancel_fn=lambda o: None, last=83390.0)
+    assert not st.placed, f"стоп за рынком ставить нельзя: {st.placed}"
+
+
+def t_normal_long_places():
+    s = make_strategy(); st = Stops()
+    pos(s, LONG, 83360.0)
+    s.sync_trail_stops(bid=83409.0, ask=83410.0, place_stop_fn=st.place,
+                       cancel_fn=lambda o: None, last=83409.0)
+    assert st.placed and st.placed[0][2] == 83397.0, st.placed
+
+
+def t_tiny_sl_blocked_by_buffer():
+    """Если trail_sl_pts меньше зазора — стоп не ставим (защита от 1-2 пт)."""
+    s = make_strategy(trail_sl_pts=2); st = Stops()
+    pos(s, SHORT, 82410.0)
+    s.sync_trail_stops(bid=82363.0, ask=82364.0, place_stop_fn=st.place,
+                       cancel_fn=lambda o: None, last=82364.0)
+    assert not st.placed, f"стоп в 2 пт недопустим: {st.placed}"
 
 
 print("F-222 зазор стопа от рынка")
-check("SHORT: уровень вплотную к рынку — не ставим", t_short_no_arm_inside_buffer)
-check("SHORT: с зазором — ставим по уровню", t_short_arms_with_gap)
-check("SHORT: last важнее ask", t_short_last_beats_ask)
-check("LONG: зеркально", t_long_mirror)
-check("buffer=0 — прежнее поведение", t_buffer_zero_keeps_legacy)
+check("SHORT: last выше ask — не ставим", t_last_above_ask_blocks_short)
+check("SHORT: нормальная дистанция — ставим", t_normal_short_places)
+check("LONG: last ниже bid — не ставим", t_last_below_bid_blocks_long)
+check("LONG: нормальная дистанция — ставим", t_normal_long_places)
+check("trail_sl_pts < зазора — не ставим", t_tiny_sl_blocked_by_buffer)
 
 passed = sum(RESULTS)
 print(f"\n{passed}/{len(RESULTS)} PASS")
