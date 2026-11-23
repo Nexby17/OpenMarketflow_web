@@ -130,7 +130,7 @@ class OFParams:
     # Биржа триггерит стоп по LAST, а робот считал уровень от Ask/Bid, поэтому стоп
     # вставал вплотную (1-2 пт) и срабатывал через 1 секунду, выглядя как закрытие
     # маркетом (23.11 13:04: стоп 82445 при ask 82443 -> рыночный филл 82441.5).
-    trail_arm_buffer_pts: float = 3.0
+    trail_arm_buffer_pts: float = 0.0
     # VAH/VAL Volume Profile filter
     use_vah_val: bool = False      # enable VAH/VAL entry filter
     vah_val_pct: int = 70          # value area percentage (70%)
@@ -897,12 +897,11 @@ class OrderFlowStrategy:
         if stop_px <= 0 or base <= 0:
             return False
         buf = float(getattr(self.p, "trail_arm_buffer_pts", 0.0) or 0.0)
-        last = float(getattr(self, "_trail_ref_last", 0.0) or 0.0)
+        # F-225: last в проверке уровня больше НЕ участвует — иначе при выносе
+        # last выше ask постановка откладывалась на несколько секунд.
         if self._dir == LONG:
-            ref = min(base, last) if last > 0 else base
-            return stop_px < ref - buf
-        ref = max(base, last) if last > 0 else base
-        return stop_px > ref + buf
+            return stop_px < base - buf
+        return stop_px > base + buf
 
     @staticmethod
     def _close_pct_threshold(peak_lots: int, pct: int) -> int:
@@ -1009,6 +1008,12 @@ class OrderFlowStrategy:
 
     def _sync_lot_trails(self, bid, ask, place_stop_fn, cancel_fn) -> None:
         base, stop_px = self._trail_price_basis(bid, ask)
+        # F-225: триггер +42/+35 считаем по САМОЙ ВЫГОДНОЙ из известных цен
+        # (last/ask/bid). Раньше опирались только на ask — котировка отстаёт от
+        # сделок, и стоп вставал через несколько секунд после прохода уровня.
+        _last = float(getattr(self, "_trail_ref_last", 0.0) or 0.0)
+        if _last > 0:
+            base = min(base, _last) if self._dir == SHORT else max(base, _last)
         if not self._trail_level_ok(base, stop_px):
             return
         if self._agg_trail:

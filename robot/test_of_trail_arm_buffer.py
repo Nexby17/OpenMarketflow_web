@@ -83,13 +83,14 @@ def pos(s, direction, price):
     s._entry_price = price
 
 
-def t_last_above_ask_blocks_short():
-    """SHORT: last ушёл выше ask — стоп 12 пт от ask оказался бы за рынком."""
+def t_last_spike_does_not_delay_short():
+    """F-225: вынос last выше ask не должен откладывать постановку."""
     s = make_strategy(); st = Stops()
     pos(s, SHORT, 82500.0)
     s.sync_trail_stops(bid=82443.0, ask=82444.0, place_stop_fn=st.place,
                        cancel_fn=lambda o: None, last=82460.0)
-    assert not st.placed, f"стоп за рынком ставить нельзя: {st.placed}"
+    assert st.placed, "стоп должен встать сразу"
+    assert st.placed[0][2] == 82456.0, st.placed
 
 
 def t_normal_short_places():
@@ -100,13 +101,14 @@ def t_normal_short_places():
     assert st.placed and st.placed[0][2] == 82376.0, st.placed
 
 
-def t_last_below_bid_blocks_long():
-    """LONG: last ушёл ниже bid — стоп 12 пт от bid оказался бы за рынком."""
+def t_last_spike_does_not_delay_long():
+    """F-225: провал last ниже bid не откладывает постановку."""
     s = make_strategy(); st = Stops()
     pos(s, LONG, 83300.0)
     s.sync_trail_stops(bid=83404.0, ask=83405.0, place_stop_fn=st.place,
                        cancel_fn=lambda o: None, last=83390.0)
-    assert not st.placed, f"стоп за рынком ставить нельзя: {st.placed}"
+    assert st.placed, "стоп должен встать сразу"
+    assert st.placed[0][2] == 83392.0, st.placed
 
 
 def t_normal_long_places():
@@ -127,9 +129,9 @@ def t_tiny_sl_blocked_by_buffer():
 
 
 print("F-222 зазор стопа от рынка")
-check("SHORT: last выше ask — не ставим", t_last_above_ask_blocks_short)
+check("SHORT: last выше ask — ставим сразу", t_last_spike_does_not_delay_short)
 check("SHORT: нормальная дистанция — ставим", t_normal_short_places)
-check("LONG: last ниже bid — не ставим", t_last_below_bid_blocks_long)
+check("LONG: last ниже bid — ставим сразу", t_last_spike_does_not_delay_long)
 check("LONG: нормальная дистанция — ставим", t_normal_long_places)
 check("trail_sl_pts < зазора — не ставим", t_tiny_sl_blocked_by_buffer)
 
