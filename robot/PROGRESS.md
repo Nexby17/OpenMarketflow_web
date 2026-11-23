@@ -1077,3 +1077,26 @@ STARTUP: position OK — robot 12 lot(s) dir=1 matches broker (avg=233169), mode
 Тест 
 obot/test_of_loadstate_pyr_guard.py: bad state (0) → ориентир 233200, _check_pyramiding(233225)=None;
 нормальный state — без изменений; FLAT — остаётся 0. ALL OK. py_compile OK.
+
+### 2026-11-23 10:33 — F-216: partial TP закрывал ВЕСЬ ручной слой одним ордером
+
+**Жалоба.** В журнале `08:38:02 MXZ6 Продажа 10 @233625 of_partial_tp` и `08:38:03 LONG 11L 233200→233625 +4660.92 partial_tp`.
+Правило Дмитрия: при ручной корректировке закрывать по 1 лоту, пока остаток не дойдёт до уровня Close % All.
+
+**Причина.** Обработчик `/position/adjust` создаёт ОДИН слой `LotEntry(lots=11, price=233200)`. В `_check_partial_tp`
+закрытие шло на `qty = last.lots` — то есть весь слой. Первый же тейк (233200 + spread 375 = 233575) закрыл 11 лотов,
+а трейс 08:38:01 (лот 233250) добил остаток → позиция обнулилась одним «пакетом».
+
+**Исправлено (strategy_of.py, 3 места: _check_partial_tp, _catchup_missed_tp, _scan_missed_tp):**
+`qty = 1 if last.lots > 1 else last.lots`; при закрытии слой уменьшается (`last.lots -= qty`), удаляется только когда
+обнулился; `_total_lots -= qty`; в action уходит реально закрываемое `qty`. Порог Close % All
+(`total_lots <= max(2, peak*pct/100)`) остался как был — на нём срабатывает пакетное закрытие.
+
+**Тесты** `robot/test_of_partial_tp_one_lot.py`:
+- слой 11 лотов, peak 11, pct 60 (порог 6): 5 тейков по 1 лоту (11→10→9→8→7→6), затем `close_all qty=6 reason=close_half_60pct`;
+- пик 2 лота: порог 2 → сразу пакет (по правилу Close % All);
+- пик 5 лотов (3+2), остаток 5 > порога 3 → по 1 лоту;
+- SHORT, слой 5 лотов → 1 лот, сторона buy.
+Регресс: catchup_tp 7/7, tp_bar_scan 6/6, timing 11/11.
+
+**Деплой:** MXU6 перезапущен 10:32 (PID 20856), FLAT, `/start` → running, ошибок 0, цена 233 650 live.

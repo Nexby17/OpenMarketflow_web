@@ -2131,13 +2131,17 @@ class OrderFlowStrategy:
             return []
 
         side = "sell" if self._dir == LONG else "buy"
-        self._total_lots -= last.lots
-        self._lot_queue.pop()
+        # F-216: по 1 лоту за тейк (даже если слой ручной и содержит N лотов)
+        qty = 1 if last.lots > 1 else last.lots
+        last.lots -= qty
+        if last.lots <= 0:
+            self._lot_queue.pop()
+        self._total_lots -= qty
 
         action = {
             "action": "partial_tp",
             "side": side,
-            "qty": last.lots,
+            "qty": qty,
             "price": price,
             "entryPrice": last.price,
             "entrySide": last.side,
@@ -2219,13 +2223,17 @@ class OrderFlowStrategy:
             return []
 
         side = "sell" if self._dir == LONG else "buy"
-        self._total_lots -= last.lots
-        self._lot_queue.pop()
+        # F-216: по 1 лоту за тейк (даже если слой ручной и содержит N лотов)
+        qty = 1 if last.lots > 1 else last.lots
+        last.lots -= qty
+        if last.lots <= 0:
+            self._lot_queue.pop()
+        self._total_lots -= qty
 
         action = {
             "action": "partial_tp",
             "side": side,
-            "qty": last.lots,
+            "qty": qty,
             "price": price,
             "entryPrice": last.price,
             "entrySide": last.side,
@@ -2306,14 +2314,20 @@ class OrderFlowStrategy:
         # Close this lot — SELL if LONG, BUY if SHORT
         side = "sell" if self._dir == LONG else "buy"
 
-        # Trade and PnL recorded in main_of.py after real broker fill
-        self._total_lots -= last.lots
-        self._lot_queue.pop()  # LIFO — remove from end
+        # F-216 (23.11): закрываем ТОЛЬКО 1 лот за тейк, даже если слой создан ручной
+        # корректировкой и содержит N лотов. Раньше брался last.lots целиком — ручной
+        # объём 11 лотов закрывался одним TP 375 пт (08:38:03 «Продажа 10/11 @233625»).
+        # Правило Дмитрия: по 1 лоту, пока остаток не дойдёт до уровня Close % All.
+        qty = 1 if last.lots > 1 else last.lots
+        last.lots -= qty
+        if last.lots <= 0:
+            self._lot_queue.pop()  # LIFO — remove from end
+        self._total_lots -= qty
 
         actions = [{
             'action': 'partial_tp',
             'side': side,
-            'qty': last.lots,
+            'qty': qty,
             'price': price,
             'entryPrice': last.price,
             'entrySide': last.side,
