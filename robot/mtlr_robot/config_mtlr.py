@@ -21,8 +21,12 @@ class MtlrParams:
 
     # === Signals (independent checkboxes each) ===
     use_cross: bool = True             # вход по кроссу SAR×EMA (смена режима)
-    use_pullback: bool = True          # откат: самостоятельный сигнал (пуллбэк к EMA по наклону);
-                                       # если use_cross тоже включён — откат после кросса
+    use_pullback: bool = True          # откат: отдельный сигнал (пуллбэк к EMA по наклону);
+                                       # с 16.11.2026 не зависит от use_cross — работает параллельно
+    use_donchian: bool = False         # Дончиан: пробой канала N баров, вход маркет по закрытию
+                                       # бара (16.11); выход — только люстра k×ATR14
+    donch_n: int = 30                  # длина канала Дончиана (баров)
+    donch_k_atr: float = 3.0           # люстра: peak − k×ATR(14), перестановка на закрытии бара
     # PSAR
     sar_start: float = 0.03
     sar_step: float = 0.008
@@ -35,6 +39,8 @@ class MtlrParams:
     pb_bars: int = 6                   # максимум баров ожидания отката после кросса
     pb_depth_atr: float = 0.8          # глубина отката: цена подходит к EMA ближе чем depth×ATR (или ниже)
     pb_touch_only: bool = False        # True: достаточно касания EMA (low<=EMA для лонга)
+    entry_by_limit: bool = True        # True (заказ 14.11): вход лимиткой ровно на EMA у брокера —
+                                       # касание исполняет биржа, без ожидания закрытия бара
 
     # === Filters (independent checkbox each) ===
     use_rsi: bool = False
@@ -42,14 +48,18 @@ class MtlrParams:
     rsi_upper: float = 70.0            # лонг запрещён при RSI >= upper
     rsi_lower: float = 30.0            # шорт запрещён при RSI <= lower
     use_regime: bool = False
-    regime_threshold: float = 0.3      # лонг при osc > thr, шорт при osc < -thr
+    regime_threshold: float = 0.3
+    use_d1: bool = False             # D1-фильтр: вход только по тренду последнего ЗАКРЫТОГО
+                                     # дня (close vs EMA20 дневки, без подглядывания)
+    d1_ema_period: int = 20          # период EMA дневного тренда      # лонг при osc > thr, шорт при osc < -thr
 
     # === Risk: TP / SL / Trailing (checkbox + unit + value each) ===
     tp_enabled: bool = False
     tp_unit: str = "pct"               # pct|pts|rub
     tp_value: float = 2.0
     sl_enabled: bool = True
-    sl_unit: str = "pct"
+    sl_unit: str = "pct"              # % | pts | rub | sar; "sar" = SL на SAR,
+                                     # следует за SAR на закрытии бара (заказ 16.11)
     sl_value: float = 1.5
     trail_enabled: bool = False
     trail_unit: str = "pct"            # отступ trailing stop
@@ -58,8 +68,8 @@ class MtlrParams:
 
     # === Position sizing ===
     max_capital: float = 100000.0      # ₽, потолок для открытия позиции
-    long_qty: int = 100                # шт (лот MTLR = 1); 0 = лонг запрещён
-    short_qty: int = 100               # шт; 0 = шорт запрещён
+    long_qty: Optional[int] = None     # None (пусто) = авто по max_capital; 0 = запрет; N = фикс
+    short_qty: Optional[int] = None    # None (пусто) = авто; 0 = запрет; N = фикс
 
     # === Session (MSK) ===
     session_start: str = "10:00"
@@ -69,6 +79,7 @@ class MtlrParams:
     evening_end: str = "23:50"
 
     # === Misc ===
+    entry_on_start: bool = False       # ☑ Позиция при старте: сразу войти по режиму (без фильтров)
     paper: bool = False                # paper = сделки симулируются (для проверки)
     history_bars: int = 400            # сколько свечей грузить для индикаторов
 

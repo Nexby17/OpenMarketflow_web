@@ -2,11 +2,13 @@
 TP/SL/Trailing risk management in pct/pts/rub. Indicator-driven, bar-close signals,
 tick-level exits (SL/TP/trail checked against live last price).
 
-Signal logic (per Samurai, 11.11.2026):
-- use_cross (checkbox): entry immediately on SAR×EMA regime flip (osc sign change)
-- use_pullback (checkbox): independent signal — pullback to EMA along EMA slope
-- both on: pullback AFTER cross — wait for pullback near EMA/zero-osc then reversal
-- both off: no entries
+Signal logic (по Самураю, 16.11.2026 — кросс стал отдельным сигналом):
+- use_cross (checkbox): отдельный независимый сигнал — вход сразу по флипу режима
+  (osc sign change), маркетом по закрытию бара
+- use_pullback (checkbox): отдельный независимый сигнал — пуллбэк к EMA по её наклону
+- оба включены: ДВА независимых сигнала, вход по первому сработавшему
+  (зеркало бэктеста tick_cross_or_pb.py); приоритет на одном баре — кросс
+- оба выкл: нет входов
 - Filters: RSI (long blocked when RSI>=upper, short when RSI<=lower),
   regime oscillator (long when osc>thr, short when osc<-thr) — each with checkbox.
 - Regime flip against position always closes the position.
@@ -41,8 +43,11 @@ class StrategyEngine:
         self.rsi_v: List[Optional[float]] = []
         self.osc_v: List[Optional[float]] = []
         self.last_bar_t: int = 0          # последняя полностью обработанная свеча
-        # pending pullback entry (после кросса)
-        self.pending: Optional[Dict] = None   # {side, born_t, deadline_t}
+        # тренд последнего закрытого дня: +1/-1; None = нет данных (при use_d1 вход блокируется)
+        self.d1_dir: Optional[int] = None
+        # legacy: pending pullback после кросса — не используется с 16.11.2026
+        # (кросс и пуллбэк — независимые сигналы); поле оставлено для совместимости state
+        self.pending: Optional[Dict] = None
         # position
         self.position: Optional[Dict] = None  # {side, qty, entry, entry_t, tp, sl, peak, trail_active}
         self.journal: List[Dict] = []
@@ -70,6 +75,14 @@ class StrategyEngine:
             self.osc_v = regime_osc(self.ema_v, self.sar_v, self.atr_v)
 
     # ================= helpers =================
+    def _d1_ok(self, side: int) -> bool:
+        """D1-фильтр (заказ Самурая 16.11.2026): вход только по направлению тренда
+        последнего ЗАКРЫТОГО дня (close vs EMA дневки). Отсутствие данных (None)
+        при включённом фильтре = вход запрещён (fail-safe). Выходы НЕ фильтрует."""
+        if not self.p.use_d1:
+            return True
+        return self.d1_dir is not None and self.d1_dir == side
+
     def _regime(self, i: int) -> int:
         o = self.osc_v[i]
         if o is None or o == 0:
@@ -92,18 +105,16 @@ class StrategyEngine:
         return True
 
     def _qty_for(self, side: int, price: float) -> int:
-        """Количество для входа:
-        - оба поля (лонг и шорт) пустые/0 → АВТО: весь max_capital (qty = капитал/цена)
-        - поле задано (>0) → это количество (урезается до max_capital — потолок)
-        - поле 0 при заданном другом → направление запрещено"""
-        lq, sq = self.p.long_qty, self.p.short_qty
+        """Количество для входа — семантика Самурая (per-направление):
+        - поле ПУСТОЕ (None) → авто: qty = floor(max_capital / цена)
+        - поле = 0 → направление запрещено
+        - поле = N (>0) → фиксированное количество, урезается потолком max_capital"""
         if price <= 0 or self.p.max_capital <= 0:
             return 0
-        auto = (lq <= 0 and sq <= 0)
-        if auto:
+        qty = self.p.long_qty if side == LONG else self.p.short_qty
+        if qty is None:               # пусто → авто на весь капитал
             return int(self.p.max_capital / price)
-        qty = lq if side == LONG else sq
-        if qty <= 0:
+        if qty <= 0:                  # 0 → запрет направления
             return 0
         if qty * price > self.p.max_capital:
             qty = int(self.p.max_capital / price)
@@ -112,27 +123,41 @@ class StrategyEngine:
     # ================= signal scan (closed bars only) =================
     def scan(self) -> List[Dict]:
         """Обрабатывает все новые ЗАКРЫТЫЕ свечи. Возвращает список событий
-        [{action: 'open'|'close', side, qty, reason}] для исполнения."""
+        [{action: 'open'|'close', side, qty, reason}] для исполнения.
+
+        Гарантии (фикс 12.11.2026):
+        - Никаких пропусков: обрабатываются ВСЕ бары новее last_bar_t по порядку
+          (catch-up после провалов данных — флипы не теряются).
+        - Последний бар списка обрабатывается только когда данные по нему долетели:
+          либо появился следующий бар, либо прошло >= 2×tf с его закрытия (fallback
+          на случай остановки торгов/паузы между сессиями)."""
         events: List[Dict] = []
         with self.lock:
             n = len(self.candles)
             if n < 3:
                 return events
+            tf = TF_SECONDS.get(self.p.timeframe, 300)
             start_i = 0
             if self.last_bar_t:
-                for idx in range(n - 1, -1, -1):
-                    if self.candles[idx]["t"] == self.last_bar_t:
-                        start_i = idx + 1
+                # catch-up: первый бар СТРОГО новее last_bar_t, без пропусков
+                for idx in range(n):
+                    if self.candles[idx]["t"] > self.last_bar_t:
+                        start_i = idx
                         break
                 else:
-                    start_i = max(0, n - 2)
+                    return events            # новых баров нет
             else:
                 start_i = max(1, n - 2)   # первая инициализация: обработать только последнюю закрытую
+            import time as _t
             for i in range(start_i, n):
-                # последняя свеча в списке может быть ещё формирующейся — обрабатываем все,
-                # кроме самой последней, если её время окончания не наступило
-                if i == n - 1 and not self._bar_closed(i):
-                    break
+                if i == n - 1:
+                    # последняя свеча: должна быть закрыта...
+                    if not self._bar_closed(i):
+                        break
+                    # ...и данные по ней должны долететь (следующий бар уже идёт,
+                    # либо прошло 2×tf — тогда обрабатываем как есть)
+                    if _t.time() < self.candles[i]["t"] + 2 * tf:
+                        break
                 evs = self._on_bar(i)
                 events.extend(evs)
                 self.last_bar_t = self.candles[i]["t"]
@@ -151,17 +176,37 @@ class StrategyEngine:
         regime = self._regime(i)
         flip = regime != FLAT and prev_regime != FLAT and regime != prev_regime
 
-        # --- 1) флип против позиции -> закрыть ---
-        if self.position and flip and self.position["side"] != regime:
+        # --- 0) валидность бара для закрытия (фикс 22.11.2026) ---
+        # catch-up бары, закрывшиеся ДО входа в позицию, не могут её закрывать
+        # (старт с галкой из stopped: догонял вчерашней историей и закрывал
+        # свежую позицию по «flip»/«regime≠pos» на баре, старше самого входа).
+        close_valid = True
+        if self.position and self.position.get("entry_t") is not None:
+            tf = TF_SECONDS.get(self.p.timeframe, 300)
+            close_valid = self.candles[i]["t"] + tf > self.position["entry_t"]
+
+        # --- 1) флип против позиции -> закрыть (КРОМЕ дончиан: у него выход только люстра) ---
+        if self.position and flip and self.position["side"] != regime \
+                and self.position.get("src") != "donch" and close_valid:
             events.append({"action": "close", "reason": "flip",
                            "side": self.position["side"], "qty": self.position["qty"]})
 
-        # --- 2) сигналы входа ---
+        # --- 1b) позиция против АКТИВНОГО регима -> закрыть по состоянию (18.11) ---
+        # pb-вход при уже развёрнутом противоположном режиме не имеет ни SL
+        # (SAR не с той стороны), ни флип-события (смена была до входа) — висел без защиты.
+        if self.position and regime != FLAT and self.position["side"] != regime \
+                and self.position.get("src") != "donch" and close_valid \
+                and not any(ev.get("action") == "close" for ev in events):
+            self.last_signal = f"regime≠pos→{'LONG' if regime == LONG else 'SHORT'}"
+            events.append({"action": "close", "reason": "regime",
+                           "side": self.position["side"], "qty": self.position["qty"]})
+
+        # --- 2) сигналы входа: два НЕЗАВИСИМЫХ источника (16.11.2026) ---
         if regime != FLAT:
-            if self.p.use_cross and not self.p.use_pullback:
-                # вход сразу по кроссу
+            # кросс: отдельный сигнал — вход сразу по флипу режима
+            if self.p.use_cross:
                 if flip and not self.position:
-                    if self._filters_ok(i, regime):
+                    if self._filters_ok(i, regime) and self._d1_ok(regime):
                         qty = self._qty_for(regime, self.candles[i]["c"])
                         if qty > 0:
                             self.last_signal = f"cross→{'LONG' if regime==LONG else 'SHORT'}"
@@ -169,67 +214,29 @@ class StrategyEngine:
                                            "reason": "cross"})
                     else:
                         self.last_signal = "cross filtered"
-            elif self.p.use_pullback:
-                if self.p.use_cross:
-                    # откат после кросса: создать/обслужить pending
-                    if flip and not self.position:
-                        tf = TF_SECONDS.get(self.p.timeframe, 300)
-                        self.pending = {"side": regime, "born_t": self.candles[i]["t"],
-                                        "deadline_t": self.candles[i]["t"] + self.p.pb_bars * tf}
-                # проверка pending (в т.ч. созданного раньше)
-                if self.pending and not self.position:
-                    ev = self._check_pending(i)
-                    if ev:
-                        events.append(ev)
-            # else: оба выкл — ничего
-
-        # самостоятельный pullback (use_cross выключен)
-        if self.p.use_pullback and not self.p.use_cross and not self.position:
-            ev = self._check_standalone_pb(i)
-            if ev:
-                events.append(ev)
+            # дончиан: отдельный сигнал — пробой канала N баров (16.11)
+            if self.p.use_donchian and not self.position and i >= self.p.donch_n:
+                nb = self.p.donch_n
+                hh = max(self.candles[j]["h"] for j in range(i - nb, i))
+                ll = min(self.candles[j]["l"] for j in range(i - nb, i))
+                prev_in = self.candles[i - 1]["h"] <= hh and self.candles[i - 1]["l"] >= ll
+                if prev_in:
+                    b_ = self.candles[i]
+                    side = 1 if b_["h"] > hh else (-1 if b_["l"] < ll else 0)
+                    if side and self._filters_ok(i, side) and self._d1_ok(side):
+                        qty = self._qty_for(side, b_["c"])
+                        if qty > 0:
+                            self.last_signal = f"donch{'↑' if side == 1 else '↓'} N{nb}"
+                            events.append({"action": "open", "side": side, "qty": qty,
+                                           "reason": "donch"})
+            # пуллбэк: отдельный сигнал, работает независимо от use_cross
+            if self.p.use_pullback and not self.position:
+                ev = self._check_standalone_pb(i)
+                if ev:
+                    events.append(ev)
+            # оба выкл — ничего
 
         return events
-
-    def _check_pending(self, i: int) -> Optional[Dict]:
-        """Откат после кросса: цена вернулась к EMA (в пределах depth×ATR) и осциллятор
-        разворачивается от нуля в сторону режима."""
-        pd_ = self.pending
-        side = pd_["side"]
-        c = self.candles[i]
-        e, a, o, o_prev = self.ema_v[i], self.atr_v[i], self.osc_v[i], self.osc_v[i - 1]
-        if e is None or a is None or o is None:
-            return None
-        # режим пропал или дедлайн -> отмена
-        if self._regime(i) != side:
-            self.pending = None
-            return None
-        if c["t"] > pd_["deadline_t"]:
-            self.pending = None
-            self.last_signal = "pullback window expired"
-            return None
-        zone = self.p.pb_depth_atr * a
-        if side == LONG:
-            touched = c["l"] <= e + zone
-            turning = o > o_prev
-            if (touched or self.p.pb_touch_only and c["l"] <= e) and turning and c["c"] > e:
-                if self._filters_ok(i, LONG):
-                    qty = self._qty_for(LONG, c["c"])
-                    if qty > 0:
-                        self.pending = None
-                        self.last_signal = "cross+pullback→LONG"
-                        return {"action": "open", "side": LONG, "qty": qty, "reason": "cross+pb"}
-        else:
-            touched = c["h"] >= e - zone
-            turning = o < o_prev
-            if (touched or self.p.pb_touch_only and c["h"] >= e) and turning and c["c"] < e:
-                if self._filters_ok(i, SHORT):
-                    qty = self._qty_for(SHORT, c["c"])
-                    if qty > 0:
-                        self.pending = None
-                        self.last_signal = "cross+pullback→SHORT"
-                        return {"action": "open", "side": SHORT, "qty": qty, "reason": "cross+pb"}
-        return None
 
     def _check_standalone_pb(self, i: int) -> Optional[Dict]:
         """Самостоятельный откат: пуллбэк к EMA по её наклону после импульса."""
@@ -243,21 +250,87 @@ class StrategyEngine:
         # импульс перед откатом
         if e > self.ema_v[i - 1]:   # EMA растёт -> лонг
             impulse = max((self.candles[j]["c"] for j in range(j0, i)), default=0)
-            if impulse > e + zone and c["l"] <= e + zone and c["c"] > e:
-                if self._filters_ok(i, LONG):
+            # галка «Касание EMA»: True — строго low<=EMA (видимое касание линии);
+            # False — вход в зону EMA+depth×ATR. Импульс всегда по зоне.
+            pb_ok = (c["l"] <= e) if self.p.pb_touch_only else (c["l"] <= e + zone)
+            if impulse > e + zone and pb_ok and c["c"] > e:
+                if self._filters_ok(i, LONG) and self._d1_ok(LONG):
                     qty = self._qty_for(LONG, c["c"])
                     if qty > 0:
                         self.last_signal = "pullback→LONG"
                         return {"action": "open", "side": LONG, "qty": qty, "reason": "pb"}
         elif e < self.ema_v[i - 1]:
             impulse = min((self.candles[j]["c"] for j in range(j0, i)), default=0)
-            if impulse < e - zone and c["h"] >= e - zone and c["c"] < e:
-                if self._filters_ok(i, SHORT):
+            pb_ok = (c["h"] >= e) if self.p.pb_touch_only else (c["h"] >= e - zone)
+            if impulse < e - zone and pb_ok and c["c"] < e:
+                if self._filters_ok(i, SHORT) and self._d1_ok(SHORT):
                     qty = self._qty_for(SHORT, c["c"])
                     if qty > 0:
                         self.last_signal = "pullback→SHORT"
                         return {"action": "open", "side": SHORT, "qty": qty, "reason": "pb"}
         return None
+
+    def entry_limit_signal(self) -> Optional[Dict]:
+        """Уровень постановки entry-лимитки на касании EMA (заказ 14.11: вход без
+        ожидания закрытия бара; 16.11 — работает и при включённом кроссе:
+        вход «или так или так»: pb→лимитка на EMA, кросс→маркет по флипу).
+        Проверяется на ЗАКРЫТЫХ барах после пересчёта:
+        EMA меняет наклон в сторону сигнала + импульс (для лонга max close за
+        pb_bars выше EMA+depth×ATR). Касание/подтверждение close исполняет биржа.
+        Возвращает {side, level(EMA, 2 знака), qty} или None."""
+        if not self.p.use_pullback or not self.p.entry_by_limit:
+            return None
+        with self.lock:
+            i = len(self.candles) - 1
+            if i < 1 or self.position:
+                return None
+            e, e_prev, a = self.ema_v[i], self.ema_v[i - 1], self.atr_v[i]
+            if e is None or e_prev is None or a is None:
+                return None
+            zone = self.p.pb_depth_atr * a
+            j0 = max(0, i - self.p.pb_bars)
+            if e > e_prev:
+                impulse = max((self.candles[j]["c"] for j in range(j0, i)), default=0)
+                if impulse > e + zone and self._filters_ok(i, LONG) and self._d1_ok(LONG):
+                    qty = self._qty_for(LONG, e)
+                    if qty > 0:
+                        return {"side": LONG, "level": round(e, 2), "qty": qty}
+            elif e < e_prev:
+                impulse = min((self.candles[j]["c"] for j in range(j0, i)), default=0)
+                if impulse < e - zone and self._filters_ok(i, SHORT) and self._d1_ok(SHORT):
+                    qty = self._qty_for(SHORT, e)
+                    if qty > 0:
+                        return {"side": SHORT, "level": round(e, 2), "qty": qty}
+        return None
+
+    def live_flip_side(self, live_bar: Dict) -> Optional[int]:
+        """Внутричасовой кросс SAR×EMA (заказ Самурая 16.11.2026): режим с учётом
+        ЖИВОГО (незакрытого) бара. Пересчитываем индикаторы на закрытых барах
+        + живой бар; если знак осциллятора сменился относительно последнего
+        ЗАКРЫТОГО бара — это момент кросса. Возвращает сторону нового режима
+        (LONG/SHORT) или None. Входы по-прежнему только по закрытым барам —
+        метод только для закрытия позиции в момент кросса."""
+        with self.lock:
+            if not self.candles or len(self.candles) < 2:
+                return None
+            tf = TF_SECONDS.get(self.p.timeframe, 300)
+            # живой бар должен быть СЛЕДУЮЩИМ за последним закрытым
+            if live_bar.get("t") != self.candles[-1]["t"] + tf:
+                return None
+            candles = list(self.candles) + [live_bar]
+            closes = [c["c"] for c in candles]
+            highs = [c["h"] for c in candles]
+            lows = [c["l"] for c in candles]
+            e_v = ema(closes, self.p.ema_period)
+            s_v = psar(highs, lows, self.p.sar_start, self.p.sar_step, self.p.sar_max)
+            a_v = atr(highs, lows, closes, self.p.atr_period)
+            o_v = regime_osc(e_v, s_v, a_v)
+            o_live, o_prev = o_v[-1], o_v[-2]
+            if o_live is None or o_prev is None or o_live == 0 or o_prev == 0:
+                return None
+            if (o_live > 0) != (o_prev > 0):
+                return LONG if o_live > 0 else SHORT
+            return None
 
     # ================= position / risk =================
     def _dist(self, unit: str, value: float, entry: float, qty: int) -> float:
@@ -273,15 +346,38 @@ class StrategyEngine:
     def on_open_fill(self, side: int, qty: int, price: float, ts: float, reason: str) -> None:
         with self.lock:
             tp = None
-            if self.p.tp_enabled:
-                d = self._dist(self.p.tp_unit, self.p.tp_value, price, qty)
-                tp = price + d if side == LONG else price - d
             sl = None
-            if self.p.sl_enabled:
-                d = self._dist(self.p.sl_unit, self.p.sl_value, price, qty)
-                sl = price - d if side == LONG else price + d
+            src = reason
+            if reason == "donch":
+                # люстра: стоп = цена − k×ATR последнего закрытого бара;
+                # далее перестанавливается за peak на каждом закрытии (main._sl_target)
+                # TP нет — у дончиана выход только люстра
+                a = self.atr_v[-1] if self.atr_v else None
+                if a:
+                    sl = price - self.p.donch_k_atr * a if side == LONG \
+                        else price + self.p.donch_k_atr * a
+                else:
+                    log.warning("Дончиан: ATR недоступен — люстра НЕ выставлена!")
+            else:
+                if self.p.tp_enabled:
+                    d = self._dist(self.p.tp_unit, self.p.tp_value, price, qty)
+                    tp = price + d if side == LONG else price - d
+                if self.p.sl_enabled:
+                    if self.p.sl_unit == "sar":
+                        # SL на SAR (заказ Самурая 16.11.2026): стоп = SAR последнего
+                        # закрытого бара; далее следует за SAR на каждом закрытии (main)
+                        sl = self.sar_v[-1] if self.sar_v else None
+                        if sl is None:
+                            log.warning("SL=SAR: SAR недоступен — стоп НЕ выставлен!")
+                        elif (side == LONG and sl >= price) or (side == SHORT and sl <= price):
+                            log.warning(f"SL=SAR: SAR {sl:.2f} не с той стороны цены {price:.2f} — стоп НЕ выставлен")
+                            sl = None
+                    else:
+                        d = self._dist(self.p.sl_unit, self.p.sl_value, price, qty)
+                        sl = price - d if side == LONG else price + d
             self.position = {"side": side, "qty": qty, "entry": price, "entry_t": ts,
-                             "tp": tp, "sl": sl, "peak": price, "trail_active": False}
+                             "tp": tp, "sl": sl, "peak": price, "trail_active": False,
+                             "src": src}
             self._open_trade = {"side": "LONG" if side == LONG else "SHORT", "qty": qty,
                                 "entry_price": price, "entry_time": ts, "reason_in": reason}
 
@@ -310,43 +406,32 @@ class StrategyEngine:
             self.unrealized = 0.0
             return trade
 
-    def on_tick(self, last: float) -> Optional[Dict]:
-        """Проверка TP/SL/Trailing по live-цене. Возвращает {action:'close', reason} или None."""
+    def on_tick(self, last: float) -> None:
+        """Обновление пиковой цены и unrealized PnL (для трейлинга и отображения).
+        ЗАКРЫТИЙ ЗДЕСЬ НЕТ: SL/TP исполняет биржа по заявкам; флип — на закрытии бара.
+        Трейлинг-уровень вычисляется в main (orders_loop) и переставляет биржевую стоп-заявку."""
         with self.lock:
             if not self.position or last <= 0:
-                return None
+                return
             pos = self.position
             side = pos["side"]
             pos["peak"] = max(pos["peak"], last) if side == LONG else min(pos["peak"], last)
             self.unrealized = (last - pos["entry"]) * pos["qty"] * side
-            # trail activation
             if self.p.trail_enabled and self.p.trail_activate_pct > 0:
                 move_pct = (pos["peak"] - pos["entry"]) / pos["entry"] * 100 * side
                 if move_pct >= self.p.trail_activate_pct:
                     pos["trail_active"] = True
             elif self.p.trail_enabled:
                 pos["trail_active"] = True
-            # SL
-            if self.p.sl_enabled and pos["sl"] is not None:
-                if side == LONG and last <= pos["sl"]:
-                    return {"action": "close", "reason": "sl", "side": side, "qty": pos["qty"]}
-                if side == SHORT and last >= pos["sl"]:
-                    return {"action": "close", "reason": "sl", "side": side, "qty": pos["qty"]}
-            # TP
-            if self.p.tp_enabled and pos["tp"] is not None:
-                if side == LONG and last >= pos["tp"]:
-                    return {"action": "close", "reason": "tp", "side": side, "qty": pos["qty"]}
-                if side == SHORT and last <= pos["tp"]:
-                    return {"action": "close", "reason": "tp", "side": side, "qty": pos["qty"]}
-            # Trailing
-            if self.p.trail_enabled and pos["trail_active"]:
-                d = self._dist(self.p.trail_unit, self.p.trail_value, pos["entry"], pos["qty"])
-                ts_price = pos["peak"] - d if side == LONG else pos["peak"] + d
-                if side == LONG and last <= ts_price:
-                    return {"action": "close", "reason": "trail", "side": side, "qty": pos["qty"]}
-                if side == SHORT and last >= ts_price:
-                    return {"action": "close", "reason": "trail", "side": side, "qty": pos["qty"]}
-            return None
+
+    def trail_stop_price(self) -> Optional[float]:
+        """Актуальный трейлинг-стоп уровень (для перестановки биржевой заявки). None — не активен."""
+        with self.lock:
+            pos = self.position
+            if not pos or not self.p.trail_enabled or not pos.get("trail_active"):
+                return None
+            d = self._dist(self.p.trail_unit, self.p.trail_value, pos["entry"], pos["qty"])
+            return pos["peak"] - d if pos["side"] == LONG else pos["peak"] + d
 
     # ================= journal stats =================
     def stats(self) -> Dict:
