@@ -126,6 +126,11 @@ class OFParams:
     trail_sl_pts: float = 12.0     # дистанция стопа от Bid (LONG) / Ask (SHORT), пт
     trail_step_pts: float = 5.0    # шаг подтяжки стопа, пт
     trail_debounce_sec: float = 0.4  # F-202: пауза между перестановками одной заявки
+    # F-222: минимальный зазор стопа от рынка при постановке, пт.
+    # Биржа триггерит стоп по LAST, а робот считал уровень от Ask/Bid, поэтому стоп
+    # вставал вплотную (1-2 пт) и срабатывал через 1 секунду, выглядя как закрытие
+    # маркетом (23.11 13:04: стоп 82445 при ask 82443 -> рыночный филл 82441.5).
+    trail_arm_buffer_pts: float = 3.0
     # VAH/VAL Volume Profile filter
     use_vah_val: bool = False      # enable VAH/VAL entry filter
     vah_val_pct: int = 70          # value area percentage (70%)
@@ -446,6 +451,7 @@ class OrderFlowStrategy:
         self._agg_trail: Optional[dict] = None
         self._trail_uid_seq: int = 0
         self._trail_closed_lots: int = 0   # сколько лотов закрыто трейлинг-стопами
+        self._trail_ref_last: float = 0.0  # F-222: last-цена для проверки зазора
 
         # F-087 fix: фазовый канал из /api/candles (единый источник с UI-графиком).
         # Обновляется раз в 60с в _phase_channel_refresh; живые бары его не вытесняют.
@@ -881,10 +887,22 @@ class OrderFlowStrategy:
         return ask, ask + sl
 
     def _trail_level_ok(self, base: float, stop_px: float) -> bool:
-        """F-194: стоп за рынком не выставляем (иначе мгновенный рыночный триггер)."""
+        """F-194/F-222: стоп за рынком не выставляем (иначе мгновенный триггер).
+
+        F-222: недостаточно «строго за рынком» — нужен зазор bufer от ЛУЧШЕЙ из
+        известных цен (bid/ask и last). Биржа проверяет стоп по LAST, а уровень
+        считаем от Ask/Bid: при стопе 82445 и ask 82443 last мог быть уже 82450,
+        и стоп-маркет срабатывал мгновенно (кейс 23.11 13:04, филл 82441.5).
+        """
         if stop_px <= 0 or base <= 0:
             return False
-        return stop_px < base if self._dir == LONG else stop_px > base
+        buf = float(getattr(self.p, "trail_arm_buffer_pts", 0.0) or 0.0)
+        last = float(getattr(self, "_trail_ref_last", 0.0) or 0.0)
+        if self._dir == LONG:
+            ref = min(base, last) if last > 0 else base
+            return stop_px < ref - buf
+        ref = max(base, last) if last > 0 else base
+        return stop_px > ref + buf
 
     @staticmethod
     def _close_pct_threshold(peak_lots: int, pct: int) -> int:
@@ -958,7 +976,8 @@ class OrderFlowStrategy:
         self._agg_trail = None
 
     def sync_trail_stops(self, bid: float, ask: float,
-                         place_stop_fn=None, cancel_fn=None) -> None:
+                         place_stop_fn=None, cancel_fn=None,
+                         last: float = 0.0) -> None:
         """F-198: держит трейлинг-стопы. Вызывается каждый тик (live) из main_of.
 
         Режим off → снимает всё. Позиции нет → снимает всё.
@@ -974,6 +993,8 @@ class OrderFlowStrategy:
             return
         if bid <= 0 or ask <= 0 or place_stop_fn is None:
             return
+        # F-222: last нужен для проверки зазора (биржа триггерит стоп именно по last)
+        self._trail_ref_last = float(last or 0.0)
         base, _ = self._trail_price_basis(bid, ask)
         _is_pyr = (self._total_lots >= 3 and self._pyramid_levels >= 2)
         _lvl = None if _is_pyr else self._trail_agg_level(base)

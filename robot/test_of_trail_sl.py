@@ -54,6 +54,7 @@ def make_strategy(**overrides):
     p.trail_sl_pts = 12
     p.trail_step_pts = 5
     p.trail_debounce_sec = 0.4
+    p.trail_arm_buffer_pts = 0.0   # F-222: в этих тестах проверяем чистую арифметику уровня
     p.partial_tp = True
     p.min_profit_per_lot = 125
     p.pyramid_full_exit = True

@@ -565,6 +565,7 @@ def main_loop():
                         _bid, _ask,
                         place_stop_fn=lambda side, qty, px, tag: orders.place_stop_loss(side, qty, px, tag=tag),
                         cancel_fn=lambda oid: orders.cancel(oid),
+                        last=price,   # F-222: зазор стопа считаем и от last
                     )
                 except Exception as e:
                     log.warning(f"TRAIL SL sync error: {e}")
