@@ -1,6 +1,7 @@
 using HedgeFund.Core.Models;
 using HedgeFund.Core.Strategies;
 using HedgeFund.Brokers.Finam;
+using HedgeFund.Core.Risk;
 
 namespace HedgeFund.Server.Services;
 
@@ -24,6 +25,9 @@ namespace HedgeFund.Server.Services;
 /// </summary>
 public class FadeImpulseLauncher : IDisposable
 {
+    private RiskGate? _riskGate;
+    public void SetRiskGate(RiskGate gate) => _riskGate = gate;
+
     private readonly FinamConnector _broker;
     private readonly string _accountId;
     private readonly string _ticker;
@@ -236,6 +240,9 @@ public class FadeImpulseLauncher : IDisposable
 
         // Place market order
         string side = direction == 1 ? "SIDE_BUY" : "SIDE_SELL";
+        // === RISK CHECK ===
+        if (RiskIntegrationHelper.IsTradingBlocked(_riskGate)) { Console.WriteLine("[FADE] Trading blocked by circuit breaker"); return; }
+
         string entryComment = $"{_orderPrefix}ENTRY: {(direction == 1 ? "LONG" : "SHORT")}";
         await PlaceMarketOrderAsync(side, 1, entryComment);
 

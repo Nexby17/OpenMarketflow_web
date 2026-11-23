@@ -1,15 +1,18 @@
 using HedgeFund.Brokers.Finam;
 using HedgeFund.Core.Strategies;
-using HedgeFund.Core.Connectors;
+using HedgeFund.Core.Risk;
 
 namespace HedgeFund.Server.Services;
 
 /// <summary>
-/// V8 Trail Launcher — Inverted PSAR×EMA с trailing SL.
-/// 5-мин таймфрейм, REST-only, брокер=истина.
+/// V8 Trail Launcher вЂ” Inverted PSARГ—EMA СЃ trailing SL.
+/// 5-РјРёРЅ С‚Р°Р№РјС„СЂРµР№Рј, REST-only, Р±СЂРѕРєРµСЂ=РёСЃС‚РёРЅР°.
 /// </summary>
 public class V8TrailLauncher
 {
+    private RiskGate? _riskGate;
+    public void SetRiskGate(RiskGate gate) => _riskGate = gate;
+
     private readonly FinamConnector _broker;
     private readonly string _accountId;
     private readonly string _ticker;
@@ -44,7 +47,7 @@ public class V8TrailLauncher
 
     public void Start()
     {
-        Console.WriteLine($"[{_logPrefix}] ✅ Started on {_ticker} SL={Strategy.Params.SlPct}% EMA={Strategy.Params.EmaPeriod}");
+        Console.WriteLine($"[{_logPrefix}] вњ… Started on {_ticker} SL={Strategy.Params.SlPct}% EMA={Strategy.Params.EmaPeriod}");
         _mainTimer = new System.Threading.Timer(MainLoopTick, null, TimeSpan.FromSeconds(2), TimeSpan.FromMilliseconds(2000));
     }
 
@@ -52,7 +55,7 @@ public class V8TrailLauncher
     {
         _mainTimer?.Dispose();
         _mainTimer = null;
-        Console.WriteLine($"[{_logPrefix}] ⏹ Stop");
+        Console.WriteLine($"[{_logPrefix}] вЏ№ Stop");
 
         // Cancel any open orders
         await CancelAllOrdersAsync();
@@ -108,7 +111,7 @@ public class V8TrailLauncher
         // API error guard
         if (brokerDir == -999 && robotHasPos) return;
 
-        // No broker position → flicker check, then reset
+        // No broker position в†’ flicker check, then reset
         if (!brokerHasPos)
         {
             if (robotHasPos)
@@ -118,14 +121,14 @@ public class V8TrailLauncher
                 if (recheckLots > 0 && recheckDir != -999) return; // flicker
                 if (recheckDir == -999) return; // still error
 
-                Console.WriteLine($"[{_logPrefix}] No broker position → reset");
+                Console.WriteLine($"[{_logPrefix}] No broker position в†’ reset");
                 Strategy.ClearPosition();
                 await CancelAllOrdersAsync();
             }
         }
         else if (!robotHasPos)
         {
-            // Broker has position but robot doesn't — restore
+            // Broker has position but robot doesn't вЂ” restore
             double restorePrice = brokerAvg > 0 ? brokerAvg : (brokerCurrentPrice > 0 ? brokerCurrentPrice : _lastCandlePrice);
             Console.WriteLine($"[{_logPrefix}] Restore from broker: dir={brokerDir} price={restorePrice:F0} (avg={brokerAvg:F0} cur={brokerCurrentPrice:F0})");
             Strategy.RestorePosition(brokerDir, restorePrice);
@@ -136,7 +139,7 @@ public class V8TrailLauncher
         {
             var orders = await GetBrokerOrdersAsync();
             var slOrder = orders.FirstOrDefault(o => o.id == _slOrderId);
-            if (slOrder.id == null) // SL order no longer exists → filled or cancelled
+            if (slOrder.id == null) // SL order no longer exists в†’ filled or cancelled
             {
                 Console.WriteLine($"[{_logPrefix}] SL fill detected");
                 _slOrderId = null;
@@ -148,7 +151,7 @@ public class V8TrailLauncher
                 }
                 else
                 {
-                    // SL filled but position still exists → close remaining
+                    // SL filled but position still exists в†’ close remaining
                     await ClosePositionAsync("SL fill, closing remaining");
                 }
                 return;
@@ -202,7 +205,7 @@ public class V8TrailLauncher
                     }
                 }
 
-                // Feed bar → get signal
+                // Feed bar в†’ get signal
                 int signal = Strategy.OnBar(close, high, low);
                 _lastCandleTime = ts;
                 _lastCandlePrice = close;
@@ -230,6 +233,9 @@ public class V8TrailLauncher
     {
         try
         {
+        // === RISK CHECK ===
+        if (RiskIntegrationHelper.IsTradingBlocked(_riskGate)) { Console.WriteLine("[V8TR] Trading blocked by circuit breaker"); return; }
+
             var rest = _broker.RestClient;
             var result = await rest.PlaceOrderAsync(_accountId, new PlaceOrderRequest
             {
@@ -245,10 +251,10 @@ public class V8TrailLauncher
                 Strategy.OpenPosition(dir, price);
                 Console.WriteLine($"[{_logPrefix}] Entry {(dir == 1 ? "LONG" : "SHORT")} @ {price:F0}");
 
-                // Ставим SL limit ордер (округляем до minStep)
+                // РЎС‚Р°РІРёРј SL limit РѕСЂРґРµСЂ (РѕРєСЂСѓРіР»СЏРµРј РґРѕ minStep)
                 int minStep = _finamSymbol.Contains("RI") ? 10 : 1;
                 double slPrice = dir == 1 ? price * (1 - Strategy.Params.SlPct / 100) : price * (1 + Strategy.Params.SlPct / 100);
-                slPrice = Math.Floor(slPrice / minStep) * minStep; // округляем ВНИЗ для LONG SL, ВВЕРХ для SHORT SL
+                slPrice = Math.Floor(slPrice / minStep) * minStep; // РѕРєСЂСѓРіР»СЏРµРј Р’РќРР— РґР»СЏ LONG SL, Р’Р’Р•Р РҐ РґР»СЏ SHORT SL
                 if (dir == -1) slPrice = Math.Ceiling(slPrice / minStep) * minStep;
                 string slSide = dir == 1 ? "SIDE_SELL" : "SIDE_BUY";
                 _slOrderId = await PlaceLimitOrderAsync(slSide, slPrice, $"{_logPrefix}-SL");
@@ -414,7 +420,7 @@ public class V8TrailLauncher
     private async Task UpdateSLOrderAsync(double newSL)
     {
         if (Strategy.PositionDirection == 0) return;
-        // Округляем до minStep
+        // РћРєСЂСѓРіР»СЏРµРј РґРѕ minStep
         int minStep = _finamSymbol.Contains("RI") ? 10 : 1;
         if (Strategy.PositionDirection == 1) newSL = Math.Floor(newSL / minStep) * minStep;
         else newSL = Math.Ceiling(newSL / minStep) * minStep;
@@ -425,7 +431,7 @@ public class V8TrailLauncher
         string side = Strategy.PositionDirection == 1 ? "SIDE_SELL" : "SIDE_BUY";
         _slOrderId = await PlaceLimitOrderAsync(side, newSL, $"{_logPrefix}-SL");
         if (_slOrderId != null)
-            Console.WriteLine($"[{_logPrefix}] Trailing SL → {newSL:F0}");
+            Console.WriteLine($"[{_logPrefix}] Trailing SL в†’ {newSL:F0}");
     }
 
     public string GetStatus()

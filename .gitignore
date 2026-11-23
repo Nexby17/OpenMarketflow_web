@@ -41,6 +41,7 @@ robot/of_config.json
 robot/arb_config.json
 robot/arb_config.json
 robot/arb_state.json
+robot/arb_state_*.json
 robot/arb_*/arb_config.json
 robot/arb_*/arb_state.json
 robot/arb_*/logs/
@@ -59,3 +60,17 @@ backtest/
 *.bak
 *.bak.*
 *.tmp
+
+robot/paper_lab/logs/
+
+robot/paper_lab/.env
+
+robot/py4/
+
+# generated gRPC protos for arb robots (finam_compat shim) — keep in repo
+!robot/py4/
+robot/py4/*
+!robot/py4/finam_trade_api
+robot/py4/finam_trade_api/*
+!robot/py4/finam_trade_api/proto
+!robot/py4/google

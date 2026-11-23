@@ -9,11 +9,19 @@
   "lastPyramidPrice": 0.0,
   "peakLots": 0,
   "lotQueue": [],
+<<<<<<< HEAD
   "roundTrips": 172,
   "realizedPnL": 25111.54000000014,
   "dailyPnL": 3654.5200000000013,
   "dailyPnLDate": "2026-09-02",
   "entryTime": "",
+=======
+  "roundTrips": 4051753,
+  "realizedPnL": 20407.64,
+  "dailyPnL": 0.0,
+  "dailyPnLDate": "2026-08-25",
+  "entryTime": null,
+>>>>>>> web/main
   "signalType": "",
   "tradeHistory": [
     {

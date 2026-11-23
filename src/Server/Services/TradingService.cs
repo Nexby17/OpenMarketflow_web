@@ -1,9 +1,11 @@
 using Microsoft.AspNetCore.SignalR;
 using HedgeFund.Core;
 using HedgeFund.Core.Models;
+using HedgeFund.Core.Risk;
 using HedgeFund.Brokers.Finam;
 using HedgeFund.Server.Hubs;
 using HedgeFund.Core.Models;
+using HedgeFund.Core.Risk;
 
 namespace HedgeFund.Server.Services;
 
@@ -56,6 +58,10 @@ public class TradingService : IDisposable
     public FinamConnector? Connector => _connector;
     public FinamConnector? FinamBroker => _connector;
 
+    // === RISK GATE ===
+    public RiskGate? RiskGate { get; set; }
+    public CircuitBreaker? CircuitBreaker { get; set; }
+
     // === Управление ===
 
     /// <summary>🔴 ЭКСТРЕННАЯ ОСТАНОВКА — приоритет №1, работает мгновенно</summary>
@@ -92,6 +98,20 @@ public class TradingService : IDisposable
                         Volume = pos.TotalVolume,
                         Comment = "EMERGENCY STOP"
                     };
+
+
+            // === RISK CHECK ===
+            var (approved, riskResult) = RiskIntegrationHelper.CheckBeforeOrder(
+                RiskGate, order, currentLots: 0,
+                accountEquity: _equity,
+                realisedPnl: _todayPnL,
+                logger: null);
+            if (!approved)
+            {
+                _logger.LogWarning("Order rejected by risk gate: {Reason}", riskResult.Reason);
+                await SendError("Order rejected: " + riskResult.Reason);
+                return;
+            }
 
                     await _connector.PlaceOrderAsync(order);
                     _logger.LogWarning("Закрыта позиция {Ticker}: {Dir} x{Vol}", pos.Ticker, closeDirection, pos.TotalVolume);

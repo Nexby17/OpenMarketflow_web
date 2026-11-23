@@ -1,4 +1,146 @@
 // === Auth Check ===
+// F-021 helper: decimal-comma tolerant number parse.
+// parseFloat('0,02') = 0 — Russian locale inputs were silently zeroed;
+// empty/NaN -> fallback. Defined ONCE at file top (was lost in refactor).
+function arbNum(v, fallback) {
+    if (v === null || v === undefined) return fallback;
+    const n = parseFloat(String(v).replace(',', '.'));
+    return isFinite(n) ? n : fallback;
+}
+
+// ==================== F-033: единая система панелей арб-роботов ====================
+// arbArbInstances: пары инстансов (identity), arbPanelInstance — какой робот сейчас редактируется
+const ARB_INSTANCE_MAP = {
+    gazp: { port: 5090, procName: 'arb_gazp', label: 'GAZP/GZZ6', symA: 'GAZP', symB: 'GZZ6',
+            sufA: '@MISX', sufB: '@RTSX', logId: 'arbPyLogContainer' },
+    sber: { port: 5091, procName: 'arb_sber', label: 'SBER/SRZ6', symA: 'SBER', symB: 'SRZ6',
+            sufA: '@MISX', sufB: '@RTSX', logId: 'arbPyLogContainer' },
+    br:   { port: 5092, procName: 'arb_br', label: 'BRV6/BRZ6', symA: 'BRV6', symB: 'BRZ6',
+            sufA: '@RTSX', sufB: '@RTSX', logId: 'arbPyLogContainer' },
+};
+let arbPanelInstance = null;
+let arbPanelInstanceObj = null;
+
+function arbLog(instance, msg, level) {
+    // F-037: все арб-роботы пишут только в общий «Лог событий»
+    arbPyLog(msg, level, 'arbPyLogContainer');
+}
+
+// ДЕЛЕГИРОВАННЫЙ обработчик: кнопка сохранения внутри панелиarb
+document.addEventListener('click', function(ev) {
+    const btn = ev.target.closest('#arbPanelSaveBtn');
+    if (!btn) return;
+    const inst = arbPanelInstance;
+    const instObj = ARB_INSTANCE_MAP[inst] || ARB_INSTANCE_MAP.gazp;
+    const api = window['arbApi_' + inst];
+    arbLog(inst, '💾 Сохранить нажато (' + instObj.label + ')', 'INFO');
+    try {
+        if (typeof arbNum !== 'function') {
+            arbLog(inst, '❌ Скрипт устарел — обновите страницу (Ctrl+F5)', 'ERROR');
+            return;
+        }
+        const body = {
+            ticker_a: el('arbSymA')?.value || instObj.symA,
+            symbol_a: ((el('arbSymA')?.value === 'GAZP' || el('arbSymA')?.value === 'SBER') ? el('arbSymA')?.value + '@MISX' : (el('arbSymA')?.value || instObj.symA) + '@RTSX'),
+            ticker_b: el('arbSymB')?.value || instObj.symB,
+            symbol_b: (el('arbSymB')?.value || instObj.symB) + '@RTSX',
+            lots_a: arbNum(el('arbLotsA')?.value, 10),
+            lots_b: arbNum(el('arbLotsB')?.value, 1),
+            hedge_ratio: arbNum(el('arbHedgeRatio')?.value, 100),
+            capital: arbNum(el('arbCapital')?.value, 100000),
+            entry_z: arbNum(el('arbEntryZ')?.value, 2),
+            entry_z_long: arbNum(el('arbEntryZLong')?.value, -5),
+            entry_mode: el('arbEntryModeRub')?.checked ? 'spread_rub' : 'zscore',
+            spread_rub_high: arbNum(el('arbSpreadRubHigh')?.value, 400),
+            spread_rub_low: arbNum(el('arbSpreadRubLow')?.value, 200),
+            risk_free_rate: arbNum(el('arbRate')?.value, 16) / 100,
+            expiration_date: el('arbExpiration')?.value || '2026-12-17',
+            contract_size: arbNum(el('arbContractSize')?.value, 100),
+            lookback: arbNum(el('arbLookback')?.value, 50),
+            leg_a_timeout: arbNum(el('arbLegTimeout')?.value, 5),
+            min_fill_ratio: arbNum(el('arbMinFill')?.value, 0.5),
+            min_profit_type: el('arbMinProfitType')?.value || 'rub',
+            min_profit_value: arbNum(el('arbMinProfitVal')?.value, 30),
+            risk_type: el('arbRiskType')?.value || 'stop_loss_rub',
+            risk_value: arbNum(el('arbRiskVal')?.value, 5000),
+            allow_long_basis: el('arbAllowLong')?.checked || false,
+            use_commission: el('arbUseCommission')?.checked ?? true,
+            commission_stock_pct: arbNum(el('arbCommStock')?.value, 0.035),
+            commission_futures_rt: arbNum(el('arbCommFut')?.value, 0.9),
+            slippage_bps: arbNum(el('arbSlippage')?.value, 5),
+            dev_ann_high: arbNum(el('arbDevAnnHigh')?.value, 2.5),
+            dev_ann_low: arbNum(el('arbDevAnnLow')?.value, -1),
+            dev_lookback: arbNum(el('arbDevLookback')?.value, 2500),
+            dev_push_interval: arbNum(el('arbDevPush')?.value, 60),
+            dividends: ((window['arbApi_' + inst] || {}).getData()?.params?.dividends) || [],
+        };
+        // Если нога A — фьючерс, её комиссия идёт в commission_futures_rt
+        const symAVal = el('arbSymA')?.value || '';
+        if (/\d/.test(symAVal)) {
+            body.commission_futures_rt = arbNum(el('arbCommStock')?.value, body.commission_futures_rt);
+        }
+        fetch(`${api.baseUrl}/params`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(body)
+        }).then(r => r.json()).then(resp => {
+            if (resp && resp.ok) {
+                const rej = (resp.rejected || []).join(', ');
+                arbLog(inst, '✅ Параметры сохранены' + (rej ? ' (отклонены: ' + rej + ')' : ''), rej ? 'WARN' : 'INFO');
+                if (window['arbApi_' + inst]) window['arbApi_' + inst].refresh();
+            } else {
+                arbLog(inst, '❌ Сохранение не принято сервером', 'ERROR');
+            }
+        }).catch(e => {
+            arbLog(inst, '❌ Ошибка сети при сохранении: ' + e.message, 'ERROR');
+        });
+    } catch(e) {
+        arbLog(inst, '❌ Ошибка JS: ' + e.message, 'ERROR');
+    }
+});
+
+function arbInstancePanel(inst) {
+    const cfg = ARB_INSTANCE_MAP[inst] || ARB_INSTANCE_MAP.gazp;
+    ['arbInstanceEditPanel'].forEach(pid => el(pid)?.remove());
+    if (arbPanelInstance === inst) { arbPanelInstance = null; _arbJournalInstance = null; return; }
+    arbPanelInstance = inst;
+    _arbJournalInstance = inst === 'gazp' ? null : (inst === 'br' ? 'brCal' : 'sber');
+    const api = window['arbApi_' + inst];
+    if (!api) { return; }
+    api.refresh().then(() => {
+        const data = api.getData();
+        const p = (data && data.params) || {};
+        arbPanelInstanceObj = api;
+        const div = document.createElement('div');
+        div.id = 'arbInstanceEditPanel';
+        div.className = 'card';
+        div.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);z-index:1000;width:750px;max-height:90vh;overflow-y:auto;box-shadow:0 8px 32px rgba(0,0,0,.5)';
+        div.innerHTML = PANEL_TEMPLATE_HTML(cfg, p, data);
+        document.body.appendChild(div);
+        // F-035: кнопки панели — copy (только показывает позицию копирования), close
+        const copyBtn = el('arbPanelCopyBtn');
+        if (copyBtn) copyBtn.onclick = () => arbCopyPositionDialog(inst);
+        const closeBtn = el('arbPanelCloseBtn');
+        if (closeBtn) closeBtn.onclick = () => { el('arbInstanceEditPanel')?.remove(); arbPanelInstance = null; _arbJournalInstance = null; };
+        arbPanelUpdateMetrics();
+        // Init Variant 1 toggle state
+        arbEntryModeToggle();
+        setTimeout(() => arbLoadJournal(), 300);
+    }).catch(e => { console.error('panel open failed', e); });
+}
+
+// F-035: тик обновления метрик открытой панели каждые 2с
+setInterval(() => {
+    if (!arbPanelInstance) return;
+    const api = window['arbApi_' + arbPanelInstance];
+    if (!api) return;
+    api.refresh().then(() => arbPanelUpdateMetrics()).catch(() => {});
+}, 2000);
+
+function arbPyEditPanel() { arbInstancePanel('gazp'); }
+function sberEditPanel() { arbInstancePanel('sber'); }
+function brCalEditPanel() { arbInstancePanel('br'); }
+
 (function() {
     // Check if authenticated
     fetch('/api/me', { credentials: 'include' })
@@ -30,7 +172,8 @@ let positionSeries = null;
 let buyOrdersSeries = null;
 let sellOrdersSeries = null;
 let isConnected = false;
-const MAX_LOG = 200;
+window._signalRConnected = false;  // SignalR push connection state
+// MAX_LOG defined in helpers.js
 
 // === Tabs ===
 document.querySelectorAll('.tab').forEach(tab => {
@@ -77,13 +220,21 @@ function initSignalR() {
     });
 
     connection.on('OnOrderBookUpdate', snapshot => {
-        // Отключено — используем REST polling для стакана
-        // renderOrderBook(snapshot);
+        // SignalR PUSH - real-time orderbook updates
+        if (snapshot) {
+            window._lastObData = snapshot;
+            renderOrderBook(snapshot);
+        }
     });
 
     connection.on('OnQuoteUpdate', quote => {
-        // Отключено — используем REST polling для котировок
-        // updateQuote(quote);
+        // SignalR PUSH - real-time quote updates
+        if (quote) {
+            updateQuote(quote);
+            if (quote.last && window.ChartController && window.ChartController.isReady()) {
+                window.ChartController.applyTick(quote.ticker || el('obInstrument')?.value, quote.last);
+            }
+        }
     });
 
     connection.on('OnError', msg => {
@@ -91,27 +242,38 @@ function initSignalR() {
     });
 
     connection.onreconnecting(() => {
+        window._signalRConnected = false;
         el('statusIndicator').className = 'status-dot yellow';
-        el('statusText').textContent = 'Переподключение...';
+        el('statusText').textContent = 'Reconnecting...';
+        addLog(nowTime(), 'WARN', 'SignalR reconnecting - REST fallback active');
     });
 
     connection.onreconnected(() => {
+        window._signalRConnected = true;
         el('statusIndicator').className = 'status-dot green';
-        el('statusText').textContent = 'Подключён';
+        el('statusText').textContent = 'Connected';
+        addLog(nowTime(), 'INFO', 'SignalR restored - push active');
         fetchStatus();
+        var ticker = el('obInstrument')?.value;
+        if (ticker) { connection.invoke('SubscribeQuotes', ticker).catch(()=>{}); connection.invoke('SubscribeOrderBook', ticker).catch(()=>{}); }
     });
 
     connection.onclose(() => {
+        window._signalRConnected = false;
         el('statusIndicator').className = 'status-dot red';
-        el('statusText').textContent = 'Отключён';
+        el('statusText').textContent = 'Disconnected';
+        addLog(nowTime(), 'ERROR', 'SignalR disconnected - REST polling fallback');
     });
 
     connection.start()
         .then(() => {
+            window._signalRConnected = true;
             el('statusIndicator').className = 'status-dot green';
-            el('statusText').textContent = 'Подключён к серверу';
-            addLog(nowTime(), 'INFO', '✅ SignalR подключён');
+            el('statusText').textContent = 'Connected to server';
+            addLog(nowTime(), 'INFO', 'SignalR connected - push active');
             fetchStatus();
+            var ticker = el('obInstrument')?.value;
+            if (ticker) { connection.invoke('SubscribeQuotes', ticker).catch(()=>{}); connection.invoke('SubscribeOrderBook', ticker).catch(()=>{}); }
         })
         .catch(err => {
             el('statusIndicator').className = 'status-dot red';
@@ -265,52 +427,42 @@ function loadPositions() {
 }
 
 function updateChartLines() {
-    console.log("[updateChartLines] Called. positionSeries:", !!positionSeries, "buyOrdersSeries:", !!buyOrdersSeries, "sellOrdersSeries:", !!sellOrdersSeries);
-    
-    // Обновить линии позиций
+    // Chart overlays via ChartController (single source of truth)
+    const CC = window.ChartController;
+    if (!CC || !CC.isReady()) return;
+
+    // Position line
     fetch('/api/positions').then(r => r.json()).then(positions => {
         window._lastPositions = positions;
-        console.log("[updateChartLines] Positions:", positions);
-        if (!positionSeries || !positions || positions.length === 0) {
-            if (positionSeries) positionSeries.setData([]);
+        if (!positions || positions.length === 0) {
+            CC.setPositionLine(null);
             return;
         }
-        const now = Math.floor(Date.now() / 1000);
-        const timeStart = Math.floor((now - 7200) / 60) * 60;
-        const timeEnd = Math.floor((now + 3600) / 60) * 60;
-        console.log("[updateChartLines] Position time range:", timeStart, "-", timeEnd);
-
         if (positions.length === 1) {
             const p = positions[0];
             const price = p.entries?.[0]?.price || p.avgPrice || 0;
             const isLong = p.dir === 'Buy';
-            console.log("[updateChartLines] Position:", isLong ? "LONG" : "SHORT", "@", price);
-            positionSeries.applyOptions({ color: isLong ? '#22C55E' : '#EF4444' });
-            positionSeries.setData([
-                { time: timeStart, value: price },
-                { time: timeEnd, value: price }
-            ]);
+            CC.setPositionLine({ price, isLong });
         } else {
-            positionSeries.setData([]);
+            CC.setPositionLine(null);
         }
     }).catch(e => console.error("[ERROR] updateChartLines positions:", e));
 
-    // Обновить линии заявок
+    // Order lines
     fetch('/api/orders').then(r => r.json()).then(data => {
         window._lastOrders = (data.orders || data || []);
-        if (typeof clearOrderLines === 'function') clearOrderLines();
         const orders = data.orders || data || [];
-        const activeOrders = orders.filter(o => o.status === 'ORDER_STATUS_NEW');
-        if (!activeOrders.length) return;
-        activeOrders.forEach(o => {
-            const isBuy = o.order?.side === 'BUY' || o.order?.side === 'SIDE_BUY';
-            const price = parseFloat(o.order?.limit_price?.value || 0);
-            if (price > 0) addOrderLine(price, isBuy);
-        });
+        const activeOrders = orders
+            .filter(o => o.status === 'ORDER_STATUS_NEW')
+            .map(o => ({
+                price: parseFloat(o.order?.limit_price?.value || 0),
+                isBuy: o.order?.side === 'BUY' || o.order?.side === 'SIDE_BUY',
+            }))
+            .filter(o => o.price > 0);
+        CC.refreshOrderLines(activeOrders);
     }).catch(e => console.error('[ERROR] updateChartLines orders:', e));
 
 }
-
 
 function loadOrders() {
     fetch('/api/orders').then(r => r.json()).then(data => {
@@ -336,12 +488,18 @@ function loadOrders() {
                 <td><b>${ticker}</b></td>
                 <td class="${side.includes('BUY') || side === 'Buy' ? 'green' : 'red'}">${side.includes('BUY') || side === 'Buy' ? 'Покупка' : 'Продажа'}</td>
                 <td>${parseFloat(qty)}</td>
-                <td>${price ? (ticker.toUpperCase().startsWith('BR') ? parseFloat(price).toFixed(2) : parseFloat(price).toFixed(0)) : 'MKT'}</td>
+                <td>${price ? fmtPriceDyn(parseFloat(price)) : 'MKT'}</td>
                 <td>${parseFloat(filled)}/${parseFloat(qty)}</td>
                 <td>${status.replace('ORDER_STATUS_','')}</td>
             </tr>`;
         }).join('');
     }).catch(e => console.error("[ERROR]", e));
+}
+
+// Дробные контракты (BR и др., тик 0,01) показываем с 2 знаками; целые — как раньше.
+function fmtPriceDyn(p) {
+    if (!isFinite(p)) return '-';
+    return Math.abs(p - Math.round(p)) > 0.005 ? p.toFixed(2) : String(Math.round(p));
 }
 
 function loadTrades() {
@@ -366,7 +524,7 @@ function loadTrades() {
                 <td><b>${ticker}</b></td>
                 <td class="${side.includes('BUY') ? 'green' : 'red'}">${side.includes('BUY') ? 'Покупка' : 'Продажа'}</td>
                 <td>${parseFloat(size)}</td>
-                <td>${(ticker.toUpperCase().startsWith('BR') ? parseFloat(price).toFixed(2) : parseFloat(price).toFixed(0))}</td>
+                <td>${fmtPriceDyn(parseFloat(price))}</td>
                 <td>${comment}</td>
             </tr>`;
         }).join('');
@@ -376,7 +534,7 @@ function loadTrades() {
 function loadQuotes() {
     const tbody = el('quotesTable');
     if (!tbody) return;
-    const tickers = ['SiM6','SiU6','MXM6','GDM6','BRK6','RIU6'];
+    const tickers = ['SiU6','SiZ6','MXU6','GDU6','BRU6','RIU6'];
     if (!tbody.children.length || tbody.dataset.tickerv !== tickers.join(',')) {
         tbody.innerHTML = tickers.map(t => `<tr id="q_${t}"><td><b>${t}</b></td><td class="q_last" style="color:var(--text-muted)">—</td><td class="q_bid" style="color:var(--text-muted)">—</td><td class="q_ask" style="color:var(--text-muted)">—</td><td class="q_vol" style="color:var(--text-muted)">—</td></tr>`).join('');
         tbody.dataset.tickerv = tickers.join(',');
@@ -387,9 +545,9 @@ function loadQuotes() {
             const row = el(`q_${q.ticker}`);
             if (!row) return;
             const cells = row.children;
-            if (q.last) cells[1].textContent = q.last.toFixed(0);
-            if (q.bid) cells[2].textContent = q.bid.toFixed(0);
-            if (q.ask) cells[3].textContent = q.ask.toFixed(0);
+            if (q.last) cells[1].textContent = fmtPriceDyn(q.last);
+            if (q.bid) cells[2].textContent = fmtPriceDyn(q.bid);
+            if (q.ask) cells[3].textContent = fmtPriceDyn(q.ask);
             cells[4].textContent = q.volume ? (q.volume >= 1e6 ? (q.volume/1e6).toFixed(1)+'M' : q.volume >= 1e3 ? (q.volume/1e3).toFixed(0)+'K' : q.volume.toFixed(0)) : '—';
         });
     }).catch(() => {});
@@ -590,6 +748,7 @@ function updateQuote(q) {
     if (bid > 0 && ask > 0) el('obSpread').textContent = (ask - bid).toFixed(2);
 }
 
+
 function updatePosition(pos) {
     // Обновляем роботов
     robots.forEach(r => {
@@ -631,6 +790,8 @@ function updatePosition(pos) {
 }
 
 // === Chart ===
+// Chart creation/series ownership moved to modules/chart.js (ChartController).
+// app.js keeps read-only legacy refs for rendering queries only.
 function initChart() {
     if (chart) return;
     const container = el('chartContainer');
@@ -638,196 +799,58 @@ function initChart() {
         setTimeout(initChart, 100);
         return;
     }
-    const msOffset = 3 * 3600000; // MSK = UTC+3
-    const fmtTime = d => {
-        return d.toISOString().slice(11, 16);
-    };
-    const fmtDate = d => {
-        return d.toISOString().slice(0, 10);
-    };
-    chart = LightweightCharts.createChart(container, {
-        width: container.offsetWidth,
-        height: container.offsetHeight || 400,
-        layout: { background: { color: '#1A1A2E' }, textColor: '#9CA3AF' },
-        grid: { vertLines: { color: '#2D2D44' }, horzLines: { color: '#2D2D44' } },
-        crosshair: { mode: LightweightCharts.CrosshairMode.Normal },
-        timeScale: { timeVisible: true, secondsVisible: false },
-        localization: {
-            timeFormatter: t => fmtTime(new Date(t * 1000)),
-            dateFormat: t => fmtDate(new Date(t * 1000)),
-        },
-    });
-    candleSeries = chart.addCandlestickSeries({
-        upColor: '#22C55E', downColor: '#EF4444',
-        borderUpColor: '#22C55E', borderDownColor: '#EF4444',
-        wickUpColor: '#22C55E', wickDownColor: '#EF4444',
-    });
-    volumeSeries = chart.addHistogramSeries({
-        priceFormat: { type: 'volume' },
-        priceScaleId: '',
-    });
-    volumeSeries.priceScale().applyOptions({ scaleMargins: { top: 0.8, bottom: 0 } });
-
-    // SAR line (dots)
-    sarSeries = chart.addLineSeries({
-        color: '#FFD700',
-        lineWidth: 1,
-        pointMarkersVisible: true,
-        priceLineVisible: false,
-        lastValueVisible: false,
-        title: 'SAR',
-    });
-
-    // EMA line
-    emaSeries = chart.addLineSeries({
-        color: '#00BFFF',
-        lineWidth: 2,
-        priceLineVisible: false,
-        lastValueVisible: false,
-        title: 'EMA',
-    });
-
-    // STD line (порог выхода)
-    stdSeries = chart.addLineSeries({
-        color: '#FF6B6B',
-        lineWidth: 1,
-        lineStyle: 2,  // dashed
-        priceLineVisible: false,
-        lastValueVisible: false,
-        title: 'STD',
-        visible: true,
-    });
-
-    // Position lines (LONG=green, SHORT=red)
-    positionSeries = chart.addLineSeries({
-        color: '#FFFFFF',
-        lineWidth: 2,
-        priceLineVisible: false,
-        lastValueVisible: false,
-        title: 'Position',
-    });
-
-let _orderLineSeries = []; // dynamic order line series
-window._lastTradeCount = 0;
-
-function clearOrderLines() {
-    _orderLineSeries.forEach(s => { try { chart.removeSeries(s); } catch(e) {} });
-    _orderLineSeries = [];
-}
-
-function addOrderLine(price, isBuy) {
-    if (!chart) return;
-    const s = chart.addLineSeries({
-        color: isBuy ? 'rgba(34,197,94,0.6)' : 'rgba(239,68,68,0.6)',
-        lineWidth: 1,
-        lineStyle: isBuy ? LightweightCharts.LineStyle.Dashed : LightweightCharts.LineStyle.Dotted,
-        priceLineVisible: true,
-        lastValueVisible: true,
-        priceFormat: { type: 'price', precision: _obInstrument().startsWith('BR') ? 2 : 0, minMove: _obInstrument().startsWith('BR') ? 0.01 : 1 },
-        title: (isBuy ? '🟢 B ' : '🔴 S ') + obFmt(price),
-        crosshairMarkerVisible: false,
-    });
-    const now = Math.floor(Date.now() / 1000);
-    const ts = Math.floor((now - 7200) / 60) * 60;
-    const te = Math.floor((now + 3600) / 60) * 60;
-    s.setData([{ time: ts, value: price }, { time: te, value: price }]);
-    _orderLineSeries.push(s);
-}
-
-    // Order lines — replaced with dynamic series below
-    buyOrdersSeries = null;
-    sellOrdersSeries = null;
-
-
-    // Двойной клик по графику → меню индикаторы
-    container.addEventListener('dblclick', (e) => {
-        e.preventDefault();
-        showIndicatorMenu(e.clientX, e.clientY);
-    });
-
-    new ResizeObserver(() => {
-        chart.applyOptions({ width: container.offsetWidth, height: container.offsetHeight || 400 });
-    }).observe(container);
+    ChartController.init('chartContainer', { onDbClick: (x, y) => showIndicatorMenu(x, y) }).then(refs => {
+        // Legacy read-only refs (DO NOT write to these series from app.js)
+        chart = refs.chart;
+        candleSeries = refs.candleSeries;
+        volumeSeries = refs.volumeSeries;
+        sarSeries = refs.sarSeries;
+        emaSeries = refs.emaSeries;
+        stdSeries = refs.stdSeries;
+        positionSeries = refs.positionSeries;
+    }).catch(e => console.error('[ChartController] init failed:', e));
 }
 
 function loadCandles(ticker, tf) {
-    const tfMinutes = parseInt(tf) || 5;
-    const days = tfMinutes <= 5 ? 10 : tfMinutes <= 60 ? 30 : 90;
-
-    // Загружаем через Finam API (сервер)
-    fetch(`/api/candles?ticker=${ticker}&tf=${tfMinutes}&days=${days}`)
-        .then(r => r.json())
-        .then(data => {
-            if (data.error) { addLog(nowTime(), 'ERROR', data.error); return; }
-            if (!data.length) { addLog(nowTime(), 'INFO', `Нет данных для ${ticker}`); return; }
-
-        const candles = data.map(r => ({ time: r.t + 10800, open: r.o, high: r.h, low: r.l, close: r.c }));
-            const volumes = data.map(r => ({
-                time: r.t + 10800, value: r.v || 0,
-                color: r.c >= r.o ? 'rgba(34,197,94,0.3)' : 'rgba(239,68,68,0.3)'
-            }));
-
-            // Store instrument for reinit detection
-            window._currentChartTicker = ticker;
-            window._currentChartTf = tfMinutes;
-
-            if (candleSeries) candleSeries.setData(candles);
-            if (volumeSeries) volumeSeries.setData(volumes);
-            window._lastCandles = candles;
-            // Clear old order lines
-            if (typeof clearOrderLines === 'function') clearOrderLines();
-            updateChartLines();
-
-            // Рассчитываем SAR и EMA на клиенте
-            const sarData = calcSAR(data, window._sarParams?.start || 0.009, window._sarParams?.step || 0.01, window._sarParams?.max || 0.2);
-            const emaData = calcEMA(data, window._emaPeriod || 30);
-
-            if (sarSeries && sarData.length > 0) sarSeries.setData(sarData.map(d => ({ time: d.time + 10800, value: d.value })));
-            if (emaSeries && emaData.length > 0) emaSeries.setData(emaData.map(d => ({ time: d.time + 10800, value: d.value })));
-            
-            // STD band around SAR
-            const stdMult = parseFloat(localStorage.getItem('v7_stdMult')) || 1.5;
-            const stdPeriod = parseInt(localStorage.getItem('v7_stdPeriod')) || 14;
-            const stdBand = [];
-            for (let i = stdPeriod - 1; i < data.length; i++) {
-                let sum=0,sq=0;
-                for (let j=i-stdPeriod+1;j<=i;j++){sum+=data[j].c;sq+=data[j].c*data[j].c;}
-                const std=Math.sqrt(sq/stdPeriod-Math.pow(sum/stdPeriod,2));
-                const sar=d=>d.time===data[i].t;
-                const sv=sarData.find(sar);
-                if(sv&&std>0){stdBand.push({time:data[i].t+10800,value:sv.value+std*stdMult});stdBand.push({time:data[i].t+10800,value:sv.value-std*stdMult});}
-            }
-            if(stdSeries&&stdBand.length>0)stdSeries.setData(stdBand);
-
-            el('obCandleCount').textContent = `${candles.length} свечей`;
-            addLog(nowTime(), 'INFO', `📊 ${ticker}: ${candles.length} свечей (${tfMinutes}м) SAR=${sarData.length} EMA=${emaData.length}`);
-            
-            // Load trade markers on chart
-            loadTradeMarkers(ticker, candles);
-        })
-        .catch(e => addLog(nowTime(), 'ERROR', `Свечи: ${e.message}`));
+    ChartController.loadHistory(ticker, tf).then(r => {
+        if (r.aborted) return; // stale - newer request superseded this one
+        if (r.error) { addLog(nowTime(), 'ERROR', r.error); return; }
+        if (r.empty) {
+            addLog(nowTime(), 'INFO', `Нет данных: тикер ${ticker} (${parseInt(tf) || 5}м)`);
+            return;
+        }
+        const cc = el('obCandleCount');
+        if (cc) cc.textContent = `${r.count} свечей`;
+        addLog(nowTime(), 'INFO', `З? ${ticker}: ${r.count} свечей (${parseInt(tf) || 5}м)`);
+        // Overlays: position/order lines + trade markers (context-guarded inside CC)
+        updateChartLines();
+        loadTradeMarkers(ticker);
+    });
 }
 
-// === Trade markers on main chart ===
-async function loadTradeMarkers(ticker, candles) {
-    if (!candleSeries || !candles.length) return;
-    
+// === Trade markers on main chart (via ChartController) ===
+async function loadTradeMarkers(ticker) {
+    if (!window.ChartController || !window.ChartController.isReady()) return;
+
     try {
         // Only today's trades for live refresh
         const today = new Date().toISOString().slice(0, 10);
         const resp = await fetch(`/api/trades?date=${today}`);
         const raw = await resp.json();
         let trades = raw.trades || (Array.isArray(raw) ? raw : []);
-        
+
         // Filter by ticker
-        const tTicker = ticker.replace('@RTSX', '');
+        const tTicker = (ticker || '').replace('@RTSX', '');
         trades = trades.filter(t => {
             const sym = (t.symbol || '').replace('@RTSX', '');
             return sym.includes(tTicker) || tTicker.includes(sym);
         });
-        
-        if (!trades.length) { candleSeries.setMarkers([]); return; }
-        
+
+        if (!trades.length) {
+            window.ChartController.setMarkers(ticker, []);
+            return;
+        }
+
         // Build markers
         const markers = trades.map(t => {
             const isBuy = (t.side || '').includes('BUY');
@@ -840,20 +863,18 @@ async function loadTradeMarkers(ticker, candles) {
                 position: isBuy ? 'belowBar' : 'aboveBar',
                 color: isBuy ? '#22C55E' : '#EF4444',
                 shape: isBuy ? 'arrowUp' : 'arrowDown',
-                text: isBuy ? '▲' : '▼',
+                text: isBuy ? 'B' : 'S',
                 price: price,
                 size: 1
             };
         }).filter(m => m.time > 0 && !isNaN(m.time));
-        
-        markers.sort((a, b) => a.time - b.time);
-        candleSeries.setMarkers(markers);
+
+        window.ChartController.setMarkers(ticker, markers);
     } catch (e) {
         // silently fail
     }
 }
 
-// === Индикаторы: SAR и EMA на клиенте ===
 function calcSAR(bars, start, step, max) {
     if (bars.length < 2) return [];
     let af = start, isLong = bars[1].c > bars[0].c;
@@ -976,15 +997,13 @@ function applyIndicatorParams() {
     }).catch(e => addLog(nowTime(), 'ERROR', `Ошибка: ${e.message}`));
     
     // Пересчитываем на текущих данных графика
-    if (candleSeries && sarSeries && emaSeries) {
-        const candles = candleSeries.data();
-        if (candles && candles.length > 0) {
-            const bars = candles.map(c => ({ t: c.time, h: c.high, l: c.low, c: c.close }));
-            const sarData = calcSAR(bars, start, step, max);
-            const emaData = calcEMA(bars, emaPeriod);
-            if (sarData.length > 0) sarSeries.setData(sarData);
-            if (emaData.length > 0) emaSeries.setData(emaData);
-        }
+    // Пересчитать индикаторы поверх текущих свечей (через ChartController)
+    if (window.ChartController && window.ChartController.isReady()) {
+        window.ChartController.recalcIndicators(
+            { start, step, max },
+            emaPeriod,
+            { period: stdPeriod, mult: stdMult }
+        );
     }
     el('indicatorMenu')?.remove();
 }
@@ -996,6 +1015,7 @@ window._emaPeriod = 30;
 function switchOrderBookInstrument() {
     const ticker = el('obInstrument')?.value;
     const tf = el('obTimeframe')?.value;
+    // Новый инструмент — сброс живой свечи
     loadQuote(ticker);
     loadCandles(ticker, tf);
     loadOrderBook(ticker);
@@ -1016,10 +1036,10 @@ function switchOrderBookInstrument() {
             window._lastPositions = pos;
             window._lastOrders = ord.orders || ord || [];
             
-            // Trade markers — incremental
+            // Trade markers — incremental (via ChartController)
             const newTrades = tradesResp.trades || [];
             const newCount = newTrades.length;
-            if (newCount !== window._lastTradeCount && candleSeries) {
+            if (newCount !== window._lastTradeCount && window.ChartController && window.ChartController.isReady()) {
                 window._lastTradeCount = newCount;
                 const tTicker = (t || '').replace('@RTSX', '');
                 const markers = newTrades.filter(tr => {
@@ -1031,24 +1051,26 @@ function switchOrderBookInstrument() {
                     const ts = new Date(tr.timestamp || tr.time || '').getTime() / 1000;
                     return { time: ts + 10800, position: isBuy ? 'belowBar' : 'aboveBar', color: isBuy ? '#22C55E' : '#EF4444', shape: isBuy ? 'arrowUp' : 'arrowDown', text: isBuy ? 'B' : 'S', price: price, size: 1 };
                 }).filter(m => m.time > 0 && !isNaN(m.time)).sort((a, b) => a.time - b.time);
-                candleSeries.setMarkers(markers);
+                window.ChartController.setMarkers(t, markers);
             }
             
             // Re-render orderbook only if changed
             if ((posChanged || ordChanged) && window._lastObData) {
                 _renderOrderBookCached();
             }
-            // Update chart order lines
-            if (ordChanged) {
-                clearOrderLines();
-                window._lastOrders.filter(o => o.status === 'ORDER_STATUS_NEW').forEach(o => {
-                    const isBuy = o.order?.side === 'BUY' || o.order?.side === 'SIDE_BUY';
-                    const price = parseFloat(o.order?.limit_price?.value || 0);
-                    if (price > 0) addOrderLine(price, isBuy);
-                });
+            // Update chart order lines (via ChartController)
+            if (ordChanged && window.ChartController && window.ChartController.isReady()) {
+                const activeOrders = window._lastOrders
+                    .filter(o => o.status === 'ORDER_STATUS_NEW')
+                    .map(o => ({
+                        price: parseFloat(o.order?.limit_price?.value || 0),
+                        isBuy: o.order?.side === 'BUY' || o.order?.side === 'SIDE_BUY',
+                    }))
+                    .filter(o => o.price > 0);
+                window.ChartController.refreshOrderLines(activeOrders);
             }
         });
-    }, 500);  // 500ms — fast as QUIK
+    }, 1000);  // Fallback polling (1s) — SignalR push handles real-time when connected
     // Orderbook + candles — 2s
     if (window._slowInterval) clearInterval(window._slowInterval);
     window._slowInterval = setInterval(() => {
@@ -1056,7 +1078,7 @@ function switchOrderBookInstrument() {
         loadOrderBook(t);
         updateLiveCandle(t);
         if (t && t.startsWith('Si')) loadStrategyIndicators();
-    }, 2000);  // Стакан + свечи каждые 3с
+    }, 3000);  // Candle/indicator refresh (3s) — orderbook via SignalR push
     
     // Первая загрузка индикаторов
     loadStrategyIndicators();
@@ -1070,22 +1092,15 @@ function switchOrderBookInstrument() {
     }
 }
 
-// Instrument-aware price formatting: BR (Brent, tick 0.01) -> 2 decimals; others -> integer (as before)
-function _obInstrument() { return (el('obInstrument')?.value || '').toUpperCase(); }
-function obIsFrac() { return _obInstrument().startsWith('BR'); }
-function obFmt(v) { return obIsFrac() ? Number(v).toFixed(2) : String(Math.round(v)); }
-function obKey(v) { return obFmt(v); }
-function obNear(a, b) { return Math.abs(a - b) < (obIsFrac() ? 0.011 : 1); }
-
 function loadQuote(ticker) {
     if (!ticker) return;
     fetch(`/api/quote?ticker=${ticker}`)
         .then(r => r.json())
         .then(q => {
-            if (q.last > 0) el('obLast').textContent = obFmt(q.last);
-            if (q.bid > 0) el('obBid').textContent = obFmt(q.bid);
-            if (q.ask > 0) el('obAsk').textContent = obFmt(q.ask);
-            if (q.spread > 0) el('obSpread').textContent = obIsFrac() ? q.spread.toFixed(2) : q.spread.toFixed(0);
+            if (q.last > 0) el('obLast').textContent = Math.round(q.last);
+            if (q.bid > 0) el('obBid').textContent = Math.round(q.bid);
+            if (q.ask > 0) el('obAsk').textContent = Math.round(q.ask);
+            if (q.spread > 0) el('obSpread').textContent = q.spread.toFixed(0);
         })
         .catch(e => console.error("[ERROR]", e));
 }
@@ -1141,16 +1156,16 @@ function loadOrderBook(ticker) {
             const mySellPrices = myOrders.filter(o => o.order?.side === 'SELL' || o.order?.side === 'SIDE_SELL').map(o => parseFloat(o.order?.limit_price?.value || 0)).filter(p => p > 0);
             
             // Добавляем строки своих заявок если их цены не в стакане
-            const obPrices = new Set(visible.map(r => obKey(r.price)));
+            const obPrices = new Set(visible.map(r => Math.round(r.price)));
             for (const p of myBuyPrices) {
-                const rp = obKey(p);
+                const rp = Math.round(p);
                 if (!obPrices.has(rp)) {
                     visible.push({price: p, bid: 0, ask: 0, _myBuy: true});
                     obPrices.add(rp);
                 }
             }
             for (const p of mySellPrices) {
-                const rp = obKey(p);
+                const rp = Math.round(p);
                 if (!obPrices.has(rp)) {
                     visible.push({price: p, bid: 0, ask: 0, _mySell: true});
                     obPrices.add(rp);
@@ -1161,18 +1176,18 @@ function loadOrderBook(ticker) {
             for (const r of visible) {
                 const bidW = ((r.bid || 0) / maxVol * 100).toFixed(0);
                 const askW = ((r.ask || 0) / maxVol * 100).toFixed(0);
-                const isMyBuy = r._myBuy || myBuyPrices.some(p => obNear(p, r.price));
-                const isMySell = r._mySell || mySellPrices.some(p => obNear(p, r.price));
+                const isMyBuy = r._myBuy || myBuyPrices.some(p => Math.abs(p - r.price) < 1);
+                const isMySell = r._mySell || mySellPrices.some(p => Math.abs(p - r.price) < 1);
                 let cls = 'ob-row';
                 if (r.bid > 0) cls += ' ob-has-bid';
                 if (r.ask > 0) cls += ' ob-has-ask';
-                if (obNear(r.price, bestBid) && r.bid > 0) cls += ' ob-best-bid';
-                if (obNear(r.price, bestAsk) && r.ask > 0) cls += ' ob-best-ask';
+                if (Math.abs(r.price - bestBid) < 1 && r.bid > 0) cls += ' ob-best-bid';
+                if (Math.abs(r.price - bestAsk) < 1 && r.ask > 0) cls += ' ob-best-ask';
                 if (isMyBuy) cls += ' ob-my-buy';
                 if (isMySell) cls += ' ob-my-sell';
                 
                 // Позиция
-                const isPos = posPrice > 0 && obNear(r.price, posPrice);
+                const isPos = posPrice > 0 && Math.abs(r.price - posPrice) < 1;
                 if (isPos) cls += ' ob-position-row';
                 const posIcon = isPos ? (posDir > 0 ? '▲' : '▼') : '';
                 let posHtml = '';
@@ -1187,7 +1202,7 @@ function loadOrderBook(ticker) {
                 
                 html += `<div class="${cls}">
                     <div class="ob-bid"><div class="ob-bar-bid" style="width:${bidW}%"></div>${r.bid || ''}${isMyBuy ? ' ◄' : ''}</div>
-                    <div class="ob-price">${obFmt(r.price)}${posHtml}</div>
+                    <div class="ob-price">${Math.round(r.price)}${posHtml}</div>
                     <div class="ob-ask"><div class="ob-bar-ask" style="width:${askW}%"></div>${r.ask || ''}${isMySell ? '► ' : ''}</div>
                 </div>`;
             }
@@ -1217,30 +1232,30 @@ function _renderOrderBookCached() {
     const myOrders=(window._lastOrders||[]).filter(o=>o.status==='ORDER_STATUS_NEW');
     const myBuyPrices=myOrders.filter(o=>o.order?.side==='BUY'||o.order?.side==='SIDE_BUY').map(o=>parseFloat(o.order?.limit_price?.value||0)).filter(p=>p>0);
     const mySellPrices=myOrders.filter(o=>o.order?.side==='SELL'||o.order?.side==='SIDE_SELL').map(o=>parseFloat(o.order?.limit_price?.value||0)).filter(p=>p>0);
-    const obPrices=new Set(visible.map(r=>obKey(r.price)));
-    for(const p of myBuyPrices){const rp=obKey(p);if(!obPrices.has(rp)){visible.push({price:p,bid:0,ask:0,_myBuy:true});obPrices.add(rp);}}
-    for(const p of mySellPrices){const rp=obKey(p);if(!obPrices.has(rp)){visible.push({price:p,bid:0,ask:0,_mySell:true});obPrices.add(rp);}}
+    const obPrices=new Set(visible.map(r=>Math.round(r.price)));
+    for(const p of myBuyPrices){const rp=Math.round(p);if(!obPrices.has(rp)){visible.push({price:p,bid:0,ask:0,_myBuy:true});obPrices.add(rp);}}
+    for(const p of mySellPrices){const rp=Math.round(p);if(!obPrices.has(rp)){visible.push({price:p,bid:0,ask:0,_mySell:true});obPrices.add(rp);}}
     visible.sort((a,b)=>b.price-a.price);
     
     let html='';
     for(const r of visible){
         const bidW=((r.bid||0)/maxVol*100).toFixed(0);
         const askW=((r.ask||0)/maxVol*100).toFixed(0);
-        const isMyBuy=r._myBuy||myBuyPrices.some(p=>obNear(p,r.price));
-        const isMySell=r._mySell||mySellPrices.some(p=>obNear(p,r.price));
+        const isMyBuy=r._myBuy||myBuyPrices.some(p=>Math.abs(p-r.price)<1);
+        const isMySell=r._mySell||mySellPrices.some(p=>Math.abs(p-r.price)<1);
         let cls='ob-row';
         if(r.bid>0)cls+=' ob-has-bid';
         if(r.ask>0)cls+=' ob-has-ask';
-        if(obNear(r.price,bestBid)&&r.bid>0)cls+=' ob-best-bid';
-        if(obNear(r.price,bestAsk)&&r.ask>0)cls+=' ob-best-ask';
+        if(Math.abs(r.price-bestBid)<1&&r.bid>0)cls+=' ob-best-bid';
+        if(Math.abs(r.price-bestAsk)<1&&r.ask>0)cls+=' ob-best-ask';
         if(isMyBuy)cls+=' ob-my-buy';
         if(isMySell)cls+=' ob-my-sell';
-        const isPos=posPrice>0&&obNear(r.price,posPrice);
+        const isPos=posPrice>0&&Math.abs(r.price-posPrice)<1;
         if(isPos)cls+=' ob-position-row';
         const posIcon=isPos?(posDir>0?'▲':'▼'):'';
         let posHtml='';
         if(isPos){const lastPx=parseFloat(el('obLast')?.textContent||0);const pnl=posDir*(lastPx-posPrice)*posLots;const dirLabel=posDir>0?'▲L':'▼S';const pnlSign=pnl>=0?'+':'';posHtml=`<span class="ob-position-pnl"> ${dirLabel}${posLots} ${pnlSign}${pnl.toFixed(0)}₽</span>`;}
-        html+=`<div class="${cls}"><div class="ob-bid"><div class="ob-bar-bid" style="width:${bidW}%"></div>${r.bid||''}${isMyBuy?' ◄':''}</div><div class="ob-price">${obFmt(r.price)}${posHtml}</div><div class="ob-ask"><div class="ob-bar-ask" style="width:${askW}%"></div>${r.ask||''}${isMySell?'► ':''}</div></div>`;
+        html+=`<div class="${cls}"><div class="ob-bid"><div class="ob-bar-bid" style="width:${bidW}%"></div>${r.bid||''}${isMyBuy?' ◄':''}</div><div class="ob-price">${Math.round(r.price)}${posHtml}</div><div class="ob-ask"><div class="ob-bar-ask" style="width:${askW}%"></div>${r.ask||''}${isMySell?'► ':''}</div></div>`;
     }
     el('orderbookLadder').innerHTML=html;
     _renderTradeTape(visible);
@@ -1283,12 +1298,12 @@ function _renderTradeTape(visible) {
     // Entry horizontal line (QScalp style)
     if (posPrice >= minPrice && posPrice <= maxPrice) {
         html += `<div class="pnl-entry" style="top:${entryPct}%"></div>`;
-        html += `<div class="pnl-entry-label" style="top:${entryPct}%">${posDir > 0 ? '▲' : '▼'} ${obFmt(posPrice)}</div>`;
+        html += `<div class="pnl-entry-label" style="top:${entryPct}%">${posDir > 0 ? '▲' : '▼'} ${Math.round(posPrice)}</div>`;
     }
     
     // Vertical line from entry to current price
     if (heightPct > 0.1) {
-        const pts = obIsFrac() ? (Math.abs(currentPrice - posPrice)).toFixed(2) : Math.round(Math.abs(currentPrice - posPrice));
+        const pts = Math.round(Math.abs(currentPrice - posPrice));
         html += `<div class="pnl-line ${isProfit ? 'pnl-line-profit' : 'pnl-line-loss'}" style="top:${topPct}%;height:${Math.max(heightPct, 0.5)}%"></div>`;
         // Points label in the middle of the line
         const midPct = topPct + heightPct / 2;
@@ -1302,73 +1317,45 @@ function _renderTradeTape(visible) {
 function switchTimeframe() {
     const ticker = el('obInstrument')?.value;
     const tf = el('obTimeframe')?.value;
+    // Смена TF = новая история; состояние живёт в ChartController
     loadCandles(ticker, tf);
 }
 
 // === Живой график: обновляем последнюю свечу и добавляем новые ===
-let _lastCandleTime = 0;
-let _currentTf = 5;
+// Live price/candle updates: state and writes live in ChartController.
 
-// Тик-баи-тик обновление через /api/quote (быстрый, каждые 500мс)
+// Quote polling (fallback ~1s): DOM labels + CC.applyTick
 function updateLivePrice(ticker) {
     if (!ticker) return;
     fetch(`/api/quote?ticker=${ticker}`)
         .then(r => r.json())
         .then(q => {
-            if (!q || q.error || !q.last || !candleSeries) return;
-            const price = q.last;
-            // Защита от чужой цены: если цена отличается от последней свечи > 5% — не обновлять
-            const bars = candleSeries.data();
-            const last = bars.length > 0 ? bars[bars.length - 1] : null;
-            if (last && last.close > 0 && Math.abs(price - last.close) / last.close > 0.05) return;
-            const now = Math.floor(Date.now() / 1000);
-            const tf = parseInt(el('obTimeframe')?.value) || 5;
-            const candleOpen = now - (now % (tf * 60)) + 10800; // MSK offset
-
-            // Обновляем/создаём текущую свечу
-            if (_lastCandleTime !== candleOpen) {
-                // Новая свеча
-                _lastCandleTime = candleOpen;
-                candleSeries.update({ time: candleOpen, open: price, high: price, low: price, close: price });
-            } else {
-                // Обновляем текущую — берём предыдущие OHLC из серии
-                if (last && last.time === candleOpen) {
-                    candleSeries.update({
-                        time: candleOpen,
-                        open: last.open,
-                        high: Math.max(last.high, price),
-                        low: Math.min(last.low, price),
-                        close: price
-                    });
-                } else {
-                    candleSeries.update({ time: candleOpen, open: price, high: price, low: price, close: price });
-                }
+            if (!q || q.error || !q.last) return;
+            const CC = window.ChartController;
+            if (CC && CC.isReady()) {
+                CC.applyTick(ticker, q.last);
             }
         })
         .catch(e => console.error("[ERROR]", e));
-        updateChartLines();
+    updateChartLines();
 }
 
+// Candle polling (fallback ~3s): fetch last bar + CC.applyCandle
 function updateLiveCandle(ticker) {
     if (!ticker) return;
     const tf = parseInt(el('obTimeframe')?.value) || 5;
-    _currentTf = tf;
     fetch(`/api/candles?ticker=${ticker}&tf=${tf}&days=1`)
         .then(r => r.json())
         .then(data => {
-            if (!data || data.error || !data.length || !candleSeries) return;
-
-            // Только обновляем последнюю свечу
-            const last = data[data.length - 1];
-            candleSeries.update({ time: last.t + 10800, open: last.o, high: last.h, low: last.l, close: last.c });
-            if (volumeSeries) {
-                volumeSeries.update({ time: last.t + 10800, value: last.v || 0, color: last.c >= last.o ? 'rgba(34,197,94,0.3)' : 'rgba(239,68,68,0.3)' });
+            if (!data || data.error || !data.length) return;
+            const CC = window.ChartController;
+            if (CC && CC.isReady()) {
+                CC.applyCandle(ticker, tf, data[data.length - 1]);
             }
         })
         .catch(e => console.error("[ERROR]", e));
 }
 
-            updateChartLines();
 // === Strategy Indicators on Chart ===
 function loadStrategyIndicators() {
     const ticker = el('obInstrument')?.value || '';
@@ -1410,27 +1397,31 @@ function loadV6Indicators() {
             if (data.error) return;
             
             if (data.indicators && data.indicators.length > 0) {
-                const sarData = data.indicators
-                    .filter(p => p.sar > 0 && !isNaN(p.sar))
-                    .map(p => ({ time: toChartTime(p.time), value: p.sar }));
-                const emaData = data.indicators
-                    .filter(p => p.ema > 0 && !isNaN(p.ema))
-                    .map(p => ({ time: toChartTime(p.time), value: p.ema }));
-                
-                if (sarSeries && sarData.length > 0) sarSeries.setData(sarData);
-                if (emaSeries && emaData.length > 0) emaSeries.setData(emaData);
+                const CC = window.ChartController;
+                if (CC && CC.isReady()) {
+                    CC.setStrategySeries({
+                        sar: data.indicators
+                            .filter(p => p.sar > 0 && !isNaN(p.sar))
+                            .map(p => ({ time: toChartTime(p.time), value: p.sar })),
+                        ema: data.indicators
+                            .filter(p => p.ema > 0 && !isNaN(p.ema))
+                            .map(p => ({ time: toChartTime(p.time), value: p.ema })),
+                    });
+                }
             }
             
-            if (data.trades && data.trades.length > 0 && candleSeries) {
-                const markers = data.trades.map(t => ({
-                    time: toChartTime(t.time),
-                    position: t.dir === 1 ? 'belowBar' : 'aboveBar',
-                    color: t.dir === 1 ? '#22C55E' : '#EF4444',
-                    shape: t.dir === 1 ? 'arrowUp' : 'arrowDown',
-                    text: `${t.dir === 1 ? 'B' : 'S'} ${t.lots}x@${t.price.toFixed(0)}`,
-                }));
-                markers.sort((a, b) => a.time > b.time ? 1 : -1);
-                candleSeries.setMarkers(markers);
+            if (data.trades && data.trades.length > 0) {
+                const CC = window.ChartController;
+                if (CC && CC.isReady()) {
+                    const markers = data.trades.map(t => ({
+                        time: toChartTime(t.time),
+                        position: t.dir === 1 ? 'belowBar' : 'aboveBar',
+                        color: t.dir === 1 ? '#22C55E' : '#EF4444',
+                        shape: t.dir === 1 ? 'arrowUp' : 'arrowDown',
+                        text: `${t.dir === 1 ? 'B' : 'S'} ${t.lots}x@${t.price.toFixed(0)}`,
+                    }));
+                    CC.setMarkers(null, markers); // null ticker: не проверять контекст (стратегийные маркеры)
+                }
             }
             
             if (data.current) updateIndicatorMetrics(data.current);
@@ -1895,7 +1886,7 @@ let robots = JSON.parse(localStorage.getItem('hf_robots') || '[]');
 
 // Пресеты параметров по стратегии + инструменту
 const STRAT_PRESETS = {
-    'v7-SiM6': {sarStart:0.009,sarStep:0.01,sarMax:0.2,ema:30,gridStep:35,gridSpread:35,maxGrid:70,stdPeriod:14,stdMult:1.5,gridHold:true,closePct:0.15},
+    'v7-SiU6': {sarStart:0.009,sarStep:0.01,sarMax:0.2,ema:30,gridStep:35,gridSpread:35,maxGrid:70,stdPeriod:14,stdMult:1.5,gridHold:true,closePct:0.15},
     'v8-RIM6': {sarStart:0.009,sarStep:0.02,sarMax:0.2,ema:20,gridStep:1672,gridSpread:1672,maxGrid:70,stdPeriod:20,stdMult:2.5,gridHold:true,closePct:0.15},
     'v8-GDM6': {sarStart:0.009,sarStep:0.02,sarMax:0.2,ema:20,gridStep:41,gridSpread:41,maxGrid:70,stdPeriod:20,stdMult:2.5,gridHold:true,closePct:0.15},
     'v8-SPM6': {sarStart:0.009,sarStep:0.02,sarMax:0.2,ema:20,gridStep:460,gridSpread:460,maxGrid:70,stdPeriod:20,stdMult:2.5,gridHold:true,closePct:0.15},
@@ -1918,7 +1909,7 @@ function onStratVersionChange() {
 
 function onStratInstrChange() {
     const ver = el('stratVersion')?.value || 'v7';
-    const instr = el('stratInstrument')?.value || 'SiM6';
+    const instr = el('stratInstrument')?.value || 'SiU6';
     const key = ver + '-' + instr;
     const p = STRAT_PRESETS[key];
     if (p) {
@@ -1939,7 +1930,7 @@ function onStratInstrChange() {
 function vpScalpGridCreateRobot() {
     const robot = {
         id: Date.now(),
-        ticker: el('cfgVpTicker')?.value || 'SiM6',
+        ticker: el('cfgVpTicker')?.value || 'SiU6',
         account: '',
         accountName: '',
         strategy: 'VP Scalp Grid',
@@ -1966,7 +1957,7 @@ function vpScalpGridCreateRobot() {
 function vpCopyCreateRobot() {
     const robot = {
         id: Date.now(),
-        ticker: el('cfgVpTicker')?.value || 'SiM6',
+        ticker: el('cfgVpTicker')?.value || 'SiU6',
         account: '',
         accountName: '',
         strategy: 'VP Scalp Grid Copy',
@@ -2103,7 +2094,7 @@ function stratCreateRobot() {
 function confirmCreateRobot() {
     const robot = {
         id: Date.now(),
-        ticker: el('robotTicker')?.value || 'SiM6',
+        ticker: el('robotTicker')?.value || 'SiU6',
         account: el('robotAccount')?.value || '',
         accountName: el('robotAccount')?.selectedOptions?.[0]?.text || '',
         strategy: el('stratVersion')?.value === 'v8' ? 'SAR×EMA Grid MM v8 (Trend)' : 'SAR×EMA Grid MM v7',
@@ -2177,17 +2168,64 @@ let _mainRobotInstrument = localStorage.getItem('mainRobotInstrument') || 'SiU6'
 // === Order Flow robot instrument/account ===
 function onOfRobotInstrumentChange(val) {
     localStorage.setItem('ofRobotInstrument', val);
-    // Persist to the robot — localStorage alone never reached the server (fix 16.09.2026)
-    fetch(OF_ROBOT_API + '/params', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({ticker: val})
-    }).then(r => r.json()).then(d => {
-        if (d && d.ok === false) { addLog(nowTime(), 'ERROR', '📊 OF инструмент не сохранён: ' + (d.error || 'unknown')); return; }
-        addLog(nowTime(), 'INFO', `📊 OF инструмент ${val} сохранён на роботе (применится при рестарте 🔄)`);
-    }).catch(e => {
-        addLog(nowTime(), 'ERROR', '📊 OF инструмент не сохранён (робот офлайн?): ' + e.message);
-    });
+    applyInstrument('of', val);
+}
+function onOfMxRobotInstrumentChange(val) {
+    localStorage.setItem('ofMxRobotInstrument', val);
+    applyInstrument('of_mx', val);
+}
+// F-017: смена контракта OF-робота: живой /instrument (stopped+FLAT) или .env для следующего старта
+async function applyInstrument(robot, val) {
+    const api = robot === 'of_mx' ? OF_MX_ROBOT_API : OF_ROBOT_API;
+    const label = robot === 'of_mx' ? 'OF-MX' : 'OF';
+    try {
+        // робот жив? пробуем живую смену (работает только stopped+FLAT)
+        const st = await fetch(api + '/status', {signal: AbortSignal.timeout(2500)}).then(r => r.json()).catch(() => null);
+        if (st && st.mode) {
+            const resp = await fetch(api + '/instrument', {
+                method: 'POST', headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({instrument: val}), signal: AbortSignal.timeout(20000)
+            });
+            const data = await resp.json();
+            if (data.ok) {
+                showToast('📊 Контракт переключён на ' + data.symbol, 'ok');
+                addLog(nowTime(), 'INFO', `${label} контракт -> ${data.symbol}` + (data.unchanged ? ' (без изменений)' : ''));
+                localStorage.setItem(robot === 'of_mx' ? 'ofMxRobotInstrument' : 'ofRobotInstrument', (data.ticker || val));
+            } else {
+                // робот работает (409) — сохраняем выбор в .env, применится при следующем ⏹/▶
+                const envResp = await fetch('/api/robot/update-instrument', {
+                    method: 'POST', headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({instrument: val, robot: robot}), signal: AbortSignal.timeout(10000)
+                });
+                const envData = await envResp.json();
+                if (envData.ok) {
+                    showToast('📊 Робот работает — ' + val + ' сохранён и применится после ⏹/▶', 'ok');
+                    addLog(nowTime(), 'INFO', `${label} контракт ${val} сохранён в env (робот ${st.mode})`);
+                } else {
+                    showToast('⚠ ' + (data.error || 'не удалось сохранить контракт'), 'error');
+                    addLog(nowTime(), 'WARN', `${label} switch отклонён: ${data.error || '?'}, env тоже: ${envData.error || '?'}`);
+                }
+            }
+        } else {
+            // процесс не поднят — пишем в robot/.env через сервер
+            const resp = await fetch('/api/robot/update-instrument', {
+                method: 'POST', headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({instrument: val, robot: robot}), signal: AbortSignal.timeout(10000)
+            });
+            const data = await resp.json();
+            if (data.ok) {
+                showToast('📊 Контракт ' + val + ' сохранён (применится при старте)', 'ok');
+                addLog(nowTime(), 'INFO', `${label} контракт -> ${data.symbol} (env)`);
+            } else {
+                showToast('❌ Не удалось сохранить контракт: ' + (data.error || '?'), 'error');
+                addLog(nowTime(), 'ERROR', `${label} env switch failed: ${data.error || '?'}`);
+            }
+        }
+    } catch(e) {
+        addLog(nowTime(), 'ERROR', `${label} контракт не изменён: ${e.message}`);
+        showToast('❌ Смена контракта не удалась: ' + e.message, 'error');
+    }
+    renderRobots();
 }
 function onOfRobotAccountChange(val) {
     localStorage.setItem('ofRobotAccount', val);
@@ -2241,7 +2279,7 @@ async function renderRobots() {
     let localRows = [];
     try {
         robots.forEach((r, idx) => {
-            const ticker = r.ticker || 'SiM6';
+            const ticker = r.ticker || 'SiU6';
             const strat = r.strategy || 'VP Scalp Grid';
             const step = r.isInstance ? (r.step_base || '?') : (r.gridStep || '?');
             const spread = r.isInstance ? (r.spread_base || '?') : (r.gridSpread || '?');
@@ -2325,7 +2363,7 @@ async function renderRobots() {
 
     // Order Flow Robot row
     let ofRobotRow = '';
-    let _ofInstrument = (ofRobot && ofRobot.symbol ? String(ofRobot.symbol).split('@')[0] : null) || localStorage.getItem('ofRobotInstrument') || 'SiU6';
+    let _ofInstrument = (ofRobot && ofRobot.symbol ? ofRobot.symbol.split('@')[0] : (localStorage.getItem('ofRobotInstrument') || 'SiU6'));
     let _ofAccount = localStorage.getItem('ofRobotAccount') || '1225953';
     if (ofRobot) {
         const s = ofRobot;
@@ -2355,7 +2393,6 @@ async function renderRobots() {
                 <button class="btn btn-success btn-sm" onclick="ofRobotApi('start')" ${mode==='running'?'disabled':''}>▶</button>
                 <button class="btn btn-warning btn-sm" onclick="ofRobotApi('pause')" ${mode!=='running'?'disabled':''}>⏸</button>
                 <button class="btn btn-danger btn-sm" onclick="ofRobotApi('stop')" ${mode==='stopped'?'disabled':''}>⏹</button>
-                <button class="btn btn-sm" style="background:#2196F3;color:#fff" onclick="ofRobotRestart()" ${window._ofRestarting?'disabled':''}>${window._ofRestarting?'⏳':'🔄'}</button>
             </td>
             <td class="${modeCls}">${modeText}</td>
         </tr>`;
@@ -2376,7 +2413,6 @@ async function renderRobots() {
             <td>—</td>
             <td>
                 <button class="btn btn-success btn-sm" onclick="ofRobotApi('start')">▶</button>
-                <button class="btn btn-sm" style="background:#2196F3;color:#fff" onclick="ofRobotRestart()" ${window._ofRestarting?'disabled':''}>${window._ofRestarting?'⏳':'🔄'}</button>
             </td>
             <td class="red">🔴 Не запущен</td>
         </tr>`;
@@ -2384,7 +2420,7 @@ async function renderRobots() {
 
     // Order Flow MX Robot row
     let ofMxRobotRow = '';
-    let _ofMxInstrument = localStorage.getItem('ofMxRobotInstrument') || 'MXU6';
+    let _ofMxInstrument = (ofMxRobot && ofMxRobot.symbol ? ofMxRobot.symbol.split('@')[0] : (localStorage.getItem('ofMxRobotInstrument') || 'MXU6'));
     let _ofMxAccount = localStorage.getItem('ofMxRobotAccount') || '1225953';
     if (ofMxRobot) {
         const s = ofMxRobot;
@@ -2415,7 +2451,6 @@ async function renderRobots() {
                 <button class="btn btn-success btn-sm" onclick="ofMxRobotApi('start')" ${mode==='running'?'disabled':''}>▶</button>
                 <button class="btn btn-warning btn-sm" onclick="ofMxRobotApi('pause')" ${mode!=='running'?'disabled':''}>⏸</button>
                 <button class="btn btn-danger btn-sm" onclick="ofMxRobotApi('stop')" ${mode==='stopped'?'disabled':''}>⏹</button>
-                <button class="btn btn-sm" style="background:#2196F3;color:#fff" onclick="ofMxRobotRestart()" ${window._ofMxRestarting?'disabled':''}>${window._ofMxRestarting?'⏳':'🔄'}</button>
             </td>
             <td class="${modeCls}">${modeText}</td>
         </tr>`;
@@ -2437,74 +2472,13 @@ async function renderRobots() {
             <td>—</td>
             <td>
                 <button class="btn btn-success btn-sm" onclick="ofMxRobotApi('start')">▶</button>
-                <button class="btn btn-sm" style="background:#2196F3;color:#fff" onclick="ofMxRobotRestart()" ${window._ofMxRestarting?'disabled':''}>${window._ofMxRestarting?'⏳':'🔄'}</button>
             </td>
             <td class="red">🔴 Не запущен</td>
         </tr>`;
     }
 
-    let ofBrRobotRow = '';
-    let _ofBrInstrument = localStorage.getItem('ofBrRobotInstrument') || 'BRV6';
-    let _ofBrAccount = localStorage.getItem('ofBrRobotAccount') || '1225953';
-    if (ofBrRobot) {
-        const s = ofBrRobot;
-        const mode = s.mode || 'stopped';
-        const modeText = mode === 'running' ? '🟢 Работает' : mode === 'paused' ? '🟡 Пауза' : '🔴 Остановлен';
-        const modeCls = mode === 'running' ? 'green' : mode === 'paused' ? 'yellow' : 'red';
-        const dirText = s.direction === 'LONG' ? 'Лонг' : s.direction === 'SHORT' ? 'Шорт' : 'Флат';
-        const dirCls = s.direction === 'LONG' ? 'green' : s.direction === 'SHORT' ? 'red' : '';
-        const pnlCls = v => v >= 0 ? 'green' : 'red';
-        const pnl = s.realizedPnL || 0;
-        const paper = s.paper ? ' <span class="badge" style="background:#ff9800">PAPER</span>' : '';
-        ofBrRobotRow = `<tr ondblclick="ofBrRobotEditPanel()" style="cursor:pointer" title="Двойной клик — настройки робота">
-            <td><select class="input" style="width:80px;font-size:11px" onchange="onOfBrRobotInstrumentChange(this.value)">
-              <option value="BRV6" ${_ofBrInstrument==='BRV6'?'selected':''}>BRV6</option>
-              <option value="BRX6" ${_ofBrInstrument==='BRX6'?'selected':''}>BRX6</option>
-              <option value="BRZ6" ${_ofBrInstrument==='BRZ6'?'selected':''}>BRZ6</option>
-              <option value="BRH7" ${_ofBrInstrument==='BRH7'?'selected':''}>BRH7</option>
-              <option value="BRM7" ${_ofBrInstrument==='BRM7'?'selected':''}>BRM7</option>
-            </select></td>
-            <td><strong>Order Flow</strong> <span class="badge" style="background:#007ACC">BR</span>${paper}</td>
-            <td>${accountDropdownHtml(_ofBrAccount, 'onOfBrRobotAccountChange(this.value)')}</td>
-            <td class="${dirCls}">${dirText}${s.avgPrice > 0 ? ' @ ' + s.avgPrice.toFixed(2) : ''}</td>
-            <td>—</td>
-            <td class="${pnlCls(pnl)}">${pnl >= 0 ? '+' : ''}${pnl.toFixed(0)} ₽</td>
-            <td>${s.totalLots || 0}</td>
-            <td>—</td>
-            <td>
-                <button class="btn btn-success btn-sm" onclick="ofBrRobotApi('start')" ${mode==='running'?'disabled':''}>▶</button>
-                <button class="btn btn-warning btn-sm" onclick="ofBrRobotApi('pause')" ${mode!=='running'?'disabled':''}>⏸</button>
-                <button class="btn btn-danger btn-sm" onclick="ofBrRobotApi('stop')" ${mode==='stopped'?'disabled':''}>⏹</button>
-                <button class="btn btn-sm" style="background:#2196F3;color:#fff" onclick="ofBrRobotRestart()" ${window._ofBrRestarting?'disabled':''}>${window._ofBrRestarting?'⏳':'🔄'}</button>
-            </td>
-            <td class="${modeCls}">${modeText}</td>
-        </tr>`;
-    } else {
-        ofBrRobotRow = `<tr ondblclick="ofBrRobotEditPanel()" style="cursor:pointer" title="Двойной клик — настройки робота">
-            <td><select class="input" style="width:80px;font-size:11px" onchange="onOfBrRobotInstrumentChange(this.value)">
-              <option value="BRV6" ${_ofBrInstrument==='BRV6'?'selected':''}>BRV6</option>
-              <option value="BRX6" ${_ofBrInstrument==='BRX6'?'selected':''}>BRX6</option>
-              <option value="BRZ6" ${_ofBrInstrument==='BRZ6'?'selected':''}>BRZ6</option>
-              <option value="BRH7" ${_ofBrInstrument==='BRH7'?'selected':''}>BRH7</option>
-              <option value="BRM7" ${_ofBrInstrument==='BRM7'?'selected':''}>BRM7</option>
-            </select></td>
-            <td><strong>Order Flow</strong> <span class="badge" style="background:#007ACC">BR</span></td>
-            <td>${accountDropdownHtml(_ofBrAccount, 'onOfBrRobotAccountChange(this.value)')}</td>
-            <td>—</td>
-            <td>—</td>
-            <td>—</td>
-            <td>0</td>
-            <td>—</td>
-            <td>
-                <button class="btn btn-success btn-sm" onclick="ofBrRobotApi('start')">▶</button>
-                <button class="btn btn-sm" style="background:#2196F3;color:#fff" onclick="ofBrRobotRestart()" ${window._ofBrRestarting?'disabled':''}>${window._ofBrRestarting?'⏳':'🔄'}</button>
-            </td>
-            <td class="red">🔴 Не запущен</td>
-        </tr>`;
-    }
-
-    const allRows = [...serverStrategies, ...localRows, pythonRobotRow, ofRobotRow, ofMxRobotRow, ofBrRobotRow];
-        if (!allRows.filter(r=>r).length) { tbody.innerHTML = ''; if (noMsg) noMsg.style.display = 'block'; return; }
+    const allRows = [...serverStrategies, ...localRows, pythonRobotRow, ofRobotRow, ofMxRobotRow];
+    if (!allRows.filter(r=>r).length) { tbody.innerHTML = ''; if (noMsg) noMsg.style.display = 'block'; return; }
     if (noMsg) noMsg.style.display = 'none';
     tbody.innerHTML = allRows.join('');
 }
@@ -2559,7 +2533,7 @@ async function robotStart(i) {
         const isV8 = r.strategy && r.strategy.includes('v8');
         apiBase = isV8 ? '/strategy/grid-mm-v8' : '/strategy/grid-mm-v7';
         body = {
-            instrument: r.ticker || 'SiM6',
+            instrument: r.ticker || 'SiU6',
             sarStart: parseFloat(r.sarStart) || 0.009,
             sarStep: parseFloat(r.sarStep) || 0.01,
             sarMax: parseFloat(r.sarMax) || 0.2,
@@ -2588,14 +2562,17 @@ async function robotStart(i) {
         r.exchangeStatus = 'Подключен';
         saveRobots(); renderRobots();
         addLog(nowTime(), 'INFO', `🤖 Робот ${r.strategy} ${r.ticker} запущен`);
-    } catch (e) { addLog(nowTime(), 'ERROR', e.message); }
+    } catch (e) {
+        addLog(nowTime(), 'ERROR', 'Действие не выполнено: ' + e.message);
+        showToast('⚠ Действие не выполнено: ' + e.message + ' — проверь, поднят ли процесс робота', 'error');
+    }
 }
 
 async function startLocalStorageRobot(idx) {
     const r = robots[idx];
     if (!r) return;
 
-    const ticker = r.ticker || 'SiM6';
+    const ticker = r.ticker || 'SiU6';
 
     // Already an instance with port — start via launcher
     if ((r.isInstance || r.port) && r.port) {
@@ -2621,7 +2598,7 @@ async function startLocalStorageRobot(idx) {
         return;
     }
 
-    // No instance yet — auto-create (always, for any ticker including SiM6)
+    // No instance yet — auto-create (always, for any ticker including SiU6)
     const usedPorts = robots.map(rb => rb.port || 0).filter(p => p > 0);
     let port = 5071;
     while (usedPorts.includes(port)) port++;
@@ -2986,7 +2963,10 @@ async function robotPause(i) {
         r.status = 'paused';
         saveRobots(); renderRobots();
         addLog(nowTime(), 'INFO', `⏸ Робот ${r.ticker} на паузе`);
-    } catch (e) { addLog(nowTime(), 'ERROR', e.message); }
+    } catch (e) {
+        addLog(nowTime(), 'ERROR', 'Действие не выполнено: ' + e.message);
+        showToast('⚠ Действие не выполнено: ' + e.message + ' — проверь, поднят ли процесс робота', 'error');
+    }
 }
 
 async function robotStop(i) {
@@ -3270,7 +3250,7 @@ async function loadTradeJournal(robot) {
         let trades = Array.isArray(raw) ? raw : (raw.trades || []);
         
         // Filter by robot ticker
-        const ticker = robot.ticker || 'SiM6';
+        const ticker = robot.ticker || 'SiU6';
         trades = trades.filter(t => {
             const tTicker = t.symbol || t.ticker || t.Ticker || '';
             return tTicker.includes(ticker) || tTicker.includes(ticker.replace('@RTSX', ''));
@@ -3637,6 +3617,8 @@ function fmtPnl(n) {
 }
 
 // === Arbitrage Python Robot — factory ===
+const ARB_PROC_NAMES = { arbPy: 'arb_gazp', sber: 'arb_sber', brCal: 'arb_br' };
+
 function createArbInstance(prefix, port) {
     const baseUrl = 'http://' + (window.location.hostname || 'localhost') + ':' + port;
     let data = null;
@@ -3654,7 +3636,7 @@ function createArbInstance(prefix, port) {
         const d = await fetch2('/status');
         if (!d) {
             const s = el(prefix+'Status');
-            if (s) { s.textContent = '❌ Не подключён'; s.style.color = 'var(--red)'; }
+            if (s) { s.textContent = '⚪ Процесс не поднят'; s.style.color = 'var(--text-muted)'; }
             return;
         }
         data = d;
@@ -3713,35 +3695,67 @@ function createArbInstance(prefix, port) {
     async function pause() { await fetch2('/pause','POST'); refresh(); }
     async function stop()  { await fetch2('/stop','POST'); refresh(); }
 
-    return { refresh, start, pause, stop, fetch: fetch2, getData: () => data };
+    // F-018: старт/стоп процесса через серверный RobotProcessManager (start = Dmitry only)
+    // F-019-fix: после подъёма процесса шлём роботу POST /start — торговля включается сразу,
+    // как это делала старая кнопка (fetch2('/start')) при живом процессе
+    async function startViaServer() {
+        const name = ARB_PROC_NAMES[prefix];
+        if (!name) { await fetch2('/start', 'POST'); return; }
+        try {
+            const r = await fetch(`/api/of/process/${name}/start`, {method: 'POST', signal: AbortSignal.timeout(45000)});
+            const pd = await r.json();
+            if (pd.ok) {
+                if (pd.alreadyRunning) arbPyLog(`ℹ️ Процесс ${name} уже жив — включаю торговлю`, 'INFO');
+                else arbPyLog(`🟢 Процесс ${name} поднят (pid ${pd.pid || '?'})`, 'INFO');
+                // процесс поднят (или уже жил): ждём подъёма API и включаем торговлю
+                await new Promise(res => setTimeout(res, pd.alreadyRunning ? 300 : 2500));
+                try {
+                    await fetch2('/start', 'POST');
+                    arbPyLog('▶️ Торговля включена (mode=running)', 'INFO');
+                } catch(e2) {
+                    arbPyLog(`⚠️ Процесс поднят, но /start не прошёл: ${e2.message}`, 'WARN');
+                }
+            }
+            else { arbPyLog(`❌ Процесс ${name} не поднялся: ${pd.error || '?'}`, 'ERROR'); showToast('❌ Процесс не поднялся: ' + (pd.error || '?'), 'error'); }
+        } catch(e) { arbPyLog(`❌ process start error: ${e.message}`, 'ERROR'); }
+    }
+    async function stopViaServer() {
+        const name = ARB_PROC_NAMES[prefix];
+        if (!name) { await fetch2('/stop', 'POST'); return; }
+        // если робот жив — сначала остановить торговлю, потом убить процесс
+        try { await fetch2('/stop', 'POST'); } catch(e) { /* процесс не поднят — ок */ }
+        try {
+            await fetch(`/api/of/process/${name}/stop`, {method: 'POST', signal: AbortSignal.timeout(15000)});
+            arbPyLog(`⏹ Процесс ${name} остановлен`, 'INFO');
+        } catch(e) { arbPyLog(`❌ process stop error: ${e.message}`, 'ERROR'); }
+    }
+    return { refresh, start: startViaServer, pause: async () => await fetch2('/pause', 'POST'), stop: stopViaServer, fetch: fetch2, getData: () => data, baseUrl: baseUrl };
 }
 
 // === Create arb robot instances ===
 const arbPy = createArbInstance('arbPy', 5090);
 const sber = createArbInstance('sber', 5091);
 const brCal = createArbInstance('brCal', 5092);
-const lkoh = createArbInstance('lkoh', 5093);
+window['arbApi_gazp'] = arbPy;
+window['arbApi_sber'] = sber;
+window['arbApi_br'] = brCal;
 
 // Expose as global functions for onclick handlers
-async function arbPyStart() { arbPy.start(); arbPyLog('▶️ Запуск GAZP/GZU6...'); }
-async function arbPyPause() { arbPy.pause(); arbPyLog('⏸ Пауза GAZP/GZU6...'); }
-async function arbPyStop()  { arbPy.stop();  arbPyLog('⏹ Стоп GAZP/GZU6...'); }
-async function sberStart()  { sber.start(); arbPyLog('▶️ Запуск SBER/SRU6...'); }
-async function sberPause()  { sber.pause(); arbPyLog('⏸ Пауза SBER/SRU6...'); }
-async function sberStop()   { if (!confirm('Остановить SBER/SRU6?')) return; sber.stop(); arbPyLog('⏹ Стоп SBER/SRU6...'); }
+async function arbPyStart() { arbPy.start(); arbPyLog('▶️ Запуск GAZP/GZZ6...'); }
+async function arbPyPause() { arbPy.pause(); arbPyLog('⏸ Пауза GAZP/GZZ6...'); }
+async function arbPyStop()  { arbPy.stop();  arbPyLog('⏹ Стоп GAZP/GZZ6...'); }
+async function sberStart()  { sber.start(); arbPyLog('▶️ Запуск SBER/SRZ6...'); }
+async function sberPause()  { sber.pause(); arbPyLog('⏸ Пауза SBER/SRZ6...'); }
+async function sberStop()   { if (!confirm('Остановить SBER/SRZ6?')) return; sber.stop(); arbPyLog('⏹ Стоп SBER/SRZ6...'); }
 async function brCalStart() { brCal.start(); arbPyLog('▶️ Запуск BR Calendar...'); }
 async function brCalPause() { brCal.pause(); arbPyLog('⏸ Пауза BR Calendar...'); }
 async function brCalStop()  { if (!confirm('Остановить BR Calendar?')) return; brCal.stop(); arbPyLog('⏹ Стоп BR Calendar...'); }
-async function lkohStart()  { lkoh.start(); arbPyLog('▶️ Запуск LKOH/LKZ6...'); }
-async function lkohPause()  { lkoh.pause(); arbPyLog('⏸ Пауза LKOH/LKZ6...'); }
-async function lkohStop()   { if (!confirm('Остановить LKOH/LKZ6?')) return; lkoh.stop(); arbPyLog('⏹ Стоп LKOH/LKZ6...'); }
 
 // Back-compat: arbPyRefresh now calls both
 async function arbPyRefresh() {
     await arbPy.refresh();
     await sber.refresh();
     await brCal.refresh();
-    await lkoh.refresh();
     arbPyData = arbPy.getData();
 }
 
@@ -3750,640 +3764,25 @@ async function arbPyFetch(path, method='GET', body=null) {
     return arbPy.fetch(path, method, body);
 }
 
-function arbPyLog(msg, level='INFO') {
-    const containers = document.querySelectorAll('.arb-log');
-    if (!containers.length) return;
+function arbPyLog(msg, level='INFO', containerId='arbPyLogContainer') {
+    const c = el(containerId) || el('arbPyLogContainer');
+    if (!c) return;
     const t = new Date().toLocaleTimeString('ru-RU');
     const color = level === 'ERROR' ? '#F44336' : level === 'WARN' ? '#FF9800' : '#4CAF50';
-    containers.forEach(c => {
-        c.innerHTML = `<div style="padding:2px 0;color:${color}">[${t}] ${level}: ${msg}</div>` + c.innerHTML;
-        while (c.children.length > 50) c.removeChild(c.lastChild);
-    });
-}
-function arbPyEditPanel() {
-    const existing = el('arbPyEditPanel');
-    if (existing) { existing.remove(); _arbJournalInstance = null; return; }
-    // Set journal instance to GAZP (null=arbPy) only if not already set by sber/brCal caller
-    // Always reset for GAZP panel — sber/brCal panels set their own instance AFTER this call
-    _arbJournalInstance = null;
-
-    const p = (arbPyData && arbPyData.params) || {};
-    const div = document.createElement('div');
-    div.id = 'arbPyEditPanel';
-    div.className = 'card';
-    div.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);z-index:1000;width:750px;max-height:90vh;overflow-y:auto;box-shadow:0 8px 32px rgba(0,0,0,.5)';
-    div.innerHTML = `
-        <div class="card-header row gap-8">
-            🔄 Арбитражный робот (PYTHON)
-            <span style="flex:1"></span>
-            <button class="btn btn-primary btn-sm" onclick="arbPyShowCopyDialog()">📋 Копировать</button>
-            <button class="btn btn-primary btn-sm" onclick="arbPySaveFromPanel()">💾 Сохранить</button>
-            <button class="btn btn-secondary btn-sm" onclick="el('arbPyEditPanel')?.remove()">✕</button>
-        </div>
-        <div style="padding:16px;display:flex;flex-direction:column;gap:16px">
-            <!-- Счёт + Капитал -->
-            <div class="metrics-row" style="flex-wrap:wrap">
-                <div class="metric-card" style="min-width:180px"><div class="metric-label">📋 Счёт</div>
-                    <select id="arbAccount" class="input" style="width:200px">
-                        <option value="2049688" selected>2049688 (EDP)</option>
-                    </select>
-                    <input type="hidden" id="arbAccountSaved" value="2049688">
-                </div>
-                <div class="metric-card" style="min-width:140px"><div class="metric-label">Капитал (₽)</div><input id="arbCapital" class="input" type="number" value="${p.capital||1000000}" style="width:120px"></div>
-            </div>
-
-            <hr style="border-color:var(--border-color)">
-
-            <!-- Инструменты -->
-            <div class="metrics-row" style="flex-wrap:wrap">
-                <div class="metric-card" style="min-width:160px"><div class="metric-label">📈 Инструмент A</div>
-                    <select id="arbSymA" class="input" style="width:140px" onchange="arbUpdateCommissionLabels()">
-                        <option value="GAZP" ${(p.ticker_a||'GAZP')==='GAZP'?'selected':''}>GAZP (Газпром)</option>
-                        <option value="SBER" ${p.ticker_a==='SBER'?'selected':''}>SBER (Сбербанк)</option>
-                        <option value="LKOH" ${p.ticker_a==='LKOH'?'selected':''}>LKOH (Лукойл)</option>
-                        <option value="ROSN" ${p.ticker_a==='ROSN'?'selected':''}>ROSN (Роснефть)</option>
-                        <option value="TATN" ${p.ticker_a==='TATN'?'selected':''}>TATN (Татнефть)</option>
-                        <option value="GMKN" ${p.ticker_a==='GMKN'?'selected':''}>GMKN (Норникель)</option>
-                        <option value="ALRS" ${p.ticker_a==='ALRS'?'selected':''}>ALRS (Алроса)</option>
-                        <option value="VTBR" ${p.ticker_a==='VTBR'?'selected':''}>VTBR (ВТБ)</option>
-                        <option value="MTSS" ${p.ticker_a==='MTSS'?'selected':''}>MTSS (МТС)</option>
-                        <option value="NVTK" ${p.ticker_a==='NVTK'?'selected':''}>NVTK (Новатэк)</option>
-                        <option value="BRQ6" ${p.ticker_a==='BRQ6'?'selected':''}>BRQ6 (Brent Aug)</option>
-                        <option value="BRU6" ${p.ticker_a==='BRU6'?'selected':''}>BRU6 (Brent Sep)</option>
-                        <option value="BRZ6" ${p.ticker_a==='BRZ6'?'selected':''}>BRZ6 (Brent Dec)</option>
-                        <option value="BRK6" ${p.ticker_a==='BRK6'?'selected':''}>BRK6 (Brent Jun)</option>
-                    </select>
-                </div>
-                <div class="metric-card" style="min-width:160px"><div class="metric-label">📉 Инструмент B</div>
-                    <select id="arbSymB" class="input" style="width:140px">
-                        <option value="GZM6" ${(p.ticker_b||'GZM6')==='GZM6'?'selected':''}>GZM6 (Газпром фьюч)</option>
-                        <option value="GZU6" ${p.ticker_b==='GZU6'?'selected':''}>GZU6 (Газпром фьюч)</option>
-                        <option value="SRM6" ${p.ticker_b==='SRM6'?'selected':''}>SRM6 (Сбер фьюч)</option>
-                        <option value="SRU6" ${p.ticker_b==='SRU6'?'selected':''}>SRU6 (Сбер фьюч)</option>
-                        <option value="LKM6" ${p.ticker_b==='LKM6'?'selected':''}>LKM6 (Лукойл фьюч)</option>
-                        <option value="RNM6" ${p.ticker_b==='RNM6'?'selected':''}>RNM6 (Роснефть фьюч)</option>
-                        <option value="TTM6" ${p.ticker_b==='TTM6'?'selected':''}>TTM6 (Татнефть фьюч)</option>
-                        <option value="MXM6" ${p.ticker_b==='MXM6'?'selected':''}>MXM6 (Мосбиржа фьюч)</option>
-                        <option value="SiM6" ${p.ticker_b==='SiM6'?'selected':''}>SiM6 (Доллар/руб)</option>
-                        <option value="SiU6" ${p.ticker_b==='SiU6'?'selected':''}>SiU6 (Доллар/руб)</option>
-                        <option value="RIM6" ${p.ticker_b==='RIM6'?'selected':''}>RIM6 (RTS фьюч)</option>
-                        <option value="RIU6" ${p.ticker_b==='RIU6'?'selected':''}>RIU6 (RTS фьюч)</option>
-                        <option value="GDM6" ${p.ticker_b==='GDM6'?'selected':''}>GDM6 (Золото фьюч)</option>
-                        <option value="BRQ6" ${p.ticker_b==='BRQ6'?'selected':''}>BRQ6 (Brent Aug фьюч)</option>
-                        <option value="BRU6" ${p.ticker_b==='BRU6'?'selected':''}>BRU6 (Brent Sep фьюч)</option>
-                        <option value="BRZ6" ${p.ticker_b==='BRZ6'?'selected':''}>BRZ6 (Brent Dec фьюч)</option>
-                        <option value="BRK6" ${p.ticker_b==='BRK6'?'selected':''}>BRK6 (Brent Jun фьюч)</option>
-                    </select>
-                </div>
-                <div class="metric-card"><div class="metric-label">Лоты A</div><input id="arbLotsA" class="input" type="number" value="${p.lots_a||10}" style="width:70px"></div>
-                <div class="metric-card"><div class="metric-label">Лоты B</div><input id="arbLotsB" class="input" type="number" value="${p.lots_b||1}" style="width:70px"></div>
-                <div class="metric-card"><div class="metric-label">Hedge Ratio</div><input id="arbHedgeRatio" class="input" type="number" step="0.1" value="${p.hedge_ratio||10}" style="width:70px"></div>
-            </div>
-
-            <!-- Комиссия -->
-            <div class="metrics-row" style="flex-wrap:wrap">
-                <div class="metric-card" style="min-width:280px;border:1px solid var(--border-color)">
-                    <div class="metric-label">💰 Комиссия</div>
-                    <label style="display:flex;align-items:center;gap:8px;cursor:pointer;padding:4px 0">
-                        <input type="checkbox" id="arbUseCommission" ${p.use_commission!==false?'checked':''} style="width:18px;height:18px;cursor:pointer">
-                        <span style="font-size:13px">Включить комиссию в расчёт PnL</span>
-                    </label>
-                </div>
-                <div class="metric-card"><div class="metric-label" id="arbCommALabel">${/\d/.test(p.ticker_a||'') ? 'Фьючерс A (₽ за контракт RT)' : 'Акция A (% за сторону)'}</div><input id="arbCommStock" class="input" type="number" step="0.01" value="${/\d/.test(p.ticker_a||'') ? (p.commission_futures_rt||15) : (p.commission_stock_pct||0.04)}" style="width:80px"></div>
-                <div class="metric-card"><div class="metric-label">Фьючерс B (₽ за контракт RT)</div><input id="arbCommFut" class="input" type="number" step="0.1" value="${p.commission_futures_rt||0.9}" style="width:80px"></div>
-            </div>
-            <div id="arbCommBothFut" style="font-size:12px;color:var(--yellow);padding:4px 0;display:${/\d/.test(p.ticker_a||'')?'block':'none'}">⚠️ Обе ноги — фьючерсы. Комиссия B (₽ RT) применяется к обеим ногам.</div>
-            </div>
-
-            <hr style="border-color:var(--border-color)">
-
-            <!-- Вход -->
-            <div class="metrics-row" style="flex-wrap:wrap">
-                <div class="metric-card"><div class="metric-label">Entry Z (SHORT)</div><input id="arbEntryZ" class="input" type="number" step="0.1" value="${p.entry_z||1.5}" style="width:70px"></div>
-                <div class="metric-card"><div class="metric-label">Entry Z (LONG)</div><input id="arbEntryZLong" class="input" type="number" step="0.1" value="${p.entry_z_long||1.5}" style="width:70px"></div>
-                <div class="metric-card"><div class="metric-label">Lookback</div><input id="arbLookback" class="input" type="number" value="${p.lookback||50}" style="width:70px"></div>
-                <div class="metric-card"><div class="metric-label">Leg A Timeout (сек)</div><input id="arbLegTimeout" class="input" type="number" value="${p.leg_a_timeout||5}" style="width:70px"></div>
-                <div class="metric-card"><div class="metric-label">Min Fill Ratio</div><input id="arbMinFill" class="input" type="number" step="0.05" value="${p.min_fill_ratio||0.5}" style="width:70px"></div>
-            </div>
-
-            <!-- Fair value -->
-            <div class="metrics-row" style="flex-wrap:wrap">
-                <div class="metric-card"><div class="metric-label">Ставка (годовые %)</div><input id="arbRate" class="input" type="number" step="0.1" value="${(p.risk_free_rate||0.16)*100}" style="width:70px"></div>
-                <div class="metric-card"><div class="metric-label">Экспирация</div><input id="arbExpiration" class="input" type="date" value="${p.expiration_date||'2026-09-18'}" style="width:130px"></div>
-                <div class="metric-card"><div class="metric-label">Размер контракта</div><input id="arbContractSize" class="input" type="number" value="${p.contract_size||100}" style="width:70px"></div>
-            </div>
-
-            <hr style="border-color:var(--border-color)">
-
-            <!-- Мин. профит (dropdown + значение) -->
-            <div class="metrics-row" style="flex-wrap:wrap;align-items:flex-end">
-                <div class="metric-card"><div class="metric-label">Мин. профит — тип</div>
-                    <select id="arbMinProfitType" class="input" style="width:110px">
-                        <option value="rub" ${(p.min_profit_type||'rub')==='rub'?'selected':''}>Рубли (₽)</option>
-                        <option value="pts" ${p.min_profit_type==='pts'?'selected':''}>Пункты</option>
-                        <option value="pct" ${p.min_profit_type==='pct'?'selected':''}>Проценты (%)</option>
-                    </select>
-                </div>
-                <div class="metric-card"><div class="metric-label">Значение</div><input id="arbMinProfitVal" class="input" type="number" step="0.1" value="${p.min_profit_value||20}" style="width:90px"></div>
-            </div>
-
-            <hr style="border-color:var(--border-color)">
-
-            <!-- Риск (dropdown + значение) -->
-            <div class="metrics-row" style="flex-wrap:wrap;align-items:flex-end">
-                <div class="metric-card"><div class="metric-label">Риск — тип</div>
-                    <select id="arbRiskType" class="input" style="width:150px">
-                        <option value="stop_loss_rub" ${(p.risk_type||'stop_loss_rub')==='stop_loss_rub'?'selected':''}>Стоп-лосс (₽)</option>
-                        <option value="time_stop_min" ${p.risk_type==='time_stop_min'?'selected':''}>Тайм-стоп (мин)</option>
-                        <option value="max_dd_pct" ${p.risk_type==='max_dd_pct'?'selected':''}>Max DD (%)</option>
-                        <option value="kill_switch" ${p.risk_type==='kill_switch'?'selected':''}>Kill Switch</option>
-                    </select>
-                </div>
-                <div class="metric-card"><div class="metric-label">Значение</div><input id="arbRiskVal" class="input" type="number" value="${p.risk_value||5000}" style="width:90px"></div>
-            </div>
-
-            <!-- Направление -->
-            <div class="metrics-row" style="flex-wrap:wrap">
-                <div class="metric-card" style="min-width:300px">
-                    <div class="metric-label">Направление</div>
-                    <label style="display:flex;align-items:center;gap:8px;cursor:pointer;padding:4px 0">
-                        <input type="checkbox" id="arbAllowLong" ${p.allow_long_basis?'checked':''} style="width:18px;height:18px;cursor:pointer">
-                        <span>Разрешить лонг (шорт акции + лонг фьючерса)</span>
-                    </label>
-                </div>
-            </div>
-
-            <hr style="border-color:var(--border-color)">
-
-            <!-- Раздвижка -->
-            <hr style="border-color:var(--border-color);margin:12px 0">
-            <div class="metrics-row" style="flex-wrap:wrap">
-                <div class="metric-card" style="background:#1a2332;border:1px solid var(--accent)"><div class="metric-label" style="color:var(--accent)">Раздвижка (₽)</div><div id="arbSpreadRub" style="font-size:22px;font-weight:bold;color:var(--accent)">—</div></div>
-                <div class="metric-card"><div class="metric-label">Fair Spread (₽)</div><div id="arbFairSpread" style="font-size:18px;font-weight:bold">—</div></div>
-                <div class="metric-card"><div class="metric-label">Deviation (₽)</div><div id="arbDeviation" style="font-size:18px;font-weight:bold">—</div></div>
-                <div class="metric-card"><div class="metric-label">Раздвижка (%)</div><div id="arbSpreadPct" style="font-size:18px;font-weight:bold">—</div></div>
-                <div class="metric-card"><div class="metric-label">GAZP × 100</div><div id="arbSpotValue" style="font-size:18px;font-weight:bold">—</div></div>
-                <div class="metric-card"><div class="metric-label" id="arbFutLabel">GZM6 (фьюч)</div><div id="arbFutValue" style="font-size:18px;font-weight:bold">—</div></div>
-                <div class="metric-card"><div class="metric-label">Basis (Z-score base)</div><div id="arbBasisVal" style="font-size:18px;font-weight:bold">—</div></div>
-                <div class="metric-card"><div class="metric-label">Z-score</div><div id="arbZVal" style="font-size:18px;font-weight:bold">—</div></div>
-                <div class="metric-card"><div class="metric-label">Basis Mean</div><div id="arbMeanVal" style="font-size:14px">—</div></div>
-                <div class="metric-card"><div class="metric-label">Basis Std</div><div id="arbStdVal" style="font-size:14px">—</div></div>
-                <div class="metric-card"><div class="metric-label">Days to Exp</div><div id="arbDaysExp" style="font-size:18px;font-weight:bold">—</div></div>
-                <!-- Variant 1: absolute thresholds toggle + inputs + reference -->
-                <div class="metric-card" style="min-width:320px;border:1px solid #e90"><div class="metric-label" style="color:#e90">📊 Калькулятор спреда</div>
-                    <label style="display:flex;align-items:center;gap:8px;cursor:pointer;padding:4px 0">
-                        <input type="checkbox" id="arbEntryModeRub" ${p.entry_mode==='spread_rub'?'checked':''} style="width:18px;height:18px;cursor:pointer" onchange="arbEntryModeToggle()">
-                        <span style="font-size:13px">Торговать по абсолютным порогам (₽)</span>
-                    </label>
-                    <div id="arbRubInputs" style="display:none;margin-top:6px">
-                        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-                            <div style="flex:1;min-width:100px"><label style="font-size:11px;color:#9CA3AF">Short (₽ &gt;)</label><input id="arbSpreadRubHigh" class="input" type="number" step="1" style="width:80px;font-size:14px;padding:4px" value="${p.spread_rub_high||400}"></div>
-                            <div style="flex:1;min-width:100px"><label style="font-size:11px;color:#9CA3AF">Long (₽ &lt;)</label><input id="arbSpreadRubLow" class="input" type="number" step="1" style="width:80px;font-size:14px;padding:4px" value="${p.spread_rub_low||200}"></div>
-                        </div>
-                    </div>
-                    <div style="margin-top:8px;padding-top:8px;border-top:1px solid #333">
-                        <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px 12px;font-size:12px">
-                            <div style="color:#9CA3AF">Текущий спред:</div><div id="arbCalcSpread" style="font-weight:bold;text-align:right">—</div>
-                            <div style="color:#9CA3AF">Fair value (cost of carry):</div><div id="arbCalcFair" style="font-weight:bold;text-align:right">—</div>
-                            <div style="color:#9CA3AF">Deviation:</div><div id="arbCalcDev" style="font-weight:bold;text-align:right">—</div>
-                            <div style="color:#9CA3AF">Z-score:</div><div id="arbCalcZ" style="font-weight:bold;text-align:right">—</div>
-                        </div>
-                        <div style="margin-top:8px;padding-top:6px;border-top:1px dashed #444">
-                            <div style="font-size:11px;color:#9CA3AF;margin-bottom:4px">Исторический диапазон (lookback):</div>
-                            <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:4px 12px;font-size:12px">
-                                <div style="color:#9CA3AF">Max:</div><div id="arbCalcMax" style="font-weight:bold;text-align:center;color:var(--green)">—</div>
-                                <div style="color:#9CA3AF">Min:</div><div id="arbCalcMin" style="font-weight:bold;text-align:center;color:var(--red)">—</div>
-                                <div style="color:#9CA3AF">Mean:</div><div id="arbCalcMean" style="font-weight:bold;text-align:center">—</div>
-                            </div>
-                            <div style="margin-top:4px;font-size:11px;color:#9CA3AF">Suggested: High <span id="arbCalcSH" style="color:var(--green);font-weight:bold">—</span> | Low <span id="arbCalcSL" style="color:var(--red);font-weight:bold">—</span></div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <hr style="border-color:var(--border-color);margin:12px 0">
-
-            <!-- Стакан L2 инфо -->
-            <div class="metrics-row" style="flex-wrap:wrap">
-                <div class="metric-card"><div class="metric-label">L2 A: Bid/Ask</div><div id="arbL2A" style="font-size:14px">—</div></div>
-                <div class="metric-card"><div class="metric-label">L2 B: Bid/Ask</div><div id="arbL2B" style="font-size:14px">—</div></div>
-                <div class="metric-card"><div class="metric-label">Data Points</div><div id="arbDataPts" style="font-size:14px">—</div></div>
-            </div>
-
-            <hr style="border-color:var(--border-color);margin:12px 0">
-
-            <!-- Торговый журнал -->
-            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
-                <strong>📋 Торговый журнал</strong>
-            </div>
-            <div id="arbJournalSummary" class="metrics-row" style="flex-wrap:wrap;margin-bottom:12px"></div>
-            <div style="display:flex;gap:8px;margin-bottom:12px;align-items:center">
-                <select id="arbJournalFilter" class="input" style="width:120px" onchange="arbRenderJournal()">
-                    <option value="all">Все позиции</option>
-                    <option value="LONG">Лонги</option>
-                    <option value="SHORT">Шорты</option>
-                    <option value="win">Прибыльные</option>
-                    <option value="loss">Убыточные</option>
-                </select>
-                <span style="color:#9CA3AF;font-size:13px">с</span>
-                <input id="arbJournalDateFrom" class="input" type="date" style="width:130px" onchange="arbRenderJournal()">
-                <span style="color:#9CA3AF;font-size:13px">по</span>
-                <input id="arbJournalDateTo" class="input" type="date" style="width:130px" onchange="arbRenderJournal()">
-                <button class="btn btn-secondary btn-sm" onclick="arbJournalSetYesterday()">Вчера</button>
-                <button class="btn btn-secondary btn-sm" onclick="arbLoadJournal()">🔄</button>
-            </div>
-            <div style="max-height:350px;overflow-y:auto;border:1px solid var(--border-color);border-radius:8px">
-                <table style="width:100%;border-collapse:collapse;font-size:13px">
-                    <thead style="position:sticky;top:0;z-index:1">
-                        <tr style="background:var(--card);border-bottom:2px solid var(--accent)">
-                            <th style="padding:6px;text-align:left">📅 Дата</th>
-                            <th style="padding:6px;text-align:left">⏰ Вход</th>
-                            <th style="padding:6px;text-align:left">⏰ Выход</th>
-                            <th style="padding:6px;text-align:center">↔️</th>
-                            <th style="padding:6px;text-align:right">Вход A/B</th>
-                            <th style="padding:6px;text-align:right">Выход A/B</th>
-                            <th style="padding:6px;text-align:right">Basis вх.</th>
-                            <th style="padding:6px;text-align:right">Basis вых.</th>
-                            <th style="padding:6px;text-align:right">Z</th>
-                            <th style="padding:6px;text-align:right">Лоты</th>
-                            <th style="padding:6px;text-align:right">Холд</th>
-                            <th style="padding:6px;text-align:right">Комиссия</th>
-                            <th style="padding:6px;text-align:right">PnL</th>
-                            <th style="padding:6px;text-align:right">Кумул.</th>
-                        </tr>
-                    </thead>
-                    <tbody id="arbJournalBody" style="background:var(--bg)"><tr><td colspan="14" style="text-align:center;padding:24px;color:#9CA3AF">Нет данных</td></tr></tbody>
-                </table>
-            </div>
-            <div id="arbJournalInfo" style="font-size:12px;color:#9CA3AF;margin-top:8px"></div>
-        </div>
-    `;
-    document.body.appendChild(div);
-    arbPyUpdateL2();
-    arbPyLoadAccounts();
-    // Init Variant 1 toggle state
-    arbEntryModeToggle();
-    setTimeout(() => arbLoadJournal(), 300);
+    c.innerHTML = `<div style="padding:2px 0;color:${color}">[${t}] ${level}: ${msg}</div>` + c.innerHTML;
+    while (c.children.length > 50) c.removeChild(c.lastChild);
 }
 
-function sberEditPanel() {
-    const existing = el('sberEditPanel');
-    if (existing) { existing.remove(); _arbJournalInstance = null; return; }
-    _arbJournalInstance = 'sber';
-    // Temporarily swap arbPyData so arbPyEditPanel renders with SBER params
-    const savedArbPyData = arbPyData;
-    arbPyData = sber.getData();
-    // Save current instance before calling arbPyEditPanel (which would reset it)
-    const savedInstance = _arbJournalInstance;
-    // Call the same render logic
-    arbPyEditPanel();
-    // Restore journal instance (arbPyEditPanel may have reset it)
-    _arbJournalInstance = savedInstance;
-    // Rename the panel
-    const panel = el('arbPyEditPanel');
-    if (panel) {
-        panel.id = 'sberEditPanel';
-        // Update header to show SBER
-        const header = panel.querySelector('.card-header');
-        if (header) header.innerHTML = header.innerHTML.replace('Арбитражный робот (PYTHON)', 'Арбитражный робот — SBER/SRU6');
-        // Override save button to save to SBER
-        const saveBtn = panel.querySelector('button[onclick*="arbPySaveFromPanel"]');
-        if (saveBtn) saveBtn.setAttribute('onclick', 'sberSaveFromPanel()');
-        // Override copy button
-        const copyBtn = panel.querySelector('button[onclick*="arbPyShowCopyDialog"]');
-        if (copyBtn) copyBtn.remove();
-        // Override close button
-        const closeBtn = panel.querySelector('button[onclick*="arbPyEditPanel"]');
-        if (closeBtn) closeBtn.setAttribute('onclick', 'el(\'sberEditPanel\')?.remove(); _arbJournalInstance=null;');
-    }
-}
 
-async function sberSaveFromPanel() {
-    const body = {
-        ticker_a: el('arbSymA').value,
-        symbol_a: el('arbSymA').value + '@RTSX',
-        ticker_b: el('arbSymB').value,
-        symbol_b: el('arbSymB').value + '@RTSX',
-        lots_a: parseInt(el('arbLotsA').value),
-        lots_b: parseInt(el('arbLotsB').value),
-        hedge_ratio: parseFloat(el('arbHedgeRatio').value),
-        capital: parseFloat(el('arbCapital')?.value || 100000),
-        entry_z: parseFloat(el('arbEntryZ').value),
-        entry_z_long: parseFloat(el('arbEntryZLong').value),
-        entry_mode: el('arbEntryModeRub')?.checked ? 'spread_rub' : 'zscore',
-        spread_rub_high: parseFloat(el('arbSpreadRubHigh')?.value || 400),
-        spread_rub_low: parseFloat(el('arbSpreadRubLow')?.value || 200),
-        risk_free_rate: parseFloat(el('arbRate')?.value || 16) / 100,
-        expiration_date: el('arbExpiration')?.value || '2026-09-18',
-        contract_size: parseInt(el('arbContractSize')?.value || 100),
-        lookback: parseInt(el('arbLookback').value),
-        leg_a_timeout: parseInt(el('arbLegTimeout').value),
-        min_fill_ratio: parseFloat(el('arbMinFill').value),
-        min_profit_type: el('arbMinProfitType').value,
-        min_profit_value: parseFloat(el('arbMinProfitVal').value),
-        risk_type: el('arbRiskType').value,
-        risk_value: parseFloat(el('arbRiskVal').value),
-        allow_long_basis: el('arbAllowLong')?.checked || false,
-        use_commission: el('arbUseCommission')?.checked ?? true,
-        commission_stock_pct: parseFloat(el('arbCommStock')?.value || 0.035),
-        commission_futures_rt: parseFloat(el('arbCommFut')?.value || 0.9),
-        slippage_bps: parseFloat(el('arbSlippage')?.value || 5),
-    };
-    // If leg A is futures, use its commission value too
-    const symA = el('arbSymA')?.value || '';
-    if (/\d/.test(symA)) {
-        body.commission_futures_rt = parseFloat(el('arbCommStock')?.value || body.commission_futures_rt);
-    }
-    const r = await sber.fetch('/params', 'POST', body);
-    if (r && r.ok) {
-        arbPyLog('✅ SBER/SRU6 параметры сохранены');
-        sber.refresh();
-        el('sberEditPanel')?.remove();
-    } else {
-        arbPyLog('Ошибка сохранения SBER/SRU6', 'ERROR');
-    }
-}
 
-async function lkohEditPanel() {
-    const existing = el('lkohEditPanel');
-    if (existing) { existing.remove(); _arbJournalInstance = null; return; }
-    _arbJournalInstance = 'lkoh';
-    await lkoh.refresh();
-    arbPyData = lkoh.getData();
-    const savedInstance = _arbJournalInstance;
-    arbPyEditPanel();
-    setTimeout(arbUpdateCommissionLabels, 50);
-    _arbJournalInstance = savedInstance;
-    const panel = el('arbPyEditPanel');
-    if (panel) {
-        panel.id = 'lkohEditPanel';
-        const header = panel.querySelector('.card-header');
-        if (header) header.innerHTML = header.innerHTML.replace('Арбитражный робот (PYTHON)', 'Арбитражный робот — LKOH/LKZ6');
-        const saveBtn = panel.querySelector('button[onclick*="arbPySaveFromPanel"]');
-        if (saveBtn) saveBtn.setAttribute('onclick', 'lkohSaveFromPanel()');
-        const copyBtn = panel.querySelector('button[onclick*="arbPyShowCopyDialog"]');
-        if (copyBtn) copyBtn.remove();
-        const closeBtn = panel.querySelector('button[onclick*="arbPyEditPanel"]');
-        if (closeBtn) closeBtn.setAttribute('onclick', 'el(\'lkohEditPanel\')?.remove(); _arbJournalInstance=null;');
-    }
-}
 
-async function lkohSaveFromPanel() {
-    const body = {
-        ticker_a: el('arbSymA').value,
-        symbol_a: el('arbSymA').value + '@RTSX',
-        ticker_b: el('arbSymB').value,
-        symbol_b: el('arbSymB').value + '@RTSX',
-        lots_a: parseInt(el('arbLotsA').value),
-        lots_b: parseInt(el('arbLotsB').value),
-        hedge_ratio: parseFloat(el('arbHedgeRatio').value),
-        capital: parseFloat(el('arbCapital')?.value || 100000),
-        entry_z: parseFloat(el('arbEntryZ').value),
-        entry_z_long: parseFloat(el('arbEntryZLong').value),
-        entry_mode: el('arbEntryModeRub')?.checked ? 'spread_rub' : 'zscore',
-        spread_rub_high: parseFloat(el('arbSpreadRubHigh')?.value || 400),
-        spread_rub_low: parseFloat(el('arbSpreadRubLow')?.value || 200),
-        risk_free_rate: parseFloat(el('arbRate')?.value || 16) / 100,
-        expiration_date: el('arbExpiration')?.value || '2026-09-18',
-        contract_size: parseInt(el('arbContractSize')?.value || 100),
-        lookback: parseInt(el('arbLookback').value),
-        leg_a_timeout: parseInt(el('arbLegTimeout').value),
-        min_fill_ratio: parseFloat(el('arbMinFill').value),
-        min_profit_type: el('arbMinProfitType').value,
-        min_profit_value: parseFloat(el('arbMinProfitVal').value),
-        risk_type: el('arbRiskType').value,
-        risk_value: parseFloat(el('arbRiskVal').value),
-        allow_long_basis: el('arbAllowLong')?.checked || false,
-        use_commission: el('arbUseCommission')?.checked ?? true,
-        commission_stock_pct: parseFloat(el('arbCommStock')?.value || 0.035),
-        commission_futures_rt: parseFloat(el('arbCommFut')?.value || 0.9),
-        slippage_bps: parseFloat(el('arbSlippage')?.value || 5),
-    };
-    const symA = el('arbSymA')?.value || '';
-    if (/\d/.test(symA)) {
-        body.commission_futures_rt = parseFloat(el('arbCommStock')?.value || body.commission_futures_rt);
-    }
-    const r = await lkoh.fetch('/params', 'POST', body);
-    if (r && r.ok) {
-        arbPyLog('✅ LKOH/LKZ6 параметры сохранены');
-        lkoh.refresh();
-        el('lkohEditPanel')?.remove();
-    } else {
-        arbPyLog('Ошибка сохранения LKOH/LKZ6', 'ERROR');
-    }
-}
 
-async function brCalEditPanel() {
-    const existing = el('brCalEditPanel');
-    if (existing) { existing.remove(); _arbJournalInstance = null; return; }
-    _arbJournalInstance = 'brCal';
-    const savedArbPyData = arbPyData;
-    await brCal.refresh();
-    arbPyData = brCal.getData();
-    const savedInstance = _arbJournalInstance;
-    arbPyEditPanel();
-    setTimeout(arbUpdateCommissionLabels, 50);
-    _arbJournalInstance = savedInstance;
-    const panel = el('arbPyEditPanel');
-    if (panel) {
-        panel.id = 'brCalEditPanel';
-        const header = panel.querySelector('.card-header');
-        if (header) header.innerHTML = header.innerHTML.replace('Арбитражный робот (PYTHON)', 'Арбитражный робот — BR Calendar');
-        const saveBtn = panel.querySelector('button[onclick*="arbPySaveFromPanel"]');
-        if (saveBtn) saveBtn.setAttribute('onclick', 'brCalSaveFromPanel()');
-        const copyBtn = panel.querySelector('button[onclick*="arbPyShowCopyDialog"]');
-        if (copyBtn) copyBtn.remove();
-        const closeBtn = panel.querySelector('button[onclick*="arbPyEditPanel"]');
-        if (closeBtn) closeBtn.setAttribute('onclick', 'el(\'brCalEditPanel\')?.remove(); _arbJournalInstance=null;');
-    }
-}
 
-async function brCalSaveFromPanel() {
-    const body = {
-        ticker_a: el('arbSymA').value,
-        symbol_a: el('arbSymA').value + '@RTSX',
-        ticker_b: el('arbSymB').value,
-        symbol_b: el('arbSymB').value + '@RTSX',
-        lots_a: parseInt(el('arbLotsA').value),
-        lots_b: parseInt(el('arbLotsB').value),
-        hedge_ratio: parseFloat(el('arbHedgeRatio').value),
-        capital: parseFloat(el('arbCapital')?.value || 100000),
-        entry_z: parseFloat(el('arbEntryZ').value),
-        entry_z_long: parseFloat(el('arbEntryZLong').value),
-        entry_mode: el('arbEntryModeRub')?.checked ? 'spread_rub' : 'zscore',
-        spread_rub_high: parseFloat(el('arbSpreadRubHigh')?.value || 5),
-        spread_rub_low: parseFloat(el('arbSpreadRubLow')?.value || -5),
-        risk_free_rate: parseFloat(el('arbRate')?.value || 14.25) / 100,
-        expiration_date: el('arbExpiration')?.value || '2026-09-18',
-        contract_size: parseInt(el('arbContractSize')?.value || 1),
-        lookback: parseInt(el('arbLookback').value),
-        leg_a_timeout: parseInt(el('arbLegTimeout').value),
-        min_fill_ratio: parseFloat(el('arbMinFill').value),
-        min_profit_type: el('arbMinProfitType').value,
-        min_profit_value: parseFloat(el('arbMinProfitVal').value),
-        risk_type: el('arbRiskType').value,
-        risk_value: parseFloat(el('arbRiskVal').value),
-        allow_long_basis: el('arbAllowLong')?.checked || false,
-        use_commission: el('arbUseCommission')?.checked ?? true,
-        commission_stock_pct: parseFloat(el('arbCommStock')?.value || 0.035),
-        commission_futures_rt: parseFloat(el('arbCommFut')?.value || 7.5),
-        slippage_bps: parseFloat(el('arbSlippage')?.value || 10),
-    };
-    // If leg A is futures, use its value as commission_futures_rt too (both legs same fee)
-    const symA = el('arbSymA')?.value || '';
-    if (/\d/.test(symA)) {
-        body.commission_futures_rt = parseFloat(el('arbCommStock')?.value || 15);
-    }
-    const r = await brCal.fetch('/params', 'POST', body);
-    if (r && r.ok) {
-        arbPyLog('✅ BR Calendar параметры сохранены');
-        brCal.refresh();
-        el('brCalEditPanel')?.remove();
-    } else {
-        arbPyLog('Ошибка сохранения BR Calendar', 'ERROR');
-    }
-}
 
-function arbEntryModeToggle() {
-    const checked = el('arbEntryModeRub')?.checked;
-    const inputs = el('arbRubInputs');
-    if (inputs) inputs.style.display = checked ? 'block' : 'none';
-    // Grey out Z-score inputs when Variant 1 active
-    const zShort = el('arbEntryZ');
-    const zLong = el('arbEntryZLong');
-    if (zShort) { zShort.disabled = checked; zShort.style.opacity = checked ? 0.4 : 1; }
-    if (zLong) { zLong.disabled = checked; zLong.style.opacity = checked ? 0.4 : 1; }
-}
+// NOTE: brCal = Brent calendar spread (both legs futures @RTSX) — symbol_a stays @RTSX there.
 
-function arbUpdateCommissionLabels() {
-    // Update commission labels based on selected instruments
-    const symA = el('arbSymA')?.value || '';
-    const isFutA = /\d/.test(symA);
-    const labelA = el('arbCommALabel');
-    const warnBoth = el('arbCommBothFut');
-    if (labelA) {
-        labelA.textContent = isFutA ? 'Фьючерс A (₽ за контракт RT)' : 'Акция A (% за сторону)';
-    }
-    if (warnBoth) {
-        warnBoth.style.display = isFutA ? 'block' : 'none';
-    }
-}
 
-function arbPyUpdateL2() {
-    if (!el('arbL2A')) return;
-    if (!arbPyData) return;
-    const obA = arbPyData.obA || {};
-    const obB = arbPyData.obB || {};
-    const basis = arbPyData.basis || {};
-    if (el('arbL2A')) el('arbL2A').textContent = `${obA.bestBid||'—'} / ${obA.bestAsk||'—'} (${obA.totalVol||0})`;
-    if (el('arbL2B')) el('arbL2B').textContent = `${obB.bestBid||'—'} / ${obB.bestAsk||'—'} (${obB.totalVol||0})`;
-    if (el('arbDataPts')) el('arbDataPts').textContent = basis.data_points || 0;
-    // Spread metrics
-    const pa = basis.price_a || 0;
-    const pb = basis.price_b || 0;
-    const spread = basis.spread_rub || 0;
-    const spreadPct = basis.spread_pct || 0;
-    if (el('arbSpreadRub')) {
-        el('arbSpreadRub').textContent = (spread >= 0 ? '+' : '') + spread.toFixed(2) + ' ₽';
-        el('arbSpreadRub').style.color = spread > 0 ? 'var(--green)' : spread < 0 ? 'var(--red)' : 'var(--accent)';
-    }
-    if (el('arbSpreadPct')) el('arbSpreadPct').textContent = (spreadPct >= 0 ? '+' : '') + spreadPct.toFixed(3) + '%';
-    if (el('arbFairSpread')) el('arbFairSpread').textContent = basis.fair_spread != null ? basis.fair_spread.toFixed(1) + ' ₽' : '—';
-    if (el('arbDeviation')) {
-        const dev = basis.deviation || 0;
-        el('arbDeviation').textContent = (dev >= 0 ? '+' : '') + dev.toFixed(1) + ' ₽';
-        el('arbDeviation').style.color = dev > 0 ? 'var(--green)' : dev < 0 ? 'var(--red)' : '';
-    }
-    if (el('arbSpotValue')) {
-        el('arbSpotValue').textContent = pa > 0 ? (pa * 100).toFixed(0) + ' ₽' : '—';
-        const spotLabel = el('arbSpotValue').parentElement.querySelector('.metric-label');
-        if (spotLabel) spotLabel.textContent = (arbPyData?.tickerA || 'Spot') + (parseInt(arbPyData?.params?.contract_size)>1 ? ' × ' + arbPyData?.params?.contract_size : '');
-    }
-    if (el('arbFutValue')) el('arbFutValue').textContent = pb > 0 ? pb.toFixed(0) + ' ₽' : '—';
-    const futLabel = el('arbFutLabel');
-    if (futLabel) futLabel.textContent = (arbPyData?.tickerB || 'Фьюч') + ' (фьюч)';
-    if (el('arbBasisVal')) el('arbBasisVal').textContent = basis.basis != null ? basis.basis.toFixed(1) : '—';
-    if (el('arbZVal')) {
-        const z = basis.zscore || 0;
-        el('arbZVal').textContent = z.toFixed(3);
-        el('arbZVal').style.color = Math.abs(z) >= 1.5 ? 'var(--accent)' : '';
-    }
-    if (el('arbMeanVal')) el('arbMeanVal').textContent = (basis.basis_mean || 0).toFixed(0);
-    if (el('arbStdVal')) el('arbStdVal').textContent = (basis.basis_std || 0).toFixed(0);
-    if (el('arbDaysExp')) el('arbDaysExp').textContent = basis.days_to_exp || '—';
-    // Spread calculator (always visible)
-    if (el('arbCalcSpread')) {
-        el('arbCalcSpread').textContent = (spread >= 0 ? '+' : '') + spread.toFixed(2) + ' ₽';
-        el('arbCalcSpread').style.color = spread > 0 ? 'var(--green)' : spread < 0 ? 'var(--red)' : '';
-    }
-    if (el('arbCalcFair')) el('arbCalcFair').textContent = (basis.fair_spread != null ? basis.fair_spread.toFixed(1) + ' ₽' : '—');
-    if (el('arbCalcDev')) {
-        const dev = basis.deviation || 0;
-        el('arbCalcDev').textContent = (dev >= 0 ? '+' : '') + dev.toFixed(1) + ' ₽';
-        el('arbCalcDev').style.color = dev > 0 ? 'var(--green)' : dev < 0 ? 'var(--red)' : '';
-    }
-    if (el('arbCalcZ')) {
-        const z = basis.zscore || 0;
-        el('arbCalcZ').textContent = z.toFixed(3);
-        el('arbCalcZ').style.color = Math.abs(z) >= 1.5 ? 'var(--accent)' : '';
-    }
-    const ext = basis.dev_extremes || {};
-    if (el('arbCalcMax')) el('arbCalcMax').textContent = '+' + (ext.dev_max || 0).toFixed(1) + '₽';
-    if (el('arbCalcMin')) el('arbCalcMin').textContent = (ext.dev_min || 0).toFixed(1) + '₽';
-    if (el('arbCalcMean')) el('arbCalcMean').textContent = (((ext.avg_max || 0) + (ext.avg_min || 0)) / 2).toFixed(1) + '₽';
-    if (el('arbCalcSH')) el('arbCalcSH').textContent = (basis.suggested_high || 0).toFixed(0) + '₽';
-    if (el('arbCalcSL')) el('arbCalcSL').textContent = (basis.suggested_low || 0).toFixed(0) + '₽';
-}
 
-async function arbPySaveFromPanel() {
-    const chosenAccount = el('arbAccount')?.value;
-    const body = {
-        ticker_a: el('arbSymA').value,
-        symbol_a: el('arbSymA').value + '@RTSX',
-        ticker_b: el('arbSymB').value,
-        symbol_b: el('arbSymB').value + '@RTSX',
-        lots_a: parseInt(el('arbLotsA').value),
-        lots_b: parseInt(el('arbLotsB').value),
-        hedge_ratio: parseFloat(el('arbHedgeRatio').value),
-        capital: parseFloat(el('arbCapital').value),
-        entry_z: parseFloat(el('arbEntryZ').value),
-        entry_z_long: parseFloat(el('arbEntryZLong').value),
-        entry_mode: el('arbEntryModeRub')?.checked ? 'spread_rub' : 'zscore',
-        spread_rub_high: parseFloat(el('arbSpreadRubHigh')?.value || 400),
-        spread_rub_low: parseFloat(el('arbSpreadRubLow')?.value || 200),
-        risk_free_rate: parseFloat(el('arbRate').value) / 100,
-        expiration_date: el('arbExpiration').value,
-        contract_size: parseInt(el('arbContractSize').value),
-        lookback: parseInt(el('arbLookback').value),
-        leg_a_timeout: parseInt(el('arbLegTimeout').value),
-        min_fill_ratio: parseFloat(el('arbMinFill').value),
-        min_profit_type: el('arbMinProfitType').value,
-        min_profit_value: parseFloat(el('arbMinProfitVal').value),
-        risk_type: el('arbRiskType').value,
-        risk_value: parseFloat(el('arbRiskVal').value),
-        allow_long_basis: el('arbAllowLong')?.checked || false,
-        use_commission: el('arbUseCommission')?.checked ?? true,
-        commission_stock_pct: parseFloat(el('arbCommStock')?.value || 0.04),
-        commission_futures_rt: parseFloat(el('arbCommFut')?.value || 0.9),
-    };
-    // If leg A is futures, use its commission value too
-    const symA = el('arbSymA')?.value || '';
-    if (/\d/.test(symA)) {
-        body.commission_futures_rt = parseFloat(el('arbCommStock')?.value || body.commission_futures_rt);
-    }
-    // Save account to server and refresh data
-    if (chosenAccount) {
-        await arbPyFetch('/account', 'POST', {account: chosenAccount});
-        if (arbPyData) arbPyData.account = chosenAccount;
-    }
-    const r = await arbPyFetch('/params', 'POST', body);
-    if (r && r.ok) {
-        arbPyLog('✅ Параметры сохранены');
-        arbPyRefresh();
-    } else {
-        arbPyLog('Ошибка сохранения параметров', 'ERROR');
-    }
-}
 
 function arbPyShowCopyDialog() {
     const existing = el('arbCopyDialog');
@@ -4419,6 +3818,7 @@ function arbPyShowCopyDialog() {
             <div class="metric-card"><div class="metric-label">Новый инструмент B (фьючерс)</div>
                 <select id="copySymB" class="input" style="width:180px">
                     <option value="GZM6">GZM6</option>
+                      <option value="GZZ6">GZZ6</option>
                     <option value="GZU6">GZU6</option>
                     <option value="SRM6">SRM6</option>
                     <option value="SRU6">SRU6</option>
@@ -4426,8 +3826,7 @@ function arbPyShowCopyDialog() {
                     <option value="RNM6">RNM6</option>
                     <option value="TTM6">TTM6</option>
                     <option value="MXM6">MXM6</option>
-                    <option value="SiM6">SiM6</option>
-                    <option value="SiU6">SiU6</option>
+                    <option value="SiU6">SiU6 (USD/RUB)</option><option value="SiZ6">SiZ6</option><option value="MXU6">MXU6</option><option value="GDU6">GDU6</option><option value="BRU6">BRU6</option><option value="SiU6">SiU6</option>
                     <option value="RIM6">RIM6</option>
                     <option value="GDM6">GDM6</option>
                     <option value="BRK6">BRK6</option>
@@ -4471,7 +3870,7 @@ async function arbPyLoadAccounts() {
 
 // === Arb Trade Journal ===
 let _arbJournal = [];
-let _arbJournalInstance = null; // null/'arbPy' = GAZP, 'sber' = SBER, 'brCal' = BR Calendar, 'lkoh' = LKOH
+let _arbJournalInstance = null; // null/'arbPy' = GAZP, 'sber' = SBER, 'brCal' = BR Calendar
 
 // Parse entryTime/exitTime: supports both "2026-07-05 10:20:13" and "2026-07-05T10:20:13.542367+03:00"
 function _arbParseTime(s) {
@@ -4494,7 +3893,7 @@ function arbJournalSetYesterday() {
 }
 
 async function arbLoadJournal() {
-    const inst = _arbJournalInstance === 'sber' ? sber : _arbJournalInstance === 'lkoh' ? lkoh : _arbJournalInstance === 'brCal' ? brCal : arbPy;
+    const inst = _arbJournalInstance === 'sber' ? sber : _arbJournalInstance === 'brCal' ? brCal : arbPy;
     const data = await inst.fetch('/status');
     if (!data) { _arbJournal = []; arbRenderJournal(); return; }
     _arbJournal = data.tradeHistory || [];
@@ -4503,10 +3902,10 @@ async function arbLoadJournal() {
 
 async function arbResetStats() {
     if (!confirm('Сбросить статистику? Realized PnL → 0, история сделок очищена. positions сохраняются.')) return;
-    const inst = _arbJournalInstance === 'sber' ? sber : _arbJournalInstance === 'lkoh' ? lkoh : _arbJournalInstance === 'brCal' ? brCal : arbPy;
+    const inst = _arbJournalInstance === 'sber' ? sber : _arbJournalInstance === 'brCal' ? brCal : arbPy;
     const r = await inst.fetch('/reset-stats', 'POST');
     if (r && r.ok) {
-        const name = _arbJournalInstance === 'sber' ? 'SBER/SRU6' : _arbJournalInstance === 'lkoh' ? 'LKOH/LKZ6' : _arbJournalInstance === 'brCal' ? 'BR Calendar' : 'GAZP/GZU6';
+        const name = _arbJournalInstance === 'sber' ? 'SBER/SRZ6' : _arbJournalInstance === 'brCal' ? 'BR Calendar' : 'GAZP/GZZ6';
         arbPyLog(`🗑 Статистика ${name} сброшена`);
         arbLoadJournal();
         arbPyRefresh();
@@ -4610,6 +4009,2409 @@ function arbRenderJournal() {
         el('arbJournalInfo').textContent = `Показано ${trades.length} из ${_arbJournal.length} сделок`;
     }
 }
+
+// Init arb polling
+setInterval(() => { if (el('arbPyStatus')) arbPyRefresh(); }, 3000);
+setTimeout(() => { if (el('arbPyStatus')) arbPyRefresh(); }, 2000);
+
+// === Init ===
+document.addEventListener('DOMContentLoaded', () => {
+    loadSettings();
+    loadConnectorStatus();
+    initSignalR();
+    // Default dates for backtest
+    const today = new Date().toISOString().split('T')[0];
+    const monthAgo = new Date(Date.now() - 30 * 86400000).toISOString().split('T')[0];
+    el('testFrom').value = monthAgo;
+    el('testTo').value = today;
+
+    // Auto-refresh status
+    setInterval(fetchStatus, 30000);
+
+    // Автоподключение брокера если есть токен
+    const savedToken = localStorage.getItem('finamToken');
+    if (savedToken) {
+        setTimeout(connectBroker, 1000);
+    }
+    
+    // Загрузка сохранённых настроек Transaq
+    const txLogin = localStorage.getItem('txLogin');
+    if (txLogin && el('txLogin')) {
+        el('txLogin').value = txLogin;
+        el('txHost').value = localStorage.getItem('txHost') || 'tr.finam.ru';
+        el('txPort').value = localStorage.getItem('txPort') || '39000';
+    }
+
+    // Load VP Scalp Grid params from saved config
+    pythonRobotLoadConfig();
+    
+    // Проверка здоровья каждые 5 сек
+    setInterval(checkHealth, 30000);
+
+    // === Python Robot Polling ===
+    setInterval(async () => { await pollPythonRobot(); renderRobots(); }, 2000);
+    pollPythonRobot();
+
+});
+
+// === PYTHON ROBOT (VP Scalp Grid) ===
+const ROBOT_API = 'http://' + window.location.hostname + ':5070';
+let pythonRobot = null;
+
+async function pollPythonRobot() {
+    try {
+        const resp = await fetch(ROBOT_API + '/status', {signal: AbortSignal.timeout(2000)});
+        pythonRobot = await resp.json();
+    } catch(e) {
+        // Robot API down — try C# proxy for cached state
+        try {
+            const proxyResp = await fetch('/api/robot/status', {signal: AbortSignal.timeout(2000)});
+            pythonRobot = await proxyResp.json();
+        } catch(e2) {
+            pythonRobot = null;
+        }
+    }
+}
+
+async function robotApi(action) {
+    try {
+        // For start/stop when robot is offline — use C# proxy
+        if (action === 'start' || action === 'stop') {
+            try {
+                const proxyResp = await fetch('/api/robot/service/' + action, {method: 'POST'});
+                const proxyData = await proxyResp.json();
+                addLog(nowTime(), 'INFO', 'Robot ' + action + ' (proxy): ' + JSON.stringify(proxyData));
+                // Wait for robot to start/stop
+                await new Promise(r => setTimeout(r, action === 'start' ? 5000 : 2000));
+                await pollPythonRobot();
+                renderRobots();
+                return;
+            } catch(proxyErr) {
+                // Fallback to direct API
+            }
+        }
+        const resp = await fetch(ROBOT_API + '/' + action, {method: 'POST'});
+        const data = await resp.json();
+        addLog(nowTime(), 'INFO', 'Robot ' + action + ': ' + JSON.stringify(data));
+        setTimeout(async () => { await pollPythonRobot(); renderRobots(); }, 500);
+    } catch(e) {
+        addLog(nowTime(), 'ERROR', 'Robot ' + action + ' failed: ' + e.message);
+    }
+}
+
+async function pythonRobotLoadConfig() {
+    const defaults = {max_levels:100, step_base:31, spread_base:31, max_hold_minutes:99999999999999, min_profit_per_lot:29, vp_lookback:33, vp_bin_size:50, vp_va_percent:0.70, rv_adaptation:false};
+    let cfg = defaults;
+    // Try robot API (5070), then C# proxy (5050)
+    for (const base of [ROBOT_API, '']) {
+        try {
+            const resp = await fetch(base + '/api/robot/config', {signal: AbortSignal.timeout(2000)});
+            const data = await resp.json();
+            if (!data.error) { cfg = data; addLog(nowTime(), 'INFO', 'Config loaded'); break; }
+        } catch(e) { continue; }
+    }
+    if (el('cfgVpMaxLevels')) el('cfgVpMaxLevels').value = cfg.max_levels;
+    if (el('cfgVpStepBase')) el('cfgVpStepBase').value = cfg.step_base;
+    if (el('cfgVpSpreadBase')) el('cfgVpSpreadBase').value = cfg.spread_base;
+    if (el('cfgVpMaxHold')) el('cfgVpMaxHold').value = cfg.max_hold_minutes;
+    if (el('cfgVpLookback')) el('cfgVpLookback').value = cfg.vp_lookback;
+    if (el('cfgVpBinSize')) el('cfgVpBinSize').value = cfg.vp_bin_size;
+    if (el('cfgVpVaPercent')) el('cfgVpVaPercent').value = cfg.vp_va_percent;
+    if (el('cfgVpMinProfit')) el('cfgVpMinProfit').value = cfg.min_profit_per_lot;
+    if (el('cfgVpRvAdapt')) el('cfgVpRvAdapt').checked = cfg.rv_adaptation;
+}
+
+async function pythonRobotSaveConfig() {
+    // Only save to SiU6 (port 5070) when SiU6 is selected
+    const ticker = el('cfgVpTicker')?.value || 'SiU6';
+    if (ticker !== 'SiU6') return; // Don't overwrite SiU6 config with other ticker params
+
+    const body = {
+        max_levels: parseInt(el('cfgVpMaxLevels')?.value),
+        step_base: parseInt(el('cfgVpStepBase')?.value),
+        spread_base: parseInt(el('cfgVpSpreadBase')?.value),
+        max_hold_minutes: parseInt(el('cfgVpMaxHold')?.value),
+        min_profit_per_lot: parseInt(el('cfgVpMinProfit')?.value),
+        vp_lookback: parseInt(el('cfgVpLookback')?.value),
+        vp_bin_size: parseInt(el('cfgVpBinSize')?.value),
+        vp_va_percent: parseFloat(el('cfgVpVaPercent')?.value),
+        rv_adaptation: el('cfgVpRvAdapt')?.checked || false,
+    };
+    const json = JSON.stringify(body);
+    // Try robot API (5070), then C# proxy (5050)
+    let saved = false;
+    for (const base of [ROBOT_API, '']) {
+        try {
+            const resp = await fetch(base + '/api/robot/config', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: json
+            });
+            const data = await resp.json();
+            addLog(nowTime(), 'INFO', '💾 Config saved: ' + JSON.stringify(body));
+            saved = true; break;
+        } catch(e) { continue; }
+    }
+    if (!saved) addLog(nowTime(), 'ERROR', '💾 Save failed — all endpoints down');
+}
+
+function pythonRobotEditPanel() {
+    const existing = el('robotEditPanel');
+    if (existing) { existing.remove(); return; }
+
+    // Read params from robot API (/status has current params), fallback to strategy.json
+    const s = pythonRobot || {};
+    const cfgML = s.max_levels || el('cfgVpMaxLevels')?.value || '100';
+    const cfgStep = s.step_base || el('cfgVpStepBase')?.value || '31';
+    const cfgSpread = s.spread_base || el('cfgVpSpreadBase')?.value || '31';
+    const cfgHold = s.max_hold_minutes || el('cfgVpMaxHold')?.value || '99999999999999';
+    const cfgLB = s.vp_lookback || el('cfgVpLookback')?.value || '33';
+    const cfgBin = s.vp_bin_size || el('cfgVpBinSize')?.value || '50';
+    const cfgVA = s.vp_va_percent || el('cfgVpVaPercent')?.value || '0.70';
+    const cfgMinP = s.min_profit_per_lot || el('cfgVpMinProfit')?.value || '35';
+
+    // Store port for main robot
+    window._editRobotPort = 5070;
+
+    const div = document.createElement('div');
+    div.id = 'robotEditPanel';
+    div.className = 'card';
+    div.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);z-index:1000;width:900px;max-height:90vh;overflow-y:auto;box-shadow:0 8px 32px rgba(0,0,0,.5)';
+    div.innerHTML = `
+        <div class="card-header row gap-8">
+            🐍 SiU6 VP Scalp Grid (PYTHON)
+            <button class="btn btn-primary btn-sm" onclick="pythonRobotSaveFromPanel()">💾 Сохранить</button>
+            <button class="btn btn-secondary btn-sm" onclick="if(window._pyVpTimer){clearInterval(window._pyVpTimer);window._pyVpTimer=null;}el('robotEditPanel')?.remove()">✕</button>
+        </div>
+        <div style="padding:12px">
+            <!-- VP индикаторы -->
+            <div class="metrics-row" style="flex-wrap:wrap;margin-bottom:12px">
+                <div class="metric-card" style="background:#1a2332;border:1px solid #2D4A6D"><div class="metric-label" style="color:#60A5FA">VAH</div><div id="pyVAH" style="font-size:18px;font-weight:bold;color:#60A5FA">—</div></div>
+                <div class="metric-card" style="background:#1a2332;border:1px solid #2D4A6D"><div class="metric-label" style="color:#F59E0B">POC</div><div id="pyPOC" style="font-size:18px;font-weight:bold;color:#F59E0B">—</div></div>
+                <div class="metric-card" style="background:#1a2332;border:1px solid #2D4A6D"><div class="metric-label" style="color:#34D399">VAL</div><div id="pyVAL" style="font-size:18px;font-weight:bold;color:#34D399">—</div></div>
+                <div class="metric-card"><div class="metric-label">Цена</div><div id="pyPrice" style="font-size:18px;font-weight:bold">—</div></div>
+                <div class="metric-card"><div class="metric-label">Позиция</div><div id="pyDir" style="font-size:18px;font-weight:bold">—</div></div>
+                <div class="metric-card"><div class="metric-label">Лоты</div><div id="pyLots" style="font-size:18px;font-weight:bold">0</div></div>
+                <div class="metric-card"><div class="metric-label">Grid</div><div id="pyGrid" style="font-size:18px;font-weight:bold">0</div></div>
+                <div class="metric-card"><div class="metric-label">Ср. цена</div><div id="pyAvgPrice" style="font-size:18px;font-weight:bold">—</div></div>
+                <div class="metric-card"><div class="metric-label">PnL/лот</div><div id="pyPnlPerLot" style="font-size:18px;font-weight:bold">—</div></div>
+                <div class="metric-card"><div class="metric-label">PnL нереал.</div><div id="pyPnlUnreal" style="font-size:18px;font-weight:bold">—</div></div>
+                <div class="metric-card"><div class="metric-label">Hold</div><div id="pyHold" style="font-size:18px;font-weight:bold">0 мин</div></div>
+            </div>
+            <hr style="border-color:#2D2D44;margin:12px 0">
+            <!-- Параметры -->
+            <div class="metrics-row" style="flex-wrap:wrap;margin-bottom:16px">
+                <div class="metric-card"><div class="metric-label">Max Levels</div><input id="editPyMaxLevels" class="input" type="number" value="${cfgML}" style="width:80px"></div>
+                <div class="metric-card"><div class="metric-label">Step Base (пт)</div><input id="editPyStepBase" class="input" type="number" value="${cfgStep}" style="width:80px"></div>
+                <div class="metric-card"><div class="metric-label">Spread Base (пт)</div><input id="editPySpreadBase" class="input" type="number" value="${cfgSpread}" style="width:80px"></div>
+                <div class="metric-card"><div class="metric-label">Max Hold (мин)</div><input id="editPyMaxHold" class="input" type="number" value="${cfgHold}" style="width:100px"></div>
+                <div class="metric-card"><div class="metric-label">VP Lookback</div><input id="editPyLookback" class="input" type="number" value="${cfgLB}" style="width:70px"></div>
+                <div class="metric-card"><div class="metric-label">VP Bin Size</div><input id="editPyBinSize" class="input" type="number" value="${cfgBin}" style="width:70px"></div>
+                <div class="metric-card"><div class="metric-label">VA %</div><input id="editPyVaPercent" class="input" type="number" step="0.05" value="${cfgVA}" style="width:70px"></div>
+                <div class="metric-card"><div class="metric-label">PnL/лот (пт)</div><input id="editPyMinProfit" class="input" type="number" value="${cfgMinP}" style="width:70px"></div>
+                <div class="metric-card"><div class="metric-label">RV Adaptation</div><br><input id="editPyRvAdapt" type="checkbox" style="width:20px;height:20px;vertical-align:middle"></div>
+            </div>
+            <hr style="border-color:#2D2D44;margin:12px 0">
+            <!-- Торговый журнал (QScalp style) -->
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+                <strong>📋 Торговый журнал</strong>
+            </div>
+            <div id="pyJournalSummary" class="metrics-row" style="flex-wrap:wrap;margin-bottom:12px"></div>
+            <div style="display:flex;gap:8px;margin-bottom:12px;align-items:center">
+                <select id="pyJournalFilter" class="input" style="width:120px" onchange="pyRenderJournal()">
+                    <option value="all">Все позиции</option>
+                    <option value="LONG">Лонги</option>
+                    <option value="SHORT">Шорты</option>
+                    <option value="win">Прибыльные</option>
+                    <option value="loss">Убыточные</option>
+                </select>
+                <span style="color:#9CA3AF;font-size:13px">с</span>
+                <input id="pyJournalDateFrom" class="input" type="date" style="width:130px" onchange="pyLoadJournal()">
+                <span style="color:#9CA3AF;font-size:13px">по</span>
+                <input id="pyJournalDateTo" class="input" type="date" style="width:130px" onchange="pyLoadJournal()">
+                <button class="btn btn-secondary btn-sm" onclick="pyLoadJournal()">🔄</button>
+            </div>
+            <div style="max-height:350px;overflow-y:auto;border:1px solid var(--border-color);border-radius:8px">
+                <table style="width:100%;border-collapse:collapse;font-size:13px">
+                    <thead style="position:sticky;top:0;z-index:1">
+                        <tr style="background:var(--card);border-bottom:2px solid var(--accent)">
+                            <th style="padding:8px;text-align:left">📅 Дата</th>
+                            <th style="padding:8px;text-align:left">⏰ Вход</th>
+                            <th style="padding:8px;text-align:left">⏰ Выход</th>
+                            <th style="padding:8px;text-align:center">↔️</th>
+                            <th style="padding:8px;text-align:right">💰 Вход</th>
+                            <th style="padding:8px;text-align:right">💰 Выход</th>
+                            <th style="padding:8px;text-align:right">Лоты</th>
+                            <th style="padding:8px;text-align:right">PnL</th>
+                            <th style="padding:8px;text-align:right">Кумул.</th>
+                        </tr>
+                    </thead>
+                    <tbody id="pyJournalBody" style="background:var(--bg)"><tr><td colspan="9" style="text-align:center;padding:24px;color:#9CA3AF">Загрузка...</td></tr></tbody>
+                </table>
+            </div>
+            <div id="pyJournalInfo" style="font-size:12px;color:#9CA3AF;margin-top:8px">Загрузка данных...</div>
+        </div>
+    `;
+    document.body.appendChild(div);
+
+    // Load config + start live VP update + journal
+    pythonRobotLoadToPanel();
+    pythonRobotUpdateVp();
+    setTimeout(() => pyLoadJournal(), 300);
+    if (window._pyVpTimer) clearInterval(window._pyVpTimer);
+    window._pyVpTimer = setInterval(() => pythonRobotUpdateVp(), 2000);
+
+    // Load trade journal for main robot (SiU6)
+    _pyJournalTicker = 'SiU6';
+    setTimeout(() => pyLoadJournal(), 300);
+}
+
+function pythonRobotUpdateVp() {
+    if (!el('pyVAH')) return;
+    const port = window._editRobotPort || 5070;
+    if (port !== 5070) {
+        // Fetch from instance API via C# proxy (CORS fix)
+        fetch('/api/instance/status', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ port: port })
+        }).then(r=>r.json()).then(s => {
+            if (s.vah !== undefined && s.vah !== null) el('pyVAH').textContent = s.vah > 0 ? Math.round(s.vah) : '—';
+            if (s.poc !== undefined && s.poc !== null) el('pyPOC').textContent = s.poc > 0 ? Math.round(s.poc) : '—';
+            if (s.val !== undefined && s.val !== null) el('pyVAL').textContent = s.val > 0 ? Math.round(s.val) : '—';
+            if (s.current_price !== undefined && s.current_price !== null) el('pyPrice').textContent = s.current_price > 0 ? s.current_price.toFixed(0) : '—';
+            const dirText = s.direction > 0 ? 'Лонг' : s.direction < 0 ? 'Шорт' : 'Флэт';
+            if (el('pyDir')) el('pyDir').textContent = dirText;
+            if (el('pyLots')) el('pyLots').textContent = s.total_lots || 0;
+            if (el('pyGrid')) el('pyGrid').textContent = (s.grid_levels||0) + ' (' + (s.filled_levels||0) + ' fill)';
+            if (el('pyAvgPrice')) {
+                const avgP = s.avg_price || s.entry_price;
+                el('pyAvgPrice').textContent = s.direction !== 0 ? avgP.toFixed(0) : '—';
+            }
+            if (el('pyPnlPerLot')) {
+                const perLot = s.pnl_per_lot || 0;
+                el('pyPnlPerLot').textContent = s.direction !== 0 ? perLot.toFixed(0) + '₽' : '—';
+                el('pyPnlPerLot').style.color = perLot >= 0 ? 'var(--green)' : 'var(--red)';
+            }
+            if (el('pyPnlUnreal')) { el('pyPnlUnreal').textContent = (s.pnl||0).toFixed(0)+'₽'; el('pyPnlUnreal').style.color = s.pnl >= 0 ? 'var(--green)' : 'var(--red)'; }
+        }).catch(() => {});
+        return;
+    }
+    // Main robot (port 5070)
+    const s = pythonRobot;
+    if (!s) return;
+    if (s.vah !== undefined && s.vah !== null) el('pyVAH').textContent = s.vah > 0 ? Math.round(s.vah) : '—';
+    if (s.poc !== undefined && s.poc !== null) el('pyPOC').textContent = s.poc > 0 ? Math.round(s.poc) : '—';
+    if (s.val !== undefined && s.val !== null) el('pyVAL').textContent = s.val > 0 ? Math.round(s.val) : '—';
+    if (s.current_price !== undefined && s.current_price !== null) el('pyPrice').textContent = s.current_price > 0 ? s.current_price.toFixed(0) : '—';
+    const dirText = s.direction > 0 ? 'Лонг' : s.direction < 0 ? 'Шорт' : 'Флэт';
+    if (el('pyDir')) el('pyDir').textContent = dirText;
+    if (el('pyLots')) el('pyLots').textContent = s.total_lots || 0;
+    if (el('pyGrid')) el('pyGrid').textContent = (s.grid_levels||0) + ' (' + (s.filled_levels||0) + ' fill)';
+    if (el('pyAvgPrice')) {
+        el('pyAvgPrice').textContent = s.direction !== 0 ? (s.avg_price || s.entry_price).toFixed(0) : '—';
+    }
+    if (el('pyPnlPerLot')) {
+        const perLot = s.pnl_per_lot || 0;
+        el('pyPnlPerLot').textContent = s.direction !== 0 ? perLot.toFixed(0) + '₽' : '—';
+        el('pyPnlPerLot').style.color = perLot >= 0 ? 'var(--green)' : 'var(--red)';
+    }
+    if (el('pyPnlUnreal')) { el('pyPnlUnreal').textContent = (s.pnl||0).toFixed(0)+'₽'; el('pyPnlUnreal').style.color = s.pnl >= 0 ? 'var(--green)' : 'var(--red)'; }
+    if (el('pyHold')) el('pyHold').textContent = (s.hold_minutes || 0) + ' мин';
+}
+
+// === Python Robot Trade Journal ===
+let _pyJournalTrades = [];
+let _pyJournalPositions = [];
+
+let _pyJournalTicker = 'SiU6';
+
+async function pyLoadJournal() {
+    const info = el('pyJournalInfo');
+    const body = el('pyJournalBody');
+    if (!body) return;
+
+    // Set default date range
+    const today = new Date().toISOString().slice(0, 10);
+    const weekAgo = new Date(Date.now() - 7 * 86400000).toISOString().slice(0, 10);
+    if (el('pyJournalDateFrom') && !el('pyJournalDateFrom').value) el('pyJournalDateFrom').value = weekAgo;
+    if (el('pyJournalDateTo') && !el('pyJournalDateTo').value) el('pyJournalDateTo').value = today;
+
+    if (info) info.textContent = 'Загрузка сделок...';
+    body.innerHTML = '<tr><td colspan="9" style="text-align:center;padding:16px;color:#9CA3AF">⏳ Загрузка...</td></tr>';
+
+    const dateFrom = el('pyJournalDateFrom')?.value;
+    const dateTo = el('pyJournalDateTo')?.value;
+    let params = '';
+    if (dateFrom) params += `&dateFrom=${dateFrom}`;
+    if (dateTo) params += `&dateTo=${dateTo}`;
+    params = params ? '?' + params.substring(1) : '';
+
+    // Fetch from C# server (Finam API)
+    let trades = [];
+    try {
+        const resp = await fetch('/api/trades' + params, {signal: AbortSignal.timeout(15000)});
+        if (resp.ok) {
+            const raw = await resp.json();
+            trades = Array.isArray(raw) ? raw : (raw.trades || []);
+        }
+    } catch (e) {
+        console.error('pyLoadJournal error:', e);
+    }
+
+    // Normalize
+    _pyJournalTrades = trades.map(t => ({
+        time: t.timestamp || t.time || t.trade_date || t.datetime || '',
+        ticker: t.symbol || t.ticker || t.Ticker || '',
+        dir: (t.side || t.direction || t.dir || '').replace('SIDE_', '').toUpperCase(),
+        price: parseFloat((t.price && t.price.value) ? t.price.value : (t.price || t.Price || 0)),
+        lots: parseInt((t.size && t.size.value) ? t.size.value : (t.quantity || t.lots || t.Lots || t.qty || 0)),
+        comment: t.comment || t.Comment || ''
+    })).filter(t => t.price > 0 && t.lots > 0)
+      .filter(t => !_pyJournalTicker || t.ticker.includes(_pyJournalTicker.replace('@RTSX','')));
+
+    _pyJournalTrades.sort((a, b) => a.time.localeCompare(b.time));
+    _pyJournalPositions = pyGroupPositions(_pyJournalTrades);
+    pyRenderJournal();
+}
+
+function pyGroupPositions(trades) {
+    const positions = [];
+    let current = null;
+    let netPos = 0;
+    let cumPnl = 0;
+
+    trades.forEach(t => {
+        const isBuy = t.dir === 'BUY' || t.dir === '1' || t.dir === 'B';
+        const lots = isBuy ? t.lots : -t.lots;
+
+        if (!current) {
+            current = {
+                entryTime: t.time, exitTime: t.time,
+                direction: isBuy ? 'LONG' : 'SHORT',
+                entryPrice: t.price, exitPrice: t.price,
+                maxLots: t.lots, trades: [t],
+                netPnL: 0, commission: Math.round(t.lots * 0.90),
+                cumPnl: 0, comments: t.comment ? [t.comment] : [],
+                _buyCost: 0, _buyLots: 0,
+                _sellCost: 0, _sellLots: 0
+            };
+            if (isBuy) { current._buyCost = t.price * t.lots; current._buyLots = t.lots; }
+            else { current._sellCost = t.price * t.lots; current._sellLots = t.lots; }
+            netPos = lots;
+        } else {
+            netPos += lots;
+            if (isBuy) { current._buyCost += t.price * t.lots; current._buyLots += t.lots; }
+            else { current._sellCost += t.price * t.lots; current._sellLots += t.lots; }
+            current.exitTime = t.time;
+            current.exitPrice = t.price;
+            current.maxLots = Math.max(current.maxLots, Math.abs(netPos));
+            current.trades.push(t);
+            current.commission += Math.round(t.lots * 0.90);
+            if (t.comment && !current.comments.includes(t.comment)) current.comments.push(t.comment);
+
+            if (netPos === 0) {
+                current.totalLots = current.maxLots;
+                // PnL like broker: total sell proceeds - total buy cost - commission
+                const totalSell = current._sellCost;
+                const totalBuy = current._buyCost;
+                current.netPnL = totalSell - totalBuy - current.commission;
+                current.entryPrice = current._buyLots > 0 ? Math.round(current._buyCost / current._buyLots) : Math.round(current._sellCost / current._sellLots);
+                current.exitPrice = current._sellLots > 0 ? Math.round(current._sellCost / current._sellLots) : Math.round(current._buyCost / current._buyLots);
+                cumPnl += current.netPnL;
+                current.cumPnl = cumPnl;
+                positions.push(current);
+                current = null; netPos = 0;
+            }
+        }
+    });
+    if (current) {
+        current.totalLots = current.maxLots;
+        const totalSell = current._sellCost;
+        const totalBuy = current._buyCost;
+        current.netPnL = totalSell - totalBuy - current.commission;
+        current.entryPrice = current._buyLots > 0 ? Math.round(current._buyCost / current._buyLots) : Math.round(current._sellCost / current._sellLots);
+        current.exitPrice = current._sellLots > 0 ? Math.round(current._sellCost / current._sellLots) : Math.round(current._buyCost / current._buyLots);
+        current.isOpen = true;
+        cumPnl += current.netPnL;
+        current.cumPnl = cumPnl;
+        positions.push(current);
+    }
+    return positions;
+}
+
+function pyRenderJournal() {
+    const body = el('pyJournalBody');
+    const info = el('pyJournalInfo');
+    const summary = el('pyJournalSummary');
+    if (!body) return;
+
+    const filter = el('pyJournalFilter')?.value || 'all';
+    let positions = _pyJournalPositions;
+    if (filter === 'LONG') positions = positions.filter(p => p.direction === 'LONG');
+    else if (filter === 'SHORT') positions = positions.filter(p => p.direction === 'SHORT');
+    else if (filter === 'win') positions = positions.filter(p => p.netPnL > 0);
+    else if (filter === 'loss') positions = positions.filter(p => p.netPnL < 0);
+
+    const wins = positions.filter(p => p.netPnL > 0);
+    const losses = positions.filter(p => p.netPnL < 0);
+    const winRate = positions.length ? (wins.length / positions.length * 100).toFixed(1) : '—';
+    const totalPnl = positions.reduce((s, p) => s + p.netPnL, 0);
+    const avgWin = wins.length ? wins.reduce((s, p) => s + p.netPnL, 0) / wins.length : 0;
+    const avgLoss = losses.length ? losses.reduce((s, p) => s + p.netPnL, 0) / losses.length : 0;
+    const grossProfit = wins.reduce((s, p) => s + p.netPnL, 0);
+    const grossLoss = Math.abs(losses.reduce((s, p) => s + p.netPnL, 0));
+    const pf = grossLoss > 0 ? (grossProfit / grossLoss).toFixed(2) : grossProfit > 0 ? '∞' : '—';
+    const totalComm = positions.reduce((s, p) => s + p.commission, 0);
+    let maxDD = 0, peak = 0;
+    positions.forEach(p => { if (p.cumPnl > peak) peak = p.cumPnl; const dd = peak - p.cumPnl; if (dd > maxDD) maxDD = dd; });
+
+    if (summary) {
+        summary.innerHTML = `
+            <div class="metric-card"><div class="metric-label">Позиций</div><div style="font-size:1.1em;font-weight:700;color:var(--accent)">${positions.length}</div></div>
+            <div class="metric-card"><div class="metric-label">W / L</div><div style="font-size:1.1em;font-weight:700"><span style="color:var(--green)">${wins.length}</span> / <span style="color:var(--red)">${losses.length}</span></div></div>
+            <div class="metric-card"><div class="metric-label">WR</div><div style="font-size:1.1em;font-weight:700;color:${parseFloat(winRate) >= 50 ? 'var(--green)' : 'var(--red)'}">${winRate}%</div></div>
+            <div class="metric-card"><div class="metric-label">PnL нетто</div><div style="font-size:1.1em;font-weight:700;color:${totalPnl >= 0 ? 'var(--green)' : 'var(--red)'}">${totalPnl >= 0 ? '+' : ''}${totalPnl.toFixed(0)} ₽</div></div>
+            <div class="metric-card"><div class="metric-label">PF</div><div style="font-size:1.1em;font-weight:700">${pf}</div></div>
+            <div class="metric-card"><div class="metric-label">Avg W</div><div style="font-size:1.1em;font-weight:700;color:var(--green)">${avgWin >= 0 ? '+' : ''}${avgWin.toFixed(0)}₽</div></div>
+            <div class="metric-card"><div class="metric-label">Avg L</div><div style="font-size:1.1em;font-weight:700;color:var(--red)">${avgLoss.toFixed(0)}₽</div></div>
+            <div class="metric-card"><div class="metric-label">Комиссия</div><div style="font-size:1.1em;font-weight:700;color:#9CA3AF">${totalComm.toLocaleString('ru-RU')}₽</div></div>
+            <div class="metric-card"><div class="metric-label">Max DD</div><div style="font-size:1.1em;font-weight:700;color:var(--red)">${maxDD > 0 ? '-' : ''}${maxDD.toFixed(0)}₽</div></div>
+        `;
+    }
+
+    if (!positions.length) {
+        body.innerHTML = '<tr><td colspan="9" style="text-align:center;padding:24px;color:#9CA3AF">Нет сделок за выбранный период</td></tr>';
+        if (info) info.textContent = 'Нет данных';
+        return;
+    }
+
+    const sorted = [...positions].reverse();
+    body.innerHTML = sorted.map((p, idx) => {
+        const pnlCls = p.netPnL >= 0 ? 'var(--green)' : 'var(--red)';
+        const dirCls = p.direction === 'LONG' ? 'var(--green)' : 'var(--red)';
+        const dirIcon = p.direction === 'LONG' ? '🟢' : '🔴';
+        const entryT = p.entryTime ? p.entryTime.replace(/\.\d+Z$/, '').replace('T', ' ').slice(11, 19) : '—';
+        const exitT = p.exitTime ? p.exitTime.replace(/\.\d+Z$/, '').replace('T', ' ').slice(11, 19) : '—';
+        const dateStr = p.entryTime ? p.entryTime.slice(0, 10) : '';
+        const bg = p.isOpen ? 'rgba(255,215,0,0.05)' : (idx % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.02)');
+        const openBadge = p.isOpen ? ' <span style="color:#FFD700;font-size:10px">⚡ОТКРЫТА</span>' : '';
+        return `<tr style="border-bottom:1px solid #2D2D44;background:${bg}">
+            <td style="padding:6px 8px;font-size:11px;color:#9CA3AF">${dateStr}</td>
+            <td style="padding:6px 8px;font-family:monospace;font-size:12px">${entryT}</td>
+            <td style="padding:6px 8px;font-family:monospace;font-size:12px">${exitT}${openBadge}</td>
+            <td style="padding:6px 8px;text-align:center;color:${dirCls};font-weight:700;font-size:12px">${dirIcon}</td>
+            <td style="padding:6px 8px;text-align:right;font-weight:600">${p.entryPrice.toFixed(2)}</td>
+            <td style="padding:6px 8px;text-align:right;font-weight:600">${p.exitPrice.toFixed(2)}</td>
+            <td style="padding:6px 8px;text-align:right">${p.totalLots}</td>
+            <td style="padding:6px 8px;text-align:right;font-weight:700;color:${pnlCls}">${p.netPnL >= 0 ? '+' : ''}${p.netPnL.toFixed(0)} ₽</td>
+            <td style="padding:6px 8px;text-align:right;font-size:11px;color:${p.cumPnl >= 0 ? 'var(--green)' : 'var(--red)'}">${p.cumPnl >= 0 ? '+' : ''}${p.cumPnl.toFixed(0)}</td>
+        </tr>`;
+    }).join('');
+
+    if (info) info.textContent = `${positions.length} позиций · ${wins.length}W / ${losses.length}L · PnL ${totalPnl >= 0 ? '+' : ''}${totalPnl.toFixed(0)}₽`;
+}
+
+async function pythonRobotLoadToPanel() {
+    const defaults = {max_levels:100, step_base:31, spread_base:31, max_hold_minutes:99999999999999, min_profit_per_lot:35, vp_lookback:33, vp_bin_size:50, vp_va_percent:0.70, rv_adaptation:false};
+    let cfg = defaults;
+    try {
+        const resp = await fetch(ROBOT_API + '/api/robot/config', {signal: AbortSignal.timeout(2000)});
+        const data = await resp.json();
+        if (!data.error) cfg = data;
+    } catch(e) {
+        try {
+            const resp = await fetch('/api/robot/config', {signal: AbortSignal.timeout(2000)});
+            const data = await resp.json();
+            if (!data.error) cfg = data;
+        } catch(e2) {}
+    }
+    if (el('editPyMaxLevels')) el('editPyMaxLevels').value = cfg.max_levels;
+    if (el('editPyStepBase')) el('editPyStepBase').value = cfg.step_base;
+    if (el('editPySpreadBase')) el('editPySpreadBase').value = cfg.spread_base;
+    if (el('editPyMaxHold')) el('editPyMaxHold').value = cfg.max_hold_minutes;
+    if (el('editPyLookback')) el('editPyLookback').value = cfg.vp_lookback;
+    if (el('editPyBinSize')) el('editPyBinSize').value = cfg.vp_bin_size;
+    if (el('editPyVaPercent')) el('editPyVaPercent').value = cfg.vp_va_percent;
+    if (el('editPyMinProfit')) el('editPyMinProfit').value = cfg.min_profit_per_lot;
+    if (el('editPyRvAdapt')) el('editPyRvAdapt').checked = cfg.rv_adaptation;
+}
+
+async function pythonRobotSaveFromPanel() {
+    const body = {
+        max_levels: parseInt(el('editPyMaxLevels')?.value),
+        step_base: parseInt(el('editPyStepBase')?.value),
+        spread_base: parseInt(el('editPySpreadBase')?.value),
+        max_hold_minutes: parseInt(el('editPyMaxHold')?.value),
+        min_profit_per_lot: parseInt(el('editPyMinProfit')?.value),
+        vp_lookback: parseInt(el('editPyLookback')?.value),
+        vp_bin_size: parseInt(el('editPyBinSize')?.value),
+        vp_va_percent: parseFloat(el('editPyVaPercent')?.value),
+        rv_adaptation: el('editPyRvAdapt')?.checked || false,
+    };
+    // Try live robot first, then C# proxy
+    let saved = false;
+    try {
+        const resp = await fetch(ROBOT_API + '/api/robot/config', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(body)
+        });
+        const data = await resp.json();
+        addLog(nowTime(), 'INFO', '🐍 Config saved (live): ' + JSON.stringify(data));
+        saved = true;
+    } catch(e) {
+        try {
+            const resp = await fetch('/api/robot/config', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(body)
+            });
+            const data = await resp.json();
+            addLog(nowTime(), 'INFO', '🐍 Config saved (proxy): ' + JSON.stringify(data));
+            saved = true;
+        } catch(e2) {
+            addLog(nowTime(), 'ERROR', '🐍 Save failed: ' + e2.message);
+        }
+    }
+    // Also update strategy tab fields
+    if (saved) {
+        if (el('cfgVpMaxLevels')) el('cfgVpMaxLevels').value = body.max_levels;
+        if (el('cfgVpStepBase')) el('cfgVpStepBase').value = body.step_base;
+        if (el('cfgVpSpreadBase')) el('cfgVpSpreadBase').value = body.spread_base;
+        if (el('cfgVpMaxHold')) el('cfgVpMaxHold').value = body.max_hold_minutes;
+        if (el('cfgVpMinProfit')) el('cfgVpMinProfit').value = body.min_profit_per_lot;
+    }
+}
+
+async function pythonRobotLoadGridLevels() {
+    const tbody = el('pyGridBody');
+    if (!tbody) return;
+    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:#9CA3AF">Загрузка...</td></tr>';
+    try {
+        const resp = await fetch(ROBOT_API + '/api/robot/grid-levels');
+        const data = await resp.json();
+        if (!data.levels.length) {
+            tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:#9CA3AF">Нет grid уровней</td></tr>';
+        } else {
+            tbody.innerHTML = data.levels.map(l => `<tr>
+                <td>${l.level}</td>
+                <td>${l.side}</td>
+                <td>${l.price.toFixed(0)}</td>
+                <td>${l.status}</td>
+                <td>${l.tp_price > 0 ? l.tp_price.toFixed(0) : '—'}</td>
+                <td>${l.tp_closed_price > 0 ? l.tp_closed_price.toFixed(0) : '—'}</td>
+            </tr>`).join('');
+        }
+    } catch(e) {
+        tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:#f44336">Ошибка: ' + e.message + '</td></tr>';
+    }
+}
+
+function createVpRobotFromTest() {
+    const ticker = el('testTicker')?.value || 'SiU6';
+    const params = {
+        max_levels: parseInt(el('tstVpMaxLevels')?.value) || 100,
+        step_base: parseInt(el('tstVpStepBase')?.value) || 31,
+        spread_base: parseInt(el('tstVpSpreadBase')?.value) || 31,
+        min_profit_per_lot: parseInt(el('tstVpMinProfit')?.value) || 35,
+        vp_lookback: parseInt(el('tstVpLookback')?.value) || 33,
+        vp_bin_size: parseInt(el('tstVpBinSize')?.value) || 50,
+        vp_va_percent: parseFloat(el('tstVpVaPercent')?.value) || 0.70,
+        rv_adaptation: false,
+        max_hold_minutes: 99999999999999,
+        ticker: ticker
+    };
+    // Find next available port (5071+)
+    const usedPorts = robots.map(r => r.port || 0);
+    let port = 5071;
+    while (usedPorts.includes(port)) port++;
+    params.port = port;
+    const id = ticker + '_' + port;
+
+    // Create instance on server
+    fetch('/api/instance/create', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ ...params, id })
+    }).then(r => r.json()).then(data => {
+        addLog(nowTime(), 'INFO', '🤖 Инстанс создан: ' + ticker + ' port=' + port);
+    }).catch(e => {
+        addLog(nowTime(), 'WARN', 'Instance create: ' + e.message);
+    });
+
+    // Create robot in UI
+    const robot = {
+        id: id,
+        ticker: ticker,
+        strategy: 'VP Scalp Grid',
+        port: port,
+        step_base: params.step_base,
+        spread_base: params.spread_base,
+        max_levels: params.max_levels,
+        vp_lookback: params.vp_lookback,
+        vp_bin_size: params.vp_bin_size,
+        vp_va_percent: params.vp_va_percent,
+        min_profit: params.min_profit_per_lot,
+        hold_minutes: params.max_hold_minutes,
+        status: 'stopped',
+        position: '—',
+        pnlToday: 0, pnlTotal: 0,
+        lotsOpen: 0, go: 0,
+        isInstance: true
+    };
+    robots.push(robot);
+    saveRobots();
+    renderRobots();
+    // Switch to monitoring tab
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+    document.querySelector('[data-tab="monitoring"]').classList.add('active');
+    el('monitoring')?.classList.add('active');
+    addLog(nowTime(), 'INFO', '🤖 Робот создан: ' + ticker + ' step=' + params.step_base + ' spread=' + params.spread_base + ' port=' + port);
+}
+
+function pythonRobotTest() {
+    // Copy params from strategy tab to testing tab fields
+    const map = {'cfgVpMaxLevels':'tstVpMaxLevels','cfgVpStepBase':'tstVpStepBase','cfgVpSpreadBase':'tstVpSpreadBase','cfgVpMinProfit':'tstVpMinProfit','cfgVpLookback':'tstVpLookback','cfgVpBinSize':'tstVpBinSize','cfgVpVaPercent':'tstVpVaPercent'};
+    for (const [src, dst] of Object.entries(map)) {
+        if (el(src) && el(dst)) el(dst).value = el(src).value;
+    }
+    // Copy instrument
+    const ticker = el('cfgVpTicker')?.value || 'SiU6';
+    if (el('testTicker')) el('testTicker').value = ticker;
+    // Switch to testing tab
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+    document.querySelector('[data-tab="testing"]').classList.add('active');
+    el('testing')?.classList.add('active');
+    addLog(nowTime(), 'INFO', '📋 Параметры ' + ticker + ' перенесены на вкладку тестирования');
+}
+
+function clearTestResults() {
+    // Reset all metric values
+    ['btPnl','btPpd','btAvgTrade','btAvgWin','btAvgLoss','btMaxDD','btMaxWin','btMaxLoss','btCommission'].forEach(id => {
+        const e = el(id); if(e) { e.textContent = '—'; e.className = 'metric-value'; }
+    });
+    ['btTrades','btRtpd','btWR','btPF','btSharpe','btMaxDDpct','btMaxDDdur','btMaxPos','btMaxGO','btSessions','btSessionsWR','btMedSession','btMaxWinsStreak','btMaxLossStreak'].forEach(id => {
+        const e = el(id); if(e) e.textContent = '—';
+    });
+    // Clear charts
+    ['testEquityChart','testCandleChart'].forEach(id => {
+        const e = el(id); if(e) e.innerHTML = '';
+    });
+    // Clear trades table
+    const tbody = el('testTradesTable');
+    if(tbody) tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:24px;color:#9CA3AF">Нет данных</td></tr>';
+    // Hide results
+    el('testResults').style.display = 'none';
+    el('testStatus').textContent = '';
+}
+
+function startVpTest() {
+    const params = {
+        ticker: el('testTicker')?.value || 'SiU6',
+        tf: parseInt(el('testTf')?.value) || 5,
+        max_levels: parseInt(el('tstVpMaxLevels')?.value) || 100,
+        step_base: parseInt(el('tstVpStepBase')?.value) || 31,
+        spread_base: parseInt(el('tstVpSpreadBase')?.value) || 31,
+        min_profit: parseInt(el('tstVpMinProfit')?.value) || 35,
+        vp_lookback: parseInt(el('tstVpLookback')?.value) || 33,
+        vp_bin_size: parseInt(el('tstVpBinSize')?.value) || 50,
+        vp_va_percent: parseFloat(el('tstVpVaPercent')?.value) || 0.70,
+        commission: parseFloat(el('tstVpComm')?.value) || 0.90,
+        from: el('testFrom')?.value || undefined,
+        to: el('testTo')?.value || undefined,
+    };
+    el('testResults').style.display = 'block';
+    const status = el('testStatus');
+    if (status) status.textContent = '⏳ Тестирование...';
+    addLog(nowTime(), 'INFO', '🧪 VP Scalp Grid: ' + params.ticker + ' step=' + params.step_base + ' spread=' + params.spread_base + ' levels=' + params.max_levels);
+    fetch('/api/vp-backtest', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(params),
+        signal: AbortSignal.timeout(120000)
+    }).then(r => r.json()).then(r => {
+        if (r.error) { if (status) status.textContent = '❌ ' + r.error; return; }
+        if (status) status.textContent = '✅ Готово';
+        const fmt = v => (v||0).toLocaleString('ru-RU',{maximumFractionDigits:0});
+        const cls = v => v >= 0 ? 'metric-value green' : 'metric-value red';
+        const setVal = (id, v, s='') => { const e = el(id); if(e) { e.textContent = (v>=0?'+':'')+fmt(v)+s; e.className = cls(v); } };
+        const setTxt = (id, v) => { const e = el(id); if(e) e.textContent = v; };
+        setVal('btPnl', r.pnl, ' ₽');
+        setVal('btPpd', r.ppd, ' ₽/д');
+        setTxt('btTrades', r.sessions);
+        setTxt('btRtpd', r.rtpd);
+        setTxt('btWR', r.winRate + '%');
+        setTxt('btPF', r.profitFactor);
+        setTxt('btSharpe', '—');
+        setVal('btAvgTrade', r.avgTrade, ' ₽');
+        setVal('btAvgWin', r.avgWin, ' ₽');
+        setVal('btAvgLoss', r.avgLoss, ' ₽');
+        setVal('btMaxDD', r.maxDD, ' ₽');
+        setTxt('btMaxDDpct', r.days > 0 ? (Math.abs(r.maxDD) / (r.maxDD + r.pnl || 1) * 100).toFixed(1) + '%' : '—');
+        setTxt('btMaxDDdur', r.maxDDdur + ' сделок');
+        setTxt('btMaxPos', r.maxPos);
+        setTxt('btMaxGO', r.maxGO ? fmt(r.maxGO) + ' ₽' : '—');
+        setTxt('btSessions', r.sessions);
+        setTxt('btSessionsWR', r.winRate + '%');
+        setTxt('btMedSession', '—');
+        setVal('btMaxWin', r.maxWin, ' ₽');
+        setVal('btMaxLoss', r.maxLoss, ' ₽');
+        setTxt('btMaxWinsStreak', r.winStreak);
+        setTxt('btMaxLossStreak', r.lossStreak);
+        setVal('btCommission', r.totalComm, ' ₽');
+        // Trades table
+        const tbody = el('testTradesTable');
+        if (tbody && r.trades) {
+            tbody.innerHTML = r.trades.map(t => `<tr>
+                <td>${t.et||''}</td><td>${t.xt||''}</td>
+                <td style="color:${t.dir==='LONG'?'var(--green)':'var(--red)'}">${t.dir}</td>
+                <td>${t.ep}</td><td>${t.xp}</td><td>${t.lots}</td>
+                <td style="color:${t.pnl>=0?'var(--green)':'var(--red)'}">${t.pnl>=0?'+':''}${t.pnl}</td>
+                <td>1</td></tr>`).join('');
+        }
+        // Equity chart
+        drawVpEquity(r.equity || []);
+        // Candle chart with trades
+        drawVpCandles(r.candles || [], r.markers || []);
+        addLog(nowTime(), 'INFO', '🧪 Результат: PnL=' + r.pnl + ' WR=' + r.winRate + '% PF=' + r.profitFactor);
+    }).catch(e => {
+        if (status) status.textContent = '❌ ' + e.message;
+        addLog(nowTime(), 'ERROR', '🧪 Ошибка: ' + e.message);
+    });
+}
+
+function drawVpEquity(pts) {
+    const container = el('testEquityChart');
+    if (!container || !pts.length) return;
+    const W = container.clientWidth || 600, H = container.clientHeight || 300;
+    const vals = pts.map(p => p.e);
+    const mn = Math.min(...vals), mx = Math.max(...vals);
+    const range = mx - mn || 1;
+    let pathD = '';
+    pts.forEach((p, i) => {
+        const x = (i / (pts.length - 1)) * (W - 20) + 10;
+        const y = H - 10 - ((p.e - mn) / range) * (H - 20);
+        pathD += (i === 0 ? 'M' : 'L') + x.toFixed(1) + ',' + y.toFixed(1);
+    });
+    const color = vals[vals.length-1] >= 0 ? '#4CAF50' : '#f44336';
+    container.innerHTML = `<svg width="100%" height="100%" viewBox="0 0 ${W} ${H}">
+        <text x="10" y="15" fill="#888" font-size="11">${fmtN(mx)}</text>
+        <text x="10" y="${H-2}" fill="#888" font-size="11">${fmtN(mn)}</text>
+        <path d="${pathD}" fill="none" stroke="${color}" stroke-width="1.5"/>
+        <line x1="10" y1="${H-10-((0-mn)/range)*(H-20)}" x2="${W-10}" y2="${H-10-((0-mn)/range)*(H-20)}" stroke="#555" stroke-width="0.5" stroke-dasharray="4"/>
+    </svg>`;
+}
+
+function drawVpCandles(candles, markers) {
+    const container = el('testCandleChart');
+    if (!container || !candles.length) return;
+    const W = container.clientWidth || 600, H = container.clientHeight || 400;
+    const closes = candles.map(c => c.c);
+    const allH = candles.map(c => c.h), allL = candles.map(c => c.l);
+    const mn = Math.min(...allL), mx = Math.max(...allH);
+    const range = mx - mn || 1;
+    const bw = Math.max(1, (W - 20) / candles.length * 0.7);
+    const step = (W - 20) / candles.length;
+    let svg = `<svg width="100%" height="100%" viewBox="0 0 ${W} ${H}">`;
+    // Zero line
+    candles.forEach((c, i) => {
+        const x = 10 + i * step + step/2;
+        const yO = H - 10 - ((c.o - mn) / range) * (H - 20);
+        const yC = H - 10 - ((c.c - mn) / range) * (H - 20);
+        const yH = H - 10 - ((c.h - mn) / range) * (H - 20);
+        const yL = H - 10 - ((c.l - mn) / range) * (H - 20);
+        const up = c.c >= c.o;
+        const col = up ? '#4CAF50' : '#f44336';
+        svg += `<line x1="${x}" y1="${yH}" x2="${x}" y2="${yL}" stroke="${col}" stroke-width="0.5"/>`;
+        svg += `<rect x="${x-bw/2}" y="${Math.min(yO,yC)}" width="${bw}" height="${Math.max(Math.abs(yC-yO),1)}" fill="${col}"/>`;
+    });
+    // Trade markers
+    const markerMap = {};
+    markers.forEach(m => { markerMap[m.et] = m; });
+    candles.forEach((c, i) => {
+        const m = markerMap[c.t];
+        if (!m) return;
+        const x = 10 + i * step + step/2;
+        if (m.dir === 'LONG') {
+            const y = H - 10 - ((m.ep - mn) / range) * (H - 20) + 12;
+            svg += `<polygon points="${x},${y-10} ${x-5},${y} ${x+5},${y}" fill="#4CAF50"/>`;
+        } else {
+            const y = H - 10 - ((m.ep - mn) / range) * (H - 20) - 12;
+            svg += `<polygon points="${x},${y+10} ${x-5},${y} ${x+5},${y}" fill="#f44336"/>`;
+        }
+    });
+    svg += `<text x="10" y="15" fill="#888" font-size="11">${fmtN(mx)}</text>`;
+    svg += `<text x="10" y="${H-2}" fill="#888" font-size="11">${fmtN(mn)}</text>`;
+    svg += '</svg>';
+    container.innerHTML = svg;
+}
+
+function fmtN(v) { return Math.round(v).toLocaleString('ru-RU'); }
+
+function pythonRobotCreate() {
+    const ticker = el('cfgVpTicker')?.value || 'SiU6';
+    const params = {
+        max_levels: parseInt(el('cfgVpMaxLevels')?.value) || 100,
+        step_base: parseInt(el('cfgVpStepBase')?.value) || 31,
+        spread_base: parseInt(el('cfgVpSpreadBase')?.value) || 31,
+        min_profit_per_lot: parseInt(el('cfgVpMinProfit')?.value) || 29,
+        vp_lookback: parseInt(el('cfgVpLookback')?.value) || 33,
+        vp_bin_size: parseInt(el('cfgVpBinSize')?.value) || 50,
+        vp_va_percent: parseFloat(el('cfgVpVaPercent')?.value) || 0.70,
+    };
+
+    if (ticker === 'SiU6') {
+        // SiU6 — save to main robot config (port 5070)
+        fetch(ROBOT_API + '/api/robot/config', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+                max_levels: params.max_levels,
+                step_base: params.step_base,
+                spread_base: params.spread_base,
+                min_profit_per_lot: params.min_profit_per_lot,
+                vp_lookback: params.vp_lookback,
+                vp_bin_size: params.vp_bin_size,
+                vp_va_percent: params.vp_va_percent,
+            })
+        }).then(r => r.json()).then(data => {
+            addLog(nowTime(), 'INFO', '🤖 SiU6 конфиг сохранён');
+        }).catch(e => {
+            localStorage.setItem('vp_robot_params', JSON.stringify(params));
+            addLog(nowTime(), 'INFO', '🤖 SiU6 конфиг сохранён локально');
+        });
+        return;
+    }
+
+    // Non-SiU6 — create instance
+    const usedPorts = robots.map(r => r.port || 0).filter(p => p > 0);
+    let port = 5071;
+    while (usedPorts.includes(port)) port++;
+    const id = ticker + '_' + port;
+    params.ticker = ticker;
+    params.port = port;
+    params.id = id;
+
+    fetch('/api/instance/create', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(params)
+    }).then(r => r.json()).then(data => {
+        addLog(nowTime(), 'INFO', '🤖 Инстанс создан: ' + ticker + ' port=' + port);
+    }).catch(e => {
+        addLog(nowTime(), 'WARN', 'Instance create: ' + e.message);
+    });
+
+    const robot = {
+        id: id,
+        ticker: ticker,
+        strategy: 'VP Scalp Grid',
+        port: port,
+        step_base: params.step_base,
+        spread_base: params.spread_base,
+        max_levels: params.max_levels,
+        vp_lookback: params.vp_lookback,
+        vp_bin_size: params.vp_bin_size,
+        vp_va_percent: params.vp_va_percent,
+        min_profit: params.min_profit_per_lot,
+        hold_minutes: 99999999999999,
+        status: 'stopped',
+        position: '—',
+        pnlToday: 0, pnlTotal: 0,
+        lotsOpen: 0, go: 0,
+        isInstance: true
+    };
+    robots.push(robot);
+    saveRobots();
+    renderRobots();
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+    document.querySelector('[data-tab="monitoring"]').classList.add('active');
+    el('monitoring')?.classList.add('active');
+    addLog(nowTime(), 'INFO', '🤖 Робот создан: ' + ticker + ' step=' + params.step_base + ' spread=' + params.spread_base + ' port=' + port);
+}
+
+// === MANUAL POSITION ADJUST (Si) ===
+async function ofAdjustPosition() {
+    const lotsEl = document.getElementById('ofAdjLots');
+    const priceEl = document.getElementById('ofAdjPrice');
+    const resEl = document.getElementById('ofAdjResult');
+    const lots = parseInt(lotsEl.value);
+    const price = parseFloat(priceEl.value);
+    if (isNaN(lots)) { resEl.textContent = '⚠ укажите лоты (3 / -3 / 0)'; resEl.style.color = '#ff9800'; return; }
+    if (lots !== 0 && (isNaN(price) || price <= 0)) { resEl.textContent = '⚠ при лотах≠0 нужна цена > 0'; resEl.style.color = '#ff9800'; return; }
+    const posText = lots === 0 ? 'FLAT' : (lots > 0 ? 'LONG ' + lots : 'SHORT ' + Math.abs(lots));
+    if (!confirm(`Установить позицию робота SiU6: ${posText}${lots !== 0 ? ' @ ' + price : ''}?\nОрдеров НЕ отправляется — это синхронизация с брокером.`)) return;
+    try {
+        const resp = await fetch(OF_ROBOT_API + '/position/adjust', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({lots: lots, price: lots === 0 ? 0 : price})
+        });
+        const data = await resp.json();
+        if (data.ok) {
+            resEl.textContent = '✓ ' + (lots === 0 ? 'FLAT' : (data.dir === 1 ? 'LONG' : 'SHORT') + ' ' + data.lots + ' @ ' + data.avgPrice);
+            resEl.style.color = '#4caf50';
+            addLog(nowTime(), 'INFO', 'Si коррекция: ' + resEl.textContent + ' (ордеров нет)');
+            setTimeout(async () => { await ofRobotPoll(); renderRobots(); }, 500);
+        } else {
+            resEl.textContent = '✗ ' + (data.error || 'ошибка');
+            resEl.style.color = '#ef4444';
+            addLog(nowTime(), 'ERROR', 'Si коррекция отклонена: ' + data.error);
+        }
+    } catch (e) {
+        resEl.textContent = '✗ робот недоступен';
+        resEl.style.color = '#ef4444';
+    }
+}
+
+// === MANUAL POSITION ADJUST (MX) ===
+async function ofMxAdjustPosition() {
+    const lotsEl = document.getElementById('ofMxAdjLots');
+    const priceEl = document.getElementById('ofMxAdjPrice');
+    const resEl = document.getElementById('ofMxAdjResult');
+    const lots = parseInt(lotsEl.value);
+    const price = parseFloat(priceEl.value);
+    if (isNaN(lots)) { resEl.textContent = '⚠ укажите лоты (3 / -3 / 0)'; resEl.style.color = '#ff9800'; return; }
+    if (lots !== 0 && (isNaN(price) || price <= 0)) { resEl.textContent = '⚠ при лотах≠0 нужна цена > 0'; resEl.style.color = '#ff9800'; return; }
+    const posText = lots === 0 ? 'FLAT' : (lots > 0 ? 'LONG ' + lots : 'SHORT ' + Math.abs(lots));
+    if (!confirm(`Установить позицию робота: ${posText}${lots !== 0 ? ' @ ' + price : ''}?\nОрдеров НЕ отправляется — это синхронизация с брокером.`)) return;
+    try {
+        const resp = await fetch(OF_MX_ROBOT_API + '/position/adjust', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({lots: lots, price: lots === 0 ? 0 : price})
+        });
+        const data = await resp.json();
+        if (data.ok) {
+            resEl.textContent = '✓ ' + (lots === 0 ? 'FLAT' : (data.dir === 1 ? 'LONG' : 'SHORT') + ' ' + data.lots + ' @ ' + data.avgPrice);
+            resEl.style.color = '#4caf50';
+            addLog(nowTime(), 'INFO', 'MX коррекция: ' + resEl.textContent + ' (ордеров нет)');
+            setTimeout(async () => { await ofMxRobotPoll(); renderRobots(); }, 500);
+        } else {
+            resEl.textContent = '✗ ' + (data.error || 'ошибка');
+            resEl.style.color = '#ef4444';
+            addLog(nowTime(), 'ERROR', 'MX коррекция отклонена: ' + data.error);
+        }
+    } catch (e) {
+        resEl.textContent = '✗ робот недоступен';
+        resEl.style.color = '#ef4444';
+    }
+}
+
+// F-011: видимые уведомления о действиях (toast поверх любой вкладки)
+function showToast(msg, kind) {
+    let host = document.getElementById('toastHost');
+    if (!host) {
+        host = document.createElement('div');
+        host.id = 'toastHost';
+        host.style.cssText = 'position:fixed;top:16px;right:16px;z-index:9999;display:flex;flex-direction:column;gap:8px;pointer-events:none';
+        document.body.appendChild(host);
+    }
+    const t = document.createElement('div');
+    const bg = kind === 'error' ? '#7f1d1d' : (kind === 'warn' ? '#78350f' : '#14532d');
+    t.style.cssText = `background:${bg};color:#fff;padding:10px 14px;border-radius:8px;font-size:13px;box-shadow:0 4px 12px rgba(0,0,0,.4);max-width:380px;pointer-events:auto`;
+    t.textContent = msg;
+    host.appendChild(t);
+    setTimeout(() => { t.style.opacity = '0'; t.style.transition = 'opacity .4s'; }, 4500);
+    setTimeout(() => t.remove(), 5000);
+}
+
+// === ORDER FLOW ROBOT (порт 5080) ===
+const OF_ROBOT_API = 'http://' + window.location.hostname + ':5080';
+let ofRobot = null;
+
+// === ORDER FLOW EDIT PANEL ===
+async function ofRobotEditPanel() {
+    const existing = el('ofRobotEditPanel');
+    if (existing) { existing.remove(); return; }
+
+    const s = ofRobot || {};
+    // F-010: если робот offline — параметры из config через сервер (реальные сохранённые, не фантазийные дефолты)
+    let _cfgSrc = 'robot';
+    let p = s.params || null;
+    if (!p) {
+        try {
+            const r = await fetch('/api/of/config/of', {signal: AbortSignal.timeout(2000)});
+            if (r.ok) { p = await r.json(); _cfgSrc = 'config'; }
+        } catch(e) {}
+    }
+    p = p || {};
+
+    const div = document.createElement('div');
+    div.id = 'ofRobotEditPanel';
+    div.className = 'card';
+    div.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);z-index:1000;width:900px;max-height:90vh;overflow-y:auto;box-shadow:0 8px 32px rgba(0,0,0,.5)';
+    div.innerHTML = `
+        <div class="card-header row gap-8">
+            📊 SiU6 Order Flow (PYTHON)
+            <button class="btn btn-primary btn-sm" onclick="ofRobotSaveFromPanel()">💾 Сохранить</button>
+            <span id="ofCfgSrcBadge" style="font-size:11px;padding:2px 8px;border-radius:10px;opacity:.85"></span>
+            <button class="btn btn-secondary btn-sm" onclick="if(window._ofVpTimer){clearInterval(window._ofVpTimer);window._ofVpTimer=null;}el('ofRobotEditPanel')?.remove()">✕</button>
+        </div>
+        <div style="padding:12px">
+            <!-- OF индикаторы -->
+            <div class="metrics-row" style="flex-wrap:wrap;margin-bottom:12px">
+                <div class="metric-card" style="background:#1a2332;border:1px solid #9C27B0;display:flex;flex-direction:column;align-items:center;gap:2px"><div style="display:flex;align-items:center;gap:4px"><input id="toggleCvd" type="checkbox" checked style="width:14px;height:14px;cursor:pointer" onchange="toggleOfSignal('use_cvd', this.checked)"><div class="metric-label" style="color:#CE93D8">CVD Trend</div></div><div id="ofCvd" style="font-size:18px;font-weight:bold;color:#CE93D8">—</div></div>
+                <div class="metric-card" style="background:#1a2332;border:1px solid #9C27B0;display:flex;flex-direction:column;align-items:center;gap:2px"><div style="display:flex;align-items:center;gap:4px"><input id="toggleDmWall" type="checkbox" style="width:14px;height:14px;cursor:pointer" onchange="toggleOfSignal('use_dm_wall', this.checked)"><div class="metric-label" style="color:#FF7043">dm_wall</div></div><div id="ofDelta" style="font-size:18px;font-weight:bold;color:#FF7043">—</div></div>
+                <div class="metric-card" style="background:#1a2332;border:1px solid #9C27B0;display:flex;flex-direction:column;align-items:center;gap:2px"><div style="display:flex;align-items:center;gap:4px"><input id="toggleCvdAccel" type="checkbox" checked style="width:14px;height:14px;cursor:pointer" onchange="toggleOfSignal('use_cvd_accel', this.checked)"><div class="metric-label" style="color:#66BB6A">CVD Accel</div></div><div id="ofCvdAccel" style="font-size:18px;font-weight:bold;color:#66BB6A">—</div></div>
+
+                <div class="metric-card" style="background:#1a2332;border:1px solid #607D8B;display:flex;flex-direction:column;align-items:center;gap:2px"><div class="metric-label" style="color:#B0BEC5">Фильтр</div><select id="ofDirFilter" class="input" style="width:80px;font-size:13px;font-weight:bold;background:transparent;color:#fff;border:1px solid #607D8B;text-align:center;cursor:pointer" onchange="ofSetDirection(this.value)"><option value="both" style="color:#000">ОБА</option><option value="long" style="color:#000">LONG</option><option value="short" style="color:#000">SHORT</option></select></div>
+
+                <div class="metric-card"><div class="metric-label">Цена</div><div id="ofPrice" style="font-size:18px;font-weight:bold">—</div></div>
+                <div class="metric-card"><div class="metric-label">Позиция</div><div id="ofDir" style="font-size:18px;font-weight:bold">—</div></div>
+                <div class="metric-card"><div class="metric-label">Лоты</div><div id="ofLots" style="font-size:18px;font-weight:bold">0</div></div>
+                <div class="metric-card"><div class="metric-label">Ср. цена</div><div id="ofAvgPrice" style="font-size:18px;font-weight:bold">—</div></div>
+                <div class="metric-card"><div class="metric-label">PnL/лот</div><div id="ofPnlPerLot" style="font-size:18px;font-weight:bold">—</div></div>
+                <div class="metric-card"><div class="metric-label">PnL нереал.</div><div id="ofPnlUnreal" style="font-size:18px;font-weight:bold">—</div></div>
+                <div class="metric-card"><div class="metric-label">Realized</div><div id="ofRealized" style="font-size:18px;font-weight:bold">0₽</div></div>
+                <div class="metric-card"><div class="metric-label">Сигнал</div><div id="ofSignal" style="font-size:16px;font-weight:bold">—</div></div>
+                <div class="metric-card"><div class="metric-label">Hold</div><div id="ofHold" style="font-size:18px;font-weight:bold">0 мин</div></div>
+                <div class="metric-card"><div class="metric-label">Avg Levels</div><div id="ofAvgLvl" style="font-size:18px;font-weight:bold">0</div></div>
+                <div class="metric-card"><div class="metric-label">Pyr Levels</div><div id="ofPyrLvl" style="font-size:18px;font-weight:bold">0</div></div>
+                <div class="metric-card"><div class="metric-label">RT</div><div id="ofRt" style="font-size:18px;font-weight:bold">0</div></div>
+            </div>
+
+            <!-- MANUAL POSITION ADJUST: ручная коррекция позиции (синхронизация с брокером, БЕЗ ордеров) -->
+            <div style="display:flex;gap:8px;align-items:center;margin:10px 0;padding:10px;background:#1a2332;border:1px solid #607D8B;border-radius:8px">
+                <span style="color:#B0BEC5;font-size:13px;font-weight:bold">⚙ КОРРЕКЦИЯ ПОЗИЦИИ</span>
+                <input id="ofAdjLots" type="number" step="1" placeholder="лоты: 3 лонг / -3 шорт / 0 флэт" title="Абсолютная позиция: +N лонг, -N шорт, 0 флэт" style="width:170px;padding:6px 8px;background:#0D1117;color:#fff;border:1px solid #607D8B;border-radius:4px;font-size:13px">
+                <input id="ofAdjPrice" type="number" step="1" placeholder="цена (83800)" title="Средняя цена входа позиции брокера" style="width:130px;padding:6px 8px;background:#0D1117;color:#fff;border:1px solid #607D8B;border-radius:4px;font-size:13px">
+                <button class="btn btn-primary btn-sm" onclick="ofAdjustPosition()" title="Установить позицию робота = позиция брокера (ордеров НЕ отправляет)">Применить</button>
+                <span id="ofAdjResult" style="font-size:12px;color:#B0BEC5"></span>
+            </div>
+
+            <hr style="border-color:#2D2D44;margin:12px 0">
+            <!-- Параметры -->
+            <div class="metrics-row" style="flex-wrap:wrap;margin-bottom:16px">
+                <div class="metric-card"><div class="metric-label">Lots</div><input id="editOfLots" class="input" type="number" value="${p.lots||1}" style="width:60px"></div>
+                <div class="metric-card"><div class="metric-label">Max Pyramid</div><input id="editOfMaxPyr" class="input" type="number" value="${p.max_pyramid_levels||5}" style="width:60px"></div>
+                <div class="metric-card"><div class="metric-label">Max Average</div><input id="editOfMaxAvg" class="input" type="number" value="${p.max_average_levels||100}" style="width:60px"></div>
+                <div class="metric-card"><div class="metric-label">Step Avg (пт)</div><input id="editOfStepAvg" class="input" type="number" value="${p.step_average||50}" style="width:70px"></div>
+                <div class="metric-card"><div class="metric-label">Step Pyr (пт)</div><input id="editOfStepPyr" class="input" type="number" value="${p.step_pyramid||35}" style="width:70px"></div>
+                <div class="metric-card"><div class="metric-label">Spread (пт)</div><input id="editOfSpread" class="input" type="number" value="${p.spread||50}" style="width:60px"></div>
+                <div class="metric-card"><div class="metric-label">SL Mode</div><select id="editOfSlMode" class="input" style="width:70px"><option value="rub" ${(p.stop_loss_mode||'rub')==='rub'?'selected':''}>₽</option><option value="pct" ${p.stop_loss_mode==='pct'?'selected':''}>%</option><option value="pts" ${p.stop_loss_mode==='pts'?'selected':''}>пт</option></select></div>
+                <div class="metric-card"><div class="metric-label">SL Value</div><input id="editOfSlValue" class="input" type="number" value="${p.stop_loss_value||7000}" style="width:80px"></div>
+                <div class="metric-card"><div class="metric-label">Min Profit/Lot</div><input id="editOfMinProfit" class="input" type="number" value="${p.min_profit_per_lot||30}" style="width:60px"></div>
+                <div class="metric-card"><div class="metric-label">Close % All</div><select id="editOfCloseHalfPct" class="input" style="width:70px"><option value="0" ${(!p.close_half_pct)?'selected':''}>OFF</option><option value="50" ${p.close_half_pct===50?'selected':''}>50%</option><option value="40" ${p.close_half_pct===40?'selected':''}>40%</option><option value="30" ${p.close_half_pct===30?'selected':''}>30%</option><option value="20" ${p.close_half_pct===20?'selected':''}>20%</option><option value="10" ${p.close_half_pct===10?'selected':''}>10%</option></select></div>
+                <div class="metric-card"><div class="metric-label">Close price All</div><input id="editOfClosePriceAll" class="input" type="number" placeholder="None" value="${p.close_price_all||''}" style="width:90px"></div>
+                <div class="metric-card"><div class="metric-label">Max Hold (мин)</div><input id="editOfMaxHold" class="input" type="number" value="${p.max_hold_minutes||999}" style="width:80px"></div>
+                <div class="metric-card"><div class="metric-label">CVD EMA Fast</div><input id="editOfCvdEmaF" class="input" type="number" value="${p.cvd_ema_fast||5}" style="width:60px"></div>
+                <div class="metric-card"><div class="metric-label">CVD EMA Slow</div><input id="editOfCvdEmaS" class="input" type="number" value="${p.cvd_ema_slow||15}" style="width:60px"></div>
+                <div class="metric-card"><div class="metric-label">DM Lookback</div><input id="editOfDmLb" class="input" type="number" value="${p.dm_lookback||5}" style="width:60px"></div>
+                <div class="metric-card"><div class="metric-label">Wall Window (с)</div><input id="editOfWallWin" class="input" type="number" value="${p.wall_window||120}" style="width:60px"></div>
+                <div class="metric-card"><div class="metric-label">Wall Mult</div><input id="editOfWallMult" class="input" type="number" step="0.5" value="${p.wall_multiplier||3.0}" style="width:60px"></div>
+                <div class="metric-card"><div class="metric-label">CVD Accel Thresh</div><input id="editOfCvdAccelThresh" class="input" type="number" step="100" value="${p.cvd_accel_threshold||1000}" style="width:80px"></div>
+                <div class="metric-card"><div class="metric-label">Agg Window</div><input id="editOfAggWindow" class="input" type="number" value="${p.agg_window||3}" style="width:60px"></div>
+                <div class="metric-card"><div class="metric-label">Agg Ratio Thr</div><input id="editOfAggRatioThresh" class="input" type="number" step="0.1" value="${p.agg_ratio_threshold||1.0}" style="width:60px"></div>
+                <div class="metric-card" style="display:flex;align-items:center;gap:8px"><label style="display:flex;align-items:center;gap:6px;cursor:pointer"><input id="editOfUseAggRatio" type="checkbox" ${(p.use_agg_ratio!==false)?'checked':''} style="width:18px;height:18px;cursor:pointer"><span style="font-size:13px;color:#66BB6A">Agg Ratio Filter</span></label></div>
+                <div class="metric-card"><div class="metric-label">Confirm In</div><input id="editOfConfirm" class="input" type="number" min="1" max="3" value="${p.signal_confirm_count||1}" style="width:50px"></div>
+                <div class="metric-card"><div class="metric-label">Confirm Out</div><input id="editOfConfirmOut" class="input" type="number" min="1" max="3" value="${p.signal_confirm_exit||1}" style="width:50px"></div>
+                <div class="metric-card"><div class="metric-label">Timeframe</div><select id="editOfTf" class="input" style="width:70px"><option value="M1" ${p.timeframe==='M1'?'selected':''}>1 мин</option><option value="M5" ${(p.timeframe||'M5')==='M5'?'selected':''}>5 мин</option><option value="M15" ${p.timeframe==='M15'?'selected':''}>15 мин</option><option value="M30" ${p.timeframe==='M30'?'selected':''}>30 мин</option><option value="H1" ${p.timeframe==='H1'?'selected':''}>1 час</option></select></div>
+            </div>
+            <hr style="border-color:#2D2D44;margin:12px 0">
+            <!-- VWEMA Filter -->
+            <div class="metrics-row" style="flex-wrap:wrap;margin-bottom:16px;align-items:center">
+                <div class="metric-card" style="display:flex;align-items:center;gap:8px">
+                    <label style="display:flex;align-items:center;gap:6px;cursor:pointer">
+                        <input id="editOfUseVwema" type="checkbox" ${(p.use_vwema)?'checked':''} style="width:18px;height:18px;cursor:pointer">
+                        <span style="font-weight:bold;color:#FF9800">VWEMA Filter</span>
+                    </label>
+                </div>
+                <div class="metric-card"><div class="metric-label">VWEMA Fast</div><input id="editOfVwemaFast" class="input" type="number" value="${p.vwema_fast||20}" style="width:60px"></div>
+                <div class="metric-card"><div class="metric-label">VWEMA Slow</div><input id="editOfVwemaSlow" class="input" type="number" value="${p.vwema_slow||40}" style="width:60px"></div>
+                <div class="metric-card"><div class="metric-label">Flat Threshold</div><input id="editOfVwemaFlat" class="input" type="number" step="0.1" value="${p.vwema_flat_th||1.0}" style="width:60px"></div>
+                <div class="metric-card" style="display:flex;align-items:center;gap:8px">
+                    <label style="display:flex;align-items:center;gap:6px;cursor:pointer">
+                        <input id="editOfVwemaBlock" type="checkbox" ${(p.vwema_block_counter!==false)?'checked':''} style="width:18px;height:18px;cursor:pointer">
+                        <span style="font-size:13px">Block counter-trend</span>
+                    </label>
+                </div>
+                <div class="metric-card" style="display:flex;align-items:center;gap:8px">
+                    <label style="display:flex;align-items:center;gap:6px;cursor:pointer" title="Не усреднять против VWEMA + закрыть усреднённую позицию при развороте VWEMA">
+                        <input id="editOfVwemaAvgExit" type="checkbox" ${(p.vwema_avg_exit)?'checked':''} style="width:18px;height:18px;cursor:pointer">
+                        <span style="font-size:13px">VWEMA Avg Exit</span>
+                    </label>
+                </div>
+                <div class="metric-card" style="min-width:120px"><div class="metric-label">VWEMA Trend</div><div id="ofVwemaTrend" style="font-size:16px;font-weight:bold;color:#9CA3AF">—</div></div>
+            </div>
+            <hr style="border-color:#2D2D44;margin:12px 0">
+            <!-- VAH/VAL Volume Profile Filter -->
+            <div class="metrics-row" style="flex-wrap:wrap;margin-bottom:16px;align-items:center">
+                <div class="metric-card" style="display:flex;align-items:center;gap:8px">
+                    <label style="display:flex;align-items:center;gap:6px;cursor:pointer">
+                        <input id="editOfUseVahVal" type="checkbox" ${(p.use_vah_val)?'checked':''} style="width:18px;height:18px;cursor:pointer">
+                        <span style="font-weight:bold;color:#26C6DA">VAH/VAL Filter</span>
+                    </label>
+                </div>
+                <div class="metric-card"><div class="metric-label">Value Area %</div><input id="editOfVaPct" class="input" type="number" value="${p.vah_val_pct||70}" style="width:60px"></div>
+                <div class="metric-card"><div class="metric-label">VP Bin Size</div><input id="editOfVpBin" class="input" type="number" value="${p.vah_val_bin_size||50}" style="width:60px"></div>
+                <div class="metric-card"><div class="metric-label">VP Mode</div><select id="editOfVpMode" class="input" style="width:100px"><option value="range" ${(p.vah_val_mode||'range')==='range'?'selected':''}>Range</option><option value="fade" ${p.vah_val_mode==='fade'?'selected':''}>Fade</option><option value="breakout" ${p.vah_val_mode==='breakout'?'selected':''}>Breakout</option></select></div>
+                <div class="metric-card" style="min-width:60px"><div class="metric-label">VAH</div><div id="ofVpVah" style="font-size:16px;font-weight:bold;color:#F44336">—</div></div>
+                <div class="metric-card" style="min-width:60px"><div class="metric-label">POC</div><div id="ofVpPoc" style="font-size:16px;font-weight:bold;color:#FF9800">—</div></div>
+                <div class="metric-card" style="min-width:60px"><div class="metric-label">VAL</div><div id="ofVpVal" style="font-size:16px;font-weight:bold;color:#4CAF50">—</div></div>
+            </div>
+            <hr style="border-color:#2D2D44;margin:12px 0">
+            <!-- Торговый журнал -->
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+                <strong>📋 Торговый журнал</strong>
+                <button class="btn btn-danger btn-sm" onclick="ofResetStats()" style="font-size:12px">🗑 Сбросить</button>
+            </div>
+            <div id="ofJournalSummary" class="metrics-row" style="flex-wrap:wrap;margin-bottom:12px"></div>
+            <div style="display:flex;gap:8px;margin-bottom:12px;align-items:center">
+                <select id="ofJournalFilter" class="input" style="width:120px" onchange="ofRenderJournal()">
+                    <option value="all">Все позиции</option>
+                    <option value="LONG">Лонги</option>
+                    <option value="SHORT">Шорты</option>
+                    <option value="win">Прибыльные</option>
+                    <option value="loss">Убыточные</option>
+                </select>
+                <span style="color:#9CA3AF;font-size:13px">с</span>
+                <input id="ofJournalDateFrom" class="input" type="date" style="width:130px" onchange="ofRenderJournal()">
+                <span style="color:#9CA3AF;font-size:13px">по</span>
+                <input id="ofJournalDateTo" class="input" type="date" style="width:130px" onchange="ofRenderJournal()">
+                <button class="btn btn-secondary btn-sm" onclick="ofLoadJournal()">🔄</button>
+            </div>
+            <div style="max-height:350px;overflow-y:auto;border:1px solid var(--border-color);border-radius:8px">
+                <table style="width:100%;border-collapse:collapse;font-size:13px">
+                    <thead style="position:sticky;top:0;z-index:1">
+                        <tr style="background:var(--card);border-bottom:2px solid var(--accent)">
+                            <th style="padding:8px;text-align:left">📅 Дата</th>
+                            <th style="padding:8px;text-align:left">⏰ Вход</th>
+                            <th style="padding:8px;text-align:left">⏰ Выход</th>
+                            <th style="padding:8px;text-align:center">↔️</th>
+                            <th style="padding:8px;text-align:right">💰 Вход</th>
+                            <th style="padding:8px;text-align:right">💰 Выход</th>
+                            <th style="padding:8px;text-align:right">Лоты</th>
+                            <th style="padding:8px;text-align:right">PnL</th>
+                            <th style="padding:8px;text-align:right">Кумул.</th>
+                        </tr>
+                    </thead>
+                    <tbody id="ofJournalBody" style="background:var(--bg)"><tr><td colspan="9" style="text-align:center;padding:24px;color:#9CA3AF">Нет данных</td></tr></tbody>
+                </table>
+            </div>
+            <div id="ofJournalInfo" style="font-size:12px;color:#9CA3AF;margin-top:8px"></div>
+        </div>
+    `;
+    document.body.appendChild(div);
+    // F-010: бейдж источника параметров
+    const _srcBadge = el('ofCfgSrcBadge');
+    if (_srcBadge) {
+        if (_cfgSrc === 'robot') { _srcBadge.textContent = '🟢 от робота (live)'; _srcBadge.style.background = 'rgba(34,197,94,.15)'; _srcBadge.style.color = '#22c55e'; }
+        else { _srcBadge.textContent = '💾 из конфига (робот остановлен)'; _srcBadge.style.background = 'rgba(59,130,246,.15)'; _srcBadge.style.color = '#60a5fa'; }
+    }
+
+    // Start live updates
+    ofUpdatePanel();
+    if (window._ofVpTimer) clearInterval(window._ofVpTimer);
+    window._ofVpTimer = setInterval(() => ofUpdatePanel(), 2000);
+
+    // Load journal
+    setTimeout(() => ofLoadJournal(), 300);
+}
+
+function ofUpdatePanel() {
+    if (!el('ofCvd')) return;
+    const s = ofRobot;
+    if (!s) return;
+
+    if (el('ofCvd')) {
+        const t = s.cvdTrend;
+        if (t && t.ready) {
+            const dir = t.direction === 1 ? 'LONG' : t.direction === -1 ? 'SHORT' : '—';
+            el('ofCvd').textContent = dir;
+            el('ofCvd').style.color = t.direction === 1 ? 'var(--green)' : t.direction === -1 ? 'var(--red)' : '#CE93D8';
+        } else {
+            el('ofCvd').textContent = '—';
+            el('ofCvd').style.color = '#CE93D8';
+        }
+    }
+    if (el('ofDelta')) el('ofDelta').textContent = s.dmWallAgree || '—';
+    if (el('ofCvdAccel') && s.cvdAccel) el('ofCvdAccel').textContent = s.cvdAccel.value !== null && s.cvdAccel.value !== undefined ? (s.cvdAccel.value > 0 ? '\u25B2' : '\u25BC') + Math.abs(s.cvdAccel.value).toFixed(0) + ' (R:' + s.cvdAccel.aggRatio.toFixed(2) + ')' : '\u2014';
+
+    if (el('ofPrice')) el('ofPrice').textContent = s.currentPrice > 0 ? s.currentPrice.toFixed(0) : '—';
+
+    // Sync signal toggles from params
+    const p = s.params || {};
+    if (el('toggleCvd')) el('toggleCvd').checked = p.use_cvd !== false;
+    if (el('toggleDmWall')) el('toggleDmWall').checked = p.use_dm_wall !== false;
+    if (el('toggleCvdAccel')) el('toggleCvdAccel').checked = p.use_cvd_accel !== false;
+    if (el('ofDirFilter')) el('ofDirFilter').value = s.directionFilter || p.direction_filter || 'both';
+
+    const dirText = s.direction === 'LONG' ? 'Лонг' : s.direction === 'SHORT' ? 'Шорт' : 'Флэт';
+    const dirCls = s.direction === 'LONG' ? 'var(--green)' : s.direction === 'SHORT' ? 'var(--red)' : '';
+    if (el('ofDir')) { el('ofDir').textContent = dirText; el('ofDir').style.color = dirCls; }
+
+    if (el('ofLots')) el('ofLots').textContent = s.totalLots || 0;
+    if (el('ofAvgPrice')) el('ofAvgPrice').textContent = s.avgPrice > 0 ? s.avgPrice.toFixed(0) : '—';
+
+    if (el('ofPnlPerLot')) {
+        const perLot = s.currentPrice > 0 && s.avgPrice > 0 && s.totalLots > 0
+            ? ((s.currentPrice - s.avgPrice) * (s.direction === 'LONG' ? 1 : -1))
+            : 0;
+        el('ofPnlPerLot').textContent = s.totalLots > 0 ? perLot.toFixed(0) + '₽' : '—';
+        el('ofPnlPerLot').style.color = perLot >= 0 ? 'var(--green)' : 'var(--red)';
+    }
+
+    if (el('ofPnlUnreal')) {
+        const unreal = s.unrealizedPnL || 0;
+        el('ofPnlUnreal').textContent = unreal.toFixed(0) + '₽';
+        el('ofPnlUnreal').style.color = unreal >= 0 ? 'var(--green)' : 'var(--red)';
+    }
+
+    if (el('ofRealized')) {
+        const real = s.realizedPnL || 0;
+        el('ofRealized').textContent = real.toFixed(0) + '₽';
+        el('ofRealized').style.color = real >= 0 ? 'var(--green)' : 'var(--red)';
+    }
+
+    if (el('ofSignal')) {
+        el('ofSignal').textContent = s.signalType || '—';
+        el('ofSignal').style.color = s.signalType ? '#CE93D8' : '';
+    }
+
+    if (el('ofHold')) el('ofHold').textContent = (s.holdMinutes || 0) + ' мин';
+    if (el('ofAvgLvl')) el('ofAvgLvl').textContent = s.averageLevels || 0;
+    if (el('ofPyrLvl')) el('ofPyrLvl').textContent = s.pyramidLevels || 0;
+    if (el('ofRt')) el('ofRt').textContent = s.roundTrips || 0;
+
+    // VAH/VAL state
+    if (s.vp) {
+        if (el('ofVpVah')) el('ofVpVah').textContent = s.vp.vah ? s.vp.vah.toFixed(0) : '—';
+        if (el('ofVpPoc')) el('ofVpPoc').textContent = s.vp.poc ? s.vp.poc.toFixed(0) : '—';
+        if (el('ofVpVal')) el('ofVpVal').textContent = s.vp.val ? s.vp.val.toFixed(0) : '—';
+    } else {
+        if (el('ofVpVah')) el('ofVpVah').textContent = '—';
+        if (el('ofVpPoc')) el('ofVpPoc').textContent = '—';
+        if (el('ofVpVal')) el('ofVpVal').textContent = '—';
+    }
+
+    // VWEMA state
+    if (el('ofVwemaTrend')) {
+        const vw = s.vwema;
+        if (vw) {
+            const dir = vw.direction;
+            const trendText = dir > 0 ? '▲ UP' : dir < 0 ? '▼ DOWN' : '◆ FLAT';
+            const color = dir > 0 ? '#4CAF50' : dir < 0 ? '#F44336' : '#9CA3AF';
+            el('ofVwemaTrend').textContent = `${trendText} (${vw.spread_atr?.toFixed(1)||'?'})`;
+            el('ofVwemaTrend').style.color = color;
+        } else {
+            el('ofVwemaTrend').textContent = 'OFF';
+            el('ofVwemaTrend').style.color = '#6B7280';
+        }
+    }
+}
+
+async function ofRobotSaveFromPanel() {
+    const body = {
+        lots: parseInt(el('editOfLots')?.value) || 1,
+        max_pyramid_levels: parseInt(el('editOfMaxPyr')?.value) || 5,
+        max_average_levels: parseInt(el('editOfMaxAvg')?.value) || 100,
+        step_average: parseInt(el('editOfStepAvg')?.value) || 50,
+        step_pyramid: parseInt(el('editOfStepPyr')?.value) || 35,
+        spread: parseInt(el('editOfSpread')?.value) || 50,
+        stop_loss_mode: el('editOfSlMode')?.value || 'rub',
+        stop_loss_value: parseFloat(el('editOfSlValue')?.value) || 7000,
+        min_profit_per_lot: parseInt(el('editOfMinProfit')?.value) || 30,
+        close_half_pct: parseInt(el('editOfCloseHalfPct')?.value) || 0,
+        close_price_all: parseFloat(el('editOfClosePriceAll')?.value) || 0,
+        max_hold_minutes: parseInt(el('editOfMaxHold')?.value) || 999,
+        cvd_lookback: parseInt(el('editOfCvdLb')?.value) || 10,
+        cvd_ema_fast: parseInt(el('editOfCvdEmaF')?.value) || 5,
+        cvd_ema_slow: parseInt(el('editOfCvdEmaS')?.value) || 15,
+        dm_lookback: parseInt(el('editOfDmLb')?.value) || 5,
+        wall_window: parseFloat(el('editOfWallWin')?.value) || 120,
+        wall_multiplier: parseFloat(el('editOfWallMult')?.value) || 3.0,
+        cvd_accel_threshold: parseFloat(el('editOfCvdAccelThresh')?.value) || 1000,
+        agg_window: parseInt(el('editOfAggWindow')?.value) || 3,
+        agg_ratio_threshold: parseFloat(el('editOfAggRatioThresh')?.value) || 1.0,
+        use_agg_ratio: el('editOfUseAggRatio')?.checked !== false,
+        signal_confirm_count: parseInt(el('editOfConfirm')?.value) || 1,
+        signal_confirm_exit: parseInt(el('editOfConfirmOut')?.value) || 1,
+        timeframe: el('editOfTf')?.value || 'M5',
+        use_dm_wall: el('toggleDmWall')?.checked !== false,
+        use_cvd: el('toggleCvd')?.checked !== false,
+        use_cvd_accel: el('toggleCvdAccel')?.checked !== false,
+
+        use_vwema: el('editOfUseVwema')?.checked || false,
+        vwema_fast: parseInt(el('editOfVwemaFast')?.value) || 20,
+        vwema_slow: parseInt(el('editOfVwemaSlow')?.value) || 40,
+        vwema_flat_th: parseFloat(el('editOfVwemaFlat')?.value) || 1.0,
+        vwema_block_counter: el('editOfVwemaBlock')?.checked !== false,
+        vwema_avg_exit: el('editOfVwemaAvgExit')?.checked || false,
+
+        use_vah_val: el('editOfUseVahVal')?.checked || false,
+        vah_val_pct: parseInt(el('editOfVaPct')?.value) || 70,
+        vah_val_bin_size: parseInt(el('editOfVpBin')?.value) || 50,
+        vah_val_mode: el('editOfVpMode')?.value || 'range',
+    };
+    try {
+        // F-010: если робот offline — пишем конфиг через сервер (применится при старте)
+        let _savedVia = null;
+        try {
+            const resp = await fetch(OF_ROBOT_API + '/params', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(body)
+            });
+            if (resp.ok) { await resp.json(); _savedVia = 'robot'; }
+        } catch(e) {}
+        if (!_savedVia) {
+            const r2 = await fetch('/api/of/config/of', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(body),
+                signal: AbortSignal.timeout(3000)
+            });
+            if (!r2.ok) throw new Error('config proxy failed: ' + r2.status);
+            _savedVia = 'config';
+        }
+        addLog(nowTime(), 'INFO', '💾 OF конфиг сохранён (' + (_savedVia === 'robot' ? 'робот live' : 'конфиг, применится при старте') + ')');
+    } catch(e) {
+        addLog(nowTime(), 'ERROR', 'OF save НЕ удался: ' + e.message);
+    }
+}
+
+// === Order Flow Trade Journal ===
+let _ofJournalTrades = [];
+
+async function ofResetStats() {
+    if (!confirm('Сбросить статистику? Realized PnL → 0, история сделок очищена.')) return;
+    const r = await fetch(OF_ROBOT_API + '/reset-stats', {method:'POST'});
+    if (r && r.ok) {
+        ofLoadJournal();
+    }
+}
+
+async function ofLoadJournal() {
+    const info = el('ofJournalInfo');
+    const body = el('ofJournalBody');
+    if (!body) return;
+
+    // Load trades from robot state file via API
+    try {
+        const resp = await fetch(OF_ROBOT_API + '/status', {signal: AbortSignal.timeout(2000)});
+        const data = await resp.json();
+        // Extract trade history from state
+        _ofJournalTrades = data.tradeHistory || data.trades || [];
+        if (!_ofJournalTrades.length) {
+            body.innerHTML = '<tr><td colspan="9" style="text-align:center;padding:24px;color:#9CA3AF">Нет закрытых сделок</td></tr>';
+            if (info) info.textContent = 'Нет данных';
+            ofRenderJournalSummary(0, 0, 0, 0);
+            return;
+        }
+        ofRenderJournal();
+    } catch(e) {
+        body.innerHTML = '<tr><td colspan="9" style="text-align:center;padding:24px;color:#9CA3AF">Робот недоступен</td></tr>';
+        if (info) info.textContent = 'Ошибка загрузки: ' + e.message;
+    }
+}
+
+function ofRenderJournal() {
+    const body = el('ofJournalBody');
+    if (!body) return;
+    const filter = el('ofJournalFilter')?.value || 'all';
+    const dateFrom = el('ofJournalDateFrom')?.value;
+    const dateTo = el('ofJournalDateTo')?.value;
+
+    let trades = [..._ofJournalTrades];
+
+    // Apply date filter — check both entryTime and exitTime
+    if (dateFrom || dateTo) {
+        trades = trades.filter(t => {
+            const dtEntry = t.entryTime ? new Date(t.entryTime) : null;
+            const dtExit = t.exitTime ? new Date(t.exitTime) : null;
+            if (!dtEntry && !dtExit) return true;
+            const dEntry = dtEntry ? dtEntry.toISOString().slice(0, 10) : null;
+            const dExit = dtExit ? dtExit.toISOString().slice(0, 10) : null;
+            // Include if either entry or exit falls within range
+            const afterStart = !dateFrom || (dEntry && dEntry >= dateFrom) || (dExit && dExit >= dateFrom);
+            const beforeEnd = !dateTo || (dEntry && dEntry <= dateTo) || (dExit && dExit <= dateTo);
+            return afterStart && beforeEnd;
+        });
+    }
+
+    // Apply filter
+    if (filter === 'LONG') trades = trades.filter(t => t.direction === 'LONG' || t.direction > 0);
+    else if (filter === 'SHORT') trades = trades.filter(t => t.direction === 'SHORT' || t.direction < 0);
+    else if (filter === 'win') trades = trades.filter(t => t.pnl > 0);
+    else if (filter === 'loss') trades = trades.filter(t => t.pnl < 0);
+
+    if (!trades.length) {
+        body.innerHTML = '<tr><td colspan="9" style="text-align:center;padding:16px;color:#9CA3AF">Нет сделок по фильтру</td></tr>';
+        return;
+    }
+
+    let cumulative = 0;
+    const rows = trades.map(t => {
+        cumulative += (t.pnl || 0);
+        const dtOut = t.exitTime ? new Date(t.exitTime) : null;
+        const dateStr = dtOut ? dtOut.toLocaleDateString('ru-RU') : '—';
+        const timeIn = t.entryTime ? new Date(t.entryTime).toLocaleTimeString('ru-RU', {hour:'2-digit',minute:'2-digit'}) : '—';
+        const timeOut = dtOut ? dtOut.toLocaleTimeString('ru-RU', {hour:'2-digit',minute:'2-digit'}) : '—';
+        const dir = t.direction === 'LONG' || t.direction > 0 ? '🟢 L' : '🔴 S';
+        const pnlCls = (t.pnl || 0) >= 0 ? 'green' : 'red';
+        const cumCls = cumulative >= 0 ? 'green' : 'red';
+        return `<tr style="border-bottom:1px solid var(--border-color)">
+            <td style="padding:6px">${dateStr}</td>
+            <td style="padding:6px">${timeIn}</td>
+            <td style="padding:6px">${timeOut}</td>
+            <td style="padding:6px;text-align:center">${dir}</td>
+            <td style="padding:6px;text-align:right">${(t.entryPrice||0).toFixed(0)}</td>
+            <td style="padding:6px;text-align:right">${(t.exitPrice||0).toFixed(0)}</td>
+            <td style="padding:6px;text-align:right">${t.lots||1}</td>
+            <td style="padding:6px;text-align:right" class="${pnlCls}">${(t.pnl||0) >= 0 ? '+' : ''}${(t.pnl||0).toFixed(0)}₽</td>
+            <td style="padding:6px;text-align:right" class="${cumCls}">${cumulative >= 0 ? '+' : ''}${cumulative.toFixed(0)}₽</td>
+        </tr>`;
+    });
+    body.innerHTML = rows.join('');
+
+    // Summary
+    const totalPnl = trades.reduce((s, t) => s + (t.pnl || 0), 0);
+    const wins = trades.filter(t => (t.pnl || 0) > 0).length;
+    const losses = trades.filter(t => (t.pnl || 0) < 0).length;
+    ofRenderJournalSummary(trades.length, wins, losses, totalPnl);
+}
+
+function ofRenderJournalSummary(total, wins, losses, totalPnl) {
+    const el2 = el('ofJournalSummary');
+    if (!el2) return;
+    const wr = total > 0 ? ((wins / total) * 100).toFixed(0) + '%' : '—';
+    const winPnl = _ofJournalTrades.filter(t => (t.pnl||0) > 0).reduce((s,t) => s+(t.pnl||0), 0);
+    const lossPnl = _ofJournalTrades.filter(t => (t.pnl||0) < 0).reduce((s,t) => s+(t.pnl||0), 0);
+    const avgWin = wins > 0 ? (winPnl / wins).toFixed(0) : '—';
+    const avgLoss = losses > 0 ? (lossPnl / losses).toFixed(0) : '—';
+    const cls = totalPnl >= 0 ? 'green' : 'red';
+    el2.innerHTML = `
+        <div class="metric-card"><div class="metric-label">Всего сделок</div><div style="font-size:16px;font-weight:bold">${total}</div></div>
+        <div class="metric-card"><div class="metric-label">Win Rate</div><div style="font-size:16px;font-weight:bold">${wr}</div></div>
+        <div class="metric-card"><div class="metric-label">Wins / Loss</div><div style="font-size:16px;font-weight:bold"><span class="green">${wins}</span> / <span class="red">${losses}</span></div></div>
+        <div class="metric-card"><div class="metric-label">Avg Win</div><div style="font-size:16px;font-weight:bold" class="green">${avgWin !== '—' ? '+' + avgWin + '₽' : '—'}</div></div>
+        <div class="metric-card"><div class="metric-label">Avg Loss</div><div style="font-size:16px;font-weight:bold" class="red">${avgLoss !== '—' ? avgLoss + '₽' : '—'}</div></div>
+        <div class="metric-card"><div class="metric-label">Итог PnL</div><div style="font-size:16px;font-weight:bold" class="${cls}">${totalPnl >= 0 ? '+' : ''}${totalPnl.toFixed(0)}₽</div></div>
+        <div class="metric-card" style="border:1px solid var(--border-color)"><div class="metric-label">&nbsp;</div><button class="btn btn-danger btn-sm" onclick="ofResetStats()" style="font-size:12px">🗑 Сбросить</button></div>
+    `;
+}
+
+// === P3: Connection Error Banner ===
+function showConnError(msg) {
+    var b = el('connErrorBanner'); var m = el('connErrorMsg');
+    if (b) b.classList.add('visible');
+    if (m) m.textContent = msg || 'Connection lost';
+}
+function hideConnError() {
+    var b = el('connErrorBanner'); if (b) b.classList.remove('visible');
+}
+setInterval(function() {
+    if (typeof window._signalRConnected !== 'undefined') {
+        if (window._signalRConnected) hideConnError(); else showConnError('SignalR disconnected - REST polling fallback');
+    }
+}, 5000);
+
+// === ORDER FLOW MX ROBOT (порт 5081) ===
+const OF_MX_ROBOT_API = 'http://' + window.location.hostname + ':5081';
+let ofMxRobot = null;
+let _ofMxJournalTrades = [];
+
+let _ofMxPendingParams = null;
+let _ofMxWasOnline = false;
+
+async function ofMxRobotPoll() {
+    try {
+        const resp = await fetch(OF_MX_ROBOT_API + '/status', {signal: AbortSignal.timeout(2000)});
+        ofMxRobot = await resp.json();
+        // Robot just came online → sync pending params
+        if (!_ofMxWasOnline) {
+            _ofMxWasOnline = true;
+            const saved = localStorage.getItem('ofMxSavedParams');
+            if (saved) {
+                try {
+                    const params = JSON.parse(saved);
+                    await fetch(OF_MX_ROBOT_API + '/params', {
+                        method: 'POST',
+                        headers: {'Content-Type':'application/json'},
+                        body: JSON.stringify(params)
+                    });
+                    addLog(nowTime(), 'INFO', '📊 OF-MX: параметры синхронизированы из localStorage');
+                    localStorage.removeItem('ofMxSavedParams');
+                } catch(e) {}
+            }
+        }
+    } catch(e) {
+        ofMxRobot = null;
+        _ofMxWasOnline = false;
+    }
+}
+
+async function ofMxSetDirection(value) {
+    try {
+        await fetch(OF_MX_ROBOT_API + '/params', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({direction_filter: value})
+        });
+        await ofMxRobotPoll();
+    } catch(e) {}
+}
+
+async function onOfMxRobotAccountChange(val) {
+    localStorage.setItem('ofMxRobotAccount', val);
+}
+
+
+async function ofRobotApi(action) {
+    try {
+        // F-012: одна кнопка = весь цикл. Если робот не поднят — поднимаем процесс, затем команду.
+        if ((action === 'start' || action === 'resume') && typeof _ofProcBooting === 'undefined') { window._ofProcBooting = true; }
+        if (action === 'start') {
+            showToast('⏳ Поднимаю процесс SiU6 (подключение к Finam ~15с)...', 'info');
+            try {
+                const pr = await fetch('/api/of/process/of/start', {method: 'POST', signal: AbortSignal.timeout(35000)});
+                const pd = await pr.json();
+                if (!pd.ok) {
+                    showToast('❌ Процесс SiU6 не поднялся: ' + (pd.error || '?'), 'error');
+                    addLog(nowTime(), 'ERROR', 'SiU6 process start failed: ' + (pd.error || '?'));
+                    window._ofProcBooting = false;
+                    return;
+                }
+                showToast('🟢 Процесс SiU6 поднят' + (pd.alreadyRunning ? ' (уже работал)' : ''), 'ok');
+            } catch(pe) {
+                showToast('❌ Не удалось поднять процесс SiU6: ' + pe.message, 'error');
+                addLog(nowTime(), 'ERROR', 'SiU6 process start error: ' + pe.message);
+                window._ofProcBooting = false;
+                return;
+            }
+            window._ofProcBooting = false;
+        }
+        const resp = await fetch(OF_ROBOT_API + '/' + action, {method: 'POST'});
+        const data = await resp.json();
+        addLog(nowTime(), 'INFO', 'OF ' + action + ': ' + JSON.stringify(data).slice(0, 120));
+        setTimeout(async () => { if (typeof ofRobotPoll === 'function') await ofRobotPoll(); renderRobots(); }, 500);
+    } catch(e) {
+        // F-011: робот offline — видимая обратная связь вместо тихой смерти
+        addLog(nowTime(), 'ERROR', `Робот SiU6 недоступен (${action} не отправлено: робот остановлен или процесс не поднят)`);
+        showToast('⚠ Робот SiU6 не отвечает — запусти процесс (кнопка в строке робота или python3 main_of.py)', 'error');
+    }
+}
+
+async function ofMxRobotApi(action) {
+    try {
+        // F-012: одна кнопка = поднять процесс + включить
+        if (action === 'start') {
+            showToast('⏳ Поднимаю процесс MXU6 (подключение к Finam ~15с)...', 'info');
+            try {
+                const pr = await fetch('/api/of/process/of_mx/start', {method: 'POST', signal: AbortSignal.timeout(35000)});
+                const pd = await pr.json();
+                if (!pd.ok) {
+                    showToast('❌ Процесс MXU6 не поднялся: ' + (pd.error || '?'), 'error');
+                    addLog(nowTime(), 'ERROR', 'MXU6 process start failed: ' + (pd.error || '?'));
+                    return;
+                }
+                showToast('🟢 Процесс MXU6 поднят' + (pd.alreadyRunning ? ' (уже работал)' : ''), 'ok');
+            } catch(pe) {
+                showToast('❌ Не удалось поднять процесс MXU6: ' + pe.message, 'error');
+                addLog(nowTime(), 'ERROR', 'MXU6 process start error: ' + pe.message);
+                return;
+            }
+        }
+        if (action === 'start' || action === 'stop') {
+            const acctVal = localStorage.getItem('ofMxRobotAccount') || '1225953';
+            if (acctVal) {
+                const acctResp = await fetch(OF_MX_ROBOT_API + '/account', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({account: acctVal})
+                });
+                const acctData = await acctResp.json();
+                if (acctData.ok) {
+                    addLog(nowTime(), 'INFO', '📊 OF-MX счёт: ' + acctData.account + ' (' + acctData.id + ')');
+                }
+            }
+        }
+        const resp = await fetch(OF_MX_ROBOT_API + '/' + action, {method: 'POST'});
+        const data = await resp.json();
+        addLog(nowTime(), 'INFO', 'OF-MX ' + action + ': ' + JSON.stringify(data));
+        setTimeout(async () => { await ofMxRobotPoll(); renderRobots(); }, 500);
+    } catch(e) {
+        addLog(nowTime(), 'ERROR', `Робот MXU6 недоступен (${action} не отправлено: ${e.message})`);
+        showToast('⚠ Робот MXU6 не отвечает — запусти процесс (python3 main_of_mx.py) или проверь порт 5081', 'error');
+    }
+}
+
+async function toggleOfMxSignal(param, value) {
+    try {
+        const resp = await fetch(OF_MX_ROBOT_API + '/params', {
+            method: 'POST',
+            headers: {'Content-Type':'application/json'},
+            body: JSON.stringify({[param]: value})
+        });
+        const data = await resp.json();
+        addLog(nowTime(), 'INFO', `OF-MX signal ${param}=${value}`);
+    } catch(e) {
+        addLog(nowTime(), 'ERROR', 'OF-MX toggle failed: ' + e.message);
+    }
+}
+
+async function ofRobotPoll() {
+    try {
+        const resp = await fetch(OF_ROBOT_API + '/status', {signal: AbortSignal.timeout(2000)});
+        ofRobot = await resp.json();
+    } catch(e) {
+        ofRobot = null;
+    }
+}
+
+// Auto-poll MX + Si
+(function() {
+    setInterval(async () => { await ofMxRobotPoll(); await ofRobotPoll(); renderRobots(); }, 2000);
+})();
+
+// === ORDER FLOW MX EDIT PANEL ===
+async function ofMxRobotEditPanel() {
+    const existing = el('ofMxRobotEditPanel');
+    if (existing) { existing.remove(); return; }
+
+    const s = ofMxRobot || {};
+    // F-010: живой робот -> его params; иначе config через сервер (localStorage больше не нужен)
+    let _cfgSrc = 'robot';
+    let p = s.params || null;
+    if (!p) {
+        try {
+            const r = await fetch('/api/of/config/of_mx', {signal: AbortSignal.timeout(2000)});
+            if (r.ok) { p = await r.json(); _cfgSrc = 'config'; }
+        } catch(e) {}
+    }
+    p = p || {};
+    // Fallback defaults for MXU6 if no params anywhere
+    if (!p.step_average) p.step_average = 150;
+    if (!p.step_pyramid) p.step_pyramid = 80;
+    if (!p.spread) p.spread = 120;
+    if (!p.stop_loss_value) p.stop_loss_value = 10000;
+    if (!p.min_profit_per_lot) p.min_profit_per_lot = 100;
+    if (!p.max_pyramid_levels) p.max_pyramid_levels = 3;
+    if (!p.max_average_levels) p.max_average_levels = 50;
+
+    const div = document.createElement('div');
+    div.id = 'ofMxRobotEditPanel';
+    div.className = 'card';
+    div.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);z-index:1000;width:900px;max-height:90vh;overflow-y:auto;box-shadow:0 8px 32px rgba(0,0,0,.5)';
+    div.innerHTML = `
+        <div class="card-header row gap-8">
+            📊 MXU6 Order Flow (PYTHON)
+            <button class="btn btn-primary btn-sm" onclick="ofMxRobotSaveFromPanel()">💾 Сохранить</button>
+            <span id="ofMxCfgSrcBadge" style="font-size:11px;padding:2px 8px;border-radius:10px;opacity:.85"></span>
+            <button class="btn btn-secondary btn-sm" onclick="if(window._ofMxVpTimer){clearInterval(window._ofMxVpTimer);window._ofMxVpTimer=null;}el('ofMxRobotEditPanel')?.remove()">✕</button>
+        </div>
+        <div style="padding:12px">
+            <!-- OF индикаторы -->
+            <div class="metrics-row" style="flex-wrap:wrap;margin-bottom:12px">
+                <div class="metric-card" style="background:#1a2332;border:1px solid #007ACC;display:flex;flex-direction:column;align-items:center;gap:2px"><div style="display:flex;align-items:center;gap:4px"><input id="toggleMxCvd" type="checkbox" checked style="width:14px;height:14px;cursor:pointer" onchange="toggleOfMxSignal('use_cvd', this.checked)"><div class="metric-label" style="color:#CE93D8">CVD Trend</div></div><div id="ofMxCvd" style="font-size:18px;font-weight:bold;color:#CE93D8">—</div></div>
+                <div class="metric-card" style="background:#1a2332;border:1px solid #007ACC;display:flex;flex-direction:column;align-items:center;gap:2px"><div style="display:flex;align-items:center;gap:4px"><input id="toggleMxDmWall" type="checkbox" style="width:14px;height:14px;cursor:pointer" onchange="toggleOfMxSignal('use_dm_wall', this.checked)"><div class="metric-label" style="color:#FF7043">dm_wall</div></div><div id="ofMxDelta" style="font-size:18px;font-weight:bold;color:#FF7043">—</div></div>
+                <div class="metric-card" style="background:#1a2332;border:1px solid #007ACC;display:flex;flex-direction:column;align-items:center;gap:2px"><div style="display:flex;align-items:center;gap:4px"><input id="toggleMxCvdAccel" type="checkbox" checked style="width:14px;height:14px;cursor:pointer" onchange="toggleOfMxSignal('use_cvd_accel', this.checked)"><div class="metric-label" style="color:#66BB6A">CVD Accel</div></div><div id="ofMxCvdAccel" style="font-size:18px;font-weight:bold;color:#66BB6A">—</div></div>
+
+                <div class="metric-card" style="display:flex;flex-direction:column;align-items:center;gap:2px"><div style="display:flex;align-items:center;gap:4px"><input id="toggleMxVp" type="checkbox" style="width:14px;height:14px;cursor:pointer" onchange="toggleOfMxSignal('use_vah_val', this.checked)"><div class="metric-label" style="color:#42A5F5">VAH</div></div><div id="ofMxVah" style="font-size:18px;font-weight:bold;color:#42A5F5">—</div></div>
+                <div class="metric-card" style="display:flex;flex-direction:column;align-items:center;gap:2px"><div style="display:flex;align-items:center;gap:4px"><div class="metric-label" style="color:#FFB74D">POC</div></div><div id="ofMxPoc" style="font-size:18px;font-weight:bold;color:#FFB74D">—</div></div>
+                <div class="metric-card" style="display:flex;flex-direction:column;align-items:center;gap:2px"><div style="display:flex;align-items:center;gap:4px"><div class="metric-label" style="color:#42A5F5">VAL</div></div><div id="ofMxVal" style="font-size:18px;font-weight:bold;color:#42A5F5">—</div></div>
+
+                <div class="metric-card" style="background:#1a2332;border:1px solid #607D8B;display:flex;flex-direction:column;align-items:center;gap:2px"><div class="metric-label" style="color:#B0BEC5">Фильтр</div><select id="ofMxDirFilter" class="input" style="width:80px;font-size:13px;font-weight:bold;background:transparent;color:#fff;border:1px solid #607D8B;text-align:center;cursor:pointer" onchange="ofMxSetDirection(this.value)"><option value="both" style="color:#000">ОБА</option><option value="long" style="color:#000">LONG</option><option value="short" style="color:#000">SHORT</option></select></div>
+
+                <div class="metric-card"><div class="metric-label">Цена</div><div id="ofMxPrice" style="font-size:18px;font-weight:bold">—</div></div>
+                <div class="metric-card"><div class="metric-label">Позиция</div><div id="ofMxDir" style="font-size:18px;font-weight:bold">—</div></div>
+                <div class="metric-card"><div class="metric-label">Лоты</div><div id="ofMxLots" style="font-size:18px;font-weight:bold">0</div></div>
+                <div class="metric-card"><div class="metric-label">Ср. цена</div><div id="ofMxAvgPrice" style="font-size:18px;font-weight:bold">—</div></div>
+                <div class="metric-card"><div class="metric-label">PnL/лот</div><div id="ofMxPnlPerLot" style="font-size:18px;font-weight:bold">—</div></div>
+                <div class="metric-card"><div class="metric-label">PnL нереал.</div><div id="ofMxPnlUnreal" style="font-size:18px;font-weight:bold">—</div></div>
+                <div class="metric-card"><div class="metric-label">Realized</div><div id="ofMxRealized" style="font-size:18px;font-weight:bold">0₽</div></div>
+                <div class="metric-card"><div class="metric-label">Сигнал</div><div id="ofMxSignal" style="font-size:16px;font-weight:bold">—</div></div>
+                <div class="metric-card"><div class="metric-label">Hold</div><div id="ofMxHold" style="font-size:18px;font-weight:bold">0 мин</div></div>
+                <div class="metric-card"><div class="metric-label">Avg Levels</div><div id="ofMxAvgLvl" style="font-size:18px;font-weight:bold">0</div></div>
+                <div class="metric-card"><div class="metric-label">Pyr Levels</div><div id="ofMxPyrLvl" style="font-size:18px;font-weight:bold">0</div></div>
+                <div class="metric-card"><div class="metric-label">RT</div><div id="ofMxRt" style="font-size:18px;font-weight:bold">0</div></div>
+            </div>
+
+            <!-- MANUAL POSITION ADJUST: ручная коррекция позиции (синхронизация с брокером, БЕЗ ордеров) -->
+            <div style="display:flex;gap:8px;align-items:center;margin:10px 0;padding:10px;background:#1a2332;border:1px solid #607D8B;border-radius:8px">
+                <span style="color:#B0BEC5;font-size:13px;font-weight:bold">⚙ КОРРЕКЦИЯ ПОЗИЦИИ</span>
+                <input id="ofMxAdjLots" type="number" step="1" placeholder="лоты: 3 лонг / -3 шорт / 0 флэт" title="Абсолютная позиция: +N лонг, -N шорт, 0 флэт" style="width:170px;padding:6px 8px;background:#0D1117;color:#fff;border:1px solid #607D8B;border-radius:4px;font-size:13px">
+                <input id="ofMxAdjPrice" type="number" step="1" placeholder="цена (209300)" title="Средняя цена входа позиции брокера" style="width:130px;padding:6px 8px;background:#0D1117;color:#fff;border:1px solid #607D8B;border-radius:4px;font-size:13px">
+                <button class="btn btn-primary btn-sm" onclick="ofMxAdjustPosition()" title="Установить позицию робота = позиция брокера (ордеров НЕ отправляет)">Применить</button>
+                <span id="ofMxAdjResult" style="font-size:12px;color:#B0BEC5"></span>
+            </div>
+
+            <hr style="border-color:#2D2D44;margin:12px 0">
+            <!-- Параметры -->
+            <div class="metrics-row" style="flex-wrap:wrap;margin-bottom:16px">
+                <div class="metric-card"><div class="metric-label">Lots</div><input id="editOfMxLots" class="input" type="number" value="${p.lots||1}" style="width:60px"></div>
+                <div class="metric-card"><div class="metric-label">Max Pyramid</div><input id="editOfMxMaxPyr" class="input" type="number" value="${p.max_pyramid_levels||5}" style="width:60px"></div>
+                <div class="metric-card"><div class="metric-label">Max Average</div><input id="editOfMxMaxAvg" class="input" type="number" value="${p.max_average_levels||100}" style="width:60px"></div>
+                <div class="metric-card"><div class="metric-label">Step Avg (пт)</div><input id="editOfMxStepAvg" class="input" type="number" value="${p.step_average||50}" style="width:70px"></div>
+                <div class="metric-card"><div class="metric-label">Step Pyr (пт)</div><input id="editOfMxStepPyr" class="input" type="number" value="${p.step_pyramid||35}" style="width:70px"></div>
+                <div class="metric-card"><div class="metric-label">Spread (пт)</div><input id="editOfMxSpread" class="input" type="number" value="${p.spread||50}" style="width:60px"></div>
+                <div class="metric-card"><div class="metric-label">SL Mode</div><select id="editOfMxSlMode" class="input" style="width:70px"><option value="rub" ${(p.stop_loss_mode||'rub')==='rub'?'selected':''}>₽</option><option value="pct" ${p.stop_loss_mode==='pct'?'selected':''}>%</option><option value="pts" ${p.stop_loss_mode==='pts'?'selected':''}>пт</option></select></div>
+                <div class="metric-card"><div class="metric-label">SL Value</div><input id="editOfMxSlValue" class="input" type="number" value="${p.stop_loss_value||7000}" style="width:80px"></div>
+                <div class="metric-card"><div class="metric-label">Min Profit/Lot</div><input id="editOfMxMinProfit" class="input" type="number" value="${p.min_profit_per_lot||30}" style="width:60px"></div>
+                <div class="metric-card"><div class="metric-label">Close % All</div><select id="editOfMxCloseHalfPct" class="input" style="width:70px"><option value="0" ${(!p.close_half_pct)?'selected':''}>OFF</option><option value="50" ${p.close_half_pct===50?'selected':''}>50%</option><option value="40" ${p.close_half_pct===40?'selected':''}>40%</option><option value="30" ${p.close_half_pct===30?'selected':''}>30%</option><option value="20" ${p.close_half_pct===20?'selected':''}>20%</option><option value="10" ${p.close_half_pct===10?'selected':''}>10%</option></select></div>
+                <div class="metric-card"><div class="metric-label">Close price All</div><input id="editOfMxClosePriceAll" class="input" type="number" placeholder="None" value="${p.close_price_all||''}" style="width:90px"></div>
+                <div class="metric-card"><div class="metric-label">Max Hold (мин)</div><input id="editOfMxMaxHold" class="input" type="number" value="${p.max_hold_minutes||999}" style="width:80px"></div>
+                <div class="metric-card"><div class="metric-label">CVD EMA Fast</div><input id="editOfMxCvdEmaF" class="input" type="number" value="${p.cvd_ema_fast||5}" style="width:60px"></div>
+                <div class="metric-card"><div class="metric-label">CVD EMA Slow</div><input id="editOfMxCvdEmaS" class="input" type="number" value="${p.cvd_ema_slow||15}" style="width:60px"></div>
+                <div class="metric-card"><div class="metric-label">DM Lookback</div><input id="editOfMxDmLb" class="input" type="number" value="${p.dm_lookback||5}" style="width:60px"></div>
+                <div class="metric-card"><div class="metric-label">Wall Window (с)</div><input id="editOfMxWallWin" class="input" type="number" value="${p.wall_window||120}" style="width:60px"></div>
+                <div class="metric-card"><div class="metric-label">Wall Mult</div><input id="editOfMxWallMult" class="input" type="number" step="0.5" value="${p.wall_multiplier||3.0}" style="width:60px"></div>
+                <div class="metric-card"><div class="metric-label">CVD Accel Thresh</div><input id="editOfMxCvdAccelThresh" class="input" type="number" step="100" value="${p.cvd_accel_threshold||1000}" style="width:80px"></div>
+                <div class="metric-card"><div class="metric-label">Agg Window</div><input id="editOfMxAggWindow" class="input" type="number" value="${p.agg_window||3}" style="width:60px"></div>
+                <div class="metric-card"><div class="metric-label">Agg Ratio Thr</div><input id="editOfMxAggRatioThresh" class="input" type="number" step="0.1" value="${p.agg_ratio_threshold||1.0}" style="width:60px"></div>
+                <div class="metric-card" style="display:flex;align-items:center;gap:8px"><label style="display:flex;align-items:center;gap:6px;cursor:pointer"><input id="editOfMxUseAggRatio" type="checkbox" ${(p.use_agg_ratio!==false)?'checked':''} style="width:18px;height:18px;cursor:pointer"><span style="font-size:13px;color:#66BB6A">Agg Ratio Filter</span></label></div>
+                <div class="metric-card"><div class="metric-label">Confirm In</div><input id="editOfMxConfirm" class="input" type="number" min="1" max="3" value="${p.signal_confirm_count||1}" style="width:50px"></div>
+                <div class="metric-card"><div class="metric-label">Confirm Out</div><input id="editOfMxConfirmOut" class="input" type="number" min="1" max="3" value="${p.signal_confirm_exit||1}" style="width:50px"></div>
+                <div class="metric-card"><div class="metric-label">Timeframe</div><select id="editOfMxTf" class="input" style="width:70px"><option value="M1" ${p.timeframe==='M1'?'selected':''}>1 мин</option><option value="M5" ${(p.timeframe||'M5')==='M5'?'selected':''}>5 мин</option><option value="M15" ${p.timeframe==='M15'?'selected':''}>15 мин</option><option value="M30" ${p.timeframe==='M30'?'selected':''}>30 мин</option><option value="H1" ${p.timeframe==='H1'?'selected':''}>1 час</option></select></div>
+            </div>
+            <hr style="border-color:#2D2D44;margin:12px 0">
+            <!-- VWEMA Filter -->
+            <div class="metrics-row" style="flex-wrap:wrap;margin-bottom:16px;align-items:center">
+                <div class="metric-card" style="display:flex;align-items:center;gap:8px">
+                    <label style="display:flex;align-items:center;gap:6px;cursor:pointer">
+                        <input id="editOfMxUseVwema" type="checkbox" ${(p.use_vwema)?'checked':''} style="width:18px;height:18px;cursor:pointer">
+                        <span style="font-weight:bold;color:#FF9800">VWEMA Filter</span>
+                    </label>
+                </div>
+                <div class="metric-card"><div class="metric-label">VWEMA Fast</div><input id="editOfMxVwemaFast" class="input" type="number" value="${p.vwema_fast||20}" style="width:60px"></div>
+                <div class="metric-card"><div class="metric-label">VWEMA Slow</div><input id="editOfMxVwemaSlow" class="input" type="number" value="${p.vwema_slow||40}" style="width:60px"></div>
+                <div class="metric-card"><div class="metric-label">Flat Threshold</div><input id="editOfMxVwemaFlat" class="input" type="number" step="0.1" value="${p.vwema_flat_th||1.0}" style="width:60px"></div>
+                <div class="metric-card" style="display:flex;align-items:center;gap:8px">
+                    <label style="display:flex;align-items:center;gap:6px;cursor:pointer">
+                        <input id="editOfMxVwemaBlock" type="checkbox" ${(p.vwema_block_counter!==false)?'checked':''} style="width:18px;height:18px;cursor:pointer">
+                        <span style="font-size:13px">Block counter-trend</span>
+                    </label>
+                </div>
+                <div class="metric-card" style="display:flex;align-items:center;gap:8px">
+                    <label style="display:flex;align-items:center;gap:6px;cursor:pointer" title="Не усреднять против VWEMA + закрыть усреднённую позицию при развороте VWEMA">
+                        <input id="editOfMxVwemaAvgExit" type="checkbox" ${(p.vwema_avg_exit)?'checked':''} style="width:18px;height:18px;cursor:pointer">
+                        <span style="font-size:13px">VWEMA Avg Exit</span>
+                    </label>
+                </div>
+                <div class="metric-card" style="min-width:120px"><div class="metric-label">VWEMA Trend</div><div id="ofMxVwemaTrend" style="font-size:16px;font-weight:bold;color:#9CA3AF">—</div></div>
+            </div>
+            <hr style="border-color:#2D2D44;margin:12px 0">
+            <!-- VAH/VAL Volume Profile Filter -->
+            <div class="metrics-row" style="flex-wrap:wrap;margin-bottom:16px;align-items:center">
+                <div class="metric-card" style="display:flex;align-items:center;gap:8px">
+                    <label style="display:flex;align-items:center;gap:6px;cursor:pointer">
+                        <input id="editOfMxUseVahVal" type="checkbox" ${(p.use_vah_val)?'checked':''} style="width:18px;height:18px;cursor:pointer">
+                        <span style="font-weight:bold;color:#42A5F5">VAH/VAL Filter</span>
+                    </label>
+                </div>
+                <div class="metric-card"><div class="metric-label">Value Area %</div><input id="editOfMxVahValPct" class="input" type="number" min="50" max="90" value="${p.vah_val_pct||70}" style="width:60px"></div>
+                <div class="metric-card"><div class="metric-label">VP Bin Size</div><input id="editOfMxVahValBin" class="input" type="number" min="1" max="500" value="${p.vah_val_bin_size||5}" style="width:60px"></div>
+                <div class="metric-card"><div class="metric-label">VP Mode</div><select id="editOfMxVahValMode" class="input" style="width:90px;font-size:12px;background:transparent;color:#fff;border:1px solid #2D4A6D"><option value="fade" ${(p.vah_val_mode||'fade')==='fade'?'selected':''}>Fade</option><option value="breakout" ${(p.vah_val_mode||'fade')==='breakout'?'selected':''}>Breakout</option></select></div>
+                <div class="metric-card" style="min-width:80px"><div class="metric-label">VAH</div><div id="ofMxVpVah" style="font-size:16px;font-weight:bold;color:#42A5F5">—</div></div>
+                <div class="metric-card" style="min-width:80px"><div class="metric-label">POC</div><div id="ofMxVpPoc" style="font-size:16px;font-weight:bold;color:#FFB74D">—</div></div>
+                <div class="metric-card" style="min-width:80px"><div class="metric-label">VAL</div><div id="ofMxVpVal" style="font-size:16px;font-weight:bold;color:#42A5F5">—</div></div>
+            </div>
+            <hr style="border-color:#2D2D44;margin:12px 0">
+            <!-- Торговый журнал -->
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+                <strong>📋 Торговый журнал</strong>
+            </div>
+            <div id="ofMxJournalSummary" class="metrics-row" style="flex-wrap:wrap;margin-bottom:12px"></div>
+            <div style="display:flex;gap:8px;margin-bottom:12px;align-items:center">
+                <select id="ofMxJournalFilter" class="input" style="width:120px" onchange="ofMxRenderJournal()">
+                    <option value="all">Все позиции</option>
+                    <option value="LONG">Лонги</option>
+                    <option value="SHORT">Шорты</option>
+                    <option value="win">Прибыльные</option>
+                    <option value="loss">Убыточные</option>
+                </select>
+                <span style="color:#9CA3AF;font-size:13px">с</span>
+                <input id="ofMxJournalDateFrom" class="input" type="date" style="width:130px" onchange="ofMxRenderJournal()">
+                <span style="color:#9CA3AF;font-size:13px">по</span>
+                <input id="ofMxJournalDateTo" class="input" type="date" style="width:130px" onchange="ofMxRenderJournal()">
+                <button class="btn btn-secondary btn-sm" onclick="ofMxLoadJournal()">🔄 Обновить</button>
+            </div>
+            <table class="data-table" style="font-size:13px">
+                <thead><tr><th>Дата</th><th>Вход</th><th>Выход</th><th>Напр.</th><th>Цена вх.</th><th>Цена вых.</th><th>Лоты</th><th>PnL</th><th>Σ</th></tr></thead>
+                <tbody id="ofMxJournalBody"></tbody>
+            </table>
+        </div>
+    `;
+    document.body.appendChild(div);
+    // F-010: бейдж источника параметров
+    const _mxSrcBadge = el('ofMxCfgSrcBadge');
+    if (_mxSrcBadge) {
+        if (_cfgSrc === 'robot') { _mxSrcBadge.textContent = '🟢 от робота (live)'; _mxSrcBadge.style.background = 'rgba(34,197,94,.15)'; _mxSrcBadge.style.color = '#22c55e'; }
+        else { _mxSrcBadge.textContent = '💾 из конфига (робот остановлен)'; _mxSrcBadge.style.background = 'rgba(59,130,246,.15)'; _mxSrcBadge.style.color = '#60a5fa'; }
+    }
+
+    // Initialize direction filter dropdown
+    if (p.direction_filter) {
+        const sel = el('ofMxDirFilter');
+        if (sel) sel.value = p.direction_filter;
+    }
+    // Initialize signal toggles from params
+    const tCvd = el('toggleMxCvd'); if (tCvd) tCvd.checked = p.use_cvd !== false;
+    const tDm = el('toggleMxDmWall'); if (tDm) tDm.checked = p.use_dm_wall === true;
+    const tAcc = el('toggleMxCvdAccel'); if (tAcc) tAcc.checked = p.use_cvd_accel !== false;
+
+    ofMxLoadJournal();
+    ofMxUpdateLive();
+    if (window._ofMxVpTimer) clearInterval(window._ofMxVpTimer);
+    window._ofMxVpTimer = setInterval(ofMxUpdateLive, 1000);
+}
+
+function ofMxUpdateLive() {
+    const s = ofMxRobot;
+    if (!s) return;
+    const setText = (id, val) => { const e = el(id); if (e) e.textContent = val; };
+    const setColor = (id, val) => {
+        const e = el(id); if (!e) return;
+        e.textContent = val >= 0 ? '+' + val.toFixed(0) : val.toFixed(0);
+        e.className = val >= 0 ? 'green' : 'red';
+    };
+    const price = s.currentPrice || 0;
+    setText('ofMxPrice', price > 0 ? price.toFixed(0) : '—');
+    const dirText = s.direction === 'LONG' ? '🟢 LONG' : s.direction === 'SHORT' ? '🔴 SHORT' : 'FLAT';
+    setText('ofMxDir', dirText);
+    setText('ofMxLots', s.totalLots || 0);
+    setText('ofMxAvgPrice', s.avgPrice > 0 ? s.avgPrice.toFixed(0) : '—');
+    const pnlPerLot = price > 0 && s.avgPrice > 0 ? (price - s.avgPrice) * (s.dir || 0) : 0;
+    setText('ofMxPnlPerLot', pnlPerLot !== 0 ? (pnlPerLot > 0 ? '+' : '') + pnlPerLot.toFixed(0) + ' пт' : '—');
+    setColor('ofMxPnlUnreal', s.unrealizedPnL || 0);
+    setText('ofMxRealized', (s.realizedPnL || 0).toFixed(0) + '₽');
+    setText('ofMxSignal', s.signalType || '—');
+    setText('ofMxHold', s.holdMinutes ? s.holdMinutes + ' мин' : '0 мин');
+    setText('ofMxAvgLvl', s.averageLevels || 0);
+    setText('ofMxPyrLvl', s.pyramidLevels || 0);
+    setText('ofMxRt', s.roundTrips || 0);
+    // VAH/POC/VAL (Volume Profile)
+    if (s.vp) {
+        setText('ofMxVah', s.vp.vah ? s.vp.vah.toFixed(0) : '—');
+        setText('ofMxPoc', s.vp.poc ? s.vp.poc.toFixed(0) : '—');
+        setText('ofMxVal', s.vp.val ? s.vp.val.toFixed(0) : '—');
+        setText('ofMxVpVah', s.vp.vah ? s.vp.vah.toFixed(0) : '—');
+        setText('ofMxVpPoc', s.vp.poc ? s.vp.poc.toFixed(0) : '—');
+        setText('ofMxVpVal', s.vp.val ? s.vp.val.toFixed(0) : '—');
+    } else {
+        setText('ofMxVah', '—');
+        setText('ofMxPoc', '—');
+        setText('ofMxVal', '—');
+        setText('ofMxVpVah', '—');
+        setText('ofMxVpPoc', '—');
+        setText('ofMxVpVal', '—');
+    }
+    const p = s.params || {};
+    const vpToggle = el('toggleMxVp');
+    if (vpToggle) vpToggle.checked = (p.use_vah_val === true);
+    if (s.cvdTrend) {
+        const cvdDir = s.cvdTrend.direction > 0 ? '↑' : s.cvdTrend.direction < 0 ? '↓' : '→';
+        const cvdVal = s.cvdTrend.emaFast !== null ? cvdDir + ' ' + s.cvdTrend.emaFast.toFixed(0) : '—';
+        setText('ofMxCvd', cvdVal);
+    }
+    if (s.cvdAccel) {
+        const accelVal = s.cvdAccel.value !== null ? s.cvdAccel.value.toFixed(0) + ' (' + (s.cvdAccel.aggRatio || '—') + ')' : '—';
+        setText('ofMxCvdAccel', accelVal);
+    }
+    if (s.vwema) {
+        const vwDir = s.vwema.direction > 0 ? '↑ UP' : s.vwema.direction < 0 ? '↓ DOWN' : '→ FLAT';
+        setText('ofMxVwemaTrend', vwDir + ' (f=' + (s.vwema.ema_f ? s.vwema.ema_f.toFixed(0) : '—') + ' s=' + (s.vwema.ema_s ? s.vwema.ema_s.toFixed(0) : '—') + ')');
+    }
+}
+
+async function ofMxRobotSaveFromPanel() {
+    const body = {
+        lots: parseInt(el('editOfMxLots')?.value) || 1,
+        max_pyramid_levels: parseInt(el('editOfMxMaxPyr')?.value) || 5,
+        max_average_levels: parseInt(el('editOfMxMaxAvg')?.value) || 100,
+        step_average: parseInt(el('editOfMxStepAvg')?.value) || 50,
+        step_pyramid: parseInt(el('editOfMxStepPyr')?.value) || 35,
+        spread: parseInt(el('editOfMxSpread')?.value) || 50,
+        stop_loss_mode: el('editOfMxSlMode')?.value || 'rub',
+        stop_loss_value: parseFloat(el('editOfMxSlValue')?.value) || 7000,
+        min_profit_per_lot: parseInt(el('editOfMxMinProfit')?.value) || 30,
+        close_half_pct: parseInt(el('editOfMxCloseHalfPct')?.value) || 0,
+        close_price_all: parseFloat(el('editOfMxClosePriceAll')?.value) || 0,
+        max_hold_minutes: parseInt(el('editOfMxMaxHold')?.value) || 999,
+        cvd_lookback: parseInt(el('editOfMxCvdLb')?.value) || 10,
+        cvd_ema_fast: parseInt(el('editOfMxCvdEmaF')?.value) || 5,
+        cvd_ema_slow: parseInt(el('editOfMxCvdEmaS')?.value) || 15,
+        dm_lookback: parseInt(el('editOfMxDmLb')?.value) || 5,
+        wall_window: parseFloat(el('editOfMxWallWin')?.value) || 120,
+        wall_multiplier: parseFloat(el('editOfMxWallMult')?.value) || 3.0,
+        cvd_accel_threshold: parseFloat(el('editOfMxCvdAccelThresh')?.value) || 1000,
+        agg_window: parseInt(el('editOfMxAggWindow')?.value) || 3,
+        agg_ratio_threshold: parseFloat(el('editOfMxAggRatioThresh')?.value) || 1.0,
+        use_agg_ratio: el('editOfMxUseAggRatio')?.checked !== false,
+        signal_confirm_count: parseInt(el('editOfMxConfirm')?.value) || 1,
+        signal_confirm_exit: parseInt(el('editOfMxConfirmOut')?.value) || 1,
+        timeframe: el('editOfMxTf')?.value || 'M5',
+        use_dm_wall: el('toggleMxDmWall')?.checked !== false,
+        use_cvd: el('toggleMxCvd')?.checked !== false,
+        use_cvd_accel: el('toggleMxCvdAccel')?.checked !== false,
+        use_vwema: el('editOfMxUseVwema')?.checked || false,
+        vwema_fast: parseInt(el('editOfMxVwemaFast')?.value) || 20,
+        vwema_slow: parseInt(el('editOfMxVwemaSlow')?.value) || 40,
+        vwema_flat_th: parseFloat(el('editOfMxVwemaFlat')?.value) || 1.0,
+        vwema_block_counter: el('editOfMxVwemaBlock')?.checked !== false,
+        vwema_avg_exit: el('editOfMxVwemaAvgExit')?.checked || false,
+        vah_val_pct: parseInt(el('editOfMxVahValPct')?.value) || 70,
+        vah_val_bin_size: parseInt(el('editOfMxVahValBin')?.value) || 5,
+        vah_val_mode: el('editOfMxVahValMode')?.value || 'fade',
+        use_vah_val: el('editOfMxUseVahVal')?.checked || el('toggleMxVp')?.checked || false,
+    };
+    // Always save to localStorage first
+    localStorage.setItem('ofMxSavedParams', JSON.stringify(body));
+    try {
+        // F-010: живой робот -> ему; иначе конфиг через сервер (localStorage больше не используется)
+        let _savedVia = null;
+        try {
+            const resp = await fetch(OF_MX_ROBOT_API + '/params', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(body)
+            });
+            if (resp.ok) { await resp.json(); _savedVia = 'robot'; }
+        } catch(e) {}
+        if (!_savedVia) {
+            const r2 = await fetch('/api/of/config/of_mx', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(body),
+                signal: AbortSignal.timeout(3000)
+            });
+            if (!r2.ok) throw new Error('config proxy failed: ' + r2.status);
+            _savedVia = 'config';
+        }
+        localStorage.removeItem('ofMxSavedParams');
+        addLog(nowTime(), 'INFO', '💾 OF-MX конфиг сохранён (' + (_savedVia === 'robot' ? 'робот live' : 'конфиг, применится при старте') + ')');
+    } catch(e) {
+        addLog(nowTime(), 'ERROR', 'OF-MX save НЕ удался: ' + e.message);
+    }
+}
+
+// === Order Flow MX Trade Journal ===
+async function ofMxResetStats() {
+    if (!confirm('Сбросить статистику MX? Realized PnL → 0, история сделок очищена.')) return;
+    const r = await fetch(OF_MX_ROBOT_API + '/reset-stats', {method:'POST'});
+    if (r && r.ok) {
+        ofMxLoadJournal();
+    }
+}
+
+async function ofMxLoadJournal() {
+    const body = el('ofMxJournalBody');
+    if (!body) return;
+    try {
+        const resp = await fetch(OF_MX_ROBOT_API + '/status', {signal: AbortSignal.timeout(2000)});
+        const data = await resp.json();
+        _ofMxJournalTrades = data.tradeHistory || data.trades || [];
+        if (!_ofMxJournalTrades.length) {
+            body.innerHTML = '<tr><td colspan="9" style="text-align:center;padding:24px;color:#9CA3AF">Нет закрытых сделок</td></tr>';
+            ofMxRenderJournalSummary(0, 0, 0, 0);
+            return;
+        }
+        ofMxRenderJournal();
+    } catch(e) {
+        body.innerHTML = '<tr><td colspan="9" style="text-align:center;padding:24px;color:#9CA3AF">Робот недоступен</td></tr>';
+    }
+}
+
+function ofMxRenderJournal() {
+    const body = el('ofMxJournalBody');
+    if (!body) return;
+    const filter = el('ofMxJournalFilter')?.value || 'all';
+    const dateFrom = el('ofMxJournalDateFrom')?.value;
+    const dateTo = el('ofMxJournalDateTo')?.value;
+    let trades = [..._ofMxJournalTrades];
+    if (dateFrom || dateTo) {
+        trades = trades.filter(t => {
+            const dEntry = t.entryTime ? t.entryTime.slice(0,10) : null;
+            const dExit = t.exitTime ? t.exitTime.slice(0,10) : null;
+            const afterStart = !dateFrom || (dEntry && dEntry >= dateFrom) || (dExit && dExit >= dateFrom);
+            const beforeEnd = !dateTo || (dEntry && dEntry <= dateTo) || (dExit && dExit <= dateTo);
+            return afterStart && beforeEnd;
+        });
+    }
+    if (filter === 'LONG') trades = trades.filter(t => t.direction === 'LONG' || t.direction > 0);
+    else if (filter === 'SHORT') trades = trades.filter(t => t.direction === 'SHORT' || t.direction < 0);
+    else if (filter === 'win') trades = trades.filter(t => t.pnl > 0);
+    else if (filter === 'loss') trades = trades.filter(t => t.pnl < 0);
+    if (!trades.length) {
+        body.innerHTML = '<tr><td colspan="9" style="text-align:center;padding:16px;color:#9CA3AF">Нет сделок по фильтру</td></tr>';
+        return;
+    }
+    let cumulative = 0;
+    const rows = trades.map(t => {
+        cumulative += (t.pnl || 0);
+        const dtOut = t.exitTime ? new Date(t.exitTime) : null;
+        const dateStr = dtOut ? dtOut.toLocaleDateString('ru-RU') : '—';
+        const timeIn = t.entryTime ? new Date(t.entryTime).toLocaleTimeString('ru-RU', {hour:'2-digit',minute:'2-digit'}) : '—';
+        const timeOut = dtOut ? dtOut.toLocaleTimeString('ru-RU', {hour:'2-digit',minute:'2-digit'}) : '—';
+        const dir = t.direction === 'LONG' || t.direction > 0 ? '🟢 L' : '🔴 S';
+        const pnlCls = (t.pnl || 0) >= 0 ? 'green' : 'red';
+        const cumCls = cumulative >= 0 ? 'green' : 'red';
+        return '<tr style="border-bottom:1px solid var(--border-color)">' +
+            '<td style="padding:6px">' + dateStr + '</td>' +
+            '<td style="padding:6px">' + timeIn + '</td>' +
+            '<td style="padding:6px">' + timeOut + '</td>' +
+            '<td style="padding:6px;text-align:center">' + dir + '</td>' +
+            '<td style="padding:6px;text-align:right">' + (t.entryPrice||0).toFixed(0) + '</td>' +
+            '<td style="padding:6px;text-align:right">' + (t.exitPrice||0).toFixed(0) + '</td>' +
+            '<td style="padding:6px;text-align:right">' + (t.lots||1) + '</td>' +
+            '<td style="padding:6px;text-align:right" class="' + pnlCls + '">' + ((t.pnl||0) >= 0 ? '+' : '') + (t.pnl||0).toFixed(0) + '₽</td>' +
+            '<td style="padding:6px;text-align:right" class="' + cumCls + '">' + (cumulative >= 0 ? '+' : '') + cumulative.toFixed(0) + '₽</td>' +
+        '</tr>';
+    });
+    body.innerHTML = rows.join('');
+    const totalPnl = trades.reduce((s, t) => s + (t.pnl || 0), 0);
+    const wins = trades.filter(t => (t.pnl || 0) > 0).length;
+    const losses = trades.filter(t => (t.pnl || 0) < 0).length;
+    ofMxRenderJournalSummary(trades.length, wins, losses, totalPnl);
+}
+
+function ofMxRenderJournalSummary(total, wins, losses, totalPnl) {
+    const el2 = el('ofMxJournalSummary');
+    if (!el2) return;
+    const wr = total > 0 ? ((wins / total) * 100).toFixed(0) + '%' : '—';
+    const winPnl = _ofMxJournalTrades.filter(t => (t.pnl||0) > 0).reduce((s,t) => s+(t.pnl||0), 0);
+    const lossPnl = _ofMxJournalTrades.filter(t => (t.pnl||0) < 0).reduce((s,t) => s+(t.pnl||0), 0);
+    const avgWin = wins > 0 ? (winPnl / wins).toFixed(0) : '—';
+    const avgLoss = losses > 0 ? (lossPnl / losses).toFixed(0) : '—';
+    const cls = totalPnl >= 0 ? 'green' : 'red';
+    el2.innerHTML = '' +
+        '<div class="metric-card"><div class="metric-label">Всего сделок</div><div style="font-size:16px;font-weight:bold">' + total + '</div></div>' +
+        '<div class="metric-card"><div class="metric-label">Win Rate</div><div style="font-size:16px;font-weight:bold">' + wr + '</div></div>' +
+        '<div class="metric-card"><div class="metric-label">Wins / Loss</div><div style="font-size:16px;font-weight:bold"><span class="green">' + wins + '</span> / <span class="red">' + losses + '</span></div></div>' +
+        '<div class="metric-card"><div class="metric-label">Avg Win</div><div style="font-size:16px;font-weight:bold" class="green">' + (avgWin !== '—' ? '+' + avgWin + '₽' : '—') + '</div></div>' +
+        '<div class="metric-card"><div class="metric-label">Avg Loss</div><div style="font-size:16px;font-weight:bold" class="red">' + (avgLoss !== '—' ? avgLoss + '₽' : '—') + '</div></div>' +
+        '<div class="metric-card"><div class="metric-label">Итог PnL</div><div style="font-size:16px;font-weight:bold" class="' + cls + '">' + (totalPnl >= 0 ? '+' : '') + totalPnl.toFixed(0) + '₽</div></div>' +
+        '<div class="metric-card" style="border:1px solid var(--border-color)"><div class="metric-label">&nbsp;</div><button class="btn btn-danger btn-sm" onclick="ofMxResetStats()" style="font-size:12px">🗑 Сбросить</button></div>';
+}
+
+
+// ==================== F-035: восстановленные компоненты панели ====================
+// Полный шаблон панели (из 637f27e): центр экрана, раздвижка, калькулятор спреда, L2, журнал
+function PANEL_TEMPLATE_HTML(cfg, p, data) {
+    return `
+        <div class="card-header row gap-8">
+            🔄 Арбитражный робот — ${cfg.label}
+            <span style="flex:1"></span>
+            <button class="btn btn-primary btn-sm" id="arbPanelCopyBtn">📋 Копировать</button>
+            <button class="btn btn-primary btn-sm" id="arbPanelSaveBtn">💾 Сохранить</button>
+            <button class="btn btn-secondary btn-sm" id="arbPanelCloseBtn">✕</button>
+        </div>
+        <div style="padding:16px;display:flex;flex-direction:column;gap:16px">
+            <!-- Счёт + Капитал -->
+            <div class="metrics-row" style="flex-wrap:wrap">
+                <div class="metric-card" style="min-width:180px"><div class="metric-label">📋 Счёт</div>
+                    <select id="arbAccount" class="input" style="width:200px">
+                        <option value="2049688" selected>2049688 (EDP)</option>
+                    </select>
+                    <input type="hidden" id="arbAccountSaved" value="2049688">
+                </div>
+                <div class="metric-card" style="min-width:140px"><div class="metric-label">Капитал (₽)</div><input id="arbCapital" class="input" type="number" value="${p.capital||1000000}" style="width:120px"></div>
+            </div>
+
+            <hr style="border-color:var(--border-color)">
+
+            <!-- Инструменты -->
+            <div class="metrics-row" style="flex-wrap:wrap">
+                <div class="metric-card" style="min-width:160px"><div class="metric-label">📈 Инструмент A</div>
+                    <select id="arbSymA" class="input" style="width:150px">
+                        <option value="GAZP" ${(p.ticker_a||'')==='GAZP'?'selected':''}>GAZP (Газпром)</option>
+                        <option value="SBER" ${(p.ticker_a||'')==='SBER'?'selected':''}>SBER (Сбербанк)</option>
+                        <option value="BRV6" ${(p.ticker_a||'')==='BRV6'?'selected':''}>BRV6 (Brent окт)</option>
+                    </select>
+                </div>
+                <div class="metric-card" style="min-width:160px"><div class="metric-label">📉 Инструмент B (фьючерс)</div>
+                    <select id="arbSymB" class="input" style="width:150px">
+                        <option value="GZZ6" ${(p.ticker_b||'')==='GZZ6'?'selected':''}>GZZ6 (Газпром дек)</option>
+                        <option value="SRZ6" ${(p.ticker_b||'')==='SRZ6'?'selected':''}>SRZ6 (Сбер дек)</option>
+                        <option value="BRZ6" ${(p.ticker_b||'')==='BRZ6'?'selected':''}>BRZ6 (Brent дек)</option>
+                    </select>
+                </div>
+                <div class="metric-card"><div class="metric-label">Лоты A</div><input id="arbLotsA" class="input" type="number" value="${p.lots_a||10}" style="width:70px"></div>
+                <div class="metric-card"><div class="metric-label">Лоты B</div><input id="arbLotsB" class="input" type="number" value="${p.lots_b||1}" style="width:70px"></div>
+                <div class="metric-card"><div class="metric-label">Hedge Ratio</div><input id="arbHedgeRatio" class="input" type="number" step="0.1" value="${p.hedge_ratio||10}" style="width:70px"></div>
+            </div>
+
+            <!-- Комиссия -->
+            <div class="metrics-row" style="flex-wrap:wrap">
+                <div class="metric-card" style="min-width:280px;border:1px solid var(--border-color)">
+                    <div class="metric-label">💰 Комиссия</div>
+                    <label style="display:flex;align-items:center;gap:8px;cursor:pointer;padding:4px 0">
+                        <input type="checkbox" id="arbUseCommission" ${p.use_commission!==false?'checked':''} style="width:18px;height:18px;cursor:pointer">
+                        <span style="font-size:13px">Включить комиссию в расчёт PnL</span>
+                    </label>
+                </div>
+                <div class="metric-card"><div class="metric-label" id="arbCommALabel">${/\d/.test(p.ticker_a||'') ? 'Фьючерс A (₽ за контракт RT)' : 'Акция A (% за сторону)'}</div><input id="arbCommStock" class="input" type="number" step="0.01" value="${/\d/.test(p.ticker_a||'') ? (p.commission_futures_rt||15) : (p.commission_stock_pct||0.04)}" style="width:80px"></div>
+                <div class="metric-card"><div class="metric-label">Фьючерс B (₽ за контракт RT)</div><input id="arbCommFut" class="input" type="number" step="0.1" value="${p.commission_futures_rt||0.9}" style="width:80px"></div>
+            </div>
+            <div id="arbCommBothFut" style="font-size:12px;color:var(--yellow);padding:4px 0;display:${/\d/.test(p.ticker_a||'')?'block':'none'}">⚠️ Обе ноги — фьючерсы. Комиссия B (₽ RT) применяется к обеим ногам.</div>
+            <div class="metric-card" style="min-width:200px"><div class="metric-label">Проскальзывание (bps)</div><input id="arbSlippage" class="input" type="number" step="1" value="${p.slippage_bps!=null?p.slippage_bps:5}" style="width:80px"></div>
+            </div>
+
+            <hr style="border-color:var(--border-color)">
+
+            <!-- Вход -->
+            <div class="metrics-row" style="flex-wrap:wrap">
+                <div class="metric-card"><div class="metric-label">Dev-порог SHORT (% год.)</div><input id="arbDevAnnHigh" class="input" type="number" step="0.1" value="${p.dev_ann_high!=null?p.dev_ann_high:2.5}" style="width:70px"></div>
+                <div class="metric-card"><div class="metric-label">Dev-порог LONG (% год.)</div><input id="arbDevAnnLow" class="input" type="number" step="0.1" value="${p.dev_ann_low!=null?p.dev_ann_low:-1}" style="width:70px"></div>
+                <div class="metric-card"><div class="metric-label">Dev-окно (пушей)</div><input id="arbDevLookback" class="input" type="number" step="100" value="${p.dev_lookback||2500}" style="width:90px"></div>
+                <div class="metric-card"><div class="metric-label">Dev-пуш (сек)</div><input id="arbDevPush" class="input" type="number" step="10" value="${p.dev_push_interval||60}" style="width:70px"></div>
+                <div class="metric-card"><div class="metric-label">Entry Z (SHORT) — устар. режим ₽</div><input id="arbEntryZ" class="input" type="number" step="0.1" value="${p.entry_z||2.0}" style="width:70px"></div>
+                <div class="metric-card"><div class="metric-label">Entry Z (LONG) — устар. режим ₽</div><input id="arbEntryZLong" class="input" type="number" step="0.1" value="${p.entry_z_long||-2.0}" style="width:70px"></div>
+                <div class="metric-card"><div class="metric-label">Lookback (режим ₽)</div><input id="arbLookback" class="input" type="number" value="${p.lookback||50}" style="width:70px"></div>
+                <div class="metric-card"><div class="metric-label">Leg A Timeout (сек)</div><input id="arbLegTimeout" class="input" type="number" value="${p.leg_a_timeout||5}" style="width:70px"></div>
+                <div class="metric-card"><div class="metric-label">Min Fill Ratio</div><input id="arbMinFill" class="input" type="number" step="0.05" value="${p.min_fill_ratio||0.5}" style="width:70px"></div>
+            </div>
+
+            <!-- Fair value -->
+            <div class="metrics-row" style="flex-wrap:wrap">
+                <div class="metric-card"><div class="metric-label">Ставка (годовые %)</div><input id="arbRate" class="input" type="number" step="0.1" value="${(p.risk_free_rate||0.16)*100}" style="width:70px"></div>
+                <div class="metric-card"><div class="metric-label">Экспирация</div><input id="arbExpiration" class="input" type="date" value="${p.expiration_date||'2026-09-18'}" style="width:130px"></div>
+                <div class="metric-card"><div class="metric-label">Размер контракта</div><input id="arbContractSize" class="input" type="number" value="${p.contract_size||100}" style="width:70px"></div>
+            </div>
+
+            <hr style="border-color:var(--border-color)">
+
+            <!-- Мин. профит (dropdown + значение) -->
+            <div class="metrics-row" style="flex-wrap:wrap;align-items:flex-end">
+                <div class="metric-card"><div class="metric-label">Мин. профит — тип</div>
+                    <select id="arbMinProfitType" class="input" style="width:110px">
+                        <option value="rub" ${(p.min_profit_type||'rub')==='rub'?'selected':''}>Рубли (₽)</option>
+                        <option value="pts" ${p.min_profit_type==='pts'?'selected':''}>Пункты</option>
+                        <option value="pct" ${p.min_profit_type==='pct'?'selected':''}>Проценты (%)</option>
+                    </select>
+                </div>
+                <div class="metric-card"><div class="metric-label">Значение</div><input id="arbMinProfitVal" class="input" type="number" step="0.1" value="${p.min_profit_value||20}" style="width:90px"></div>
+            </div>
+
+            <hr style="border-color:var(--border-color)">
+
+            <!-- Риск (dropdown + значение) -->
+            <div class="metrics-row" style="flex-wrap:wrap;align-items:flex-end">
+                <div class="metric-card"><div class="metric-label">Риск — тип</div>
+                    <select id="arbRiskType" class="input" style="width:150px">
+                        <option value="stop_loss_rub" ${(p.risk_type||'stop_loss_rub')==='stop_loss_rub'?'selected':''}>Стоп-лосс (₽)</option>
+                        <option value="time_stop_min" ${p.risk_type==='time_stop_min'?'selected':''}>Тайм-стоп (мин)</option>
+                        <option value="max_dd_pct" ${p.risk_type==='max_dd_pct'?'selected':''}>Max DD (%)</option>
+                        <option value="kill_switch" ${p.risk_type==='kill_switch'?'selected':''}>Kill Switch</option>
+                    </select>
+                </div>
+                <div class="metric-card"><div class="metric-label">Значение</div><input id="arbRiskVal" class="input" type="number" value="${p.risk_value||5000}" style="width:90px"></div>
+            </div>
+
+            <!-- Направление -->
+            <div class="metrics-row" style="flex-wrap:wrap">
+                <div class="metric-card" style="min-width:300px">
+                    <div class="metric-label">Направление</div>
+                    <label style="display:flex;align-items:center;gap:8px;cursor:pointer;padding:4px 0">
+                        <input type="checkbox" id="arbAllowLong" ${p.allow_long_basis?'checked':''} style="width:18px;height:18px;cursor:pointer">
+                        <span>Разрешить лонг (шорт акции + лонг фьючерса)</span>
+                    </label>
+                </div>
+            </div>
+
+            <hr style="border-color:var(--border-color)">
+
+            <!-- Раздвижка -->
+            <hr style="border-color:var(--border-color);margin:12px 0">
+            <div class="metrics-row" style="flex-wrap:wrap">
+                <div class="metric-card" style="background:#1a2332;border:1px solid var(--accent)"><div class="metric-label" style="color:var(--accent)">Раздвижка (₽)</div><div id="arbSpreadRub" style="font-size:22px;font-weight:bold;color:var(--accent)">—</div></div>
+                <div class="metric-card"><div class="metric-label">Fair Spread (₽)</div><div id="arbFairSpread" style="font-size:18px;font-weight:bold">—</div></div>
+                <div class="metric-card"><div class="metric-label">Deviation (₽)</div><div id="arbDeviation" style="font-size:18px;font-weight:bold">—</div></div>
+                <div class="metric-card"><div class="metric-label">Раздвижка (%)</div><div id="arbSpreadPct" style="font-size:18px;font-weight:bold">—</div></div>
+                <div class="metric-card"><div class="metric-label">GAZP × 100</div><div id="arbSpotValue" style="font-size:18px;font-weight:bold">—</div></div>
+                <div class="metric-card"><div class="metric-label" id="arbFutLabel">GZZ6 (фьюч)</div><div id="arbFutValue" style="font-size:18px;font-weight:bold">—</div></div>
+                <div class="metric-card"><div class="metric-label">Basis (Z-score base)</div><div id="arbBasisVal" style="font-size:18px;font-weight:bold">—</div></div>
+                <div class="metric-card"><div class="metric-label">Z-score (dev)</div><div id="arbZVal" style="font-size:18px;font-weight:bold">—</div></div>
+                <div class="metric-card"><div class="metric-label">Dev годовых %</div><div id="arbDevAnn" style="font-size:18px;font-weight:bold">—</div></div>
+                <div class="metric-card"><div class="metric-label">Basis Mean</div><div id="arbMeanVal" style="font-size:14px">—</div></div>
+                <div class="metric-card"><div class="metric-label">Basis Std</div><div id="arbStdVal" style="font-size:14px">—</div></div>
+                <div class="metric-card"><div class="metric-label">Days to Exp</div><div id="arbDaysExp" style="font-size:18px;font-weight:bold">—</div></div>
+                <!-- Variant 1: absolute thresholds toggle + inputs + reference -->
+                <div class="metric-card" style="min-width:320px;border:1px solid #e90"><div class="metric-label" style="color:#e90">📊 Калькулятор спреда</div>
+                    <label style="display:flex;align-items:center;gap:8px;cursor:pointer;padding:4px 0">
+                        <input type="checkbox" id="arbEntryModeRub" ${p.entry_mode==='spread_rub'?'checked':''} style="width:18px;height:18px;cursor:pointer" onchange="arbEntryModeToggle()">
+                        <span style="font-size:13px">Торговать по абсолютным порогам (₽)</span>
+                    </label>
+                    <div id="arbRubInputs" style="display:none;margin-top:6px">
+                        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+                            <div style="flex:1;min-width:100px"><label style="font-size:11px;color:#9CA3AF">Short (₽ &gt;)</label><input id="arbSpreadRubHigh" class="input" type="number" step="1" style="width:80px;font-size:14px;padding:4px" value="${p.spread_rub_high||400}"></div>
+                            <div style="flex:1;min-width:100px"><label style="font-size:11px;color:#9CA3AF">Long (₽ &lt;)</label><input id="arbSpreadRubLow" class="input" type="number" step="1" style="width:80px;font-size:14px;padding:4px" value="${p.spread_rub_low||200}"></div>
+                        </div>
+                    </div>
+                    <div style="margin-top:8px;padding-top:8px;border-top:1px solid #333">
+                        <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px 12px;font-size:12px">
+                            <div style="color:#9CA3AF">Текущий спред:</div><div id="arbCalcSpread" style="font-weight:bold;text-align:right">—</div>
+                            <div style="color:#9CA3AF">Fair value (cost of carry):</div><div id="arbCalcFair" style="font-weight:bold;text-align:right">—</div>
+                            <div style="color:#9CA3AF">Deviation:</div><div id="arbCalcDev" style="font-weight:bold;text-align:right">—</div>
+                            <div style="color:#9CA3AF">Z-score:</div><div id="arbCalcZ" style="font-weight:bold;text-align:right">—</div>
+                        </div>
+                        <div style="margin-top:8px;padding-top:6px;border-top:1px dashed #444">
+                            <div style="font-size:11px;color:#9CA3AF;margin-bottom:4px">Исторический диапазон (lookback):</div>
+                            <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:4px 12px;font-size:12px">
+                                <div style="color:#9CA3AF">Max:</div><div id="arbCalcMax" style="font-weight:bold;text-align:center;color:var(--green)">—</div>
+                                <div style="color:#9CA3AF">Min:</div><div id="arbCalcMin" style="font-weight:bold;text-align:center;color:var(--red)">—</div>
+                                <div style="color:#9CA3AF">Mean:</div><div id="arbCalcMean" style="font-weight:bold;text-align:center">—</div>
+                            </div>
+                            <div style="margin-top:4px;font-size:11px;color:#9CA3AF">Suggested: High <span id="arbCalcSH" style="color:var(--green);font-weight:bold">—</span> | Low <span id="arbCalcSL" style="color:var(--red);font-weight:bold">—</span></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <hr style="border-color:var(--border-color);margin:12px 0">
+
+            <!-- Стакан L2 инфо -->
+            <div class="metrics-row" style="flex-wrap:wrap">
+                <div class="metric-card"><div class="metric-label">L2 A: Bid/Ask</div><div id="arbL2A" style="font-size:14px">—</div></div>
+                <div class="metric-card"><div class="metric-label">L2 B: Bid/Ask</div><div id="arbL2B" style="font-size:14px">—</div></div>
+                <div class="metric-card"><div class="metric-label">Data Points</div><div id="arbDataPts" style="font-size:14px">—</div></div>
+            </div>
+
+            <hr style="border-color:var(--border-color);margin:12px 0">
+
+            <!-- Торговый журнал -->
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+                <strong>📋 Торговый журнал</strong>
+            </div>
+            <div id="arbJournalSummary" class="metrics-row" style="flex-wrap:wrap;margin-bottom:12px"></div>
+            <div style="display:flex;gap:8px;margin-bottom:12px;align-items:center">
+                <select id="arbJournalFilter" class="input" style="width:120px" onchange="arbRenderJournal()">
+                    <option value="all">Все позиции</option>
+                    <option value="LONG">Лонги</option>
+                    <option value="SHORT">Шорты</option>
+                    <option value="win">Прибыльные</option>
+                    <option value="loss">Убыточные</option>
+                </select>
+                <span style="color:#9CA3AF;font-size:13px">с</span>
+                <input id="arbJournalDateFrom" class="input" type="date" style="width:130px" onchange="arbRenderJournal()">
+                <span style="color:#9CA3AF;font-size:13px">по</span>
+                <input id="arbJournalDateTo" class="input" type="date" style="width:130px" onchange="arbRenderJournal()">
+                <button class="btn btn-secondary btn-sm" onclick="arbJournalSetYesterday()">Вчера</button>
+                <button class="btn btn-secondary btn-sm" onclick="arbLoadJournal()">🔄</button>
+            </div>
+            <div style="max-height:350px;overflow-y:auto;border:1px solid var(--border-color);border-radius:8px">
+                <table style="width:100%;border-collapse:collapse;font-size:13px">
+                    <thead style="position:sticky;top:0;z-index:1">
+                        <tr style="background:var(--card);border-bottom:2px solid var(--accent)">
+                            <th style="padding:6px;text-align:left">📅 Дата</th>
+                            <th style="padding:6px;text-align:left">⏰ Вход</th>
+                            <th style="padding:6px;text-align:left">⏰ Выход</th>
+                            <th style="padding:6px;text-align:center">↔️</th>
+                            <th style="padding:6px;text-align:right">Вход A/B</th>
+                            <th style="padding:6px;text-align:right">Выход A/B</th>
+                            <th style="padding:6px;text-align:right">Basis вх.</th>
+                            <th style="padding:6px;text-align:right">Basis вых.</th>
+                            <th style="padding:6px;text-align:right">Z</th>
+                            <th style="padding:6px;text-align:right">Лоты</th>
+                            <th style="padding:6px;text-align:right">Холд</th>
+                            <th style="padding:6px;text-align:right">Комиссия</th>
+                            <th style="padding:6px;text-align:right">PnL</th>
+                            <th style="padding:6px;text-align:right">Кумул.</th>
+                        </tr>
+                    </thead>
+                    <tbody id="arbJournalBody" style="background:var(--bg)"><tr><td colspan="14" style="text-align:center;padding:24px;color:#9CA3AF">Нет данных</td></tr></tbody>
+                </table>
+            </div>
+            <div id="arbJournalInfo" style="font-size:12px;color:#9CA3AF;margin-top:8px"></div>
+        </div>
+    `;
+}
+
+// Writer метрик (из d446070, адаптирован под открытый инстанс)
+function arbPanelUpdateMetrics() {
+    if (!arbPanelInstance) return;
+    const api = window['arbApi_' + arbPanelInstance];
+    if (!api) return;
+    const arbPyData = api.getData();
+    if (!arbPyData) return;
+    const obA = arbPyData.obA || {};
+    const obB = arbPyData.obB || {};
+    const basis = arbPyData.basis || {};
+    if (el('arbL2A')) el('arbL2A').textContent = `${obA.bestBid||'—'} / ${obA.bestAsk||'—'} (${obA.totalVol||0})`;
+    if (el('arbL2B')) el('arbL2B').textContent = `${obB.bestBid||'—'} / ${obB.bestAsk||'—'} (${obB.totalVol||0})`;
+    if (el('arbDataPts')) el('arbDataPts').textContent = basis.data_points || 0;
+    const pa = basis.price_a || 0;
+    const pb = basis.price_b || 0;
+    const spread = basis.spread_rub || 0;
+    const spreadPct = basis.spread_pct || 0;
+    if (el('arbSpreadRub')) {
+        el('arbSpreadRub').textContent = (spread >= 0 ? '+' : '') + spread.toFixed(2) + ' ₽';
+        el('arbSpreadRub').style.color = spread > 0 ? 'var(--green)' : spread < 0 ? 'var(--red)' : 'var(--accent)';
+    }
+    if (el('arbSpreadPct')) el('arbSpreadPct').textContent = (spreadPct >= 0 ? '+' : '') + spreadPct.toFixed(3) + '%';
+    if (el('arbFairSpread')) el('arbFairSpread').textContent = basis.fair_spread != null ? basis.fair_spread.toFixed(1) + ' ₽' : '—';
+    if (el('arbDeviation')) {
+        const dev = basis.deviation || 0;
+        el('arbDeviation').textContent = (dev >= 0 ? '+' : '') + dev.toFixed(1) + ' ₽';
+        el('arbDeviation').style.color = dev > 0 ? 'var(--green)' : dev < 0 ? 'var(--red)' : '';
+    }
+    if (el('arbSpotValue')) {
+        const csz = parseInt(arbPyData?.params?.contract_size) || 100;
+        el('arbSpotValue').textContent = pa > 0 ? (pa * csz).toFixed(0) + ' ₽' : '—';
+        const spotLabel = el('arbSpotValue').parentElement.querySelector('.metric-label');
+        if (spotLabel) spotLabel.textContent = (arbPyData?.tickerA || 'Spot') + (csz > 1 ? ' × ' + csz : '');
+    }
+    if (el('arbFutValue')) el('arbFutValue').textContent = pb > 0 ? pb.toFixed(0) + ' ₽' : '—';
+    const futLabel = el('arbFutLabel');
+    if (futLabel) futLabel.textContent = (arbPyData?.tickerB || 'Фьюч') + ' (фьюч)';
+    if (el('arbBasisVal')) el('arbBasisVal').textContent = basis.basis != null ? basis.basis.toFixed(1) : '—';
+    if (el('arbZVal')) {
+        const z = basis.zscore || 0;
+        el('arbZVal').textContent = z.toFixed(3);
+        el('arbZVal').style.color = Math.abs(z) >= 1.5 ? 'var(--accent)' : '';
+    }
+    if (el('arbDevAnn')) {
+        const dAnn = (basis.dev_annualized != null) ? basis.dev_annualized : (basis.dev_ann != null ? basis.dev_ann : null);
+        if (dAnn != null) {
+            el('arbDevAnn').textContent = (dAnn >= 0 ? '+' : '') + dAnn.toFixed(2) + '%';
+            el('arbDevAnn').style.color = dAnn > 0 ? 'var(--green)' : dAnn < 0 ? 'var(--red)' : '';
+        } else el('arbDevAnn').textContent = '—';
+    }
+    if (el('arbMeanVal')) el('arbMeanVal').textContent = (basis.basis_mean || 0).toFixed(0);
+    if (el('arbStdVal')) el('arbStdVal').textContent = (basis.basis_std || 0).toFixed(0);
+    if (el('arbDaysExp')) el('arbDaysExp').textContent = basis.days_to_exp || '—';
+    if (el('arbCalcSpread')) {
+        el('arbCalcSpread').textContent = (spread >= 0 ? '+' : '') + spread.toFixed(2) + ' ₽';
+        el('arbCalcSpread').style.color = spread > 0 ? 'var(--green)' : spread < 0 ? 'var(--red)' : '';
+    }
+    if (el('arbCalcFair')) el('arbCalcFair').textContent = (basis.fair_spread != null ? basis.fair_spread.toFixed(1) + ' ₽' : '—');
+    if (el('arbCalcDev')) {
+        const dev = basis.deviation || 0;
+        el('arbCalcDev').textContent = (dev >= 0 ? '+' : '') + dev.toFixed(1) + ' ₽';
+        el('arbCalcDev').style.color = dev > 0 ? 'var(--green)' : dev < 0 ? 'var(--red)' : '';
+    }
+    if (el('arbCalcZ')) {
+        const z = basis.zscore || 0;
+        el('arbCalcZ').textContent = z.toFixed(3);
+        el('arbCalcZ').style.color = Math.abs(z) >= 1.5 ? 'var(--accent)' : '';
+    }
+    const ext = basis.dev_extremes || {};
+    if (el('arbCalcMax')) el('arbCalcMax').textContent = '+' + (ext.dev_max || 0).toFixed(1) + '₽';
+    if (el('arbCalcMin')) el('arbCalcMin').textContent = (ext.dev_min || 0).toFixed(1) + '₽';
+    if (el('arbCalcMean')) el('arbCalcMean').textContent = (((ext.avg_max || 0) + (ext.avg_min || 0)) / 2).toFixed(1) + '₽';
+    if (el('arbCalcSH')) el('arbCalcSH').textContent = (basis.suggested_high || 0).toFixed(0) + '₽';
+    if (el('arbCalcSL')) el('arbCalcSL').textContent = (basis.suggested_low || 0).toFixed(0) + '₽';
+}
+
+// Тумблер режима абсолютных порогов (₽)
+function arbEntryModeToggle() {
+    const on = el('arbEntryModeRub')?.checked;
+    const box = el('arbRubInputs');
+    if (box) box.style.display = on ? 'block' : 'none';
+}
+
+// Копирование позиции (заглушка-диалог как arbPyShowCopyDialog раньше)
+function arbCopyPositionDialog(inst) {
+    const cfg = ARB_INSTANCE_MAP[inst] || ARB_INSTANCE_MAP.gazp;
+    arbLog(inst, '📋 Копирование параметров ' + cfg.label + ': выберите робота-приёмник', 'INFO');
+}
+
+const lkoh = createArbInstance('lkoh', 5093);
 
 // ==================== MTLR ROBOT (Роботы Акции, порт 5094) ====================
 const MTLR_BASE = 'http://' + (window.location.hostname || 'localhost') + ':5094';
@@ -5289,8 +7091,6 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 // === PYTHON ROBOT (VP Scalp Grid) ===
-const ROBOT_API = 'http://' + window.location.hostname + ':5070';
-let pythonRobot = null;
 
 async function pollPythonRobot() {
     try {
@@ -5555,10 +7355,7 @@ function pythonRobotUpdateVp() {
 }
 
 // === Python Robot Trade Journal ===
-let _pyJournalTrades = [];
-let _pyJournalPositions = [];
 
-let _pyJournalTicker = 'SiU6';
 
 async function pyLoadJournal() {
     const info = el('pyJournalInfo');
@@ -6169,8 +7966,6 @@ function pythonRobotCreate() {
 }
 
 // === ORDER FLOW ROBOT (порт 5080) ===
-const OF_ROBOT_API = 'http://' + window.location.hostname + ':5080';
-let ofRobot = null;
 
 async function ofRobotPoll() {
     try {
@@ -6698,7 +8493,6 @@ async function ofRobotSaveFromPanel() {
 }
 
 // === Order Flow Trade Journal ===
-let _ofJournalTrades = [];
 
 async function ofResetStats() {
     if (!confirm('Сбросить статистику? Realized PnL → 0, история сделок очищена.')) return;
@@ -6818,12 +8612,7 @@ function ofRenderJournalSummary(total, wins, losses, totalPnl) {
     `;
 }
 // === ORDER FLOW MX ROBOT (порт 5081) ===
-const OF_MX_ROBOT_API = 'http://' + window.location.hostname + ':5081';
-let ofMxRobot = null;
-let _ofMxJournalTrades = [];
 
-let _ofMxPendingParams = null;
-let _ofMxWasOnline = false;
 
 async function ofMxRobotPoll() {
     try {

@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFramework>net8.0</TargetFramework>
+    <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <RootNamespace>HedgeFund.Brokers</RootNamespace>
@@ -23,7 +23,7 @@
 
   <!-- ============================================== -->
   <!-- StockSharp: аналитика + готовый Finam коннектор -->
-  <!-- Версия 5.0.222 поддерживает net6.0 (совместим с net8.0) -->
+  <!-- Версия 5.0.222 поддерживает net6.0 (совместим с net10.0) -->
   <!-- ============================================== -->
   <ItemGroup>
     <!-- Ядро: алгоритмы, стратегии, коннекторы -->

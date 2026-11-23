@@ -1,6 +1,7 @@
 using HedgeFund.Core.Models;
 using HedgeFund.Core.Strategies;
 using HedgeFund.Brokers.Finam;
+using HedgeFund.Core.Risk;
 
 namespace HedgeFund.Server.Services;
 
@@ -90,6 +91,7 @@ public class GridMmV7Launcher : IDisposable
     // ================================================================
     protected class OrderManager
     {
+        public HedgeFund.Core.Risk.RiskGate? RiskGate { get; set; }
         private readonly FinamConnector _broker;
         private readonly string _accountId;
         private readonly string _logPrefix;
@@ -246,6 +248,12 @@ public class GridMmV7Launcher : IDisposable
         {
             try
             {
+        // === RISK GATE CHECK ===
+        if (RiskGate != null)
+        {
+            if (!RiskIntegrationHelper.IsTradingBlocked(RiskGate)) { } else { Console.WriteLine("[V7] Market order blocked by circuit breaker"); return; }
+        }
+
                 var rest = _broker.RestClient;
                 if (rest == null) return;
                 await rest.PlaceOrderAsync(_accountId, new PlaceOrderRequest
@@ -317,6 +325,8 @@ public class GridMmV7Launcher : IDisposable
     protected string _finamSymbol;
     protected string _ticker;
     protected readonly string _accountId;
+    protected RiskGate? _riskGate;
+
     protected readonly string _logPrefix;
 
     protected readonly PositionTracker _tracker;
@@ -337,6 +347,8 @@ public class GridMmV7Launcher : IDisposable
     // Strategy sync: remember current level for grid engine
     private int _currentGridLevel;
 
+    public void SetRiskGate(RiskGate riskGate) { _riskGate = riskGate; _orders.RiskGate = riskGate; }
+
     public string Ticker => _ticker;
     public GridMmV7Strategy Strategy => _strategy;
     public string LogPrefix => _logPrefix;
@@ -347,8 +359,8 @@ public class GridMmV7Launcher : IDisposable
         _strategy = strategy;
         _isV8 = useV8;
         _stateFile = stateFile ?? (useV8 ? "/tmp/v8-state.json" : "/tmp/v7-state.json");
-        _finamSymbol = "SiM6@RTSX";
-        _ticker = "SiM6";
+        _finamSymbol = "SiU6@RTSX";
+        _ticker = "SiU6";
         _accountId = "";
         _logPrefix = useV8 ? "V8" : "V7";
 
@@ -363,7 +375,7 @@ public class GridMmV7Launcher : IDisposable
         _ticker = ticker;
         var map = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
         {
-            ["SiM6"] = "SiM6@RTSX", ["RIM6"] = "RIM6@RTSX",
+            ["SiU6"] = "SiU6@RTSX", ["SiZ6"] = "SiZ6@RTSX", ["RIM6"] = "RIM6@RTSX",
             ["GDM6"] = "GDM6@RTSX", ["MXM6"] = "MXM6@RTSX",
             ["SPM6"] = "SPM6@RTSX", ["MMM6"] = "MMM6@RTSX",
         };
@@ -923,6 +935,17 @@ public class GridMmV7Launcher : IDisposable
         if (_tracker.HasPosition) return;
 
         int dir = evt.Direction;
+        {
+            var riskCheck = _riskGate.CheckOrder(new HedgeFund.Core.Models.Order
+            {
+                Ticker = _ticker,
+                Direction = dir == 1 ? SignalDirection.Buy : SignalDirection.Sell,
+                Type = OrderType.Market,
+                Volume = 1,
+                Comment = evt.Reason
+            }, _tracker.TotalLots, 0);
+            if (!riskCheck.Approved) { Console.WriteLine($"[{_logPrefix}] RISK: Entry blocked: {riskCheck.Reason}"); return; }
+        }
         await _orders.PlaceMarketOrder(_finamSymbol, dir == 1 ? "SIDE_BUY" : "SIDE_SELL", 1, $"{_logPrefix}-ENTRY: {evt.Reason}");
         await Task.Delay(2000);
 

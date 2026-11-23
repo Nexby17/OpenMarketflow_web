@@ -1,0 +1,822 @@
+{
+  "meta": {
+    "version": "1.0",
+    "updated": "2026-09-23",
+    "description": "Реестр фич OpenMarketflow: контроль, статусы, история логики. Дополнение к коммитам: фича шире коммита (несколько коммитов, тесты, решения).",
+    "rules": {
+      "statuses": [
+        "planned",
+        "in_progress",
+        "done",
+        "deprecated",
+        "rejected"
+      ],
+      "update_on": "ОБЯЗАТЕЛЬНО при КАЖДОМ коммите кода/конфигов: запись в feature_list.json (полная схема: commits, summary, logic, tests, changes) и записи в robot/PROGRESS.md + progress.md — тем же коммитом или docs-коммитом немедленно после. Правило вшито 23.09 после аудита: реестр отставал на 20 фич (F-018..F-037 были только в git-логе).",
+      "id_format": "F-XXX (сквозной, не переиспользовать)",
+      "discipline": "Новая фича или изменение логики существующей → запись в changes + при необходимости правка logic/status. Связка с PROGRESS.md: PROGRESS — дневник событий, feature_list — реестр текущего состояния (что есть и как работает).",
+      "numbering": "F-XXX строго последовательно; перед присвоением проверять занятость по git log --grep='F-0' (дубль F-032 случился 22–23.09; сегодняшний фикс зарегистрирован как F-038)."
+    }
+  },
+  "features": [
+    {
+      "id": "F-001",
+      "name": "Ручная коррекция позиции (/position/adjust + UI)",
+      "area": "robots",
+      "status": "done",
+      "owner": "main",
+      "version_introduced": "app.js v82",
+      "commits": [
+        "71992c2",
+        "287f092",
+        "a67b0a0"
+      ],
+      "summary": "Синхронизация позиции робота с брокером без ордеров: API на обоих OF-роботах + блок «⚙ КОРРЕКЦИЯ ПОЗИЦИИ» в edit-панелях UI",
+      "logic": {
+        "semantics": "абсолютная установка: lots со знаком (+N лонг / -N шорт / 0 флэт) + средняя цена входа",
+        "guards": [
+          "валидация price>0 при lots≠0",
+          "|lots|≤100",
+          "блок при entry-lock 60с",
+          "ордера НЕ отправляются"
+        ]
+      },
+      "tests": [
+        "curl +3/-3/FLAT/валидация PASS (оба робота)",
+        "CDP: панель→ввод→API→статус PASS"
+      ],
+      "changes": [
+        {
+          "date": "2026-08-24",
+          "action": "created",
+          "note": "по запросу Дмитрия"
+        }
+      ]
+    },
+    {
+      "id": "F-002",
+      "name": "Семантика кнопок управления (СТАРТ/СТОП/ПАУЗА)",
+      "area": "robots",
+      "status": "done",
+      "owner": "main",
+      "commits": [
+        "f06e2e8"
+      ],
+      "summary": "СТАРТ запускает/будит; СТОП полностью останавливает с закрытием всех позиций; ПАУЗА запрещает новые входы, но ведёт открытые позиции",
+      "logic": {
+        "pause_impl": "main_loop в paused: process_tick исполняет close_all/partial_tp, блокирует entry/average/pyramid",
+        "critical_fix": "раньше paused замораживал весь цикл — открытые позиции оставались без стоп-лосса"
+      },
+      "tests": [
+        "живые переходы оба робота: позиция жива в паузе → start будит → stop закрывает (manual_stop)"
+      ],
+      "changes": [
+        {
+          "date": "2026-08-25",
+          "action": "created",
+          "note": "семантика по ТЗ Дмитрия"
+        }
+      ]
+    },
+    {
+      "id": "F-003",
+      "name": "Автозапуск Windows",
+      "area": "infra",
+      "status": "done",
+      "owner": "main",
+      "commits": [
+        "004898b",
+        "d55c515"
+      ],
+      "summary": "scripts/autostart.ps1 + ярлык в Startup. Поднимает ТОЛЬКО сервер; торговые роботы не автозапускаются",
+      "logic": {
+        "policy": "paper-режим только по явному указанию Дмитрия; роботы запускаются вручную, режим выбирает Дмитрий",
+        "idempotent": true,
+        "log": "robot/logs/autostart.log"
+      },
+      "tests": [
+        "живой прогон после ребута: server+health OK, лог корректен"
+      ],
+      "changes": [
+        {
+          "date": "2026-08-25",
+          "action": "created",
+          "note": "первая версия с роботами в paper"
+        },
+        {
+          "date": "2026-08-25",
+          "action": "modified",
+          "note": "роботы УБРАНЫ из автозапуска по решению Дмитрия (paper без указания запрещён)"
+        }
+      ]
+    },
+    {
+      "id": "F-004",
+      "name": "Сохранение параметров роботов из UI (/params)",
+      "area": "robots",
+      "status": "done",
+      "owner": "main",
+      "commits": [
+        "f06e2e8"
+      ],
+      "summary": "Параметры из edit-панелей применяются в рантайме и пишутся в конфиг; починен кейс SiU6 «не сохраняются»",
+      "logic": {
+        "cfg_path": "от __file__ робота (не cwd — раньше конфиг плыл от папки запуска)",
+        "error_handling": "битый JSON → 400 + лог (раньше молча ронял соединение)",
+        "caveat": "при остановленном роботе UI-fetch не доходит — параметры меняются при живом роботе"
+      },
+      "tests": [
+        "запуск из чужой cwd → конфиг в правильном месте; lots/step_average в рантайме и на диске"
+      ],
+      "changes": [
+        {
+          "date": "2026-08-25",
+          "action": "fixed",
+          "note": "3 дефекта: cwd-путь, нет try/except, тихий фейл при офлайне робота"
+        }
+      ]
+    },
+    {
+      "id": "F-005",
+      "name": "Единый WebSocket-хаб Finam (finam_hub.py)",
+      "area": "data",
+      "status": "done",
+      "owner": "main",
+      "commits": [
+        "f87a0b1",
+        "d9645b5"
+      ],
+      "summary": "Один WS-коннект (wss://api.finam.ru/ws) на всех роботов: котировки/стакан/сделки/бары push-ом, без REST-квот",
+      "logic": {
+        "jwt": "автопродление за минуту до истечения (TTL 15 мин)",
+        "reconnect": "backoff 1→30с + resubscribe_all + outbox-буфер",
+        "fan_out": "подписчики через callbacks; BARS-ключ нормализован SYM:TF → SYM|TF (фикс d9645b5)",
+        "limits": "WS не расходует REST-квоты (200 rpm/метод)"
+      },
+      "tests": [
+        "60с: 1198 сообщений 0 ошибок",
+        "живой поток баров после фикса ключа"
+      ],
+      "changes": [
+        {
+          "date": "2026-08-18",
+          "action": "created",
+          "note": "Этап 1 миграции на новое API"
+        },
+        {
+          "date": "2026-08-21",
+          "action": "fixed",
+          "note": "BARS fan-out ключ — бары не доходили до стратегий"
+        }
+      ]
+    },
+    {
+      "id": "F-006",
+      "name": "REST SDK 4.3.3 (finam_rest4 + orders_rest4 + patch_sdk)",
+      "area": "data",
+      "status": "done",
+      "owner": "main",
+      "commits": [
+        "3570399",
+        "c4d2111",
+        "628a3ed"
+      ],
+      "summary": "Ордера/аккаунты/история через официальный SDK; paper-эмуляция ордеров в lab; изоляция py4 (pip --target)",
+      "logic": {
+        "sdk_patches": [
+          "Position optional-поля",
+          "stale-JWT на /sessions",
+          "httpx-timeout 10с",
+          "Side SIDE_BUY/SELL",
+          "OrderType ORDER_TYPE_*"
+        ],
+        "paper_orders": "эмуляция по цене хаба, окно филлов 10 мин",
+        "real_orders": "только с явного одобрения Дмитрия"
+      },
+      "tests": [
+        "quote/account/quotas PASS",
+        "юнит Order с enum PASS"
+      ],
+      "changes": [
+        {
+          "date": "2026-08-18",
+          "action": "created",
+          "note": "Этапы 3-4 миграции"
+        },
+        {
+          "date": "2026-08-21",
+          "action": "fixed",
+          "note": "Side и OrderType маппинги — все real-ордера падали на валидации"
+        }
+      ]
+    },
+    {
+      "id": "F-007",
+      "name": "ChartController (перереаботка графика)",
+      "area": "ui",
+      "status": "done",
+      "owner": "code-agent + main",
+      "version_introduced": "app.js v80",
+      "commits": [
+        "819e96c"
+      ],
+      "summary": "modules/chart.js: единая точка истины графика; все 4 live-канала через контроллер; смерть серии от update() в прошлое — исключена",
+      "logic": {
+        "invariants": [
+          "time-монотонность",
+          "OHLC-валидность",
+          "ticker/TF соответствие",
+          "epoch-версионирование"
+        ],
+        "viewport": "fitContent после истории; live не трогает viewport"
+      },
+      "tests": [
+        "CDP 14/14: 10 переключений TF, смена инструмента, 30с live, 0 Value is null"
+      ],
+      "changes": [
+        {
+          "date": "2026-08-17",
+          "action": "created",
+          "note": "goal 49649e5c, полная реорганизация по требованию Дмитрия"
+        }
+      ]
+    },
+    {
+      "id": "F-008",
+      "name": "Paper Lab (robot/paper_lab)",
+      "area": "infra",
+      "status": "deprecated",
+      "owner": "main",
+      "commits": [
+        "455da1b",
+        "819e96c",
+        "3570399",
+        "a25d89e"
+      ],
+      "summary": "Изолированная лаборатория для обкатки перед PORT: papercuts.md (журнал PC-XXX), 4 слоя изоляции",
+      "logic": {
+        "lifecycle": "эксперимент ≥1 торговый дня → вердикт PORT/DROP → перенос отдельным коммитом",
+        "verdicts": "PC-005 (новый стек) PORT выполнен; paper-режим лаборатории приостановлен решением Дмитрия 25.08"
+      },
+      "tests": [
+        "soak 32ч: 0 рестартов, 0 трейсбеков; вердикт ГОТОВ К PORT"
+      ],
+      "changes": [
+        {
+          "date": "2026-08-18",
+          "action": "created",
+          "note": "по требованию Дмитрия: отдельное пространство для paper-тестов"
+        },
+        {
+          "date": "2026-08-20",
+          "action": "deprecated",
+          "note": "paper-тесты заморожены: paper только по явному указанию"
+        }
+      ]
+    },
+    {
+      "id": "F-009",
+      "name": "Threaded API роботов",
+      "area": "robots",
+      "status": "done",
+      "owner": "main",
+      "commits": [
+        "c4d2111"
+      ],
+      "summary": "HTTPServer → ThreadingMixIn у обоих OF-роботов: поллинг UI больше не блокирует /stop и другие запросы",
+      "logic": {
+        "mro": "socketserver.ThreadingMixIn + HTTPServer, daemon_threads"
+      },
+      "tests": [
+        "10x /status за 2.4с без блокировок"
+      ],
+      "changes": [
+        {
+          "date": "2026-08-21",
+          "action": "created",
+          "note": "найдено при разборе зависания /status"
+        }
+      ]
+    },
+    {
+      "id": "F-010",
+      "name": "Параметры панелей при остановленном роботе (/api/of/config прокси)",
+      "area": "ui",
+      "status": "done",
+      "owner": "main",
+      "version_introduced": "app.js v83",
+      "commits": [
+        "bfc92d0"
+      ],
+      "summary": "Открытие и сохранение панелей параметров Si/MX работает при мёртвом роботе: C#-прокси читает/пишет robot/of_config*.json напрямую",
+      "logic": {
+        "read_priority": "живой робот /status → иначе конфиг через сервер (раньше: фантазийные дефолты)",
+        "save_chain": "робот live → POST /params; робот offline → POST /api/of/config (merge в существующий json)",
+        "badge": "бейдж источника в шапке панели: 🟢 от робота / 💾 из конфига",
+        "root_cause_fixed": "панель читала только живой /status; при остановленном роботе показывала дефолты и save уходил в мёртвый порт"
+      },
+      "tests": [
+        "CDP-приёмка 5/5: мёртвый робот → панель из конфига (lots=3/step=99), бейдж, save=777 пережил переоткрытие",
+        "API-тест merge/rollback на of_mx"
+      ],
+      "changes": [
+        {
+          "date": "2026-08-27",
+          "action": "created",
+          "note": "по репорту Дмитрия «кнопка сохранить ничего не сохраняет» — корень: чтение только с живого робота"
+        }
+      ]
+    },
+    {
+      "id": "F-011",
+      "name": "Видимая обратная связь кнопок управления роботами",
+      "area": "ui",
+      "status": "done",
+      "owner": "main",
+      "version_introduced": "app.js v84",
+      "commits": [
+        "см. git log F-011"
+      ],
+      "summary": "Кнопки ▶⏸⏹ всех роботов: результат действия виден всегда. Добавлена отсутствовавшая ofRobotApi (Si-кнопки молча кидали ReferenceError), toast-уведомления при недоступном роботе",
+      "logic": {
+        "root_causes_fixed": [
+          "ofRobotApi не существовала — клик ничего не делал визуально",
+          "ошибки fetch писались только в лог на вкладке Торговля"
+        ],
+        "feedback_chain": "живой робот → лог статуса; мёртвый → красный toast поверх любой вкладки + запись в лог"
+      },
+      "tests": [
+        "CDP: typeof ofRobotApi=function; клик при мёртвом роботе → тост «Робот SiU6 не отвечает» + запись в лог"
+      ],
+      "changes": [
+        {
+          "date": "2026-08-27",
+          "action": "created",
+          "note": "по репорту Дмитрия: нажал Запустить и ничего не увидел"
+        }
+      ]
+    },
+    {
+      "id": "F-012",
+      "name": "Запуск робота одной кнопкой (process manager на сервере)",
+      "area": "infra",
+      "status": "done",
+      "owner": "main",
+      "version_introduced": "app.js v85",
+      "commits": [
+        "см. git log F-012"
+      ],
+      "summary": "Кнопка ▶ в UI сама поднимает python-процесс робота через C#-сервер (RobotProcessManager), ждёт health, потом включает торговлю. Никаких ручных консолей.",
+      "logic": {
+        "chain": "кнопка ▶ → POST /api/of/process/{of|of_mx}/start (spawn+health-wait ≤25с) → POST :508x/start → mode=running",
+        "logs": "console робота пишется в robot/logs/{of|of_mx}_console_YYYYMMDD.{log,err}",
+        "stop_semantics": "⏹ останавливает торговлю и закрывает позиции; процесс остаётся жить для быстрого рестарта",
+        "authonomy_principle": "по требованию Дмитрия: сигнал из UI достаточен, ничего вручную пинать не нужно"
+      },
+      "tests": [
+        "API: start→pid, mode=running; stop→stopped; полный цикл PASS",
+        "живой запуск MX: 17с до health OK"
+      ],
+      "changes": [
+        {
+          "date": "2026-08-27",
+          "action": "created",
+          "note": "по требованию Дмитрия: «пришёл сигнал запуска — должно всё запускаться»"
+        }
+      ]
+    },
+    {
+      "id": "F-013",
+      "area": "robot/orders",
+      "status": "done",
+      "owner": "main",
+      "commits": [
+        "df925e1"
+      ],
+      "summary": "PnL и fill-цены по фактическим сделкам брокера (VWAP по order_id), limit_price-фолбэк удалён",
+      "logic": "wait_fill: average_price -> get_today_trades VWAP -> None; исключена запись цены ЗАЯВКИ как цены ИСПОЛНЕНИЯ (фантомный PnL/ложные стопы)",
+      "tests": [
+        "unit 4/4 PASS (average_price, VWAP, None-no-limit, paper)",
+        "integration: get_today_trades live 41 сделка"
+      ],
+      "changes": [
+        "robot/finam_rest4.py: +get_today_trades()",
+        "robot/orders_rest4.py: wait_fill real-ветка переписана"
+      ]
+    },
+    {
+      "id": "F-014",
+      "area": "ui/robots-tab",
+      "status": "done",
+      "owner": "main",
+      "commits": [
+        "см. git log --grep=F-014"
+      ],
+      "summary": "Статус SiU6 OF-робота в таблице роботов: poll :5080 + живой рендер (была вечная заглушка «Не запущен»)",
+      "logic": "ofRobotPoll() каждые 2с -> ofRobot -> renderRobots показывает реальный mode",
+      "tests": [
+        "CDP live: Работает/Остановлен скриншоты",
+        "node --check OK"
+      ],
+      "changes": [
+        "app.js: +ofRobotPoll, 2с-цикл",
+        "index.html: v=86"
+      ]
+    },
+    {
+      "id": "F-015",
+      "name": "Суточная ротация лог-файлов роботов (DailyFileHandler)",
+      "area": "robot/logging",
+      "status": "done",
+      "owner": "main",
+      "commits": [
+        "4978f58"
+      ],
+      "summary": "Процессы, живущие через полночь, писали в файл с датой старта; теперь DailyFileHandler создаёт of[_mx]_<дата>.log за текущие сутки",
+      "tests": [
+        "живой MX-процесс через полночь: новый файл за следующие сутки"
+      ],
+      "changes": [
+        "robot/main_of.py, main_of_mx.py: DailyFileHandler вместо FileHandler"
+      ]
+    },
+    {
+      "id": "F-017",
+      "name": "Живая смена контракта OF-роботов (UI селект -> робот)",
+      "area": "robots/instrument-switch",
+      "status": "done",
+      "owner": "main",
+      "commits": [
+        "55ff947",
+        "85193d8"
+      ],
+      "summary": "Смена контракта из UI работает: живой POST /instrument (guarded stopped+FLAT, 409 иначе) с пересозданием стратегии/ордеров/hub-подписок и прогревом VWEMA; fallback в robot/.env при остановленном роботе; селект отражает живой symbol из /status",
+      "logic": "applyInstrument(): робот поднят -> POST :5080/:5081/instrument; running -> 409 -> сохранить в .env для следующего старта; робот не поднят -> /api/robot/update-instrument (пишет robot/.env, robot=of|of_mx). Общая логика пересборки в robot/instrument_switch.py",
+      "tests": [
+        "live: MXU6->MXZ6->MXU6 (подписки+VWEMA прогрев, история сохранена)",
+        "рестарт процесса: MXZ6 сохранился (env)",
+        "409 на running-роботе",
+        "Si unchanged path + регистр SiU6 сохранён",
+        "py_compile + node --check OK"
+      ],
+      "changes": [
+        "robot/main_of.py, main_of_mx.py: POST /instrument",
+        "robot/instrument_switch.py: общий rebuild",
+        "Program.cs: /api/robot/update-instrument -> robot/.env (был /root/... Linux-путь), robot=of|of_mx",
+        "app.js: applyInstrument + живой symbol в селекте, v=89..90"
+      ]
+    },
+    {
+      "id": "F-018",
+      "name": "Арб-роботы в UI + process manager",
+      "area": "robots/arb",
+      "status": "done",
+      "owner": "code",
+      "commits": [
+        "fa1fe72",
+        "33e6726",
+        "a11dadf"
+      ],
+      "summary": "Арбитражные роботы подключены к веб-UI и process manager'у сервера (статус 'process not raised' при мёртвом процессе); Finam gRPC wiring без автостарта — старт только Дмитрием.",
+      "logic": "UI → server process manager → python main_arb.py (:5090/:5091); Finam gRPC подписки quote/OB без автозапуска торговли.",
+      "tests": [
+        "см. коммиты"
+      ],
+      "note": "Запись восстановлена 23.09 из commit-сообщений при аудите реестра: в период 18–22.09 полная схема (logic/tests/changes) не велась."
+    },
+    {
+      "id": "F-019",
+      "name": "Быстрое исполнение арба (1+3+5)",
+      "area": "robots/arb-execution",
+      "status": "done",
+      "owner": "code",
+      "commits": [
+        "8438b60",
+        "af89317"
+      ],
+      "summary": "Fast execution: batch cancel, ожидание fill через REST, заливки через WS ORDERS — сокращение времени выставления/подтверждения.",
+      "logic": "batch cancel + REST fill wait + WS ORDERS fills.",
+      "tests": [
+        "см. коммиты"
+      ],
+      "note": "Запись восстановлена 23.09 из commit-сообщений при аудите реестра: в период 18–22.09 полная схема (logic/tests/changes) не велась."
+    },
+    {
+      "id": "F-020",
+      "name": "Per-instance arb config",
+      "area": "ui/arb-panels",
+      "status": "done",
+      "owner": "code",
+      "commits": [
+        "50d3a0a"
+      ],
+      "summary": "Карточка SBER писала конфиг GAZP-робота (общий файл). Конфиги разделены по инстансам: arb_config_gazp.json / arb_config_sber.json.",
+      "logic": "каждой карточке — свой конфиг-файл по инстансу.",
+      "tests": [
+        "см. коммиты"
+      ],
+      "note": "Запись восстановлена 23.09 из commit-сообщений при аудите реестра: в период 18–22.09 полная схема (logic/tests/changes) не велась."
+    },
+    {
+      "id": "F-021",
+      "name": "Надёжное сохранение arb-параметров",
+      "area": "ui/arb-panels",
+      "status": "done",
+      "owner": "code",
+      "commits": [
+        "7374287",
+        "b03a85b",
+        "6585c0e"
+      ],
+      "summary": "Save параметров: десятичные запятые, отбраковка null; dev-поля в sber-панели больше не теряются; повторное открытие панели показывает свежие параметры (race fix).",
+      "logic": "валидация на клиенте+сервере; перечитывание при открытии.",
+      "tests": [
+        "см. коммиты"
+      ],
+      "note": "Запись восстановлена 23.09 из commit-сообщений при аудите реестра: в период 18–22.09 полная схема (logic/tests/changes) не велась."
+    },
+    {
+      "id": "F-022",
+      "name": "Пара инструментов = личность инстанса",
+      "area": "ui/arb-panels",
+      "status": "done",
+      "owner": "code",
+      "commits": [
+        "86188bd",
+        "3db88b9"
+      ],
+      "summary": "Пара (GAZP/GZZ6, SBER/SRZ6) — идентичность инстанса, а не сохраняемый параметр; восстановлен глобальный arbPyData после рендера панели (корень кросс-инстансовых сохранений).",
+      "logic": "pair фиксируется на инстансе (env/файл), UI не сохраняет её как параметр.",
+      "tests": [
+        "см. коммиты"
+      ],
+      "note": "Запись восстановлена 23.09 из commit-сообщений при аудите реестра: в период 18–22.09 полная схема (logic/tests/changes) не велась."
+    },
+    {
+      "id": "F-023",
+      "name": "Per-instance arb state + журнал",
+      "area": "robots/arb",
+      "status": "done",
+      "owner": "code",
+      "commits": [
+        "c060014"
+      ],
+      "summary": "Разделение state-файлов по инстансам (arb_state_gazp/sber.json) + чистка журнала; фантомные −93.7K PnL исчезли.",
+      "logic": "state по инстансам, journal scope = instance.",
+      "tests": [
+        "см. коммиты"
+      ],
+      "note": "Запись восстановлена 23.09 из commit-сообщений при аудите реестра: в период 18–22.09 полная схема (logic/tests/changes) не велась."
+    },
+    {
+      "id": "F-024",
+      "name": "Кросс-панельные DOM коллизии + no-cache",
+      "area": "ui/arb-panels",
+      "status": "done",
+      "owner": "code",
+      "commits": [
+        "971a01c",
+        "1704ffb"
+      ],
+      "summary": "Открытие одной панели закрывало другие (DOM collision); браузер отдавал устаревший app.js — добавлен no-cache для JS (F-024b).",
+      "logic": "изоляция DOM-поддерев панелей; Cache-Control no-cache на статику.",
+      "tests": [
+        "см. коммиты"
+      ],
+      "note": "Запись восстановлена 23.09 из commit-сообщений при аудите реестра: в период 18–22.09 полная схема (logic/tests/changes) не велась."
+    },
+    {
+      "id": "F-025",
+      "name": "Warmup dev-истории с H1 + auth токеном",
+      "area": "robots/arb",
+      "status": "done",
+      "owner": "code",
+      "commits": [
+        "57994ec"
+      ],
+      "summary": "Предзаполнение истории отклонений от справедливой стоимости по H1-барам (мгновенный рабочий Z/dev после старта) + авторизация стрима клиентским токеном.",
+      "logic": "dev history warmup from H1 bars; stream auth via client token.",
+      "tests": [
+        "см. коммиты"
+      ],
+      "note": "Запись восстановлена 23.09 из commit-сообщений при аудите реестра: в период 18–22.09 полная схема (logic/tests/changes) не велась."
+    },
+    {
+      "id": "F-026",
+      "name": "arbNum не определена (корень «save не работает»)",
+      "area": "ui/arb-panels",
+      "status": "done",
+      "owner": "code",
+      "commits": [
+        "9c9d648"
+      ],
+      "summary": "Функция arbNum вызывалась, но нигде не была определена — корневая причина «кнопка save ничего не делает»; добавлена реализация.",
+      "logic": "численный парсинг параметров панелей.",
+      "tests": [
+        "см. коммиты"
+      ],
+      "note": "Запись восстановлена 23.09 из commit-сообщений при аудите реестра: в период 18–22.09 полная схема (logic/tests/changes) не велась."
+    },
+    {
+      "id": "F-027",
+      "name": "Самодиагностика кнопок save",
+      "area": "ui/arb-panels",
+      "status": "done",
+      "owner": "code",
+      "commits": [
+        "bc2b421"
+      ],
+      "summary": "Кнопки сохранения пишут лог клика + guard от устаревшего скрипта (stale-script) — сбой виден сразу.",
+      "logic": "click-log + stale-script guard.",
+      "tests": [
+        "см. коммиты"
+      ],
+      "note": "Запись восстановлена 23.09 из commit-сообщений при аудите реестра: в период 18–22.09 полная схема (logic/tests/changes) не велась."
+    },
+    {
+      "id": "F-028",
+      "name": "Дневной стоп не циклит убыток",
+      "area": "robots/arb",
+      "status": "done",
+      "owner": "code",
+      "commits": [
+        "73d0a79"
+      ],
+      "summary": "После daily stop робот больше не входит и тут же не закрывается по daily_stop_blocked: залипший daily_stop_active из state сбрасывается при загрузке; новые входы запрещены до авто-сброса 07:00 МСК.",
+      "logic": "daily_stop_active=False при load_state; вход блокируется, пока активен стоп.",
+      "tests": [
+        "см. коммиты"
+      ],
+      "note": "Запись восстановлена 23.09 из commit-сообщений при аудите реестра: в период 18–22.09 полная схема (logic/tests/changes) не велась."
+    },
+    {
+      "id": "F-029",
+      "name": "Подпись Instrument B (futures)",
+      "area": "ui/arb-panels",
+      "status": "done",
+      "owner": "code",
+      "commits": [
+        "6ddfae1"
+      ],
+      "summary": "Восстановлена подпись фьючерсного инструмента в панелях параметров арба.",
+      "logic": "UI label.",
+      "tests": [
+        "см. коммиты"
+      ],
+      "note": "Запись восстановлена 23.09 из commit-сообщений при аудите реестра: в период 18–22.09 полная схема (logic/tests/changes) не велась."
+    },
+    {
+      "id": "F-030",
+      "name": "Per-instance журналы карточек",
+      "area": "ui/arb-panels",
+      "status": "done",
+      "owner": "code",
+      "commits": [
+        "19da1de"
+      ],
+      "summary": "Фидбек save карточки SBER уходил в лог GAZP — журналы разделены по инстансам.",
+      "logic": "card log scope = instance.",
+      "tests": [
+        "см. коммиты"
+      ],
+      "note": "Запись восстановлена 23.09 из commit-сообщений при аудите реестра: в период 18–22.09 полная схема (logic/tests/changes) не велась."
+    },
+    {
+      "id": "F-031",
+      "name": "Dropdown выбора инструментов в панелях",
+      "area": "ui/arb-panels",
+      "status": "done",
+      "owner": "code",
+      "commits": [
+        "8fee6b3"
+      ],
+      "summary": "Восстановлены dropdown выбора инструментов в arb-панелях (как было до рефакторинга).",
+      "logic": "UI select.",
+      "tests": [
+        "см. коммиты"
+      ],
+      "note": "Запись восстановлена 23.09 из commit-сообщений при аудите реестра: в период 18–22.09 полная схема (logic/tests/changes) не велась."
+    },
+    {
+      "id": "F-032",
+      "name": "Save кнопки SBER/BR через addEventListener",
+      "area": "ui/arb-panels",
+      "status": "done",
+      "owner": "code",
+      "commits": [
+        "637f27e"
+      ],
+      "summary": "Перепривязка кнопок сохранения через addEventListener — защита от потери обработчиков при ре-рендере.",
+      "logic": "event listeners вместо inline.",
+      "tests": [
+        "см. коммиты"
+      ],
+      "note": "Запись восстановлена 23.09 из commit-сообщений при аудите реестра: в период 18–22.09 полная схема (logic/tests/changes) не велась."
+    },
+    {
+      "id": "F-033",
+      "name": "Единая arb-панель (один код, save по инстансу)",
+      "area": "ui/arb-panels",
+      "status": "done",
+      "owner": "code",
+      "commits": [
+        "ab225d4"
+      ],
+      "summary": "Унификация arb-панелей: один кодовый путь, сохранение всегда от открытого инстанса (ARB_INSTANCE_MAP, делегированный listener; suffix: акции @MISX, фьючерсы @RTSX).",
+      "logic": "единый шаблон панели + instance-scoped save.",
+      "tests": [
+        "см. коммиты"
+      ],
+      "note": "Запись восстановлена 23.09 из commit-сообщений при аудите реестра: в период 18–22.09 полная схема (logic/tests/changes) не велась."
+    },
+    {
+      "id": "F-034",
+      "name": "Видимая стрелка dropdown",
+      "area": "ui/arb-panels",
+      "status": "done",
+      "owner": "code",
+      "commits": [
+        "9eb4f8d"
+      ],
+      "summary": "Видимая стрелка у селектов инструментов arb-панелей.",
+      "logic": "CSS.",
+      "tests": [
+        "см. коммиты"
+      ],
+      "note": "Запись восстановлена 23.09 из commit-сообщений при аудите реестра: в период 18–22.09 полная схема (logic/tests/changes) не велась."
+    },
+    {
+      "id": "F-035",
+      "name": "Полная arb-панель восстановлена",
+      "area": "ui/arb-panels",
+      "status": "done",
+      "owner": "code",
+      "commits": [
+        "fa08c5f"
+      ],
+      "summary": "Центр, спред-метрики, калькулятор, L2, журнал — полный состав панели восстановлен после унификации (сверка с git show во избежание тихих пропаж секций).",
+      "logic": "см. коммит.",
+      "tests": [
+        "см. коммиты"
+      ],
+      "note": "Запись восстановлена 23.09 из commit-сообщений при аудите реестра: в период 18–22.09 полная схема (logic/tests/changes) не велась."
+    },
+    {
+      "id": "F-036",
+      "name": "Зеркалирование логов арба в общий event log",
+      "area": "robots/arb-logging",
+      "status": "done",
+      "owner": "code",
+      "commits": [
+        "62ac229"
+      ],
+      "summary": "События арб-роботов зеркалируются в общий журнал событий сервера.",
+      "logic": "log event mirror.",
+      "tests": [
+        "см. коммиты"
+      ],
+      "note": "Запись восстановлена 23.09 из commit-сообщений при аудите реестра: в период 18–22.09 полная схема (logic/tests/changes) не велась."
+    },
+    {
+      "id": "F-037",
+      "name": "Только общий event log для событий арба",
+      "area": "robots/arb-logging",
+      "status": "done",
+      "owner": "code",
+      "commits": [
+        "e9b2494"
+      ],
+      "summary": "Все события арб-роботов маршрутизируются только в общий event log (без дублей).",
+      "logic": "single sink routing.",
+      "tests": [
+        "см. коммиты"
+      ],
+      "note": "Запись восстановлена 23.09 из commit-сообщений при аудите реестра: в период 18–22.09 полная схема (logic/tests/changes) не велась."
+    },
+    {
+      "id": "F-038",
+      "name": "Тейк-профит по реализуемому PnL (стакан, FIFO по слоям)",
+      "area": "robots/arb",
+      "status": "done",
+      "owner": "main",
+      "commits": [
+        "b82ecd0"
+      ],
+      "summary": "Корень утечки: 147/149 выходов profit_target были отрицательными (avg −17,13 ₽) — тейк считался по last-принтам неликвидного GZZ6, а исполнение платило спред+slippage (≈15,5 ₽ круг). Теперь решение о выходе по реализуемому PnL: bid/ask из OB-трекеров − slippage 5bps − комиссии; протухший стакан (>3с) блокирует решение; подтверждение 3 тика подряд; закрытие FIFO по слоям (как набирали); групповой выход сохранён. Входы не тронуты (basis_calc остался на last). risk-exits без подтверждения. min_profit_type: rub/pct — по realizable, pts — легаси. Исправлен paper-факт: лимит ноги A по стороне (SELL→bid). Тесты: 42 PASS / 0 FAIL (25 старых + 9 новых).",
+      "logic": "_layer_realizable_pnl() читает ob_a/ob_b напрямую; check_exit() FIFO; _EXIT_CONFIRM_TICKS=3; _exit_qualifies() по типу порога",
+      "tests": [
+        "realizable math short/long — сходится до копейки",
+        "phantom print при неподвижном стакане → тейк НЕ срабатывает",
+        "stale OB → None, no exit",
+        "3-tick confirmation: 1–2 тик нет, 3-й срабатывает",
+        "FIFO: закрывается старейший слой"
+      ],
+      "changes": [
+        "robot/arb_common/strategy_arb.py: _layer_realizable_pnl, check_exit, _exit_qualifies, счётчики подтверждения",
+        "robot/main_arb.py: paper EXIT ALL по стакану, лимит A по стороне, лог факт vs предсказание",
+        "robot/test_arb_fair.py: +9 кейсов",
+        ".gitignore: robot/arb_state_*.json"
+      ],
+      "note": "Решение согласовано с Дмитрием 23.09: входы не трогать, закрывать слоями, доверять стакану, min_hold заменён подтверждением 3 тика."
+    }
+  ]
+}

@@ -1,0 +1,1059 @@
+"""Order Flow Robot — main entry point.
+
+Subscribes to Trades + OrderBook + Bars via Finam WS-hub (PC-003/005),
+runs OrderFlowStrategy, sends orders via DataProvider REST.
+
+Usage: python3 main_of_mx.py [--paper] [--port 5081]
+
+MXU6 (Индекс Мосбиржи) — точная копия OF робота.
+
+v2 — fixed: bar callback signature, dynamic bar_start_ts, stale price check,
+      entry lock reset on manual stop, config consolidation.
+"""
+import sys, os
+import argparse
+import json
+import logging
+import signal as sig_module
+import threading
+import time
+from pathlib import Path
+from datetime import datetime, timezone, timedelta
+from http.server import HTTPServer, BaseHTTPRequestHandler
+
+import sys as _sys, os as _os
+_HERE = _os.path.dirname(_os.path.abspath(__file__))
+_ROBOT = _os.path.dirname(_HERE)
+_PROJ = _os.path.dirname(_ROBOT)  # finam_compat.py живёт в корне проекта
+_PY4 = _os.path.join(_ROBOT, "py4")  # PORT-0: py4 moved to robot/
+for _p in (_PY4, _HERE, _ROBOT, _PROJ):
+    if _os.path.isdir(_p) and _p not in _sys.path:
+        _sys.path.insert(0, _p)
+# PAPER LAB: загрузка .env из lab-папки
+def _load_lab_env():
+    env_path = _os.path.join(_HERE, ".env")
+    if _os.path.exists(env_path):
+        with open(env_path) as f:
+            for line in f:
+                line = line.strip()
+                if line and not line.startswith("#") and "=" in line:
+                    k, _, v = line.partition("=")
+                    _os.environ.setdefault(k.strip(), v.strip())
+_load_lab_env()
+
+from hub_adapter import FinamHubAdapter  # PC-003: данные из WS-хаба
+from orders_rest4 import OrderManagerRest4, get_broker_position  # PC-005: ордера/позиции без DP и gRPC
+import finam_rest4 as _rest4mod  # PC-005: REST 4.3.3
+
+import config_of_mx as config
+from strategy_of import OrderFlowStrategy, OFParams, LONG, SHORT, FLAT
+from orders_rest4 import BUY, SELL  # PC-005: константы стороны от нового менеджера
+
+log = logging.getLogger("robot_of_mx")
+
+MSK = timezone(timedelta(hours=3))
+
+# --- Parse args ---
+parser = argparse.ArgumentParser()
+parser.add_argument("--paper", action="store_true", default=True)  # PAPER LAB: всегда paper
+parser.add_argument("--port", type=int, default=5181)
+args, _ = parser.parse_known_args()
+
+# --- Logging ---
+LOG_DIR = Path(__file__).parent / "logs"
+LOG_DIR.mkdir(exist_ok=True)
+_log_file = LOG_DIR / f"of_mx_{datetime.now().strftime('%Y%m%d')}.log"
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(name)s %(levelname)s %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
+    handlers=[
+        logging.StreamHandler(sys.stdout),
+        logging.FileHandler(_log_file, mode='a', encoding='utf-8'),
+    ],
+)
+
+# --- Config ---
+SYMBOL = getattr(config, "SYMBOL", "SiU6@RTSX")
+TICKER = getattr(config, "TICKER", "SiU6")
+ACCOUNT = getattr(config, "ACCOUNT_ID", os.environ.get("FINAM_ACCOUNT", "1225953"))
+DP_URL = getattr(config, "DP_URL", "http://localhost:5060")
+
+# === Multi-account support ===
+ACCOUNTS = {
+    "main": "1225953",
+    "edp": "2049688",
+}
+ACTIVE_ACCOUNT_KEY = "main"
+PORT = args.port
+PAPER_MODE = args.paper
+
+# --- Timeframe → seconds mapping for bar_start_ts ---
+TF_SECONDS = {
+    "M1": 60, "M5": 300, "M15": 900, "M30": 1800,
+    "H1": 3600, "H2": 7200, "H4": 14400, "H8": 28800,
+    "D": 86400,
+}
+
+# --- Strategy params (from config or of_config_mx.json) ---
+def load_params() -> OFParams:
+    p = OFParams()
+    # Load from config_of.py constants first
+    for attr in dir(config):
+        val = getattr(config, attr)
+        if attr.isupper() and hasattr(p, attr.lower()):
+            setattr(p, attr.lower(), val)
+    # Then override from of_config_mx.json if exists
+    cfg_path = os.path.join(_HERE, "of_config_paper_mx.json")  # PAPER LAB
+    if os.path.exists(cfg_path):
+        with open(cfg_path) as f:
+            data = json.load(f)
+        for k, v in data.items():
+            if hasattr(p, k):
+                setattr(p, k, v)
+    return p
+
+params = load_params()
+strategy = OrderFlowStrategy(params)
+
+# Aggression tracking (ticks at improving prices) — module-level for callback access
+_agg_buy_vol = 0
+_agg_sell_vol = 0
+_last_tick_price = 0.0
+
+# --- Load active account from state file before OrderManager init ---
+def _load_active_account():
+    """Read activeAccount from of_state_mx.json so it survives restarts."""
+    global ACTIVE_ACCOUNT_KEY
+    state_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "of_state_mx.json")
+    if os.path.exists(state_path):
+        try:
+            with open(state_path) as f:
+                data = json.load(f)
+            saved = data.get("activeAccount")
+            if saved and saved in ACCOUNTS:
+                ACTIVE_ACCOUNT_KEY = saved
+        except Exception:
+            pass
+
+_load_active_account()
+
+orders = OrderManagerRest4(account=ACCOUNTS[ACTIVE_ACCOUNT_KEY], symbol=SYMBOL,
+                            paper=PAPER_MODE, rest4=_rest4mod,
+                            quote_provider=lambda: getattr(strategy, '_current_price', 0) or 0)  # PC-005
+log.info(f"Trading account: {ACTIVE_ACCOUNT_KEY} ({ACCOUNTS[ACTIVE_ACCOUNT_KEY]})")
+
+# Fill subscription thread tracking (for watchdog)
+_fill_sub_thread: threading.Thread | None = None
+
+# --- PC-005: gRPC-соединение удалено; fp-заглушка для совместимости shutdown-кода ---
+fp = None
+_running = True
+_mode = "stopped"  # stopped, running, paused
+_last_fp_reconnect: float = 0.0  # guard against reconnect loop
+
+# --- Current price (thread-safe via lock) ---
+_price_lock = threading.Lock()
+_current_price: float = 0.0
+
+# --- State persistence ---
+STATE_FILE = os.path.join(_HERE, "state", "of_state_paper_mx.json")  # PAPER LAB: изолированный state
+
+def save_state():
+    try:
+        state = strategy.get_state()
+        state["mode"] = _mode
+        state["activeAccount"] = ACTIVE_ACCOUNT_KEY
+        state["direction_filter"] = params.direction_filter
+        with open(STATE_FILE, "w") as f:
+            json.dump(state, f, indent=2, default=str)
+    except Exception as e:
+        log.error(f"Save state error: {e}")
+
+def load_state_from_disk():
+    global _mode
+    if os.path.exists(STATE_FILE):
+        try:
+            with open(STATE_FILE) as f:
+                state = json.load(f)
+            strategy.load_state(state)
+            _mode = state.get("mode", "stopped")
+            params.direction_filter = state.get("direction_filter", "both")
+            log.info(f"State loaded: dir={state.get('dir', 0)} lots={state.get('totalLots', 0)} mode={_mode} dirFilter={params.direction_filter}")
+        except Exception as e:
+            log.error(f"Load state error: {e}")
+
+
+# ========== Hub subscriptions (PC-005) ==========
+
+_hub_adapter = None  # PC-003: WS-хаб адаптер
+
+def connect_finam():
+    """PC-003: подключение данных через WS-хаб (замена gRPC-подписок)."""
+    global fp, _hub_adapter
+    token = os.environ.get("FINAM_API_KEY")
+    if not token:
+        log.error("FINAM_API_KEY not set!")
+        return False
+
+    # PC-005: аккаунты через REST 4.3.3 (лёгкая проверка токена)
+    try:
+        _acc = _rest4mod.get_account_info(ACCOUNTS[ACTIVE_ACCOUNT_KEY])
+        log.info(f"REST4 OK: account {_acc.get('account_id')}, equity={_acc.get('equity')}")
+    except Exception as e:
+        log.warning(f"REST4 account probe failed (не критично): {str(e)[:100]}")
+
+    # Данные: единый WS-хаб
+    _hub_adapter = FinamHubAdapter(SYMBOL)
+    _hub_adapter.start(
+        on_trades=_on_latest_trades,
+        on_order_book=_on_order_book,
+        on_quote=_on_quote,
+        on_bar=_on_new_bar,
+        timeframe=params.timeframe,
+    )
+    log.info(f"HubAdapter: данные подключены ({SYMBOL}, TF={params.timeframe})")
+    return True
+
+
+def _on_my_trade(trade):
+    """Fill callback (real-режим будет через WS ORDERS; paper — эмуляция). Captures REAL fill price."""
+    global _last_fill_price, _last_fill_time, _last_fill_qty
+    try:
+        if str(trade.symbol) != SYMBOL:
+            return
+        price = float(str(trade.price.value)) if hasattr(trade.price, 'value') else float(str(trade.price))
+        qty = int(float(str(trade.size.value))) if hasattr(trade.size, 'value') else int(float(str(trade.size)))
+        _last_fill_price = price
+        _last_fill_time = time.time()
+        _last_fill_qty = qty
+        log.info(f"FILL {trade.order_id}: price={price} qty={qty} symbol={trade.symbol}")
+    except Exception as e:
+        log.error(f"on_my_trade error: {e}")
+
+
+def _wait_fill_price(timeout: float = 2.0) -> float:
+    """Wait for real fill price from broker. Returns 0 if timeout."""
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        if _last_fill_time > 0 and (time.time() - _last_fill_time) < 1.0:
+            return _last_fill_price
+        time.sleep(0.05)
+    return 0.0
+
+
+def _consume_fill_price() -> float:
+    """Get last fill price and reset. Returns 0 if stale."""
+    if _last_fill_time > 0 and (time.time() - _last_fill_time) < 2.0:
+        return _last_fill_price
+    return 0.0
+
+
+# ========== Callbacks ==========
+
+def _on_latest_trades(event):
+    """Callback from SubscribeLatestTrades."""
+    try:
+        from orderflow_engine import Trade, SIDE_BUY, SIDE_SELL
+        for trade in event.trades:
+            price = float(trade.price.value) if hasattr(trade.price, "value") else float(trade.price)
+            size = int(float(trade.size.value)) if hasattr(trade.size, "value") else int(float(trade.size))
+            side_val = int(trade.side)  # 1=BUY, 2=SELL from Finam
+            mapped_side = SIDE_BUY if side_val == 1 else SIDE_SELL
+
+            ts = time.time()
+            if hasattr(trade.timestamp, "seconds"):
+                ts = trade.timestamp.seconds
+
+            strategy.trades.add_trade(Trade(
+                price=price,
+                size=size,
+                side=mapped_side,
+                timestamp=ts,
+            ))
+
+            # Feed Volume Profile calculator (VAH/VAL/POC)
+            if strategy.vp:
+                strategy.vp.add_trade(price, size, datetime.now(MSK))
+
+            # Update trade stream health
+            strategy._last_trade_ts = time.time()
+
+            # Track aggression (ticks at improving prices)
+            global _agg_buy_vol, _agg_sell_vol, _last_tick_price
+            if _last_tick_price > 0 and price != _last_tick_price:
+                if price > _last_tick_price:
+                    _agg_buy_vol += size
+                elif price < _last_tick_price:
+                    _agg_sell_vol += size
+            _last_tick_price = price
+    except Exception as e:
+        log.error(f"Trades callback error: {e}")
+
+
+def _on_order_book(event):
+    """Callback from SubscribeOrderBook."""
+    try:
+        rows = []
+        for ob in event.order_book:
+            for r in ob.rows:
+                price = _to_float(r.price)
+                buy = _to_float(r.buy_size)
+                sell = _to_float(r.sell_size)
+                action = int(r.action)
+                rows.append((price, int(buy), int(sell), action))
+
+        if rows:
+            strategy.ob_tracker.update(rows)
+    except Exception as e:
+        log.error(f"OB callback error: {e}")
+
+
+def _on_new_bar(event, finam_timeframe=None):
+    """Callback from SubscribeBars — bar closed.
+    Note: hub-adapter passes (event, timeframe) — accept both.
+    """
+    try:
+        # Calculate bar duration from timeframe
+        bar_secs = TF_SECONDS.get(params.timeframe, 300)
+
+        for bar in event.bars:
+            o = _to_float(bar.open)
+            h = _to_float(bar.high)
+            l = _to_float(bar.low)
+            c = _to_float(bar.close)
+            v = _to_float(bar.volume)
+
+            ts = time.time()
+            if hasattr(bar.timestamp, "seconds"):
+                ts = bar.timestamp.seconds
+
+            # Close bar metrics from accumulated trades — use real bar duration
+            metrics = strategy.trades.close_bar(
+                bar_open=o,
+                bar_close=c,
+                bar_start_ts=ts - bar_secs,
+                bar_end_ts=ts,
+            )
+
+            # Feed aggression data to signal engine
+            global _agg_buy_vol, _agg_sell_vol
+            strategy.signals.add_bar_aggression(_agg_buy_vol, _agg_sell_vol)
+            _agg_buy_vol = 0
+            _agg_sell_vol = 0
+
+            strategy.on_bar_close(metrics, h, l, c)
+            log.debug(f"Bar close: O={o:.0f} H={h:.0f} L={l:.0f} C={c:.0f} V={v:.0f} delta={metrics.delta} cvd={metrics.cvd:.0f}")
+    except Exception as e:
+        log.error(f"Bar callback error: {e}")
+
+
+def _on_quote(event):
+    """Callback from SubscribeQuote — update current price from bid/ask."""
+    try:
+        for q in event.quote:
+            bid = _to_float(q.bid)
+            ask = _to_float(q.ask)
+            # Use bid as price reference (real стакан value, not midpoint)
+            price = bid if bid > 0 else ask
+            if price > 0:
+                _set_current_price(price)
+                strategy.update_price(price)
+    except Exception as e:
+        log.error(f"Quote callback error: {e}")
+
+
+# ========== Main loop ==========
+
+def _to_float(val) -> float:
+    """Safely convert Decimal/string/None to float."""
+    if val is None or val == "":
+        return 0.0
+    if hasattr(val, "value"):
+        s = val.value
+        return float(s) if s else 0.0
+    return float(val)
+
+
+def _reconnect_finampy():
+    """Watchdog: reconnect hub subscriptions."""
+    global fp, _last_fp_reconnect
+    now = time.time()
+    if now - _last_fp_reconnect < 30:
+        return  # don't reconnect more than once per 30s
+    _last_fp_reconnect = now
+    log.warning("[WATCHDOG] Price stale — reconnecting hub...")
+    try:
+        time.sleep(1)
+        ok = connect_finam()
+        if ok:
+            log.info("[WATCHDOG] Hub resubscribed OK")
+        else:
+            log.error("[WATCHDOG] Hub reconnect failed")
+    except Exception as e:
+        log.error(f"[WATCHDOG] Reconnect error: {e}")
+
+
+def _set_current_price(price: float):
+    """Thread-safe price update."""
+    global _current_price
+    with _price_lock:
+        _current_price = price
+
+
+def main_loop():
+    """Main strategy loop — poll price + process ticks."""
+    global _mode, _fill_sub_thread
+
+    log.info("Main loop started")
+    last_save = time.time()
+    last_price_sync = 0.0
+
+    while _running:
+        try:
+            if _mode != "running":
+                time.sleep(1)
+                continue
+
+            # Get current price
+            with _price_lock:
+                price = _current_price
+
+            if price <= 0:
+                # Try fallback: get from DP
+                try:
+                    import requests
+                    # PC-005: цена из стратегии (хаб), DP не используется
+                    data = r.json()
+                    price = float(data.get("last", 0))
+                    if price > 0:
+                        _set_current_price(price)
+                        strategy.update_price(price)
+                except Exception:
+                    pass
+
+            if price <= 0:
+                time.sleep(0.5)
+                continue
+
+            now = datetime.now(MSK)
+
+            # Process tick
+            actions = strategy.process_tick(price, now)
+
+            # Execute actions
+            for action in actions:
+                _execute_action(action)
+                # Update strategy prices with REAL broker fill price
+                fill_price = action.get("fill_price", 0)
+                if fill_price > 0:
+                    strategy.update_fill_price(fill_price, action.get("action", ""))
+
+            # Periodic state save (every 30 sec)
+            if time.time() - last_save > 30:
+                save_state()
+                # Recalculate Volume Profile if enabled
+                if strategy.vp:
+                    strategy.vp.calculate()
+                last_save = time.time()
+
+            # === BROKER PRICE SYNC: avg_price + current_price only ===
+            # Does NOT touch position state (lots, dir, lot_queue)
+            if time.time() - last_price_sync > 30.0:
+                try:
+                    sync_account = ACCOUNTS.get(ACTIVE_ACCOUNT_KEY, ACCOUNT)
+                    bd = get_broker_position(_rest4mod, sync_account, SYMBOL)  # PC-005: rest4
+                    if bd:
+                        strategy.sync_from_broker(bd)
+                        # Passive desync monitor
+                        bl = bd.get('lots', 0)
+                        rl = strategy._total_lots
+                        if rl != bl:
+                            log.warning(f"DESYNC: robot={rl} broker={bl} avg_robot={strategy._avg_price:.0f} avg_broker={bd.get('avg_price',0):.0f} — manual fix needed")
+                except Exception as e:
+                    log.debug(f"Price sync: {e}")
+                last_price_sync = time.time()
+
+            # === WATCHDOG: reconnect hub if price stale > 60s ===
+            if strategy._is_price_stale(max_age_sec=60):
+                _reconnect_finampy()
+
+            # === WATCHDOG: reconnect if CVD/LatestTrades stream dead > 120s ===
+            # Price can survive via Quotes while trade stream dies silently
+            if hasattr(strategy, '_last_trade_ts') and strategy._last_trade_ts > 0:
+                trade_age = time.time() - strategy._last_trade_ts
+                if trade_age > 120:
+                    log.warning(f"[WATCHDOG] LatestTrades stream dead for {trade_age:.0f}s — reconnecting")
+                    _reconnect_finampy()
+
+            # === WATCHDOG: re-subscribe fill stream if thread died ===
+            # PC-005: fill-стрим — WS ORDERS (real-режим); paper эмулирует OrderManagerRest4
+            pass
+            # Tick rate: 50ms (20x per second)
+            time.sleep(0.05)
+
+        except Exception as e:
+            log.error(f"Main loop error: {e}", exc_info=True)
+            time.sleep(1)
+
+    log.info("Main loop stopped")
+
+
+def _record_broker_trade(action: dict, fill_price: float):
+    """Record trade using ONLY real broker fill prices. PnL = (exit - entry) * dir * lots - comm."""
+    act = action.get("action")
+    comm_per_lot = strategy.p.commission * 2  # round-trip
+
+    if act == "partial_tp":
+        entry_price = action.get('entryPrice', 0)
+        entry_side = action.get('entrySide', strategy._dir)
+        lots = action.get('qty', 1)
+        pnl = (fill_price - entry_price) * entry_side * lots - comm_per_lot * lots
+        direction = 'LONG' if entry_side == 1 else 'SHORT'
+    elif act == "close_all":
+        entry_price = action.get('avgPrice', strategy._avg_price)
+        entry_side = strategy._dir
+        lots = action.get('qty', strategy.total_lots)
+        pnl = (fill_price - entry_price) * entry_side * lots - comm_per_lot * lots
+        direction = 'LONG' if entry_side == 1 else 'SHORT'
+    else:
+        return
+
+    pnl = round(pnl, 2)
+    strategy._trade_history.append({
+        'entryPrice': round(entry_price, 2),
+        'exitPrice': round(fill_price, 2),
+        'direction': direction,
+        'lots': lots,
+        'pnl': pnl,
+        'entryTime': strategy._entry_time.isoformat() if strategy._entry_time else None,
+        'exitTime': datetime.now(MSK).isoformat(),
+        'reason': action.get('reason', 'partial_tp'),
+        'signal': action.get('signal', strategy._signal_type),
+    })
+    strategy._realized_pnl += pnl
+    today = datetime.now(MSK).strftime('%Y-%m-%d')
+    if strategy._daily_pnl_date == today:
+        strategy._daily_pnl += pnl
+    else:
+        strategy._daily_pnl = pnl
+        strategy._daily_pnl_date = today
+    log.info(f"TRADE {direction} {lots}L entry={entry_price:.0f} exit={fill_price:.0f} pnl={pnl:+.1f}₽ comm={comm_per_lot * lots:.1f}₽")
+
+
+def _get_broker_position_fast() -> int:
+    """PC-005: quick broker lots via rest4, 0 on error."""
+    try:
+        acc = ACCOUNTS.get(ACTIVE_ACCOUNT_KEY, ACCOUNT)
+        return get_broker_position(_rest4mod, acc, SYMBOL).get('lots', 0)
+    except Exception:
+        pass
+    return 0
+
+
+def _execute_action(action: dict):
+    """Execute a strategy action via OrderManager (or log only in paper mode)."""
+    act = action.get("action")
+    side_str = action.get("side", "buy")
+    qty = action.get("qty", 1)
+    tag = f"of_{act}"
+
+    if PAPER_MODE:
+        log.info(f"📄 PAPER {act}: {side_str} {qty} @ {action.get('price', 0):.0f}")
+        return
+
+    if act == "close_all":
+        # Skip if already flat (partial_tp closed last lot in same tick)
+        if strategy._total_lots <= 0:
+            log.info(f"CLOSE_ALL skipped — already flat (partial_tp closed in same tick)")
+            return
+
+        # First cancel all orders
+        active = orders.get_active_orders(symbol=SYMBOL)
+        if active:
+            for o in active:
+                oid = o.get("order_id", "") if isinstance(o, dict) else str(o)
+                orders.cancel(oid)
+            time.sleep(0.5)
+
+        # Save avgPrice BEFORE strategy modifies it
+        avg_for_record = strategy._avg_price
+
+        side_int = SELL if side_str == "sell" else BUY
+        global _last_fill_price, _last_fill_time
+        _last_fill_price = 0.0
+        _last_fill_time = 0.0
+        result = orders.place_market(side_int, qty, tag=f"of_close_{action.get('reason', '')}")
+        if result:
+            time.sleep(0.3)  # wait for fill callback
+            fill_price = _consume_fill_price()
+            if fill_price > 0:
+                action["fill_price"] = fill_price
+                action['avgPrice'] = avg_for_record
+                log.info(f"Executed CLOSE_ALL: {side_str} {qty} @ {fill_price:.0f} reason={action.get('reason')}")
+                _record_broker_trade(action, fill_price)
+                strategy._reset_position()
+            else:
+                log.warning(f"CLOSE_ALL: no broker fill for {side_str} {qty} — recording with strategy price {action.get('price', 0):.0f}")
+                action['avgPrice'] = avg_for_record
+                _record_broker_trade(action, action.get('price', strategy._current_price))
+                strategy._reset_position()
+        else:
+            # DP failed — verify with broker before deciding
+            lots_before = strategy._total_lots
+            time.sleep(3)
+            broker_lots = _get_broker_position_fast()
+            if broker_lots < lots_before:
+                log.warning(f"CLOSE_ALL: DP failed but broker lots changed ({lots_before}→{broker_lots}) — order executed, resetting")
+                action['avgPrice'] = avg_for_record
+                _record_broker_trade(action, strategy._current_price)
+                strategy._reset_position()
+            else:
+                log.error(f"CLOSE_ALL: order placement failed for {side_str} {qty} — keeping position, will retry next tick")
+
+    elif act in ("entry", "average", "pyramid"):
+        side_int = BUY if side_str == "buy" else SELL
+        _last_fill_price = 0.0
+        _last_fill_time = 0.0
+        lots_before = strategy._total_lots - qty  # lots BEFORE this action added them
+        result = orders.place_market(side_int, qty, tag=tag)
+        if result:
+            fill_price = _consume_fill_price()
+            if fill_price > 0:
+                action["fill_price"] = fill_price
+                log.info(f"Executed {act.upper()}: {side_str} {qty} @ {fill_price:.0f}")
+            else:
+                log.info(f"Executed {act.upper()}: {side_str} {qty} @ {action.get('price', 0):.0f}")
+        else:
+            # DP failed — verify with broker before rollback
+            time.sleep(3)
+            broker_lots = _get_broker_position_fast()
+            if broker_lots != lots_before:
+                log.warning(f"{act.upper()}: DP failed but broker lots changed ({lots_before}→{broker_lots}) — order executed, keeping lots")
+            else:
+                log.error(f"{act.upper()}: order placement FAILED for {side_str} {qty} — rolling back {qty} lot(s)")
+                strategy.rollback_pending_entry(qty)
+
+    elif act == "partial_tp":
+        side_int = SELL if side_str == "sell" else BUY
+        _last_fill_price = 0.0
+        _last_fill_time = 0.0
+        result = orders.place_market(side_int, qty, tag="of_partial_tp")
+        if result:
+            time.sleep(0.3)  # wait for fill callback
+            fill_price = _consume_fill_price()
+            if fill_price > 0:
+                action["fill_price"] = fill_price
+                log.info(f"Executed PARTIAL_TP: {side_str} {qty} @ {fill_price:.0f}")
+                _record_broker_trade(action, fill_price)
+            else:
+                log.warning(f"PARTIAL_TP: no broker fill for {side_str} {qty} — recording with strategy price {action.get('price', 0):.0f}")
+                _record_broker_trade(action, action.get('price', strategy._current_price))
+        else:
+            # DP failed — verify with broker before re-adding lot
+            expected_lots = strategy._total_lots  # already decremented by strategy
+            time.sleep(3)
+            broker_lots = _get_broker_position_fast()
+            if broker_lots < expected_lots + qty:
+                log.warning(f"PARTIAL_TP: DP failed but broker lots changed — order executed, lot stays removed")
+            else:
+                log.error(f"PARTIAL_TP: order placement failed for {side_str} {qty} — re-adding lot to queue")
+                strategy._lot_queue.append(strategy.LotEntry(price=action.get('entryPrice', strategy._current_price), side=action.get('entrySide', strategy._dir), lots=qty))
+                strategy._total_lots += qty
+                if strategy._total_lots > 0 and strategy._dir == FLAT:
+                    strategy._dir = action.get('entrySide', 0)
+
+
+# ========== API ==========
+
+class APIHandler(BaseHTTPRequestHandler):
+    def log_message(self, fmt, *args):
+        pass  # Suppress default logging
+
+    def _json(self, code: int, data):
+        body = json.dumps(data, default=str).encode()
+        self.send_response(code)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+        self.send_header("Access-Control-Allow-Headers", "Content-Type")
+        self.end_headers()
+        self.wfile.write(body)
+
+    def do_OPTIONS(self):
+        self._json(200, {"ok": True})
+
+    def do_GET(self):
+        global _mode
+        with _price_lock:
+            price = _current_price
+        # Parse full path with query params
+        from urllib.parse import urlparse, parse_qs
+        parsed = urlparse(self.path)
+        path = parsed.path  # Extract path without query params
+        params_url = parse_qs(parsed.query)
+
+        if path == "/status":
+            status = strategy.get_status()
+            status["mode"] = _mode
+            status["symbol"] = SYMBOL
+            status["currentPrice"] = price
+            status["params"] = {k: getattr(params, k) for k in dir(params) if not k.startswith("_") and not callable(getattr(params, k))}
+            status["paper"] = PAPER_MODE
+            status["accounts"] = ACCOUNTS
+            status["activeAccount"] = ACTIVE_ACCOUNT_KEY
+            status["activeAccountId"] = ACCOUNTS.get(ACTIVE_ACCOUNT_KEY, ACCOUNT)
+            status["directionFilter"] = params.direction_filter
+            
+            # Filter tradeHistory by date period
+            start_date = params_url.get('startDate', [None])[0]
+            end_date = params_url.get('endDate', [None])[0]
+            all_trades = params_url.get('all', ['false'])[0].lower() == 'true'
+            
+            # Log the request
+            log.info(f"API GET /status with query: {parsed.query} | filters: startDate={start_date}, endDate={end_date}, all={all_trades}")
+            
+            original_trades = status.get("tradeHistory", [])
+            
+            if all_trades:
+                # Return all trades without filtering
+                status["tradeHistory"] = original_trades
+                status["tradesFiltered"] = False
+                status["filters"] = {}
+                log.info(f"Returning all {len(original_trades)} trades (all=true)")
+            elif start_date or end_date:
+                # Filter by date
+                filtered_trades = []
+                for trade in original_trades:
+                    trade_date = trade["entryTime"][:10]  # Extract YYYY-MM-DD
+                    if start_date and trade_date < start_date:
+                        continue
+                    if end_date and trade_date > end_date:
+                        continue
+                    filtered_trades.append(trade)
+                
+                status["tradeHistory"] = filtered_trades
+                status["tradesFiltered"] = True
+                status["filters"] = {"startDate": start_date, "endDate": end_date}
+                log.info(f"Filtered trades: {len(filtered_trades)} from {len(original_trades)} (startDate={start_date}, endDate={end_date})")
+            else:
+                # No filters - return all trades
+                status["tradeHistory"] = original_trades
+                status["tradesFiltered"] = False
+                status["filters"] = {}
+                log.info(f"No filters applied, returning all {len(original_trades)} trades")
+            
+            self._json(200, status)
+
+        elif path == "/account":
+            self._json(200, {
+                "accounts": ACCOUNTS,
+                "active": ACTIVE_ACCOUNT_KEY,
+                "accountId": ACCOUNTS.get(ACTIVE_ACCOUNT_KEY, ACCOUNT)
+            })
+
+        elif path == "/health":
+            self._json(200, {"ok": True, "symbol": SYMBOL, "mode": _mode})
+
+        elif path == "/start":
+            _mode = "running"
+            strategy._force_unlock()  # Reset entry lock on manual start
+            save_state()
+            self._json(200, {"ok": True, "mode": _mode})
+
+        elif path == "/sync":
+            # GET /sync?lots=N — sync internal lot count with broker
+            try:
+                qs = self.path.split("?")[1] if "?" in self.path else ""
+                sync_params = {}
+                for pair in qs.split("&"):
+                    if "=" in pair:
+                        k, v = pair.split("=", 1)
+                        sync_params[k] = v
+                broker_lots = int(sync_params.get("lots", "0"))
+            except (ValueError, IndexError):
+                self._json(400, {"error": "lots param required (integer)"})
+                return
+            old_lots = strategy.total_lots
+            strategy.sync_lot_count(broker_lots)
+            save_state()
+            self._json(200, {
+                "ok": True,
+                "old_lots": old_lots,
+                "new_lots": strategy.total_lots,
+                "avg_price": strategy.avg_price,
+                "avg_levels": strategy.get_status()["averageLevels"],
+            })
+
+        else:
+            self._json(404, {"error": "not found"})
+
+    def do_POST(self):
+        global _mode, orders, ACTIVE_ACCOUNT_KEY
+        path = self.path.split("?")[0]
+
+        if path == "/start":
+            _mode = "running"
+            strategy._force_unlock()  # Reset entry lock on manual start
+            save_state()
+            self._json(200, {"ok": True, "mode": _mode})
+
+        elif path == "/stop":
+            # Stop = cancel orders + close position
+            _mode = "stopped"
+            if not PAPER_MODE:
+                active = orders.get_active_orders(symbol=SYMBOL)
+                if active:
+                    for o in active:
+                        oid = o.get("order_id", "") if isinstance(o, dict) else str(o)
+                        orders.cancel(oid)
+            # Close position if any
+            if strategy.in_position:
+                with _price_lock:
+                    price = _current_price
+                if price > 0:
+                    if not PAPER_MODE:
+                        side = SELL if strategy.direction == LONG else BUY
+                        orders.place_market(side, strategy.total_lots, tag="of_stop")
+                    strategy._close_all(price, "manual_stop")
+                    strategy._reset_position()
+            strategy._force_unlock()  # Reset entry lock after manual stop
+            save_state()
+            self._json(200, {"ok": True, "mode": _mode, "paper": PAPER_MODE})
+
+        elif path == "/pause":
+            # Pause = cancel orders, keep position
+            _mode = "paused"
+            if not PAPER_MODE:
+                active = orders.get_active_orders(symbol=SYMBOL)
+                if active:
+                    for o in active:
+                        oid = o.get("order_id", "") if isinstance(o, dict) else str(o)
+                        orders.cancel(oid)
+            save_state()
+            self._json(200, {"ok": True, "mode": _mode, "paper": PAPER_MODE})
+
+        elif path == "/trades":
+            # Filter tradeHistory by date period (POST with JSON body)
+            length = int(self.headers.get("Content-Length", 0))
+            if length > 0:
+                try:
+                    body = self.rfile.read(length)
+                    data = json.loads(body)
+                    start_date = data.get('startDate')
+                    end_date = data.get('endDate')
+                    
+                    status = strategy.get_status()
+                    original_trades = status.get("tradeHistory", [])
+                    
+                    if start_date or end_date:
+                        filtered_trades = []
+                        for trade in original_trades:
+                            # Filter by exitTime (when trade was actually closed)
+                            exit_date = trade.get("exitTime", "")[:10]
+                            entry_date = trade["entryTime"][:10]
+                            # Include trade if either entry or exit falls within range
+                            if start_date and exit_date < start_date and entry_date < start_date:
+                                continue
+                            if end_date and exit_date > end_date and entry_date > end_date:
+                                continue
+                            filtered_trades.append(trade)
+                        
+                        self._json(200, {
+                            "trades": filtered_trades,
+                            "count": len(filtered_trades),
+                            "totalCount": len(original_trades),
+                            "filtered": True,
+                            "filters": {"startDate": start_date, "endDate": end_date}
+                        })
+                    else:
+                        self._json(200, {
+                            "trades": original_trades,
+                            "count": len(original_trades),
+                            "filtered": False
+                        })
+                except Exception as e:
+                    self._json(400, {"error": str(e)})
+            else:
+                self._json(400, {"error": "Missing request body"})
+
+        elif path == "/account":
+            # Switch active trading account (accepts key or account ID)
+            length = int(self.headers.get("Content-Length", 0))
+            if length > 0:
+                body = self.rfile.read(length)
+                data = json.loads(body)
+                account_val = data.get("account", "main")
+                # Resolve: try as key first, then as ID
+                account_key = account_val if account_val in ACCOUNTS else None
+                if not account_key:
+                    for k, v in ACCOUNTS.items():
+                        if v == account_val:
+                            account_key = k
+                            break
+                new_account = ACCOUNTS.get(account_key)
+                if new_account:
+                    ACTIVE_ACCOUNT_KEY = account_key
+                    orders = OrderManagerRest4(account=new_account, symbol=SYMBOL, paper=PAPER_MODE,
+                                rest4=_rest4mod, quote_provider=lambda: getattr(strategy, '_current_price', 0) or 0)  # PC-005
+                    log.info(f"Account switched to {account_key} ({new_account})")
+                    save_state()
+                    self._json(200, {"ok": True, "account": account_key, "id": new_account})
+                else:
+                    self._json(400, {"error": f"Unknown account: {account_val}", "available": list(ACCOUNTS.keys())})
+            else:
+                self._json(400, {"error": "Missing request body"})
+
+        elif path == "/load-state":
+            load_state_from_disk()
+            log.info("State reloaded from disk")
+            self._json(200, {"ok": True, "mode": _mode, "dir": strategy.dir(), "lots": strategy.total_lots()})
+
+        elif path == "/params":
+            # Update parameters
+            length = int(self.headers.get("Content-Length", 0))
+            if length > 0:
+                body = self.rfile.read(length)
+                data = json.loads(body)
+                for k, v in data.items():
+                    if hasattr(params, k):
+                        setattr(params, k, v)
+                        log.info(f"Param updated: {k} = {v}")
+                # Reconstruct VWEMA if toggle changed
+                if "use_vwema" in data or any(k.startswith("vwema_") for k in data):
+                    strategy._init_vwema()
+                # Reconstruct Volume Profile if toggle changed
+                if "use_vah_val" in data or "vah_val_pct" in data or "vah_val_bin_size" in data or "vah_val_mode" in data:
+                    strategy._init_vp()
+                # Save to config
+                cfg_path = os.path.join(_HERE, "of_config_paper_mx.json")  # PAPER LAB
+                with open(cfg_path, "w") as f:
+                    json.dump({k: getattr(params, k) for k in dir(params) if not k.startswith("_") and not callable(getattr(params, k))}, f, indent=2)
+            self._json(200, {"ok": True})
+
+        else:
+            self._json(404, {"error": "not found"})
+
+
+# ========== VWEMA Warmup ==========
+
+def _warmup_vwema():
+    """Fetch historical bars and warm up VWEMA filter before live trading."""
+    if not strategy.vwema:
+        return
+
+    try:
+        from datetime import timedelta
+        # PC-005: история через REST 4.3.3
+        tf_map = {"M1": "TIME_FRAME_M1", "M5": "TIME_FRAME_M5",
+                  "M15": "TIME_FRAME_M15", "M30": "TIME_FRAME_M30"}
+        ws_tf = tf_map.get(params.timeframe, "TIME_FRAME_M1")
+
+        bar_seconds = TF_SECONDS.get(params.timeframe, 60)
+        bars_needed = params.vwema_slow + 20
+        lookback_seconds = bars_needed * bar_seconds
+
+        now = datetime.now(timezone.utc)
+        start = now - timedelta(seconds=lookback_seconds)
+
+        resp = _rest4mod.get_bars(SYMBOL, ws_tf,
+                                  start.isoformat().replace("+00:00", "Z"),
+                                  now.isoformat().replace("+00:00", "Z"))
+
+        bars = resp.get("bars", []) if isinstance(resp, dict) else []
+        if bars:
+            fed = 0
+            for bar in bars:
+                def _dv(x):
+                    return float(x.get("value", 0)) if isinstance(x, dict) else float(x or 0)
+                h, l, c, v = _dv(bar.get("high")), _dv(bar.get("low")), _dv(bar.get("close")), _dv(bar.get("volume"))
+                if c > 0:
+                    strategy.vwema.update(c, h, l, volume=v)
+                    fed += 1
+            state = strategy.vwema.state
+            log.info(f"VWEMA warmup: {fed} bars fed | ready={strategy.vwema.ready} | dir={state['direction']} | ema_f={state['ema_f']} ema_s={state['ema_s']} atr={state['atr']}")
+        else:
+            log.warning("VWEMA warmup: no historical bars received")
+    except Exception as e:
+        log.error(f"VWEMA warmup error: {e}", exc_info=True)
+
+
+# ========== Shutdown ==========
+
+def on_shutdown(signum, frame):
+    global _running
+    log.info(f"Signal {signum} received — shutting down...")
+    _running = False
+    global _mode
+    _mode = "stopped"
+    save_state()
+    if fp:
+        try:
+            pass  # PC-005: gRPC удалён
+        except Exception:
+            pass
+    sys.exit(0)
+
+
+sig_module.signal(sig_module.SIGTERM, on_shutdown)
+sig_module.signal(sig_module.SIGINT, on_shutdown)
+
+
+# ========== Start ==========
+
+if __name__ == "__main__":
+    log.info(f"=== Order Flow Robot MX v2 ===")
+    log.info(f"Symbol: {SYMBOL} | Account: {ACCOUNT} | Port: {PORT}")
+    log.info(f"Params: lots={params.lots} stepAvg={params.step_average} stepPyr={params.step_pyramid}")
+    log.info(f"  maxAvg={params.max_average_levels} maxPyr={params.max_pyramid_levels} spread={params.spread}")
+    log.info(f"  partialTP={params.partial_tp} SL={params.stop_loss_mode}/{params.stop_loss_value}")
+    log.info(f"  timeframe={params.timeframe}")
+
+    # Load state
+    load_state_from_disk()
+
+    # Connect data hub + REST
+    if not connect_finam():
+        log.error("Failed to connect hub — exiting")
+        sys.exit(1)
+
+    # VWEMA warmup: load historical bars so filter is ready immediately
+    _warmup_vwema()
+
+    # Warmup period (let subscriptions accumulate data)
+    log.info("Warmup: waiting 10 sec for data streams...")
+    time.sleep(10)
+    log.info(f"Warmup done. OB has data: {strategy.ob_tracker.has_data}")
+
+    # === STARTUP RECONCILIATION: check broker position once ===
+    try:
+        _sync_acc = ACCOUNTS.get(ACTIVE_ACCOUNT_KEY, ACCOUNT)
+        _bpos = get_broker_position(_rest4mod, _sync_acc, SYMBOL)  # PC-005
+        if True:
+            _bl = _bpos.get('lots', 0)
+            if _bl != 0:
+                log.warning(f"STARTUP: broker has {_bl} lots (avg={_bpos.get('avg_price', 0):.0f}) but robot is FLAT. NOT entering — investigate manually.")
+                _mode = "stopped"
+                save_state()
+    except Exception as _e:
+        log.warning(f"STARTUP: broker position check failed: {_e}")
+
+    # Start main loop
+    t_main = threading.Thread(target=main_loop, daemon=True, name="main-loop")
+    t_main.start()
+
+    # Start HTTP server with SO_REUSEADDR to prevent "Address already in use" on restart
+    import socket
+    HTTPServer.address_family = socket.AF_INET
+    HTTPServer.socket_type = socket.SOCK_STREAM
+    class ReusableHTTPServer(HTTPServer):
+        allow_reuse_address = True
+    server = ReusableHTTPServer(("0.0.0.0", PORT), APIHandler)
+    log.info(f"API listening on :{PORT}")
+    log.info(f"Endpoints: GET /status | GET /health | POST /start /stop /pause /params")
+
+    try:
+        server.serve_forever()
+    except KeyboardInterrupt:
+        on_shutdown(None, None)

@@ -1,5 +1,6 @@
 using HedgeFund.Core.Models;
 using HedgeFund.Core.Strategies;
+using HedgeFund.Core.Risk;
 using HedgeFund.Brokers.Finam;
 
 namespace HedgeFund.Server.Services;
@@ -381,6 +382,7 @@ public class VpScalpGridCopyLauncher : IDisposable
     private readonly string _accountId;
     private readonly string _logPrefix = "VP-COPY";
     private readonly string _orderPrefix = "VP-COPY-";
+    private RiskGate? _riskGate;
 
     private readonly PositionTracker _tracker;
     private readonly OrderManager _orders;
@@ -407,6 +409,8 @@ public class VpScalpGridCopyLauncher : IDisposable
     // Current grid level for tracking
     private int _currentGridLevel;
 
+    public void SetRiskGate(RiskGate riskGate) { _riskGate = riskGate; }
+
     public VpScalpGridCopyStrategy Strategy => _strategy;
 
     public VpScalpGridCopyLauncher(FinamConnector broker, VpScalpGridCopyStrategy? strategy = null, string? stateFile = null)
@@ -415,8 +419,8 @@ public class VpScalpGridCopyLauncher : IDisposable
         _strategy = strategy ?? new VpScalpGridCopyStrategy();
         _signalDetector = new SignalDetector(_strategy);
         _stateFile = stateFile ?? "/tmp/vp-copy-state.json";
-        _finamSymbol = "SiM6@RTSX";
-        _ticker = "SiM6";
+        _finamSymbol = "SiU6@RTSX";
+        _ticker = "SiU6";
         _accountId = "1225953";
 
         _tracker = new PositionTracker();
@@ -1117,6 +1121,9 @@ public class VpScalpGridCopyLauncher : IDisposable
 
         string side = direction == 1 ? "SIDE_BUY" : "SIDE_SELL";
         Console.WriteLine($"[{_logPrefix}] Placing entry {(direction == 1 ? "BUY" : "SELL")} @ market...");
+        // === RISK CHECK ===
+        if (RiskIntegrationHelper.IsTradingBlocked(_riskGate)) { Console.WriteLine("[VPSGC] Entry blocked by circuit breaker"); return; }
+
         await _orders.PlaceMarketOrder(_finamSymbol, side, 1, $"{_orderPrefix}ENTRY: {(direction == 1 ? "LONG" : "SHORT")}");
 
         // Wait for broker fill with retries (3 attempts × 1 sec)

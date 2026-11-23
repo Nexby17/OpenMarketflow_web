@@ -5,14 +5,16 @@ Runs ArbitrageStrategy, executes via ArbOrderManager (limit+market).
 
 Usage: python3 main_arb.py [--paper] [--port 5090]
 """
-import sys, os, json, argparse, logging, signal as sig_module, threading, time
+import sys, os, json
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "arb_common"))
+import argparse, logging, signal as sig_module, threading, time
 from pathlib import Path
 from datetime import datetime, timezone, timedelta
 from http.server import HTTPServer, BaseHTTPRequestHandler
 import socket
 
-from FinamPy import FinamPy
-from FinamPy.grpc.accounts_service_pb2 import GetAccountRequest
+from finam_compat import FinamPyCompat as FinamPy
+from finam_trade_api.proto.grpc.tradeapi.v1.accounts.accounts_service_pb2 import GetAccountRequest
 
 import config_arb as config
 from strategy_arb import ArbitrageStrategy, ArbParams, LONG_BASIS, SHORT_BASIS, FLAT
@@ -177,7 +179,7 @@ def _quote_reconnect_loop(symbol):
 
 def _ob_poll_grpc_locked(sym, name):
     """Single OB poll under grpc_lock. Returns rows or raises."""
-    from FinamPy.grpc.marketdata_service_pb2 import OrderBookRequest
+    from finam_trade_api.proto.grpc.tradeapi.v1.marketdata.marketdata_service_pb2 import OrderBookRequest
     resp, _ = fp.marketdata_stub.OrderBook.with_call(
         request=OrderBookRequest(symbol=sym),
         timeout=5, metadata=(fp.metadata,))
@@ -282,6 +284,7 @@ def connect_finam():
         return False
 
     fp = FinamPy(token)
+    fp.connect()
     log.info(f"FinamPy connected. Accounts: {fp.account_ids}")
     _attach_finam_to_orders()
 

@@ -1,260 +1,83 @@
-# OpenMarketflow — HedgeFund Trading System
+# OpenMarketflow — мультистратегийная торговая система MOEX
 
-Мультистратегийная торговая система для MOEX FORTS (фьючерсы на $/руб, индекс Мосбиржи, Brent, акции). 
+Торговая система для MOEX FORTS (фьючерсы Si/MX/BR/GD/RI, акции): C# веб-сервер с дашбордом, Python-роботы (Order Flow скальпинг, VP-сетки, арбитраж), единый WS-хаб рыночных данных Finam.
 
-Состоит из C# веб-сервера с UI, Python скальпирующих роботов и арбитражных стратегий.
+**Капитал:** 10 млн ₽ · **Целевая доходность:** +25% годовых net · **Брокер:** Finam Trade API
 
-## Архитектура
+---
+
+## Архитектура (актуально на 2026-08-19)
 
 ```
-┌─────────────────┐     ┌──────────────────────┐     ┌─────────────────┐
-│   Web UI / API  │────▶│   C# Server (.NET 8) │────▶│  Finam Trade API│
-│   (port 5050)   │◀────│   SignalR + REST     │     │  (gRPC + REST)  │
-└─────────────────┘     └──────────────────────┘     └─────────────────┘
-                               │
-┌─────────────────┐     ┌──────┴───────────────┐     ┌─────────────────┐
-│  OF Robot       │────▶│  DataProvider        │────▶│  FinamPy gRPC   │
-│  (port 5080)    │     │  (port 5060)         │     │  (candles, OB,  │
-└─────────────────┘     └──────────────────────┘     │  trades, fills) │
-┌─────────────────┐                                   └─────────────────┐
-│  Arb Robots     │───────────────────────────────────────────────────▶│
-│  (5090-5093)    │                                                        
-└─────────────────┘
+                    ┌────────────────────────────┐
+                    │   Finam Trade API          │
+                    │  REST v1 + WebSocket /ws   │
+                    └──────┬──────────────┬──────┘
+                           │              │
+              REST (ордера,│              │ WS (котировки, стакан,
+              аккаунты,    │              │ сделки, бары — push)
+              история)     │              │
+        ┌──────────────────┴───┐   ┌──────┴─────────────┐
+        │  C# Server :5050     │   │  finam_hub.py      │
+        │  ASP.NET + SignalR   │   │  (единый WS-коннект│
+        │  REST-only коннектор │   │   для всех роботов)│
+        │  ChartController UI  │   └──────┬─────────────┘
+        └──────────┬───────────┘          │ fan-out
+                   │ SignalR/REST         │
+        ┌──────────┴───────────┐   ┌──────┴──────────────────────┐
+        │  Web Dashboard       │   │  Python-роботы              │
+        │  график+стакан+      │   │  OF Si :5080  OF MX :5081   │
+        │  роботы+риск         │   │  paper_lab :5181 (новый     │
+        └──────────────────────┘   │  стек, обкатка)             │
+                                   │  Arb :5090-5093             │
+                                   └─────────────────────────────┘
 ```
+
+**Принцип лимитов:** один WS-коннект на все realtime-данные (не расходует REST-квоты 200 rpm/метод); REST — только ордера/аккаунты/история.
 
 ## Компоненты
 
-| Компонент | Директория | Язык | Порт | Описание |
-|-----------|-----------|------|------|----------|
-| **C# Server** | `src/Server/` | C# / .NET 8 | 5050 | Веб-сервер, SignalR хаб, запуск стратегий (Grid MM), хостинг UI |
-| **Core** | `src/Core/` | C# | — | Брокеро-независимое ядро: модели, стратегии, индикаторы, риск-менеджер |
-| **Brokers** | `src/Brokers/` | C# | — | Адаптеры: Finam gRPC, StockSharp, Альфа-Инвестиции |
-| **WPF UI** | `src/UI/` | C# / WPF | — | Windows desktop клиент (SignalR) |
-| **DataProvider** | `DataProvider/` | Python / FastAPI | 5060 | Кэш свечей, цитат, ордеров, филлов через FinamPy gRPC. REST API для роботов |
-| **OF Robot** | `robot/` | Python | 5080 | Order Flow скальпер: CVD, VWEMA, absorption, DM wall. 1 лот |
-| **Arb BR Calendar** | `robot/arb_br_calendar/` | Python | 5092 | Brent календарный спред (BRQ6/BRU6), Z-score вход |
-| **Arb SBER** | `robot/arb_sber_sru6/` | Python | 5090 | Spot/futures арбитраж Сбер (SBER/SRU6) |
-| **Arb LKOH** | `robot/arb_lkoh_lku6/` | Python | 5093 | Spot/futures арбитраж Лукойл (LKOH/LKU6) |
-| **Robot Instance Launcher** | `robot_instance/` | Python | — | Мультиинстансы VP Scalp Grid (каждый тикер = свой порт) |
-| **Backtest** | `backtest/src/` | Python | — | 80+ бэктест-скриптов: PSAR Grid, VP, OF, арбитраж, CVD |
-| **Research** | `arb/` | Python | — | Исследование арбитражных стратегий |
+| Компонент | Директория | Стек | Порт | Назначение |
+|---|---|---|---|---|
+| C# Server | `src/Server/` | .NET 10, Minimal API, SignalR | 5050 | Дашборд, REST API, Grid MM, риск (RiskGate+CircuitBreaker), REST-only Finam |
+| Core | `src/Core/` | C# | — | Брокеро-независимое ядро: 17 стратегий, индикаторы, риск |
+| Brokers | `src/Brokers/` | C# | — | Finam REST-коннектор (gRPC удалён) |
+| **finam_hub** | `finam_hub.py` | Python, websockets | — | Единый WS-хаб Finam: JWT-автопродление, реконнект, fan-out |
+| OF Robot Si | `robot/main_of.py` | Python | 5080 | Order Flow скальпер SiU6: CVD/VWEMA/absorption/VAH-VAL |
+| OF Robot MX | `robot/main_of_mx.py` | Python | 5081 | Order Flow MXU6 + VWEMA Avg Exit (B2), VA-breakout stop |
+| VP Scalp Grid | `robot/main.py` | Python | 5070 | VP-сетка Si (paper-capable) |
+| Арбитраж | `robot/main_arb.py` + `arb_*/` | Python | 5090–5092 | SBER/LKOH spot-fut, BR календарь; общий `arb_common/` |
+| **paper_lab** | `robot/paper_lab/` | Python | 5181 | Лаборатория: новый стек (WS-hub + REST 4.3.3), papercuts.md |
+| DataProvider | `DataProvider/` | Python | 5060 | Легаси gRPC-кэш (выводится из эксплуатации) |
 
-## Требования
+## Быстрый старт
 
-- **Python 3.12+** с pip
-- **.NET 8 SDK** (для C# сервера)
-- **Finam Trade API** — API ключ + аккаунт с доступом к FORTS
-- **FinamPy** — `pip install FinamPy` (gRPC клиент)
-- **Linux** (сервер) / **Windows** (WPF UI, опционально)
+```powershell
+# Требуется: .NET 10 SDK, Python 3.13+, ключ Finam Trade API в src/.env
+# FINAM_API_KEY=tapi_sk_...
+# FINAM_ACCOUNT_ID=1225953
 
-## Установка
+dotnet build HedgeFund.sln
+Copy-Item src\Server\wwwroot\* src\Server\bin\Debug\net10.0\wwwroot\ -Recurse -Force
+Copy-Item src\.env src\Server\bin\Debug\net10.0\.env -Force
+cd src\Server\bin\Debug\net10.0; .\HedgeFund.Server.exe
+# Дашборд: http://localhost:5050
 
-```bash
-# 1. Клонировать
-git clone https://github.com/Nexby17/OpenMarketflow_web.git
-cd OpenMarketflow_web
-
-# 2. Python-зависимости
-pip install -r DataProvider/requirements.txt
-pip install FinamPy fastapi uvicorn requests
-
-# 3. C# зависимости (для сборки сервера)
-cd src && dotnet restore && cd ..
-
-# 4. Настроить секреты
-cp .env.example .env
-# Отредактировать .env — вставить свои API ключи и account ID
-
-# 5. Конфиги роботов (если нужны)
-cp robot/arb_br_calendar/arb_config.json.example robot/arb_br_calendar/arb_config.json
-cp robot/arb_br_calendar/arb_state.json.example robot/arb_br_calendar/arb_state.json  # создать пустой {}
+# Paper-робот (лаборатория нового стека):
+cd robot\paper_lab
+python3 -m pip install --target .\py4 "finam-trade-api==4.3.3" websockets numpy requests
+python3 patch_sdk.py
+python3 main_of_mx_paper.py   # порт 5181, PAPER всегда on
+curl -X POST http://localhost:5181/start
 ```
 
-## Запуск
+## Безопасность
 
-### DataProvider (обязательно — нужен всем роботам)
+- Ордера по умолчанию запрещены: paper-режим захардкожен в lab; real — только явный флаг
+- RiskGate + CircuitBreaker + MaxPositionRub на сервере; daily-stop в OF-роботах
+- JWT Finam живёт 15 мин, обновляется автоматически; .env не коммитится
 
-```bash
-# Ручной запуск
-cd DataProvider && python3 main.py
+## Статус и прогресс
 
-# ИЛИ через systemd (рекомендуется)
-cp scripts/dataprovider.service.example /etc/systemd/system/dataprovider.service
-# Отредактировать пути в файле
-systemctl daemon-reload && systemctl enable --now dataprovider
-```
-
-Проверка: `curl http://localhost:5060/health`
-
-### C# Server (UI + стратегии)
-
-```bash
-# Сборка и запуск
-cd src/Server && dotnet run
-
-# ИЛИ деплой (как на проде)
-chmod +x scripts/deploy.sh && ./scripts/deploy.sh
-
-# ИЛИ systemd
-cp scripts/hedgefund-server.service.example /etc/systemd/system/hedgefund-server.service
-systemctl daemon-reload && systemctl enable --now hedgefund-server
-```
-
-Проверка: `curl http://localhost:5050/health`
-
-### OF Robot (скальпер)
-
-```bash
-# Paper trading (по умолчанию)
-cd robot && python3 main_of.py --paper --port 5080
-
-# Реал
-cd robot && python3 main_of.py --port 5080
-
-# ИЛИ systemd
-cp scripts/trading-robot.service.example /etc/systemd/system/trading-robot.service
-systemctl daemon-reload && systemctl enable --now trading-robot
-```
-
-Проверка: `curl http://localhost:5080/status`
-
-### Arb Robots
-
-```bash
-# BR Calendar (Brent spread)
-cd robot/arb_br_calendar && python3 main_arb.py --no-paper --port 5092
-
-# SBER spot/futures
-cd robot/arb_sber_sru6 && python3 main_arb.py --no-paper --port 5090
-
-# LKOH spot/futures
-cd robot/arb_lkoh_lku6 && python3 main_arb.py --no-paper --port 5093
-```
-
-### Бэктесты
-
-```bash
-cd backtest/src
-python3 psar_5min_grid_nofilter.py    # PSAR Grid стратегия
-python3 of_bt.py                       # Order Flow бэктест
-python3 arb_sber_bt.py                 # Арбитраж SBER
-```
-
-## API эндпоинты
-
-### DataProvider (port 5060)
-
-| Endpoint | Описание |
-|----------|----------|
-| `GET /health` | Здоровье + свежесть данных |
-| `GET /status` | Статус подключения |
-| `GET /candles/{symbol}?tf=M5&limit=100` | Свечи из кэша |
-| `GET /quote/{symbol}` | Текущая цитата |
-| `GET /orders?account=XXX` | Активные ордера |
-| `GET /position?account=XXX&ticker=SiU6` | Позиция |
-| `POST /order/place` | Разместить ордер (market/limit) |
-| `POST /order/cancel` | Отменить ордер |
-| `GET /pnl?account=XXX` | PnL за сегодня |
-| `GET /recent-fills` | Последние филлы (10 сек) |
-
-### OF Robot (port 5080)
-
-| Endpoint | Описание |
-|----------|----------|
-| `GET /status` | Статус робота, позиция, PnL |
-| `POST /start` | Запустить торговлю |
-| `POST /stop` | Остановить и закрыть позиции |
-| `POST /pause` | Пауза (не открывать новые) |
-| `GET /config` | Текущие параметры стратегии |
-| `POST /config` | Обновить параметры (hot-reload) |
-
-### C# Server (port 5050)
-
-| Endpoint | Описание |
-|----------|----------|
-| `GET /health` | Здоровье сервера |
-| SignalR hub | Real-time: свечи, ордера, позиции, сделки |
-| `POST /strategy/grid-mm/start` | Запустить Grid MM стратегию |
-| `POST /strategy/grid-mm/stop` | Остановить Grid MM |
-| `GET /strategy/grid-mm/status` | Статус Grid MM |
-
-## Структура проекта
-
-```
-OpenMarketflow_web/
-├── .env.example                  # Шаблон секретов
-├── .gitignore
-├── LICENSE
-├── README.md
-├── HedgeFund.sln                 # .NET solution
-├── scripts/
-│   ├── deploy.sh                 # Деплой C# сервера
-│   ├── trading-robot.service.example
-│   ├── dataprovider.service.example
-│   └── arb-br-cal.service.example
-├── src/
-│   ├── Core/                     # Ядро: модели, стратегии, индикаторы
-│   │   ├── Models/               # Candle, Order, Trade, Position, Signal
-│   │   ├── Strategies/           # Grid MM, VStop, Fade, VP Scalp, Arb...
-│   │   ├── Indicators/           # EMA, SMA, RSI, MACD, ATR, ParabolicSAR, BB
-│   │   └── Averaging/            # Движок усреднения позиций
-│   ├── Brokers/                  # Брокер-адаптеры + Finam gRPC proto
-│   │   ├── Finam/                # Finam Trade API (gRPC + REST)
-│   │   └── Finam/Protos/         # Proto-файлы для генерации gRPC клиентов
-│   ├── Server/                   # ASP.NET Core сервер + SignalR
-│   │   ├── Services/             # Лаунчеры стратегий, TradingService
-│   │   ├── Connectors/           # Finam/Quik/Transaq адаптеры
-│   │   └── wwwroot/              # Web UI (JS)
-│   ├── UI/                       # WPF desktop клиент (Windows)
-│   └── AlfaBridge/               # Мост к Альфа-Инвестициям (.NET 4.8)
-├── DataProvider/                 # Python FastAPI — кэш данных
-│   ├── main.py                   # FastAPI приложение
-│   ├── provider.py               # FinamPy gRPC подключение
-│   ├── cache.py                  # Кэш свечей/цитат/филлов
-│   ├── config.py / config.json   # Настройки (символы, таймфреймы)
-│   └── requirements.txt
-├── robot/                        # Python торговые роботы
-│   ├── main_of.py                # OF скальпер (entry point)
-│   ├── strategy_of.py            # OF стратегия (CVD, VWEMA, absorption)
-│   ├── orders_dp.py              # Ордера через DataProvider
-│   ├── orders_grpc.py            # Ордера напрямую через gRPC
-│   ├── orderflow_engine.py       # Движок OF анализа
-│   ├── config_of.py              # Конфиг OF робота
-│   ├── of_config.json            # Параметры стратегии (runtime)
-│   ├── api.py                    # HTTP API для управления
-│   ├── risk.py                   # Риск-менеджер
-│   ├── state.py                  # Сохранение/восстановление состояния
-│   ├── arb_br_calendar/          # Arb робот: Brent calendar spread
-│   ├── arb_sber_sru6/            # Arb робот: SBER spot/futures
-│   ├── arb_lkoh_lku6/            # Arb робот: LKOH spot/futures
-│   └── tests/                    # Unit тесты
-├── robot_instance/               # Мультиинстанс лаунчер
-│   └── launcher.py
-├── backtest/
-│   ├── src/                      # Бэктест-скрипты (80+)
-│   └── data/                     # Исторические данные (не в git)
-├── arb/                          # Исследование арбитражных стратегий
-└── docs/                         # Документация, API спецификации
-```
-
-## Стратегии
-
-### PSAR Grid MM (C#, продакшен)
-Parabolic SAR × EMA кросс → вход + сетка лимитных ордеров против позиции. ~890K₽/мес на SI фьючерсе.
-
-### Order Flow Scalper (Python, продакшен)
-CVD acceleration, VWEMA crossover, absorption, DM wall detection. Скальпинг по 1 лоту.
-
-### Spot/Futures Arbitrage (Python, продакшен)
-Z-score базиса → пара (spot + futures). RO SN, TATN, GAZP, SBER, LKOH.
-
-### Calendar Arbitrage (Python, продакшен)
-Brent календарный спред (BRQ6/BRU6). Z-score вход на аномалиях контанго/бэквордейшн.
-
-## Брокер
-
-Система использует [Finam Trade API](https://trade-api.finam.ru/) — gRPC для стримов данных и ордеров, REST для свечей и отчётов.
-
-## Лицензия
-
-См. [LICENSE](LICENSE).
+Актуальное состояние: [PROGRESS.md](PROGRESS.md) · Роботы: [robot/PROGRESS.md](robot/PROGRESS.md)
+Журнал экспериментов: [robot/paper_lab/papercuts.md](robot/paper_lab/papercuts.md)

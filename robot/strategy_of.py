@@ -45,7 +45,7 @@ class OFParams:
     """All user-configurable parameters."""
     lots: int = 1
     max_pyramid_levels: int = 5
-    max_average_levels: int = 100
+    max_average_levels: int = 10
     step_average: int = 50        # pts — шаг усреднения (против позиции)
     step_pyramid: int = 35        # pts — шаг пирамидинга (по тренду)
     spread: int = 50              # pts — мин прибыль на partial TP
@@ -391,6 +391,11 @@ class OrderFlowStrategy:
         # State lock
         self._lock = threading.Lock()
 
+        # Story 5.1: Hard cap on max_average_levels (prevents runaway averaging)
+        if self.p.max_average_levels > 15:
+            log.warning(f"max_average_levels clamped: {self.p.max_average_levels} -> 15 (hard cap)")
+            self.p.max_average_levels = 15
+
     # ---------- Properties ----------
 
     @property
@@ -719,8 +724,10 @@ class OrderFlowStrategy:
         if not self.signals.has_enough_data:
             return None
 
-        # Daily stop
+        # Daily stop — close position AND block new entries
         if self._daily_stop_hit():
+            if self._dir != 0:
+                return self._close_all(price, "daily_stop_loss")
             return None
 
         # Get OB metrics
@@ -764,7 +771,7 @@ class OrderFlowStrategy:
         elif self.p.use_vah_val:
             vp_ready = self.vp.ready if self.vp else False
             log.info(f"VAH/VAL GATE: use_vah_val=True but vp.ready={vp_ready} → BLOCK")
-            return None
+            return None  # VP enabled but not ready → no entry
 
         # === Generate OF signals ONLY AFTER VAH/VAL gate passes ===
         sigs = self.signals.generate_signals(ob, price, ob_tracker=self.ob_tracker,

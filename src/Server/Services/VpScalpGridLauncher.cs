@@ -1,4 +1,5 @@
 using HedgeFund.Core.Strategies;
+using HedgeFund.Core.Risk;
 using HedgeFund.Brokers.Finam;
 
 namespace HedgeFund.Server.Services;
@@ -29,6 +30,7 @@ public class VpScalpGridLauncher : IDisposable
     private readonly string _accountId;
     private static readonly DataProviderClient _dpClient = new DataProviderClient("http://localhost:5060");
     private readonly string _logPrefix = "VPSG";
+    private RiskGate? _riskGate;
 
     // Tracked order IDs — устанавливаются ТОЛЬКО при place
     private string? _gridOrderId;
@@ -65,6 +67,8 @@ public class VpScalpGridLauncher : IDisposable
     private double _lastEntryPrice = 0;
     private int _lastEntryDir = 0;
 
+    public void SetRiskGate(RiskGate riskGate) { _riskGate = riskGate; }
+
     public VpScalpGridStrategy Strategy => _strategy;
 
     public VpScalpGridLauncher(FinamConnector broker, VpScalpGridStrategy strategy, string? stateFile = null)
@@ -72,8 +76,8 @@ public class VpScalpGridLauncher : IDisposable
         _broker = broker;
         _strategy = strategy;
         _stateFile = stateFile ?? "/tmp/vp-scalp-grid-state.json";
-        _finamSymbol = "SiM6@RTSX";
-        _ticker = "SiM6";
+        _finamSymbol = "SiU6@RTSX";
+        _ticker = "SiU6";
         _accountId = "1225953";
     }
 
@@ -673,6 +677,9 @@ public class VpScalpGridLauncher : IDisposable
 
         try
         {
+        // === RISK CHECK ===
+        if (RiskIntegrationHelper.IsTradingBlocked(_riskGate)) { Console.WriteLine("[VPSG] Entry blocked by circuit breaker"); return; }
+
             await PlaceMarketOrderAsync(side, 1, $"VPSG-ENTRY: {(direction == 1 ? "LONG" : "SHORT")}");
             // Lock entry — prevent duplicates until fill confirmed or timeout
             _entryPending = true;

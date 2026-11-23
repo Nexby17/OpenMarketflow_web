@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone, timedelta
 from typing import Callable, Optional
 
-from FinamPy import FinamPy
+from finam_compat import FinamPyCompat as FinamPy
 from google.type.decimal_pb2 import Decimal
 
 import config
@@ -141,7 +141,8 @@ class Feed:
     def connect(self):
         """Initialize gRPC connection."""
         log.info("Connecting to Finam gRPC...")
-        self._fp = FinamPy(config.FINAM_TOKEN)  # now reads FINAM_API_KEY via config.py
+        self._fp = FinamPy(config.FINAM_TOKEN)
+        self._fp.connect()  # now reads FINAM_API_KEY via config.py
         log.info(f"Connected. Accounts: {self._fp.account_ids}")
 
     def disconnect(self):

@@ -11,12 +11,40 @@ from datetime import datetime, timezone, timedelta
 from http.server import HTTPServer, BaseHTTPRequestHandler
 import socket
 
-from FinamPy import FinamPy
-from FinamPy.grpc.accounts_service_pb2 import GetAccountRequest
+# bootstrap: py4 (SDK+protos), arb_common (strategy v2: fair/dev_ann — ВАЖНО: перед robot/),
+# robot/ (orders/config), project root (finam_compat)
+_HERE = os.path.dirname(os.path.abspath(__file__))
+_PROJ = os.path.dirname(_HERE)
+for _p in (_PROJ, _HERE, os.path.join(_HERE, "arb_common"), os.path.join(_HERE, "py4")):
+    if os.path.isdir(_p) and _p not in sys.path:
+        sys.path.insert(0, _p)
+
+def _load_env():
+    for _base in (_HERE, _PROJ, os.path.join(_PROJ, "src")):
+        _p = os.path.join(_base, ".env")
+        if os.path.exists(_p):
+            with open(_p) as _f:
+                for _line in _f:
+                    _line = _line.strip()
+                    if _line and not _line.startswith("#") and "=" in _line:
+                        _k, _, _v = _line.partition("=")
+                        os.environ.setdefault(_k.strip(), _v.strip())
+
+_load_env()
+
+from finam_compat import FinamPyCompat as FinamPy
+from finam_trade_api.proto.grpc.tradeapi.v1.accounts.accounts_service_pb2 import GetAccountRequest
 
 import config_arb as config
 from strategy_arb import ArbitrageStrategy, ArbParams, LONG_BASIS, SHORT_BASIS, FLAT
-from orders_arb import ArbOrderManager, BUY, SELL
+# orders_arb берём строго из robot/ (в arb_common устаревшая копия без cancel_pending_orders)
+import importlib.util as _ilu
+_spec_oa = _ilu.spec_from_file_location("_orders_arb_robot", os.path.join(_HERE, "orders_arb.py"))
+_mod_oa = _ilu.module_from_spec(_spec_oa)
+_spec_oa.loader.exec_module(_mod_oa)
+ArbOrderManager = _mod_oa.ArbOrderManager
+BUY = _mod_oa.BUY
+SELL = _mod_oa.SELL
 from arb_engine import BasisCalculator, OrderBookTracker
 
 log = logging.getLogger("robot_arb")
@@ -70,7 +98,7 @@ def load_params() -> ArbParams:
             if hasattr(p, key):
                 setattr(p, key, val)
     # override from arb_config.json
-    cfg_path = os.path.join(os.getcwd(), "arb_config.json")
+    cfg_path = os.environ.get("ARB_CONFIG_FILE") or os.path.join(os.getcwd(), "arb_config.json")
     if os.path.exists(cfg_path):
         with open(cfg_path) as f:
             data = json.load(f)
@@ -80,6 +108,25 @@ def load_params() -> ArbParams:
     return p
 
 params = load_params()
+
+# F-031: пара из конфига (UI select'ы сохраняют её в конфиг инстанса).
+# Env-пара применяется ТОЛЬКО если конфиг-файла не было (первый старт инстанса).
+_env_ticker_a = os.environ.get("ARB_TICKER_A")
+_env_ticker_b = os.environ.get("ARB_TICKER_B")
+_cfg_path_check = os.environ.get("ARB_CONFIG_FILE") or os.path.join(os.getcwd(), "arb_config.json")
+_cfg_existed = os.path.exists(_cfg_path_check)
+if _cfg_existed:
+    _env_ticker_a = _env_ticker_b = None
+if _env_ticker_a:
+    params.ticker_a = _env_ticker_a
+    params.symbol_a = os.environ.get("ARB_SYMBOL_A", _env_ticker_a + "@MISX")
+if _env_ticker_b:
+    params.ticker_b = _env_ticker_b
+    params.symbol_b = os.environ.get("ARB_SYMBOL_B", _env_ticker_b + "@RTSX")
+_env_exp = os.environ.get("ARB_EXPIRATION")
+if _env_exp:
+    params.expiration_date = _env_exp
+log.info(f"Instance pair (env-locked): {params.ticker_a}/{params.ticker_b} exp={params.expiration_date}")
 PAPER_MODE = args.paper or params.capital <= 0  # default paper for safety
 
 # Override with arg if explicitly set
@@ -91,6 +138,24 @@ ACCOUNT = config.ACCOUNT_ID
 PORT = args.port
 
 strategy = ArbitrageStrategy(params)
+
+# F-025: dev-history warmup from H1 bars (robot tradable right after start)
+def _warmup_dev_history():
+    try:
+        import finam_rest4 as _r4mod
+        from datetime import datetime, timedelta, timezone
+        end = datetime.now(timezone.utc)
+        start = end - timedelta(days=3)
+        bars_a = _r4mod.get_bars(params.symbol_a, "TIME_FRAME_H1",
+                                 start.isoformat(), end.isoformat()).get("bars", [])
+        bars_b = _r4mod.get_bars(params.symbol_b, "TIME_FRAME_H1",
+                                 start.isoformat(), end.isoformat()).get("bars", [])
+        n = strategy.basis_calc.warmup_dev_history(bars_a, bars_b)
+        log.info(f"Dev-history warmup: {n} points from H1 bars (tradable now)")
+    except Exception as e:
+        log.warning(f"dev warmup failed (non-fatal): {str(e)[:120]}")
+
+_warmup_dev_history()
 orders_mgr = ArbOrderManager(dp_url=DP_URL, account=ACCOUNT)
 execution_lock = threading.Lock()  # prevents concurrent entry/exit from different threads
 
@@ -109,7 +174,7 @@ _accounts_cache = None
 _accounts_cache_ts = 0
 
 # Load saved account from config
-cfg_path = os.path.join(os.getcwd(), "arb_config.json")
+cfg_path = os.environ.get("ARB_CONFIG_FILE") or os.path.join(os.getcwd(), "arb_config.json")
 if os.path.exists(cfg_path):
     try:
         with open(cfg_path) as f:
@@ -146,6 +211,7 @@ def _reconnect_finam():
         token = os.environ.get("FINAM_API_KEY")
         log.info(f"FinamPy reconnecting (#{_reconnect_count})...")
         fp = FinamPy(token)
+        fp.connect()
         _attach_finam_to_orders()
         log.info(f"FinamPy reconnected (#{_reconnect_count}). Accounts: {fp.account_ids}")
         return True
@@ -159,7 +225,7 @@ def _update_data_ts():
     global _last_data_ts
     _last_data_ts = time.time()
 
-STATE_FILE = os.path.join(os.getcwd(), "arb_state.json")
+STATE_FILE = os.environ.get("ARB_STATE_FILE") or os.path.join(os.getcwd(), "arb_state.json")
 
 
 def save_state():
@@ -186,7 +252,7 @@ def load_state_from_disk():
 
 
 def save_config():
-    cfg_path = os.path.join(os.getcwd(), "arb_config.json")
+    cfg_path = os.environ.get("ARB_CONFIG_FILE") or os.path.join(os.getcwd(), "arb_config.json")
     data = {k: getattr(params, k) for k in dir(params) if not k.startswith("_") and not callable(getattr(params, k))}
     with open(cfg_path, "w") as f:
         json.dump(data, f, indent=2)
@@ -221,7 +287,7 @@ def _quote_reconnect_loop(symbols):
 def _ob_poll_grpc_locked(sym, name):
     """Single OB poll under grpc_lock. Returns rows or raises.
     For stocks, converts RTSX→MISX for OB data (Finam gRPC OB requires correct MIC)."""
-    from FinamPy.grpc.marketdata_service_pb2 import OrderBookRequest
+    from finam_trade_api.proto.grpc.tradeapi.v1.marketdata.marketdata_service_pb2 import OrderBookRequest
     # Stocks need MISX for OB data, futures use RTSX
     ob_sym = sym.replace("@RTSX", "@MISX") if any(sym.startswith(p) for p in ['GAZP','SBER','LKOH','ROSN','NVTK','GMKN','PLZL','YNDX','MTSS','MGNT','CHMF','NLMK','ALRS','RUAL','POLY','FIVE','RTKM','TATN','VTBR','SNGS','AFLT','AFKS','ASTR','PHOR','HYDR','IRAO','FEES','SMLT','TRNFP']) else sym
     resp, _ = fp.marketdata_stub.OrderBook.with_call(
@@ -289,6 +355,10 @@ def _ob_poller():
                     _stale_count = 0
         except Exception as e:
             log.warning(f"OB poll outer error: {e}")
+        # F-032 (2026-09-23): ВАЖНО — basis_calc.update_market() здесь НЕ вызываем.
+        # Входная математика (spread_rub/dev_ann) обязана остаться на last-ценах,
+        # как работала вчера (решение Дмитрия: входы не трогать). Реализуемый PnL
+        # тейка (_layer_realizable_pnl) читает стакан напрямую из strategy.ob_a/ob_b.
         time.sleep(1)
     log.warning("OB poller thread exited!")
 
@@ -301,6 +371,7 @@ def connect_finam():
         return False
 
     fp = FinamPy(token)
+    fp.connect()
     log.info(f"FinamPy connected. Accounts: {fp.account_ids}")
     _attach_finam_to_orders()
 
@@ -474,18 +545,24 @@ def _moex_poller():
 # ========== Main loop ==========
 
 def main_loop():
-    global _mode
+    global _mode, _last_dev_push
     log.info("Main loop started")
     last_save = time.time()
     last_basis_push = 0.0
+    _last_dev_push = 0.0
 
     while _running:
         try:
             # Update basis tracking (push to history) — always, even when stopped
             now = time.time()
-            if now - last_basis_push > 1.0:  # push every 1 sec
+            if now - last_basis_push > 1.0:  # push raw spread every 1 sec (spread mode stats only)
                 strategy.basis_calc._push_spread()  # push directly, don't read zscore
                 last_basis_push = now
+            # Fix #1: deviation-from-fair is pushed at SLOW cadence (default 60s)
+            # inside _push_deviation(); 1-second pushes must not feed deviation stats.
+            if now - _last_dev_push > max(1.0, params.dev_push_interval):
+                strategy.basis_calc._push_deviation(force=True)
+                _last_dev_push = now
 
             if _mode != "running":
                 # Even when stopped/paused, attempt to close remaining layers
@@ -636,7 +713,7 @@ def _execute_entry(signal: dict):
             strategy._set_lock(10.0)
             return
 
-    log.info(f"ENTRY SIGNAL {side} | Z={z:.2f} basis={signal['basis']:.2f} | "
+    log.info(f"ENTRY SIGNAL {side} | Z={z:.2f} dev_ann={signal.get('dev_ann', 0):+.2f}% basis={signal['basis']:.2f} | "
              f"A={signal['price_a']:.2f} B={signal['price_b']:.2f} | "
              f"limit {side_a} {params.lots_a} @ {limit_price:.2f} | "
              f"market {side_b} {params.lots_b} @ {market_price_b:.2f}")
@@ -666,6 +743,7 @@ def _execute_entry(signal: dict):
             lots_a=fill_a.quantity,
             lots_b=fill_b.quantity,
             z=z,
+            dev_ann=signal.get("dev_ann", 0.0),
         )
         log.info(
             f"LAYER OPEN {side.upper()} #{strategy.layers[-1].layer_id} | "
@@ -702,8 +780,9 @@ def _execute_exit(signal: dict, force_market: bool = False):
             return
         log.info(f"EXIT ALL {len(strategy.layers)} layers — reason={signal['reason']}")
         if PAPER_MODE:
-            pa = strategy.basis_calc.price_a
-            pb = strategy.basis_calc.price_b
+            # F-032: цены закрытия — из живого стакана (как в реализуемом PnL), last только fallback
+            pa = strategy.ob_a.best_bid or strategy.basis_calc.price_a
+            pb = strategy.ob_b.best_ask or strategy.basis_calc.price_b
             if pa > 0 and pb > 0:
                 strategy.close_all_layers(pa, pb, signal["reason"])
         else:
@@ -762,12 +841,17 @@ def _execute_single_exit(layer, reason: str, force_market: bool = False):
         return
 
     # Limit exit: normal profit-taking exit
-    limit_price = strategy.ob_a.best_ask
+    # F-032: лимитная цена ноги A — по стороне выхода:
+    #   SELL A (закрытие SHORT) → лимит на bid (реализуемая цена продажи),
+    #   BUY A (закрытие LONG)  → лимит на ask. Раньше всегда был ask —
+    #   для SELL это завышало факт закрытия относительно предсказанного realizable PnL.
+    if side_a == SELL:
+        limit_price = strategy.ob_a.best_bid or strategy.basis_calc.price_a
+    else:
+        limit_price = strategy.ob_a.best_ask or strategy.basis_calc.price_a
     if limit_price <= 0:
-        limit_price = strategy.basis_calc.price_a
-        if limit_price <= 0:
-            log.error(f"Cannot exit layer #{layer.layer_id} — no price data")
-            return
+        log.error(f"Cannot exit layer #{layer.layer_id} — no A price data")
+        return
 
     market_price_b = _market_fill_price(side_b)
     if market_price_b <= 0:
@@ -795,6 +879,9 @@ def _execute_single_exit(layer, reason: str, force_market: bool = False):
     if result["success"]:
         fill_a = result["leg_a"]
         fill_b = result["leg_b"]
+        # F-032: факт закрытия логируем рядом с предсказанием — расхождение означает,
+        # что стакан ушёл между проверкой и исполнением (норма: единицы рублей)
+        log.info(f"EXIT layer #{layer.layer_id} filled: A@{fill_a.price:.2f} B@{fill_b.price:.2f} (paper est. limit {limit_price:.2f} / mkt {market_price_b:.2f}) reason={reason}")
         strategy.close_layer(layer, fill_a.price, fill_b.price, reason)
     else:
         log.error(f"Exit failed layer #{layer.layer_id}: {result['error']} — retrying next tick")
@@ -980,7 +1067,7 @@ class APIHandler(BaseHTTPRequestHandler):
                     orders_mgr._account = new_acc
                     # Persist to config
                     try:
-                        cfg_path = os.path.join(os.getcwd(), "arb_config.json")
+                        cfg_path = os.environ.get("ARB_CONFIG_FILE") or os.path.join(os.getcwd(), "arb_config.json")
                         with open(cfg_path) as f:
                             cfg = json.load(f)
                         cfg["active_account"] = new_acc
@@ -996,11 +1083,49 @@ class APIHandler(BaseHTTPRequestHandler):
             if length > 0:
                 body = self.rfile.read(length)
                 data = json.loads(body)
+                # F-021: validate - UI может прислать null (NaN); None в конфиге ломает математику
+                _num_fields = {"lots_a", "lots_b", "hedge_ratio", "capital", "entry_z", "entry_z_long",
+                               "spread_rub_high", "spread_rub_low", "risk_free_rate", "contract_size",
+                               "lookback", "leg_a_timeout", "min_fill_ratio", "min_profit_value",
+                               "risk_value", "commission_stock_pct", "commission_futures_rt",
+                               "slippage_bps", "mult_a", "mult_b", "dev_ann_high", "dev_ann_low",
+                               "dev_lookback", "dev_push_interval", "go_per_contract_b"}
+                # F-022: пару через /params менять НЕЛЬЗЯ — она личность инстанса (env при старте)
+                _str_fields = {"entry_mode", "min_profit_type", "risk_type", "expiration_date"}
+                rejected = []
                 for k, v in data.items():
-                    if hasattr(params, k):
+                    if not hasattr(params, k):
+                        continue
+                    if v is None:
+                        rejected.append(k)
+                        continue
+                    # F-031: пара снова выбирается в UI — применяется live
+                    if k in {"ticker_a", "ticker_b", "symbol_a", "symbol_b"}:
                         old_val = getattr(params, k)
-                        setattr(params, k, v)
-                        log.info(f"Param updated: {k} = {v} (was {old_val})")
+                        setattr(params, k, str(v).strip())
+                        log.info(f"Pair field updated: {k} = {v} (was {old_val})")
+                        continue
+                    if k in _num_fields:
+                        try:
+                            v = float(v)
+                            if v != v:  # NaN
+                                rejected.append(k)
+                                continue
+                            if k in {"lots_a", "lots_b", "contract_size", "lookback", "leg_a_timeout", "dev_lookback"}:
+                                v = int(round(v))
+                        except (TypeError, ValueError):
+                            rejected.append(k)
+                            continue
+                    elif k in _str_fields:
+                        v = str(v)
+                        if not v.strip():
+                            rejected.append(k)
+                            continue
+                    old_val = getattr(params, k)
+                    setattr(params, k, v)
+                    log.info(f"Param updated: {k} = {v} (was {old_val})")
+                if rejected:
+                    log.warning(f"/params rejected fields: {rejected}")
                 # Update strategy references
                 strategy.p = params
                 strategy.basis_calc.lookback = params.lookback
@@ -1008,8 +1133,15 @@ class APIHandler(BaseHTTPRequestHandler):
                 strategy.basis_calc.rate = params.risk_free_rate
                 strategy.basis_calc.expiration_date = params.expiration_date
                 strategy.basis_calc.contract_size = params.contract_size
+                # Fair-value deviation mode wiring (Fix #1/#2)
+                strategy.basis_calc._history_mode = "dev"
+                strategy.basis_calc.dev_lookback = params.dev_lookback
+                strategy.basis_calc.dev_push_interval = params.dev_push_interval
+                strategy.basis_calc.set_dividends(getattr(params, "dividends", []) or [])
                 save_config()
-            self._json(200, {"ok": True})
+                self._json(200, {"ok": True, "rejected": rejected})
+            else:
+                self._json(200, {"ok": True})
 
         elif path == "/copy":
             # Clone config for a new robot instance
@@ -1035,7 +1167,7 @@ class APIHandler(BaseHTTPRequestHandler):
             
             # Create new config
             new_config = {}
-            cfg_path = os.path.join(base, "arb_config.json")
+            cfg_path = os.environ.get("ARB_CONFIG_FILE") or os.path.join(base, "arb_config.json")
             if os.path.exists(cfg_path):
                 with open(cfg_path) as cf:
                     new_config = json.load(cf)
@@ -1043,7 +1175,7 @@ class APIHandler(BaseHTTPRequestHandler):
             new_config["symbol_a"] = new_ticker_a + "@RTSX"
             new_config["ticker_b"] = new_ticker_b
             new_config["symbol_b"] = new_ticker_b + "@RTSX"
-            with open(os.path.join(new_dir, "arb_config.json"), "w") as cf:
+            with open(os.path.join(new_dir, os.environ.get("ARB_CONFIG_FILE") or "arb_config.json"), "w") as cf:
                 json.dump(new_config, cf, indent=2)
             
             log.info(f"Robot copied: {new_dir} ({new_ticker_a}/{new_ticker_b})")
@@ -1089,7 +1221,8 @@ if __name__ == "__main__":
     log.info(f"=== Arbitrage Robot v1 ===")
     log.info(f"Pair: {params.ticker_a} / {params.ticker_b}")
     log.info(f"Account: {ACCOUNT} | Port: {PORT} | Paper: {PAPER_MODE}")
-    log.info(f"Params: entry_z={params.entry_z} lookback={params.lookback} "
+    log.info(f"Params: entry_mode={params.entry_mode} dev_ann=[{params.dev_ann_low}, {params.dev_ann_high}]% "
+             f"entry_z={params.entry_z} lookback={params.lookback} "
              f"lots_a={params.lots_a} lots_b={params.lots_b} "
              f"hedge_ratio={params.hedge_ratio}")
     log.info(f"Min profit: {params.min_profit_type}={params.min_profit_value}")

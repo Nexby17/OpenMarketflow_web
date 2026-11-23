@@ -17,7 +17,7 @@ import threading
 import requests
 from datetime import datetime, timezone, timedelta
 
-from FinamPy import FinamPy
+from finam_compat import FinamPyCompat as FinamPy
 
 import config
 from feed import Feed, Quote, Bar, OrderEvent, TradeEvent
@@ -1125,13 +1125,14 @@ class Robot:
     def _warmup_vp(self):
         try:
             fp = FinamPy(config.FINAM_TOKEN)
+            fp.connect()
         except Exception as e:
             log.error(f"Warmup connect error: {e}")
             return
         try:
             from google.protobuf.timestamp_pb2 import Timestamp
             from google.type.interval_pb2 import Interval
-            import FinamPy.grpc.marketdata_service_pb2 as md_pb2
+            from finam_trade_api.proto.grpc.tradeapi.v1.marketdata import marketdata_service_pb2 as md_pb2
 
             finam_tf, _, _ = fp.timeframe_to_finam_timeframe(config.TIMEFRAME)
             now = datetime.now(timezone.utc)
