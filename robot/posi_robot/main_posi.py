@@ -73,7 +73,8 @@ def _load_candles(full: bool = False):
     want = params.history_bars if full else max(params.history_bars, 200)
     fb = []
     try:
-        fb = finam_fetch_bars(fp, grpc_lock, tf, want, params.ticker)
+        sym = params.symbol if '@' in getattr(params, 'symbol', '') else params.ticker
+        fb = finam_fetch_bars(fp, grpc_lock, tf, want, sym)
     except Exception as e:
         logg(f"finam bars: исключение {e}", logging.WARNING)
     if fb:
