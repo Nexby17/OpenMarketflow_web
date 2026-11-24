@@ -5446,7 +5446,7 @@ async function ofMxAdjustPosition() {
 }
 
 // F-011: видимые уведомления о действиях (toast поверх любой вкладки)
-function showToast(msg, kind) {
+function showToast(msg, kind, ms) {   // F-228: ms — сколько держать тост (по умолчанию 5000)
     let host = document.getElementById('toastHost');
     if (!host) {
         host = document.createElement('div');
@@ -5459,8 +5459,11 @@ function showToast(msg, kind) {
     t.style.cssText = `background:${bg};color:#fff;padding:10px 14px;border-radius:8px;font-size:13px;box-shadow:0 4px 12px rgba(0,0,0,.4);max-width:380px;pointer-events:auto`;
     t.textContent = msg;
     host.appendChild(t);
-    setTimeout(() => { t.style.opacity = '0'; t.style.transition = 'opacity .4s'; }, 4500);
-    setTimeout(() => t.remove(), 5000);
+    // F-228: длительность настраиваемая. Раньше тост жил ровно 5с — сообщение об ошибке
+    // запуска («сессия истекла», «процесс не поднялся») легко было не заметить.
+    var life = (typeof ms === 'number' && ms > 0) ? ms : 5000;
+    setTimeout(() => { t.style.opacity = '0'; t.style.transition = 'opacity .4s'; }, Math.max(0, life - 500));
+    setTimeout(() => t.remove(), life);
 }
 
 // === ORDER FLOW ROBOT (порт 5080) ===
@@ -6970,6 +6973,19 @@ async function ofRobotApi(action) {
     }
 }
 
+// F-228 (23.11): прозрачный журнал запуска робота. Каждая кнопка ▶ пишет сюда каждый шаг —
+// «нажато → жив? → /start → результат». Показывается тостом, чтобы «кнопка не работает»
+// всегда имела видимую причину прямо на экране.
+var _ROBOT_START_LOG = [];
+function robotStartLog(who, msg, kind) {
+    try {
+        var t = new Date().toTimeString().slice(0, 8);
+        _ROBOT_START_LOG.unshift(t + ' ' + who + ': ' + msg);
+        if (_ROBOT_START_LOG.length > 12) _ROBOT_START_LOG.pop();
+        addLog(t, kind === 'error' ? 'ERROR' : 'INFO', who + ': ' + msg);
+    } catch (e) {}
+}
+
 // F-196 (16.11): фолбэк для браузеров без AbortSignal.timeout (Chrome < 103).
 // Из-за него кнопка ▶ молча падала: TypeError -> catch -> шла ветка C# -> 401 -> «не запускается».
 function makeTimeoutSignal(ms) {
@@ -6992,6 +7008,7 @@ async function ofMxRobotApi(action) {
     try {
         // F-012: одна кнопка = поднять процесс + включить
         if (action === 'start') {
+            robotStartLog('MXU6 ▶', 'нажато');
             // F-071 (6.11): если робот уже отвечает на своём порту — НЕ дёргаем C# process-start.
             // При истёкшей сессии он возвращал 401, кнопка делала return и /start не уходил
             // (3 дня подряд «не запустился»). Робот жив = поднимать нечего.
@@ -6999,7 +7016,8 @@ async function ofMxRobotApi(action) {
             try {
                 const hp = await fetch(OF_MX_ROBOT_API + '/health', {signal: makeTimeoutSignal(2500)});
                 robotAlive = hp.ok;
-            } catch (he) { robotAlive = false; }
+            } catch (he) { robotAlive = false; robotStartLog('MXU6 ▶', 'health недоступен: ' + he.message, 'error'); }
+            robotStartLog('MXU6 ▶', robotAlive ? 'процесс жив — шлю /start напрямую' : 'процесс не отвечает — поднимаю через C#');
             if (!robotAlive) {
                 showToast('⏳ Поднимаю процесс MXU6 (подключение к Finam ~15с)...', 'info');
                 try {
@@ -7062,6 +7080,7 @@ async function ofMxRobotApi(action) {
         for (let attempt = 1; attempt <= 3; attempt++) {
             const resp = await fetch(OF_MX_ROBOT_API + '/' + action, {method: 'POST', signal: makeTimeoutSignal(8000)});
             data = await resp.json();
+            robotStartLog('MXU6 ▶', '/start HTTP ' + resp.status + ' → ' + JSON.stringify(data));
             addLog(nowTime(), 'INFO', 'OF-MX ' + action + ' (попытка ' + attempt + '): ' + JSON.stringify(data));
             if (action !== 'start') break;
             await new Promise(r => setTimeout(r, 700));
@@ -7072,9 +7091,10 @@ async function ofMxRobotApi(action) {
                 if (attempt === 3) showToast('⚠ Робот не перешёл в running после 3 попыток — смотри журнал', 'error');
             } catch(ce) { /* статус недоступен — считаем ок */ }
         }
-        showToast((action === 'start' ? '▶ ' : '') + 'MXU6 ' + action + ': ' + JSON.stringify(data), 'ok');
+        showToast((action === 'start' ? '▶ ' : '') + 'MXU6 ' + action + ': ' + JSON.stringify(data), 'ok', 12000);
         setTimeout(async () => { await ofMxRobotPoll(); renderRobots(); }, 500);
     } catch(e) {
+        robotStartLog('MXU6 ▶', 'ОШИБКА: ' + e.message, 'error');
         addLog(nowTime(), 'ERROR', `Робот MXU6 недоступен (${action} не отправлено: ${e.message})`);
         showToast('⚠ Робот MXU6 не отвечает — запусти процесс (python3 main_of_mx.py) или проверь порт 5081', 'error');
     }
