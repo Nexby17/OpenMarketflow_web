@@ -1531,6 +1531,15 @@
       "owner": "main",
       "date": "2026-11-25",
       "summary": "Dmitry: 'BRF7 edp-2 пишет нет связи, исправить и запустить'. Facts: port 5086 was LISTENING (PID 103640), /status returned mode=running, price 88.20 live, broker flat and mismatch=false, and the robot log showed 31 status requests in the last 60s (30 for :5083) - i.e. the browser WAS reaching the robot. So 'нет связи' was a false label produced by our own F-230 rule: a hidden/background tab gets its timers throttled by the browser (down to ~1/min), the freshness mark ages past the 12s threshold and the row declares the link down. Fixed: while document.hidden the time-based branch is ignored (only real fetch failures count), the threshold was raised to 20s, and a visibilitychange listener polls both instances and re-renders immediately when the tab becomes visible again. app.js v154, bin synced, served v154, node --check PASS, sim 32/32. Bonus finding while checking: the robot entered LONG 2 @88.22 at 11:45:03 and the status briefly showed brokerLots=0 with mismatch=true; verified against DP /position that the broker really has dir=1 lots=2 avg=88.22 and after the next sync mismatch=false - it was a sync lag right after the fill, not a phantom."
+    },
+    {
+      "id": "F-233",
+      "name": "Robot /status now sends no-store headers — stale row (Лонг 2 while FLAT) cannot come from cache anymore",
+      "area": "robot/of-br",
+      "status": "done (main_of_br.py patched, edp2 restarted with headers verified, state preserved)",
+      "owner": "main",
+      "date": "2026-11-25",
+      "summary": "Dmitry: 'робот флэт, а в лотах 2, должен 0'. Facts: robot mode=running dir=FLAT lots=0, broker dir=0 lots=0, mismatch=false, realized already 101.70 — i.e. the row was showing the 11:50 state (Лонг @88.22, 2 lots, +72 ₽) long after the position closed. Client had already been fixed (F-231 cache-buster, F-232 hidden-tab logic) but the tab was still running an older app.js, so the browser kept serving a cached /status payload. Closing the class at the source: main_of_br.py _json() now always sends Cache-Control: no-store, no-cache, must-revalidate, max-age=0 + Pragma: no-cache + Expires: 0, so no cache can replay an old snapshot even for a tab with old JS. edp2 was FLAT, so it was restarted through the supervisor (kill pid 103640 -> start pid 159664) and resumed with POST /start: headers verified on the wire, mode=running, FLAT, broker 0, mismatch=false, state preserved (5 trades, realized 101.70). edp (:5083) is intentionally NOT restarted - it holds SHORT 4 lots; it will pick the header up on its next restart."
     }
   ]
 }

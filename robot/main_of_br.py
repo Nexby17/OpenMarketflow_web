@@ -940,6 +940,11 @@ class APIHandler(BaseHTTPRequestHandler):
         body = json.dumps(data, default=str).encode()
         self.send_response(code)
         self.send_header("Content-Type", "application/json")
+        # F-233: запрет кэша на всех ответах робота. Без этого браузер/антивирус могли отдать
+        # старый /status, и строка пульта показывала уже закрытую позицию (Лонг 2 при фактическом FLAT).
+        self.send_header("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0")
+        self.send_header("Pragma", "no-cache")
+        self.send_header("Expires", "0")
         self.send_header("Access-Control-Allow-Origin", "*")
         self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
         self.send_header("Access-Control-Allow-Headers", "Content-Type")
