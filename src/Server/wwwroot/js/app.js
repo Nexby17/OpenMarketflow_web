@@ -2778,7 +2778,11 @@ async function renderRobots() {
             // показываем последний известный режим, но честно говорим, что связи нет.
             const _lastOk = window['_ofBrLastOk_' + inst] || 0;
             const _staleSec = _lastOk ? Math.round((Date.now() - _lastOk) / 1000) : null;
-            const _linkDown = (window['_ofBrFail_' + inst] || 0) >= 3 || (_staleSec !== null && _staleSec > 12);
+            // F-232: в фоновой вкладке браузер душит таймеры (раз в минуту) — метка стареет, и строка
+            // рисовала «нет связи», хотя робот жив. Пока вкладка скрыта, не объявляем потерю связи по времени;
+            // при возврате во вкладку опрос идёт сразу (см. visibilitychange ниже).
+            const _hidden = (typeof document !== 'undefined') && document.hidden === true;
+            const _linkDown = (window['_ofBrFail_' + inst] || 0) >= 3 || (!_hidden && _staleSec !== null && _staleSec > 20);
             const _modeHuman = mode === 'running' ? 'Работает' : mode === 'paused' ? 'Пауза' : 'Остановлен';
             const _desync = (s.brokerMismatch === true) || (typeof s.brokerLots === 'number' && s.brokerLots !== (s.totalLots || 0));
             // F-231: возраст рыночных данных самого робота (lastPriceUpdate — epoch-секунды).
@@ -9299,6 +9303,16 @@ setTimeout(async () => { await ofPerpRobotPoll(); renderRobots(); }, 700);
         for (const k of OF_BR_INSTANCE_ORDER) await ofBrRobotPoll(k);
         renderRobots();
     }, 3000); // F-096c
+    // F-232: вернулся во вкладку — сразу опросить и перерисовать, не ждать тика таймера
+    if (typeof document !== 'undefined' && document.addEventListener) {
+        document.addEventListener('visibilitychange', async () => {
+            if (document.hidden) return;
+            try {
+                for (const k of OF_BR_INSTANCE_ORDER) await ofBrRobotPoll(k);
+                renderRobots();
+            } catch (e) {}
+        });
+    }
 })();
 
 // F-196: если сервер отдаёт более новую версию app.js — перезагружаем страницу.

@@ -1522,6 +1522,15 @@
       "owner": "main",
       "date": "2026-11-25",
       "summary": "Dmitry: 'робот открыл лонг, но по строке лоты стоит 0'. Facts at check time: robot LONG 1 @87.53 (entry 11:30:04 by cvd_trend, fill 87.53), broker /position dir=1 lots=1 avg=87.53, brokerMismatch=false, no active orders — the robot and the broker agreed; only the UI row was wrong (Флэт, 0, +14 ₽, i.e. the state from before the entry, while realized was already 29.8). So the tab was rendering a stale/cached /status payload. Code path was correct: the 3s poll loop iterates OF_BR_INSTANCE_ORDER and calls renderRobots(), and the lots cell is s.totalLots. F-230's cache:'no-store' was not enough — a caching layer (browser heuristic / AV proxy) can still replay an old 200, and such a replay also resets the freshness timer, so the row looks fresh. Fixes: (1) ofBrRobotPoll requests /status?t=<Date.now()> so no cache can answer; verified the robot serves query-string requests (returns LONG 1, realized 29.8); (2) the status cell now shows a '⏱ Nс' badge when the robot's own lastPriceUpdate is older than 15s, which exposes a replayed payload even if the HTTP request looked successful. app.js v153, bin synced, served v153, node --check PASS, BR start-button sim still 32/32."
+    },
+    {
+      "id": "F-232",
+      "name": "False 'нет связи' on BRF7 edp-2: background-tab timer throttling looked like a dead link",
+      "area": "ui/of-br",
+      "status": "done (app.js v154, bin synced, served verified, start-button sim 32/32)",
+      "owner": "main",
+      "date": "2026-11-25",
+      "summary": "Dmitry: 'BRF7 edp-2 пишет нет связи, исправить и запустить'. Facts: port 5086 was LISTENING (PID 103640), /status returned mode=running, price 88.20 live, broker flat and mismatch=false, and the robot log showed 31 status requests in the last 60s (30 for :5083) - i.e. the browser WAS reaching the robot. So 'нет связи' was a false label produced by our own F-230 rule: a hidden/background tab gets its timers throttled by the browser (down to ~1/min), the freshness mark ages past the 12s threshold and the row declares the link down. Fixed: while document.hidden the time-based branch is ignored (only real fetch failures count), the threshold was raised to 20s, and a visibilitychange listener polls both instances and re-renders immediately when the tab becomes visible again. app.js v154, bin synced, served v154, node --check PASS, sim 32/32. Bonus finding while checking: the robot entered LONG 2 @88.22 at 11:45:03 and the status briefly showed brokerLots=0 with mismatch=true; verified against DP /position that the broker really has dir=1 lots=2 avg=88.22 and after the next sync mismatch=false - it was a sync lag right after the fill, not a phantom."
     }
   ]
 }
