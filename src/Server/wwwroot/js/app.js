@@ -8512,7 +8512,10 @@ async function ofBrRobotApi(inst, action) {
         let resp = null, data = {};
         for (let attempt = 1; attempt <= maxAttempts; attempt++) {
             try {
-                resp = await fetch(cfg.api() + '/' + action, {method: 'POST', signal: makeTimeoutSignal(5000)});
+                // F-236: stop закрывает позицию рыночным ордером через DP — 5с мало (8 лотов шли ~10с),
+                // fetch рвался по таймауту, и пульт оставался на старом «Работает».
+                const _actTimeout = (action === 'stop' || action === 'pause') ? 25000 : 8000;
+                resp = await fetch(cfg.api() + '/' + action, {method: 'POST', signal: makeTimeoutSignal(_actTimeout)});
                 data = await resp.json().catch(() => ({}));
                 break;
             } catch(re) {
@@ -8530,6 +8533,13 @@ async function ofBrRobotApi(inst, action) {
             showToast(ok ? ('✅ ' + cfg.label + ' запущен — торговля включена')
                          : ('⚠ ' + cfg.label + ': ответ без подтверждения — ' + JSON.stringify(data).slice(0, 80)),
                       ok ? 'ok' : 'error', 12000);
+        } else if (action === 'stop' || action === 'pause') {
+            // F-236: явное подтверждение фактического режима, чтобы не казалось, что «не сработало»
+            const m = (data && data.mode) ? data.mode : '? ';
+            const human = action === 'stop'
+                ? (m === 'stopped' ? '⏹ ' + cfg.label + ' ОСТАНОВЛЕН' : '⚠ ' + cfg.label + ': режим ' + m)
+                : (m === 'paused' ? '⏸ ' + cfg.label + ' на паузе' : '⚠ ' + cfg.label + ': режим ' + m);
+            showToast(human, m === 'stopped' || m === 'paused' ? 'ok' : 'error', 12000);
         }
         setTimeout(async () => { await ofBrRobotPoll(inst); renderRobots(); }, 500);
     } catch(e) {

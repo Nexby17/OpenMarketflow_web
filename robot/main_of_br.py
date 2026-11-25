@@ -597,10 +597,17 @@ def main_loop():
     last_save = time.time()
     last_price_sync = 0.0
     _broker_sync_thread = None
+    last_idle_sync = 0.0
 
     while _running:
         try:
             if _mode != "running":
+                # F-236: на стопе/паузе главный цикл не синкал брокера вообще, и пульт
+                # показывал застывшее «робот 0 / брокер 8» после ручных сделок.
+                # Теперь брокерская позиция обновляется раз в 30с и в нерабочем режиме.
+                if time.time() - last_idle_sync >= 30:
+                    last_idle_sync = time.time()
+                    _broker_sync_once(ACCOUNTS.get(ACTIVE_ACCOUNT_KEY, ACCOUNT))
                 time.sleep(1)
                 continue
 
@@ -1095,6 +1102,12 @@ class APIHandler(BaseHTTPRequestHandler):
                         strategy._close_all(price, "manual_stop")
                         strategy._reset_position()
                 strategy._force_unlock()  # Reset entry lock after manual stop
+                # F-236: сразу обновить брокерский кэш лотов — иначе в stopped
+                # периодический синк молчит и пульт рисует старое «робот 0 / брокер N».
+                try:
+                    _broker_sync_once(ACCOUNTS.get(ACTIVE_ACCOUNT_KEY, ACCOUNT))
+                except Exception as _e:
+                    log.warning(f"STOP: broker sync refresh failed: {_e}")
                 save_state()
             self._json(200, {"ok": True, "mode": _mode, "paper": PAPER_MODE})
 
@@ -1458,6 +1471,11 @@ if __name__ == "__main__":
             _bpos = _r.json()
             _bl = _bpos.get('lots', 0)
             _rl = strategy._total_lots
+            # F-236: запомнить брокерское число сразу — пульт не должен показывать «—»/старое
+            try:
+                globals()['_last_broker_lots'] = _bl
+            except Exception:
+                pass
             if _bl != 0 and _rl == 0:
                 log.warning(f"STARTUP: broker has {_bl} lots (avg={fmt_price(_bpos.get('avg_price', 0))}) but robot is FLAT. NOT entering — investigate manually.")
                 _mode = "stopped"
