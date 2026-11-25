@@ -1,3 +1,13 @@
+// F-235: показываем версию сборки в шапке — сразу видно, что вкладка держит старый JS.
+(function () {
+    try {
+        var s = document.querySelector('script[src*="app.js"]');
+        var m = s && s.src ? s.src.match(/v=([0-9a-z.-]+)/i) : null;
+        var el = document.getElementById('appBuild');
+        if (m && el) el.textContent = 'build v' + m[1];
+    } catch (e) {}
+})();
+
 // === Auth Check ===
 // F-021 helper: decimal-comma tolerant number parse.
 // parseFloat('0,02') = 0 — Russian locale inputs were silently zeroed;
@@ -2618,7 +2628,7 @@ async function renderRobots() {
             <td class="${dirCls}">${dirText}${s.avgPrice > 0 ? ' @ ' + s.avgPrice.toFixed(0) : ''}</td>
             <td>—</td>
             <td class="${pnlCls(pnl)}">${pnl >= 0 ? '+' : ''}${pnl.toFixed(0)} ₽</td>
-            <td>${s.totalLots || 0}</td>
+            <td title="лоты: робот / брокер" style="white-space:nowrap">${s.totalLots || 0}<span style="color:#6B7280"> / </span><span style="color:${(typeof s.brokerLots === 'number' && s.brokerLots !== (s.totalLots || 0)) ? '#f87171' : 'inherit'};font-weight:${(typeof s.brokerLots === 'number' && s.brokerLots !== (s.totalLots || 0)) ? 'bold' : 'normal'}">${typeof s.brokerLots === 'number' ? s.brokerLots : '—'}</span></td>
             <td>—</td>
             <td>
                 <button class="btn btn-success btn-sm" onclick="ofRobotApi('start')" ${mode==='running'?'disabled':''}>▶</button>
@@ -2682,7 +2692,7 @@ async function renderRobots() {
             <td class="${dirCls}">${dirText}${s.avgPrice > 0 ? ' @ ' + s.avgPrice.toFixed(0) : ''}</td>
             <td>—</td>
             <td class="${pnlCls(pnl)}">${pnl >= 0 ? '+' : ''}${pnl.toFixed(0)} ₽</td>
-            <td>${s.totalLots || 0}</td>
+            <td title="лоты: робот / брокер" style="white-space:nowrap">${s.totalLots || 0}<span style="color:#6B7280"> / </span><span style="color:${(typeof s.brokerLots === 'number' && s.brokerLots !== (s.totalLots || 0)) ? '#f87171' : 'inherit'};font-weight:${(typeof s.brokerLots === 'number' && s.brokerLots !== (s.totalLots || 0)) ? 'bold' : 'normal'}">${typeof s.brokerLots === 'number' ? s.brokerLots : '—'}</span></td>
             <td>—</td>
             <td>
                 <button class="btn btn-success btn-sm" onclick="ofMxRobotApi('start')" ${mode==='running'?'disabled':''}>▶</button>
@@ -2739,7 +2749,7 @@ async function renderRobots() {
             <td class="${dirCls}">${dirText}${s.avgPrice > 0 ? ' @ ' + s.avgPrice.toFixed(2) : ''}</td>
             <td>—</td>
             <td class="${pnlCls(pnl)}">${pnl >= 0 ? '+' : ''}${pnl.toFixed(2)} ₽</td>
-            <td>${s.totalLots || 0}</td>
+            <td title="лоты: робот / брокер" style="white-space:nowrap">${s.totalLots || 0}<span style="color:#6B7280"> / </span><span style="color:${(typeof s.brokerLots === 'number' && s.brokerLots !== (s.totalLots || 0)) ? '#f87171' : 'inherit'};font-weight:${(typeof s.brokerLots === 'number' && s.brokerLots !== (s.totalLots || 0)) ? 'bold' : 'normal'}">${typeof s.brokerLots === 'number' ? s.brokerLots : '—'}</span></td>
             <td>—</td>
             <td>
                 <button class="btn btn-success btn-sm" onclick="ofPerpRobotApi('start')" ${mode==='running'?'disabled':''}>▶</button>
@@ -2790,6 +2800,9 @@ async function renderRobots() {
             const _pxTs = (typeof s.lastPriceUpdate === 'number' && s.lastPriceUpdate > 0) ? s.lastPriceUpdate : null;
             const _dataAge = _pxTs ? Math.round(Date.now() / 1000 - _pxTs) : null;
             const _dataStale = _dataAge !== null && _dataAge > 15;
+            // F-235: в колонке лотов показываем ОБА числа — робот / брокер, чтобы расхождение было видно сразу.
+            const _bl = (typeof s.brokerLots === 'number') ? s.brokerLots : null;
+            const _lotsMatch = (_bl === null) || (_bl === (s.totalLots || 0));
             const _desyncBadge = _desync
                 ? ' <span class="badge" style="background:#7f1d1d;color:#FCA5A5;border:1px solid #ef4444" ' +
                   'title="Робот и брокер расходятся: робот ' + (s.totalLots || 0) + ' лот., брокер ' + s.brokerLots +
@@ -2817,7 +2830,7 @@ async function renderRobots() {
             <td class="${dirCls}">${dirText}${s.avgPrice > 0 ? ' @ ' + s.avgPrice.toFixed(2) : ''}</td>
             <td>—</td>
             <td class="${pnlCls(pnl)}">${pnl >= 0 ? '+' : ''}${pnl.toFixed(0)} ₽</td>
-            <td>${s.totalLots || 0}</td>
+            <td title="лоты: робот / брокер" style="white-space:nowrap">${s.totalLots || 0}<span style="color:#6B7280"> / </span><span style="color:${_lotsMatch ? 'inherit' : '#f87171'};font-weight:${_lotsMatch ? 'normal' : 'bold'}">${_bl === null ? '—' : _bl}</span></td>
             <td>—</td>
             <td>
                 <button class="btn btn-success btn-sm" onclick="ofBrRobotApi('${inst}','start')" ${mode==='running'?'disabled':''}>▶</button>

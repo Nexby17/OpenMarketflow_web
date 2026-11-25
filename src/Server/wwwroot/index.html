@@ -51,6 +51,7 @@
     <header>
         <div class="header-left">
             <span class="logo">⚡ OpenMarketflow</span>
+            <span id="appBuild" title="Версия UI. Если тут старее, чем на сервере — нажми Ctrl+Shift+R" style="font-size:11px;color:#6B7280;margin-left:8px"></span>
             <span id="statusIndicator" class="status-dot red"></span>
             <span id="statusText" class="status-text">Не подключён</span>
         </div>
@@ -172,7 +173,7 @@
         <div class="card">
             <div class="card-header">📈 Активные стратегии</div>
             <table class="data-table">
-                <thead><tr><th>Инструмент</th><th>Стратегия</th><th>Счёт</th><th>Позиция</th><th>PnL сегодня</th><th>PnL всего</th><th>Лоты</th><th>ГО (₽)</th><th>Управление</th><th>Статус</th></tr></thead>
+                <thead><tr><th>Инструмент</th><th>Стратегия</th><th>Счёт</th><th>Позиция</th><th>PnL сегодня</th><th>PnL всего</th><th title="робот / брокер">Лоты<br><span style="font-size:10px;color:#6B7280">робот / брокер</span></th><th>ГО (₽)</th><th>Управление</th><th>Статус</th></tr></thead>
                 <tbody id="robotsTable"></tbody>
             </table>
             <div id="noRobots" class="card-body text-secondary" style="text-align:center;padding:32px">Нет активных роботов. Создайте робота на вкладке «Стратегии».</div>
@@ -475,7 +476,7 @@
     <script src="/js/modules/indicators.js"></script>
     <script src="/js/modules/chart.js?v=21"></script>
     <script src="/js/modules/log.js"></script>
-<script src="/js/app.js?v=155"></script>
-    <script src="/js/modules/sarema.js?v=67"></script>
+<script src="/js/app.js?v=158"></script>
+    <script src="/js/modules/sarema.js?v=70"></script>
 </body>
 </html>
