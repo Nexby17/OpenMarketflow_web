@@ -2774,12 +2774,28 @@ async function renderRobots() {
         if (s) {
             const mode = s.mode || 'stopped';
             const _gateClosed = s.timingGate === true;
-        const modeText = mode === 'running'
-            ? (_gateClosed ? '⏳ Вне окна (тайминг)' : '🟢 Работает')
-            : mode === 'paused' ? '🟡 Пауза' : '🔴 Остановлен';
-            const modeCls = mode === 'running'
-            ? (_gateClosed ? 'yellow' : 'green')
-            : mode === 'paused' ? 'yellow' : 'red';
+            // F-230: «нет связи» ≠ «остановлен». Три подряд неудачи опроса или данные старше 12с —
+            // показываем последний известный режим, но честно говорим, что связи нет.
+            const _lastOk = window['_ofBrLastOk_' + inst] || 0;
+            const _staleSec = _lastOk ? Math.round((Date.now() - _lastOk) / 1000) : null;
+            const _linkDown = (window['_ofBrFail_' + inst] || 0) >= 3 || (_staleSec !== null && _staleSec > 12);
+            const _modeHuman = mode === 'running' ? 'Работает' : mode === 'paused' ? 'Пауза' : 'Остановлен';
+            const _desync = (s.brokerMismatch === true) || (typeof s.brokerLots === 'number' && s.brokerLots !== (s.totalLots || 0));
+            const _desyncBadge = _desync
+                ? ' <span class="badge" style="background:#7f1d1d;color:#FCA5A5;border:1px solid #ef4444" ' +
+                  'title="Робот и брокер расходятся: робот ' + (s.totalLots || 0) + ' лот., брокер ' + s.brokerLots +
+                  '. Не закрывай руками — сначала SYNC в панели (двойной клик по строке)">⚠ DESYNC</span>'
+                : '';
+        const modeText = _linkDown
+            ? ('⚪ Нет связи' + (_staleSec !== null ? ' (' + _staleSec + 'с)' : ''))
+            : (mode === 'running'
+                ? (_gateClosed ? '⏳ Вне окна (тайминг)' : '🟢 Работает')
+                : mode === 'paused' ? '🟡 Пауза' : '🔴 Остановлен');
+            const modeCls = _linkDown
+            ? 'yellow'
+            : (mode === 'running'
+                ? (_gateClosed ? 'yellow' : 'green')
+                : mode === 'paused' ? 'yellow' : 'red');
             const dirText = s.direction === 'LONG' ? 'Лонг' : s.direction === 'SHORT' ? 'Шорт' : 'Флэт';
             const dirCls = s.direction === 'LONG' ? 'green' : s.direction === 'SHORT' ? 'red' : '';
             const pnlCls = v => v >= 0 ? 'green' : 'red';
@@ -2800,7 +2816,7 @@ async function renderRobots() {
                 <button class="btn btn-danger btn-sm" onclick="ofBrRobotApi('${inst}','stop')" ${mode==='stopped'?'disabled':''}>⏹</button>
                 <button class="btn btn-sm" style="background:#2196F3;color:#fff" title="Регламентный рестарт (FLAT-чек, cooldown 90с)" onclick="ofBrRobotRestart('${inst}')" ${window['_ofBrRestarting_'+inst]?'disabled':''}>${window['_ofBrRestarting_'+inst]?'⏳':'🔄'}</button>
             </td>
-            <td class="${modeCls}">${modeText}</td>
+            <td class="${modeCls}" title="${_linkDown ? ('Последние данные ' + _staleSec + 'с назад: ' + _modeHuman) : (mode === 'running' ? 'Робот торгует' : 'Робот не торгует')}">${modeText}${_desyncBadge}</td>
         </tr>`;
         } else {
             return `<tr ondblclick="ofBrRobotEditPanel('${inst}')" style="cursor:pointer" title="Двойной клик — настройки робота">
@@ -2815,7 +2831,7 @@ async function renderRobots() {
             <td>
                 <button class="btn btn-success btn-sm" onclick="ofBrRobotApi('${inst}','start')">▶</button>
             </td>
-            <td class="red">🔴 Не запущен</td>
+            <td class="yellow" title="Робот не ответил ни разу: процесс не поднят или порт недоступен. Это НЕ значит, что робот остановлен — нажми ▶, чтобы поднять/включить">⚪ Нет связи</td>
         </tr>`;
         }
     }).join('');
@@ -8332,8 +8348,11 @@ function ofBrCfg(inst) { return OF_BR_INSTANCES[inst] || OF_BR_INSTANCES.edp; }
 async function ofBrRobotPoll(inst) {
     const cfg = ofBrCfg(inst);
     try {
-        const resp = await fetch(cfg.api() + '/status', {signal: makeTimeoutSignal(2000)});
+        // F-230: no-store — иначе браузер может отдать закэшированный /status и строка врёт
+        const resp = await fetch(cfg.api() + '/status', {signal: makeTimeoutSignal(4000), cache: 'no-store'});
         window[cfg.stateKey] = await resp.json();
+        window['_ofBrFail_' + inst] = 0;
+        window['_ofBrLastOk_' + inst] = Date.now();
         // Робот только что поднялся → досинхронизировать параметры, сохранённые при офлайне
         if (!window['_ofBrWasOnline_' + inst]) {
             window['_ofBrWasOnline_' + inst] = true;
@@ -8348,8 +8367,15 @@ async function ofBrRobotPoll(inst) {
             }
         }
     } catch(e) {
-        window[cfg.stateKey] = null;
-        window['_ofBrWasOnline_' + inst] = false;
+        // F-230: НЕ обнуляем данные с первого сбоя. Раньше любой таймаут (2с!) рисовал
+        // строку как «🔴 Не запущен», хотя робот торговал (жалоба Дмитрия 25.11).
+        // Теперь: считаем серию сбоев и держим последние известные данные; «нет связи»
+        // показывается отдельно от «остановлен» после 3 подряд неудач.
+        window['_ofBrFail_' + inst] = (window['_ofBrFail_' + inst] || 0) + 1;
+        if (window['_ofBrFail_' + inst] === 1) {
+            window['_ofBrWasOnline_' + inst] = false;
+        }
+        if (!window[cfg.stateKey]) { window['_ofBrWasOnline_' + inst] = false; }
     }
 }
 
