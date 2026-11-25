@@ -1513,6 +1513,15 @@
       "owner": "main",
       "date": "2026-11-25",
       "summary": "Dmitry: 'робот открыл лонг, но сам показывал что выключен, я закрыл лонг руками'. Root cause of the phantom seen earlier: ofBrRobotPoll nulled the instance state on ANY fetch error with a 2s timeout and the row then rendered the offline branch literally as '🔴 Не запущен'. A slow /status (status builds the whole trade history) or a cached GET made a running robot look stopped, so the only visible 'position' was on the broker and he flattened it manually -> robot kept LONG 1 vs broker 0 (DESYNC). Fixes in app.js: (1) poll uses cache:'no-store' and a 4s timeout; (2) failures are counted and last known data is KEPT instead of nulled; (3) row shows '⚪ Нет связи (Nс)' with a tooltip 'последние данные Nс назад: Работает/Остановлен' only after 3 consecutive failures or >12s without data — '🔴 Остановлен' now means the robot actually reported stopped; (4) offline branch text changed from '🔴 Не запущен' to '⚪ Нет связи' (no connection is not the same as stopped); (5) new '⚠ DESYNC' badge when brokerMismatch is true or brokerLots != totalLots, with a hint to use SYNC instead of closing manually. Server-side Cache-Control was left alone on purpose: client no-store is the actual fix and it needs no robot restart (edp holds a live LONG)."
+    },
+    {
+      "id": "F-231",
+      "name": "BR row showed Флэт/0 lots while the robot was LONG 1 — cached /status; cache-buster + data-age badge",
+      "area": "ui/of-br",
+      "status": "done (app.js v153, bin synced, served verified, start-button sim 32/32)",
+      "owner": "main",
+      "date": "2026-11-25",
+      "summary": "Dmitry: 'робот открыл лонг, но по строке лоты стоит 0'. Facts at check time: robot LONG 1 @87.53 (entry 11:30:04 by cvd_trend, fill 87.53), broker /position dir=1 lots=1 avg=87.53, brokerMismatch=false, no active orders — the robot and the broker agreed; only the UI row was wrong (Флэт, 0, +14 ₽, i.e. the state from before the entry, while realized was already 29.8). So the tab was rendering a stale/cached /status payload. Code path was correct: the 3s poll loop iterates OF_BR_INSTANCE_ORDER and calls renderRobots(), and the lots cell is s.totalLots. F-230's cache:'no-store' was not enough — a caching layer (browser heuristic / AV proxy) can still replay an old 200, and such a replay also resets the freshness timer, so the row looks fresh. Fixes: (1) ofBrRobotPoll requests /status?t=<Date.now()> so no cache can answer; verified the robot serves query-string requests (returns LONG 1, realized 29.8); (2) the status cell now shows a '⏱ Nс' badge when the robot's own lastPriceUpdate is older than 15s, which exposes a replayed payload even if the HTTP request looked successful. app.js v153, bin synced, served v153, node --check PASS, BR start-button sim still 32/32."
     }
   ]
 }

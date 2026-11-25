@@ -2781,6 +2781,11 @@ async function renderRobots() {
             const _linkDown = (window['_ofBrFail_' + inst] || 0) >= 3 || (_staleSec !== null && _staleSec > 12);
             const _modeHuman = mode === 'running' ? 'Работает' : mode === 'paused' ? 'Пауза' : 'Остановлен';
             const _desync = (s.brokerMismatch === true) || (typeof s.brokerLots === 'number' && s.brokerLots !== (s.totalLots || 0));
+            // F-231: возраст рыночных данных самого робота (lastPriceUpdate — epoch-секунды).
+            // Если ответ пришёл из кэша, HTTP-код 200 и счётчик сбоев молчат — возраст свежести вскрывает подмену.
+            const _pxTs = (typeof s.lastPriceUpdate === 'number' && s.lastPriceUpdate > 0) ? s.lastPriceUpdate : null;
+            const _dataAge = _pxTs ? Math.round(Date.now() / 1000 - _pxTs) : null;
+            const _dataStale = _dataAge !== null && _dataAge > 15;
             const _desyncBadge = _desync
                 ? ' <span class="badge" style="background:#7f1d1d;color:#FCA5A5;border:1px solid #ef4444" ' +
                   'title="Робот и брокер расходятся: робот ' + (s.totalLots || 0) + ' лот., брокер ' + s.brokerLots +
@@ -2816,7 +2821,7 @@ async function renderRobots() {
                 <button class="btn btn-danger btn-sm" onclick="ofBrRobotApi('${inst}','stop')" ${mode==='stopped'?'disabled':''}>⏹</button>
                 <button class="btn btn-sm" style="background:#2196F3;color:#fff" title="Регламентный рестарт (FLAT-чек, cooldown 90с)" onclick="ofBrRobotRestart('${inst}')" ${window['_ofBrRestarting_'+inst]?'disabled':''}>${window['_ofBrRestarting_'+inst]?'⏳':'🔄'}</button>
             </td>
-            <td class="${modeCls}" title="${_linkDown ? ('Последние данные ' + _staleSec + 'с назад: ' + _modeHuman) : (mode === 'running' ? 'Робот торгует' : 'Робот не торгует')}">${modeText}${_desyncBadge}</td>
+            <td class="${modeCls}" title="${_linkDown ? ('Последние данные ' + _staleSec + 'с назад: ' + _modeHuman) : (mode === 'running' ? 'Робот торгует' : 'Робот не торгует')}">${modeText}${_desyncBadge}${_dataStale ? ' <span class="badge" style="background:#422006;color:#FBBF24;border:1px solid #B45309" title="Данные робота не обновлялись ' + _dataAge + 'с — строка может быть устаревшей">⏱ ' + _dataAge + 'с</span>' : ''}</td>
         </tr>`;
         } else {
             return `<tr ondblclick="ofBrRobotEditPanel('${inst}')" style="cursor:pointer" title="Двойной клик — настройки робота">
@@ -8348,8 +8353,9 @@ function ofBrCfg(inst) { return OF_BR_INSTANCES[inst] || OF_BR_INSTANCES.edp; }
 async function ofBrRobotPoll(inst) {
     const cfg = ofBrCfg(inst);
     try {
-        // F-230: no-store — иначе браузер может отдать закэшированный /status и строка врёт
-        const resp = await fetch(cfg.api() + '/status', {signal: makeTimeoutSignal(4000), cache: 'no-store'});
+        // F-231: cache-buster в URL — даже если браузер/антивирус/прокси закэширует GET /status,
+        // уникальный ?t= гарантирует свежий ответ (F-230 no-store помогал не везде:)
+        const resp = await fetch(cfg.api() + '/status?t=' + Date.now(), {signal: makeTimeoutSignal(4000), cache: 'no-store'});
         window[cfg.stateKey] = await resp.json();
         window['_ofBrFail_' + inst] = 0;
         window['_ofBrLastOk_' + inst] = Date.now();
