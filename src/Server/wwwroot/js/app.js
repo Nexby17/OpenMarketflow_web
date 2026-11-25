@@ -8375,6 +8375,28 @@ async function toggleOfBrSignal(inst, param, value) {
     }
 }
 
+// F-229 (25.11): локальный супервизор запуска (scripts/robot_supervisor.py, порт 5099).
+// Нужен там, где C#-эндпоинт /api/of/process/... не может помочь: нет спеки робота в
+// RobotProcessManager (например, второй BR-инстанс of_br_edp2 :5086) или истекла UI-сессия.
+// Белый список имён живёт на стороне супервизора — браузер не может запустить что угодно.
+async function robotSpawnViaSupervisor(name, label) {
+    const who = 'SUP[' + (label || name) + ']';
+    const url = 'http://' + window.location.hostname + ':5099/start?name=' + encodeURIComponent(name);
+    try {
+        const r = await fetch(url, {method: 'POST', signal: makeTimeoutSignal(40000)});
+        const d = await r.json().catch(() => ({}));
+        if (d && d.ok) {
+            robotStartLog(who, 'процесс поднят: ' + JSON.stringify(d).slice(0, 130));
+            return {ok: true, data: d};
+        }
+        robotStartLog(who, 'не поднял (HTTP ' + r.status + '): ' + JSON.stringify(d).slice(0, 140), 'error');
+        return {ok: false, data: d};
+    } catch (e) {
+        robotStartLog(who, 'супервизор недоступен: ' + (e && e.message), 'error');
+        return {ok: false, error: e && e.message};
+    }
+}
+
 async function ofBrRobotApi(inst, action) {
     const cfg = ofBrCfg(inst);
     if (action === 'stop' && !confirm('Стоп ' + cfg.label + '? Снимет ордера и закроет позицию по рынку.')) return;
@@ -8385,32 +8407,52 @@ async function ofBrRobotApi(inst, action) {
             // Раньше кнопка ▶ всегда шла в /api/of/process/.../start, который требует UI-сессию:
             // при истёкшей сессии приходил 401, pd.ok отсутствовал → молчаливый return,
             // хотя процесс робота был жив (жалоба Дмитрия 18.11 по BRZ6 edp).
+            robotStartLog('BR[' + cfg.label + '] ▶', 'нажато');
             let robotAlive = false;
             try {
                 const hp = await fetch(cfg.api() + '/health', {signal: makeTimeoutSignal(2500)});
                 robotAlive = hp.ok;
-            } catch (he) { robotAlive = false; }
+                robotStartLog('BR[' + cfg.label + '] ▶', 'health HTTP ' + hp.status +
+                    (hp.ok ? ' — процесс жив, поднимать не нужно' : ' — процесс не отвечает'));
+            } catch (he) {
+                robotAlive = false;
+                robotStartLog('BR[' + cfg.label + '] ▶', 'health недоступен: ' + (he && he.message ? he.message : he), 'error');
+            }
             if (!robotAlive) {
                 showToast('⏳ Поднимаю процесс ' + cfg.label + ' (подключение к Finam ~15с)...', 'info');
+                let spawned = false;
+                // 1) C#-путь — знает только штатные роботы и требует UI-сессию
                 try {
-                    const pr = await fetch('/api/of/process/' + cfg.procName + '/start', {method: 'POST', signal: makeTimeoutSignal(35000)});
+                    const pr = await fetch('/api/of/process/' + cfg.procName + '/start',
+                        {method: 'POST', signal: makeTimeoutSignal(35000)});
+                    robotStartLog('BR[' + cfg.label + '] ▶', 'C# process-start HTTP ' + pr.status);
                     if (pr.status === 401) {
-                        showToast('🔐 Сессия истекла — нажми Ctrl+F5 и перезайди, затем ▶ ещё раз', 'error');
-                        addLog(nowTime(), 'ERROR', cfg.label + ' process start: 401 Unauthorized (сессия истекла)');
-                        return;
+                        robotStartLog('BR[' + cfg.label + '] ▶', 'C#: 401 (сессия истекла) — иду в локальный супервизор', 'error');
+                    } else if (pr.ok) {
+                        const pd = await pr.json().catch(() => ({}));
+                        if (pd && pd.ok) {
+                            spawned = true;
+                            robotStartLog('BR[' + cfg.label + '] ▶', 'процесс поднят C#: ' + JSON.stringify(pd).slice(0, 120));
+                        } else {
+                            robotStartLog('BR[' + cfg.label + '] ▶', 'C# не поднял: ' + ((pd && pd.error) || '?'), 'error');
+                        }
+                    } else {
+                        robotStartLog('BR[' + cfg.label + '] ▶', 'C# отказал HTTP ' + pr.status, 'error');
                     }
-                    const pd = await pr.json();
-                    if (!pd.ok) {
-                        showToast('❌ Процесс ' + cfg.label + ' не поднялся: ' + (pd.error || '?'), 'error');
-                        addLog(nowTime(), 'ERROR', cfg.label + ' process start failed: ' + (pd.error || '?'));
-                        return;
-                    }
-                    showToast('🟢 Процесс ' + cfg.label + ' поднят' + (pd.alreadyRunning ? ' (уже работал)' : '') + ' — включаю робота', 'ok');
-                } catch(pe) {
-                    showToast('❌ Не удалось поднять процесс ' + cfg.label + ': ' + pe.message, 'error');
-                    addLog(nowTime(), 'ERROR', cfg.label + ' process start error: ' + pe.message);
+                } catch (pe) {
+                    robotStartLog('BR[' + cfg.label + '] ▶', 'C# ошибка: ' + (pe && pe.message), 'error');
+                }
+                // 2) F-229: локальный супервизор — единственный путь для роботов без C#-спеки
+                if (!spawned) {
+                    const sup = await robotSpawnViaSupervisor(cfg.procName, cfg.label);
+                    spawned = !!(sup && sup.ok);
+                }
+                if (!spawned) {
+                    showToast('❌ Процесс ' + cfg.label + ' не поднялся — смотри журнал запуска (вкладка Логи)', 'error', 12000);
+                    addLog(nowTime(), 'ERROR', cfg.label + ' process start failed: C# + супервизор не подняли процесс');
                     return;
                 }
+                showToast('🟢 Процесс ' + cfg.label + ' поднят — включаю торговлю', 'ok', 8000);
             } else {
                 showToast('ℹ ' + cfg.label + ': процесс уже работает — включаю торговлю напрямую', 'info');
             }
@@ -8431,12 +8473,22 @@ async function ofBrRobotApi(inst, action) {
                 } else { throw re; }
             }
         }
+        const httpCode = resp ? resp.status : '-'
+        robotStartLog('BR[' + cfg.label + '] ▶', action + ' HTTP ' + httpCode + ' → ' + JSON.stringify(data).slice(0, 110));
         addLog(nowTime(), 'INFO', 'OF-BR[' + cfg.label + '] ' + action + ': ' + JSON.stringify(data).slice(0, 120));
+        if (action === 'start') {
+            const ok = data && (data.ok !== false) && (data.mode === 'running' || data.mode === undefined);
+            showToast(ok ? ('✅ ' + cfg.label + ' запущен — торговля включена')
+                         : ('⚠ ' + cfg.label + ': ответ без подтверждения — ' + JSON.stringify(data).slice(0, 80)),
+                      ok ? 'ok' : 'error', 12000);
+        }
         setTimeout(async () => { await ofBrRobotPoll(inst); renderRobots(); }, 500);
     } catch(e) {
         // F-011: робот offline — видимая обратная связь
+        robotStartLog('BR[' + cfg.label + '] ▶', 'ОШИБКА ' + action + ': ' + (e && e.message ? e.message : e), 'error');
         addLog(nowTime(), 'ERROR', 'Робот ' + cfg.label + ' недоступен (' + action + ' не отправлено)');
-        showToast('⚠ Робот ' + cfg.label + ' не отвечает — попробуй ещё раз через ~15с (процесс мог ещё подниматься)', 'error');
+        showToast('⚠ Робот ' + cfg.label + ' не отвечает — ' + (e && e.message ? e.message : 'ошибка сети') +
+                  '. Подробности — в журнале запуска (вкладка Логи)', 'error', 12000);
     }
 }
 

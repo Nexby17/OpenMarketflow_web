@@ -26,3 +26,12 @@ if (-not $serverAlive) {
 # Автозапуск поднимает ТОЛЬКО сервер (UI, данные, риск-панель).
 
 Log "autostart done (server only; robots are manual by design)"
+
+# F-229: local robot supervisor (:5099) - lets the UI start robots that the C# server does not know
+# (e.g. of_br_edp2 :5086: no .NET SDK on this machine to rebuild RobotProcessManager). Infrastructure
+# only: it spawns whitelisted python robot processes, it never trades.
+$supAlive = Get-NetTCPConnection -LocalPort 5099 -State Listen -ErrorAction SilentlyContinue
+if (-not $supAlive) {
+    Start-Process -FilePath "D:\AutoClaw\resources\python\python3.exe" -ArgumentList "$proj\scripts\robot_supervisor.py","--port","5099" -WorkingDirectory $proj -WindowStyle Hidden
+    Log "robot supervisor started (:5099)"
+} else { Log "robot supervisor already running" }
