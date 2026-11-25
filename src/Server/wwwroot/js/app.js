@@ -2565,7 +2565,7 @@ async function renderRobots() {
             <td class="${dirCls}">${dirText}${s.entry_price > 0 ? ' @ ' + s.entry_price.toFixed(0) : ''}</td>
             <td>—</td>
             <td class="${pnlCls(totalPnl)}">${totalPnl >= 0 ? '+' : ''}${totalPnl.toFixed(0)} ₽</td>
-            <td>${s.total_lots}</td>
+            <td>${(s.total_lots ?? s.totalLots ?? 0)}</td>
             <td>—</td>
             <td>
                 <button class="btn btn-success btn-sm" onclick="robotApi('start')" ${mode==='running'?'disabled':''}>▶</button>
@@ -2588,7 +2588,7 @@ async function renderRobots() {
             <td>—</td>
             <td>—</td>
             <td>—</td>
-            <td>0</td>
+            <td title="нет связи с роботом — число лотов неизвестно" style="color:#6B7280">— / —</td>
             <td>—</td>
             <td>
                 <button class="btn btn-success btn-sm" onclick="robotApi('start')">▶</button>
@@ -2651,7 +2651,7 @@ async function renderRobots() {
             <td>—</td>
             <td>—</td>
             <td>—</td>
-            <td>0</td>
+            <td title="нет связи с роботом — число лотов неизвестно" style="color:#6B7280">— / —</td>
             <td>—</td>
             <td>
                 <button class="btn btn-success btn-sm" onclick="ofRobotApi('start')">▶</button>
@@ -2715,7 +2715,7 @@ async function renderRobots() {
             <td>—</td>
             <td>—</td>
             <td>—</td>
-            <td>0</td>
+            <td title="нет связи с роботом — число лотов неизвестно" style="color:#6B7280">— / —</td>
             <td>—</td>
             <td>
                 <button class="btn btn-success btn-sm" onclick="ofMxRobotApi('start')">▶</button>
@@ -2766,7 +2766,7 @@ async function renderRobots() {
             <td>—</td>
             <td>—</td>
             <td>—</td>
-            <td>0</td>
+            <td title="нет связи с роботом — число лотов неизвестно" style="color:#6B7280">— / —</td>
             <td>—</td>
             <td>
                 <button class="btn btn-success btn-sm" onclick="ofPerpRobotApi('start')">▶</button>
@@ -2848,7 +2848,7 @@ async function renderRobots() {
             <td>—</td>
             <td>—</td>
             <td>—</td>
-            <td>0</td>
+            <td title="последние известные: робот / брокер (связи нет)" style="white-space:nowrap;color:#9CA3AF">${(window['_ofBrLastData_' + inst] && typeof window['_ofBrLastData_' + inst].totalLots === 'number') ? window['_ofBrLastData_' + inst].totalLots : '—'}<span style="color:#4B5563"> / </span>${(window['_ofBrLastData_' + inst] && typeof window['_ofBrLastData_' + inst].brokerLots === 'number') ? window['_ofBrLastData_' + inst].brokerLots : '—'}</td>
             <td>—</td>
             <td>
                 <button class="btn btn-success btn-sm" onclick="ofBrRobotApi('${inst}','start')">▶</button>
@@ -8376,6 +8376,7 @@ async function ofBrRobotPoll(inst) {
         window[cfg.stateKey] = await resp.json();
         window['_ofBrFail_' + inst] = 0;
         window['_ofBrLastOk_' + inst] = Date.now();
+        window['_ofBrLastData_' + inst] = window[cfg.stateKey];   // F-237: последние известные числа для offline-строки
         // Робот только что поднялся → досинхронизировать параметры, сохранённые при офлайне
         if (!window['_ofBrWasOnline_' + inst]) {
             window['_ofBrWasOnline_' + inst] = true;
