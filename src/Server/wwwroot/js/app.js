@@ -2859,8 +2859,7 @@ async function renderRobots() {
             <td>
                 <button class="btn btn-success btn-sm" onclick="ofBrRobotApi('${inst}','start')">▶</button>
             </td>
-            <td class="yellow" title="Причина: ' + (window['_ofBrLastErr_' + inst] || 'нет ответа') + '">⚪ Нет связи'
-                + (window['_ofBrLastErr_' + inst] ? ' <span style="font-size:10px;color:#9CA3AF">(' + String(window['_ofBrLastErr_' + inst]).slice(0, 40) + ')</span>' : '') + '</td>
+            <td class="yellow" title="Причина: ${window['_ofBrLastErr_' + inst] || 'нет ответа'}">⚪ Нет связи${window['_ofBrLastErr_' + inst] ? ' <span style="font-size:10px;color:#9CA3AF">(' + String(window['_ofBrLastErr_' + inst]).slice(0, 40) + ')</span>' : ''}</td>
         </tr>`;
         }
         } catch (rowErr) {
