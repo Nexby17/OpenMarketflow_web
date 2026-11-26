@@ -38,6 +38,7 @@ import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse, parse_qs
+import urllib.request
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.dirname(HERE)
@@ -196,6 +197,40 @@ def _is_private(host: str) -> bool:
         any(host.startswith("172.%d." % n) for n in range(16, 32))
 
 
+
+# --- F-245: снапшоты статусов в wwwroot, чтобы UI читал их с ТОГО ЖЕ origin (5050) ---
+WWWROOT_DATA = os.path.join(REPO, "src", "Server", "bin", "Debug", "net10.0", "wwwroot", "data")
+
+
+def _write_json_atomic(path: str, obj) -> None:
+    tmp = path + ".tmp"
+    with open(tmp, "w", encoding="utf-8", newline="\n") as f:
+        json.dump(obj, f, ensure_ascii=False)
+    os.replace(tmp, path)
+
+
+def _snapshot_loop() -> None:
+    """Каждые 2с складывает /status каждого живого робота в wwwroot/data/<name>.json.
+
+    Зачем: браузер может быть не в состоянии достучаться до порта робота (антивирус, политики,
+    другой интерфейс), и тогда строка висит в «нет связи» при живом роботе. Файл отдаёт тот же
+    сервер, что и страница, — кросс-портовые запросы больше не нужны.
+    """
+    os.makedirs(WWWROOT_DATA, exist_ok=True)
+    while True:
+        for name, (_script, port, _env) in ROBOTS.items():
+            try:
+                if not _port_open(port, timeout=0.3):
+                    continue
+                with urllib.request.urlopen("http://127.0.0.1:%d/status" % port, timeout=3) as r:
+                    data = json.loads(r.read().decode("utf-8"))
+                data["_snapshot_ts"] = int(time.time() * 1000)
+                _write_json_atomic(os.path.join(WWWROOT_DATA, name + ".json"), data)
+            except Exception:
+                pass
+        time.sleep(2)
+
+
 class Handler(BaseHTTPRequestHandler):
     server_version = "RobotSupervisor/1.0"
 
@@ -282,6 +317,7 @@ def main():
     ap.add_argument("--bind", default="0.0.0.0")
     args = ap.parse_args()
     _log("supervisor starting on %s:%d python=%s robots=%s" % (args.bind, args.port, PYTHON, ",".join(sorted(ROBOTS))))
+    threading.Thread(target=_snapshot_loop, daemon=True, name='snapshot').start()
     srv = ThreadingHTTPServer((args.bind, args.port), Handler)
     try:
         srv.serve_forever()

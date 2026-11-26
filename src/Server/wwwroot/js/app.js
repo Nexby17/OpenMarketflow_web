@@ -8412,6 +8412,23 @@ async function ofBrRobotPoll(inst) {
             }
         }
     } catch(e) {
+        // F-245: если браузер не может достучаться до порта робота — берём снапшот с ТОГО ЖЕ origin.
+        // Супервизор обновляет /data/<name>.json каждые 2с, поэтому строка никогда не висит в «нет связи».
+        try {
+            const rs = await fetch('/data/' + cfg.procName + '.json?t=' + Date.now(),
+                                   {cache: 'no-store', signal: makeTimeoutSignal(3000)});
+            if (rs.ok) {
+                const snap = await rs.json();
+                if (snap && typeof snap === 'object') {
+                    window[cfg.stateKey] = snap;
+                    window['_ofBrLastData_' + inst] = snap;
+                    window['_ofBrFail_' + inst] = 0;
+                    window['_ofBrLastOk_' + inst] = (typeof snap._snapshot_ts === 'number') ? snap._snapshot_ts : Date.now();
+                    window['_ofBrLastErr_' + inst] = 'snapshot: порт робота недоступен браузеру';
+                    return;
+                }
+            }
+        } catch (e2) {}
         // F-230: НЕ обнуляем данные с первого сбоя. Раньше любой таймаут (2с!) рисовал
         // строку как «🔴 Не запущен», хотя робот торговал (жалоба Дмитрия 25.11).
         // Теперь: считаем серию сбоев и держим последние известные данные; «нет связи»
