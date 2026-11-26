@@ -8,6 +8,9 @@
     } catch (e) {}
 })();
 
+// F-239: маркер сборки в консоли и в window — доказательство, что вкладка загрузила актуальный код.
+try { window.__OMF_BUILD = '162'; console.log('[OpenMarketflow] build 162'); } catch (e) {}
+
 // === Auth Check ===
 // F-021 helper: decimal-comma tolerant number parse.
 // parseFloat('0,02') = 0 — Russian locale inputs were silently zeroed;
