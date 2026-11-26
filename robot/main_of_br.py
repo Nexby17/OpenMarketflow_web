@@ -153,7 +153,8 @@ _fill_sub_thread: threading.Thread | None = None
 fp: FinamPy | None = None
 _running = True
 _mode = "stopped"  # stopped, running, paused
-_last_broker_lots = None  # last known broker lots (from periodic /position sync)
+_last_broker_lots = None
+_ua_log_ts = 0.0  # F-240: last status-request diagnostic timestamp  # last known broker lots (from periodic /position sync)
 _last_fp_reconnect: float = 0.0  # guard against reconnect loop
 # F-063: counters/state for watchdog diagnostics + post-reconnect grace
 _reconnect_count: int = 0
@@ -970,6 +971,15 @@ class APIHandler(BaseHTTPRequestHandler):
         parsed = urlparse(self.path)
         path = parsed.path  # Extract path without query params
         params_url = parse_qs(parsed.query)
+        # F-240: диагностика клиента — видно, доходит ли браузер до этого инстанса и с каким UA.
+        # Не чаще одного раза в 20с, чтобы не заспамить лог.
+        global _ua_log_ts
+        if path == "/status" and (time.time() - _ua_log_ts) > 20:
+            _ua_log_ts = time.time()
+            try:
+                log.info(f"STATUS client={self.client_address[0]} ua={(self.headers.get('User-Agent') or '-')[:70]} path={self.path[:60]}")
+            except Exception:
+                pass
 
         if path == "/status":
             status = strategy.get_status()

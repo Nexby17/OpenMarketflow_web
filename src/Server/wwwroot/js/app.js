@@ -2781,7 +2781,10 @@ async function renderRobots() {
     // Order Flow BR robot rows (два инстанса: main :5082 счёт 1225953, edp :5083 счёт 2049688)
     // Инструмент — READ-ONLY бэдж (значение из cfg.symbol, F-131: BRZ6; переключение инструмента для BR не поддерживается: символ из env сервиса)
     // OF_BR_INSTANCE_ORDER/OF_BR_INSTANCES определены в BR-блоке внизу файла (renderRobots вызывается только после полной загрузки скрипта — TDZ не задеваем)
+    // F-241: рендер каждой BR-строки изолирован — ошибка одного инстанса больше не ломает таблицу,
+    // а причина пишется прямо в строку и в журнал (видно, почему «нет связи» при живом роботе).
     const ofBrRows = OF_BR_INSTANCE_ORDER.map(inst => {
+        try {
         const cfg = OF_BR_INSTANCES[inst];
         const s = window['ofBrRobot_' + inst];
         if (s) {
@@ -2856,8 +2859,17 @@ async function renderRobots() {
             <td>
                 <button class="btn btn-success btn-sm" onclick="ofBrRobotApi('${inst}','start')">▶</button>
             </td>
-            <td class="yellow" title="Робот не ответил ни разу: процесс не поднят или порт недоступен. Это НЕ значит, что робот остановлен — нажми ▶, чтобы поднять/включить">⚪ Нет связи</td>
+            <td class="yellow" title="Причина: ' + (window['_ofBrLastErr_' + inst] || 'нет ответа') + '">⚪ Нет связи'
+                + (window['_ofBrLastErr_' + inst] ? ' <span style="font-size:10px;color:#9CA3AF">(' + String(window['_ofBrLastErr_' + inst]).slice(0, 40) + ')</span>' : '') + '</td>
         </tr>`;
+        }
+        } catch (rowErr) {
+            try { addLog(nowTime(), 'ERROR', 'OF-BR[' + inst + '] рендер строки: ' + (rowErr && rowErr.message)); } catch (e2) {}
+            const cfg2 = (window.OF_BR_INSTANCES && OF_BR_INSTANCES[inst]) || {label: inst, badge: 'BR', badgeColor: '#666', account: '—', symbol: '?'};
+            return '<tr><td>' + (cfg2.symbol || '?') + '</td><td><strong>Order Flow</strong> <span class="badge" style="background:' + cfg2.badgeColor + '">' + cfg2.badge + '</span></td>'
+                + '<td>' + cfg2.account + '</td><td>—</td><td>—</td><td>—</td><td>— / —</td><td>—</td>'
+                + '<td><button class="btn btn-success btn-sm" onclick="ofBrRobotApi(\'' + inst + '\',\'start\')">▶</button></td>'
+                + '<td class="red" title="' + String(rowErr && rowErr.message || '').replace(/"/g, '') + '">⚠ ошибка рендера</td></tr>';
         }
     }).join('');
 
@@ -8399,6 +8411,8 @@ async function ofBrRobotPoll(inst) {
         // Теперь: считаем серию сбоев и держим последние известные данные; «нет связи»
         // показывается отдельно от «остановлен» после 3 подряд неудач.
         window['_ofBrFail_' + inst] = (window['_ofBrFail_' + inst] || 0) + 1;
+        // F-241: запоминаем причину — она видна в строке и в журнале
+        try { window['_ofBrLastErr_' + inst] = (e && e.message) ? e.message : String(e); } catch (e3) {}
         if (window['_ofBrFail_' + inst] === 1) {
             window['_ofBrWasOnline_' + inst] = false;
         }
