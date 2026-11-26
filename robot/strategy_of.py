@@ -55,6 +55,9 @@ class OFParams:
     # уровень тейка LIFO-лота, при восстановлении связи лот закрывается — но только
     # если профит по нему ещё есть (не фиксируем убыток и не закрываем «в минус»).
     catchup_tp_enabled: bool = True
+    # F-243: сколько уровней усреднения разрешено «догнать» за один тик.
+    # 10 = прежнее поведение; 1 = без пачек (рекомендуется для BR).
+    average_catchup_max_levels: int = 10
     catchup_tp_min_gap_sec: int = 30
     # F-199 (18.11.2026): периодическая проверка пробоя уровня тейка по M1-барам.
     # Даже без обрыва связи отдельные тики теряются (в 15:40 цена коснулась 246800,
@@ -1958,8 +1961,9 @@ class OrderFlowStrategy:
             remaining = self.p.max_average_levels - self._average_levels
             missed = min(missed, remaining)
 
-        # Safety cap: max 10 per tick to avoid runaway
-        missed = min(missed, 10)
+        # Safety cap: max N per tick to avoid runaway (F-243: настраиваемый, дефолт 10)
+        _cap = int(getattr(self.p, "average_catchup_max_levels", 10) or 10)
+        missed = min(missed, max(1, _cap))
 
         if missed <= 0:
             return []

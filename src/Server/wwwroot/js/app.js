@@ -2847,6 +2847,13 @@ async function renderRobots() {
             <td class="${modeCls}" title="${_linkDown ? ('Последние данные ' + _staleSec + 'с назад: ' + _modeHuman) : (mode === 'running' ? 'Робот торгует' : 'Робот не торгует')}">${modeText}${_desyncBadge}${_dataStale ? ' <span class="badge" style="background:#422006;color:#FBBF24;border:1px solid #B45309" title="Данные робота не обновлялись ' + _dataAge + 'с — строка может быть устаревшей">⏱ ' + _dataAge + 'с</span>' : ''}</td>
         </tr>`;
         } else {
+            // F-244: если данных по инстансу нет — сами инициируем опрос (не чаще раза в 2с).
+            // Раньше строка просто ждала общий цикл, и если он этот инстанс не опрашивал,
+            // навсегда оставалась «Нет связи» при живом роботе.
+            if (!window['_ofBrNudge_' + inst] || Date.now() - window['_ofBrNudge_' + inst] > 2000) {
+                window['_ofBrNudge_' + inst] = Date.now();
+                setTimeout(function () { try { ofBrRobotPoll(inst).then(function () { renderRobots(); }); } catch (e) {} }, 30);
+            }
             return `<tr ondblclick="ofBrRobotEditPanel('${inst}')" style="cursor:pointer" title="Двойной клик — настройки робота">
             <td><span class="badge" style="background:#1a2332;border:1px solid #007ACC;color:#FF9800;font-weight:bold" title="Символ задаётся env сервиса (переключение из UI не поддерживается)">${cfg.symbol}</span></td>
             <td><strong>Order Flow</strong> <span class="badge" style="background:${cfg.badgeColor}">${cfg.badge}</span></td>

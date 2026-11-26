@@ -1049,6 +1049,19 @@ class APIHandler(BaseHTTPRequestHandler):
         elif path == "/start":
             _mode = "running"
             strategy._force_unlock()  # Reset entry lock on manual start
+            # F-243: при старте НЕ догоняем прошлые уровни усреднения.
+            # Инцидент 26.11: после выравнивания состояния опора усреднения осталась 92.83,
+            # цена была уже 94.1 → робот в первую же секунду долил 3 лота (AVERAGE CATCHUP).
+            # Теперь при переходе stopped→running переставляем опору на текущую цену:
+            # первый долив будет только после НОВОГО движения на шаг против позиции.
+            try:
+                if strategy.in_position and _current_price > 0:
+                    strategy._last_average_price = float(_current_price)
+                    strategy._last_pyr_entry_price = float(_current_price)
+                    log.info(f"START: опора усреднения переставлена на текущую цену "
+                             f"{fmt_price(_current_price)} — догона прошлых уровней не будет")
+            except Exception as _e:
+                log.warning(f"START: re-anchor failed: {_e}")
             save_state()
             self._json(200, {"ok": True, "mode": _mode})
 
