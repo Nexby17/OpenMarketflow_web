@@ -311,6 +311,54 @@ _last_fill_time = 0.0
 _last_fill_qty = 0
 
 
+def _diag_entry_chain(strategy, px: float) -> dict:
+    """F-246: пройти цепочку гейтов входа и вернуть, где именно рвётся."""
+    from datetime import datetime as _dt
+    out = {}
+    try:
+        now = _dt.now(MSK)
+        out["in_position"] = strategy.in_position
+        out["entry_locked"] = strategy._is_entry_locked()
+        out["timing_closed"] = strategy._timing_gate_closed(now)
+        out["night"] = strategy._is_night(now)
+        out["clearing"] = strategy._is_clearing(now)
+        out["outside_session"] = strategy._is_outside_session(now)
+        out["price_stale"] = strategy._is_price_stale()
+        out["daily_stop"] = strategy._daily_stop_hit()
+        out["has_enough_data"] = strategy.signals.has_enough_data
+        ob = strategy.ob_tracker.get_metrics(px)
+        out["ob_filter"] = strategy._ob_filter_passes(ob)
+        sigs = strategy.signals.generate_signals(
+            ob, px, ob_tracker=strategy.ob_tracker,
+            use_dm_wall=params.use_dm_wall, use_cvd=params.use_cvd,
+            use_ob_imbalance=False, use_cvd_accel=params.use_cvd_accel)
+        out["signals"] = [{"type": s.signal_type, "dir": s.direction,
+                           "strength": round(float(getattr(s, "strength", 0) or 0), 2),
+                           "price": float(getattr(s, "price", 0) or 0)} for s in sigs]
+        out["cvd_trend_dir"] = getattr(strategy.signals, "_cvd_trend_dir", None)
+        out["cvd_trend_ready"] = getattr(strategy.signals, "_cvd_trend_ready", None)
+        _ph = {}
+        for d in (1, -1):
+            try:
+                ok, reason = strategy._phase_allows(d, px)
+                _ph["long" if d == 1 else "short"] = [bool(ok), str(reason)]
+            except Exception as e:
+                _ph["long" if d == 1 else "short"] = [None, str(e)]
+        out["phase_allows"] = _ph
+        _vw = {}
+        try:
+            if strategy.vwema and strategy.vwema.ready:
+                _vw = {"ready": True, "dir": strategy.vwema.direction, "state": strategy.vwema.state}
+            else:
+                _vw = {"ready": False}
+        except Exception as e:
+            _vw = {"error": str(e)}
+        out["vwema"] = _vw
+    except Exception as e:
+        out["error"] = str(e)
+    return out
+
+
 def _on_my_trade(trade):
     """F-019 (восстановлено 25.09): филл СВОЕГО ордера через WS ORDERS-канал.
     trade = dict из hub_adapter (или объект с атрибутами — совместимо).
@@ -1027,6 +1075,51 @@ class APIHandler(BaseHTTPRequestHandler):
 
         elif path == "/health":
             self._json(200, {"ok": True, "symbol": SYMBOL, "mode": _mode})
+
+        elif path == "/diag":
+            # F-246: почему нет входов — состояние стакана и гейтов входа.
+            # Раньше _ob_filter_passes()/has_enough_data() возвращали False БЕЗ лога,
+            # и робот мог сутками молчать при живых сигналах.
+            try:
+                px = _current_price or strategy._current_price
+                ob = strategy.ob_tracker.get_metrics(px)
+                self._json(200, {
+                    "ok": True,
+                    "price": px,
+                    "ob": {
+                        "has_data": strategy.ob_tracker.has_data,
+                        "total_buy": ob.total_buy,
+                        "total_sell": ob.total_sell,
+                        "imbalance": round(ob.imbalance, 3),
+                        "near_buy": ob.near_buy,
+                        "near_sell": ob.near_sell,
+                        "wall_price": ob.wall_price,
+                        "wall_side": ob.wall_side,
+                        "wall_size": ob.wall_size,
+                        "age_sec": round(time.time() - ob.timestamp, 1) if ob.timestamp else None,
+                    },
+                    "entry_gates": {
+                        "enable_ob_filter": params.enable_ob_filter,
+                        "ob_min_lots": params.ob_min_lots,
+                        "ob_pass": strategy._ob_filter_passes(ob),
+                        "has_enough_data": strategy.signals.has_enough_data,
+                        "bars": len(strategy.signals._bar_history),
+                        "cvd_lookback": strategy.signals._cvd_lb,
+                        "signal_confirm_count": params.signal_confirm_count,
+                        "use_timing": params.use_timing,
+                        "timing_start": params.timing_start,
+                        "timing_end": params.timing_end,
+                        "direction_filter": params.direction_filter,
+                        "phase_filter": params.phase_filter,
+                        "phase_dir": getattr(strategy, "_phase_dir", None),
+                        "vwema_block_counter": params.vwema_block_counter,
+                    },
+                    "pending": strategy._pending_cvd_trend,
+                    "last_dm_wall": getattr(strategy, "_last_dm_wall", None),
+                    "chain": _diag_entry_chain(strategy, px),
+                })
+            except Exception as e:
+                self._json(500, {"ok": False, "error": str(e)})
 
         elif path == "/start":
             # F-050: логируем смену режима — иначе «жму кнопку, а робот не стартует» не диагностируется
